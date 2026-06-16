@@ -376,7 +376,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 
 <p>现在第 3 课那条设计原则就有了经济学解释：<strong>为什么要把 system + 核心记忆放在最前面、且每轮尽量不改？</strong>因为它们是<strong>最长、最稳定的那段前缀</strong>——保持它逐 token 不变，就能让每一轮都吃到 prefix cache，把这段昂贵的 prefill 省掉。反过来，如果你每轮都去改系统提示的开头（哪怕只改一个字），就等于<strong>亲手把缓存作废</strong>，每轮都全量重算。<strong>"稳定前缀 + 变化尾巴"不是审美，是 prefill / prefix-cache 经济学逼出来的结构。</strong>这也是为什么 Letta 在第 3 课里宁可"只往尾巴追加消息、记忆变了才重建系统提示"，也不肯每轮乱动前缀。</p>
 <h2>Letta 把这笔账量出来，也据此动手</h2>
-<p>到这里，约束和经济学都讲清楚了。Letta 的回应分两步：<strong>先把"窗口里到底装了啥"精确量出来，再据此决定何时压缩。</strong>"量"这件事，落在一个叫 <span class="mono">ContextWindowOverview</span> 的数据结构上——它就是整个上下文窗口的一本<strong>token 账本</strong>：</p>
+<p>到这里，约束和经济学都讲清楚了。Letta 的高明之处，是<strong>不把上下文窗口当黑盒</strong>：它能把"窗口里到底装了啥"<strong>逐块拆开计数</strong>，再据此在<strong>逼近上限时压缩</strong>。先看"计数"——它有一个专门的数据结构 <span class="mono">ContextWindowOverview</span>，是整个上下文窗口的一本<strong>token 账本</strong>（主要在检视 / 接口侧按需算出）：</p>
 
 <div class="codefile">
   <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/memory.py</span><span class="ln">class ContextWindowOverview（节选真实字段）</span></div>
@@ -402,7 +402,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   这一课的每个环节落在哪：<strong>token 账本</strong>是 <span class="mono">letta/schemas/memory.py::ContextWindowOverview</span>；<strong>现场计算</strong>在 <span class="mono">letta/services/context_window_calculator/context_window_calculator.py::ContextWindowCalculator</span>（<span class="mono">calculate_context_window</span>），由 <span class="mono">letta/services/agent_manager.py::AgentManager.get_context_window</span> 调用；<strong>数 token</strong>用 <span class="mono">letta/services/context_window_calculator/token_counter.py::TokenCounter</span>（<span class="mono">count_text_tokens</span> / <span class="mono">count_message_tokens</span> / <span class="mono">count_tool_tokens</span>，实现类 <span class="mono">AnthropicTokenCounter</span> / <span class="mono">ApproxTokenCounter</span>）；<strong>压缩阈值</strong>在 <span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span>（= <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>，后者在 <span class="mono">letta/constants.py</span> 为 0.9）；<strong>压缩动作</strong>在 <span class="mono">letta/agents/letta_agent_v3.py::LettaAgentV3</span>（<span class="mono">compact</span>，由 <span class="mono">_step</span> 在逼近阈值/超窗时触发）。
 </div>
 
-<p>有了账本，"何时动手"就只剩一个简单判断：<strong>把当前估算的 token 数，和一个阈值比一比</strong>。这个阈值不等到窗口满了才算，而是留了余量——默认在<strong>上限的 90%</strong> 就触发，避免真的撞上"prompt 太长"的报错：</p>
+<p>至于"何时动手"，运行时为了快，并不每步都重算整本账，而是<strong>顺手记下每次模型调用返回的 token 用量</strong>，拿这个<strong>估算值</strong>和一个阈值比一比。这个阈值不等窗口真满才算，而是留了余量——默认在<strong>上限的 90%</strong> 就触发，避免真的撞上"prompt 太长"的报错：</p>
 
 <div class="codefile">
   <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/thresholds.py</span><span class="ln">get_compaction_trigger_threshold（简化）</span></div>
@@ -410,7 +410,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm"># letta/constants.py</span>
 
 <span class="kw">def</span> <span class="fn">get_compaction_trigger_threshold</span>(llm_config, *, force_proactive=<span class="kw">False</span>):
-    <span class="cm"># GPT-5 一族更激进，靠近 90% 就主动压缩；这里给出统一的上限算法</span>
+    <span class="cm"># 不区分模型，一律取 上限 × 0.9（force_proactive 目前不改变结果）</span>
     <span class="kw">return</span> <span class="fn">int</span>(llm_config.context_window * SUMMARIZATION_TRIGGER_MULTIPLIER)
 </pre></div>
 
@@ -567,7 +567,7 @@ We've leaned on one phrase for four lessons — "the context window" — without
 
 <div class="card macro">
   <div class="tag">🌍 Big picture</div>
-  Grab this lesson in one line: <strong>the context window = a fixed-size token budget the model can "see" in a single call</strong> - it is both <strong>finite</strong> and <strong>costly per token</strong>. That budget is shared at once by four things: the system prompt, core memory, in-context messages, and tool schemas. This is the <strong>root constraint</strong> that Letta - and the whole MemGPT idea - exists to answer: because the window cannot hold "all of history," you must have <strong>tiered memory</strong> and <strong>"compact when it fills."</strong> Hold onto this constraint; every later memory-system design is an echo of it.
+  Grab this lesson in one line: <strong>the context window = a fixed-size token budget the model can "see" in a single call</strong> — it is both <strong>finite</strong> and <strong>costly per token</strong>. That budget is shared at once by four things: the system prompt, core memory, in-context messages, and tool schemas. This is the <strong>root constraint</strong> that Letta — and the whole MemGPT idea — exists to answer: because the window cannot hold "all of history," you must have <strong>tiered memory</strong> and <strong>"compact when it fills."</strong> Hold onto this constraint; every later memory-system design is an echo of it.
 </div>
 
 <h2>A finite token budget: this is the core constraint</h2>
@@ -624,7 +624,7 @@ We've leaned on one phrase for four lessons — "the context window" — without
 
 <p>Now Lesson 3's design principle has an economic explanation: <strong>why put system + core memory at the very front and barely touch it each turn?</strong> Because they're the <strong>longest, most stable prefix</strong> — keep it token-for-token unchanged and every turn hits the prefix cache, sparing that expensive prefill. Conversely, edit the opening of the system prompt each turn (even by one character) and you've <strong>invalidated the cache by hand</strong>, forcing a full recompute every turn. <strong>"Stable prefix + changing tail" is not aesthetics, it's a structure forced by prefill / prefix-cache economics.</strong> That's also why, back in Lesson 3, Letta would rather "only append messages to the tail and rebuild the system prompt only when memory changes" than fiddle with the prefix every turn.</p>
 <h2>Letta measures the bill, and acts on it</h2>
-<p>By here, both the constraint and the economics are clear. Letta's response has two moves: <strong>first measure exactly "what's in the window," then decide when to compress.</strong> The "measure" part lives in a data structure called <span class="mono">ContextWindowOverview</span> — a <strong>token ledger</strong> for the entire context window:</p>
+<p>By here, both the constraint and the economics are clear. Letta's cleverness is that it <strong>doesn't treat the context window as a black box</strong>: it can count, <strong>block by block</strong>, exactly "what's in the window," and compress as it <strong>approaches the ceiling</strong>. Take "counting" first — it has a dedicated data structure, <span class="mono">ContextWindowOverview</span>, a <strong>token ledger</strong> for the whole window (computed on demand, mainly on the inspection / API side):</p>
 
 <div class="codefile">
   <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/memory.py</span><span class="ln">class ContextWindowOverview (real fields, excerpt)</span></div>
@@ -650,7 +650,7 @@ We've leaned on one phrase for four lessons — "the context window" — without
   Where each beat of this lesson lives: the <strong>token ledger</strong> is <span class="mono">letta/schemas/memory.py::ContextWindowOverview</span>; the <strong>on-the-spot calculation</strong> is in <span class="mono">letta/services/context_window_calculator/context_window_calculator.py::ContextWindowCalculator</span> (<span class="mono">calculate_context_window</span>), called by <span class="mono">letta/services/agent_manager.py::AgentManager.get_context_window</span>; <strong>counting tokens</strong> uses <span class="mono">letta/services/context_window_calculator/token_counter.py::TokenCounter</span> (<span class="mono">count_text_tokens</span> / <span class="mono">count_message_tokens</span> / <span class="mono">count_tool_tokens</span>, implemented by <span class="mono">AnthropicTokenCounter</span> / <span class="mono">ApproxTokenCounter</span>); the <strong>compaction threshold</strong> is in <span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span> (= <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>, the latter 0.9 in <span class="mono">letta/constants.py</span>); the <strong>compaction action</strong> is in <span class="mono">letta/agents/letta_agent_v3.py::LettaAgentV3</span> (<span class="mono">compact</span>, triggered by <span class="mono">_step</span> near the threshold / on overflow).
 </div>
 
-<p>With the ledger in hand, "when to act" reduces to one simple comparison: <strong>compare the current estimated token count to a threshold</strong>. That threshold doesn't wait until the window is full — it leaves headroom, firing by default at <strong>90% of the ceiling</strong> to avoid actually hitting the "prompt too long" error:</p>
+<p>As for "when to act," the runtime — for speed — doesn't recompute the whole ledger every step; it just <strong>notes the token usage each model call reports back</strong> and compares that <strong>estimate</strong> to a threshold. That threshold doesn't wait until the window is full — it leaves headroom, firing by default at <strong>90% of the ceiling</strong> to avoid actually hitting the "prompt too long" error:</p>
 
 <div class="codefile">
   <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/thresholds.py</span><span class="ln">get_compaction_trigger_threshold (simplified)</span></div>
@@ -658,7 +658,7 @@ We've leaned on one phrase for four lessons — "the context window" — without
 SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm"># letta/constants.py</span>
 
 <span class="kw">def</span> <span class="fn">get_compaction_trigger_threshold</span>(llm_config, *, force_proactive=<span class="kw">False</span>):
-    <span class="cm"># GPT-5 family is more proactive near 90%; this is the unified ceiling formula</span>
+    <span class="cm"># Same for every model: context_window * 0.9 (force_proactive currently unused)</span>
     <span class="kw">return</span> <span class="fn">int</span>(llm_config.context_window * SUMMARIZATION_TRIGGER_MULTIPLIER)
 </pre></div>
 
