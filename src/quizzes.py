@@ -693,6 +693,79 @@ QUIZZES = {
             },
         ],
     },
+    "10-archival-memory.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "archival_memory_search 是怎么把一条 passage “找回来”的？",
+                    "en": "How does archival_memory_search actually \"find\" a passage?",
+                },
+                "opts": [
+                    {"zh": "把查询也嵌成向量，按余弦距离取最近邻（cosine_distance 升序）——按“意思”找，不是字面匹配",
+                     "en": "It embeds the query too, then takes nearest neighbors by cosine distance (cosine_distance ascending) — retrieval by meaning, not literal match"},
+                    {"zh": "执行 SQL WHERE text = '…' 做精确字符串匹配",
+                     "en": "Runs SQL WHERE text = '…' for an exact string match"},
+                    {"zh": "按 created_at 倒序，永远只返回最近写入的几条",
+                     "en": "Orders by created_at descending and always returns just the most recent rows"},
+                    {"zh": "按关键词出现次数（BM25）排序，命中得越多越靠前",
+                     "en": "Ranks by keyword frequency (BM25) — more keyword hits float to the top"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "search 工具先用同一个 embedding 模型把查询变成向量，再让数据库按向量距离排序取最近邻。SQLite 路径靠 sqlite_functions.py 注册的 cosine_distance（=1−相似度），Postgres 路径用 pgvector，两边都是 order_by(cosine_distance(...).asc())。所以它按语义相近度召回——“付款”能命中“已结清账单”，哪怕一个字都不重合；精确 WHERE、按时间、按关键词计数都不是它的检索方式。",
+                    "en": "The search tool first turns the query into a vector with the same embedding model, then asks the database to sort by vector distance and take the nearest neighbors. The SQLite path uses cosine_distance (=1−similarity) registered in sqlite_functions.py; the Postgres path uses pgvector; both do order_by(cosine_distance(...).asc()). So it recalls by semantic closeness — \"payment\" can hit \"invoice already settled\" with zero shared words. Exact WHERE, recency, and keyword counting are not how it retrieves.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "“同一份代码，pgvector 跑生产、sqlite-vec 跑本机”这套双方言，魔法到底在哪一层？",
+                    "en": "The \"same code, pgvector in prod / sqlite-vec on a laptop\" dual-dialect trick — at which layer does the magic live?",
+                },
+                "opts": [
+                    {"zh": "向量列和距离算子由 settings.database_engine 在 ORM 层二选一；insert/search 两个工具和上层逻辑一字不改",
+                     "en": "The vector column and distance operator are chosen by settings.database_engine in the ORM layer; the insert/search tools and upper logic don't change at all"},
+                    {"zh": "每次换数据库都得把 archival 的两个工具重写一遍",
+                     "en": "You must rewrite both archival tools every time you switch databases"},
+                    {"zh": "archival 只能跑在 Postgres 上，本机其实是关掉的",
+                     "en": "archival only runs on Postgres; on a laptop it's actually disabled"},
+                    {"zh": "SQLite 把向量当 JSON 文本存，根本算不了相似度",
+                     "en": "SQLite stores vectors as JSON text and can't compute similarity at all"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "在 orm/passage.py 里，BasePassage 用 settings.database_engine 决定 embedding 列：Postgres 用 Vector(MAX_EMBEDDING_DIM)，否则用 CommonVector；sqlalchemy_base.py 的排序也同样按引擎分支，但两边都是 cosine_distance(...).asc()。差异被关在 ORM/列类型这一层，archival_memory_insert/search 与调用它们的 agent 完全无感——所以 laptop→prod 不用改业务代码。换库不必重写工具；本机用 sqlite-vec 一样能算相似度。",
+                    "en": "In orm/passage.py, BasePassage picks the embedding column by settings.database_engine: Vector(MAX_EMBEDDING_DIM) on Postgres, else CommonVector; sqlalchemy_base.py branches the ordering the same way, but both sides do cosine_distance(...).asc(). The difference is sealed inside the ORM/column-type layer, so archival_memory_insert/search and the agent calling them notice nothing — which is why laptop→prod needs no business-code changes. Switching DBs doesn't require rewriting the tools, and sqlite-vec computes similarity just fine.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于 archival 的“代价”和“语义”，下面哪句是对的？",
+                    "en": "About archival's \"cost\" and \"semantics,\" which statement is true?",
+                },
+                "opts": [
+                    {"zh": "search 是相似度召回（不保证精确命中），而且每次 insert / search 都要花一次 embedding 调用",
+                     "en": "search is similarity recall (no guaranteed exact hit), and every insert / search costs one embedding call"},
+                    {"zh": "search 保证一定返回你心里想要的那一条",
+                     "en": "search is guaranteed to return exactly the row you had in mind"},
+                    {"zh": "insert 不花钱，因为向量都是预先算好的",
+                     "en": "insert is free because the vectors are all precomputed"},
+                    {"zh": "archival 常驻上下文，所以每一轮都按 token 计费",
+                     "en": "archival sits in the context window, so it's billed by token every turn"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "archival 是“按意思找”，结果是最相近的若干条，可能漏掉措辞差很远、或被更相似的噪音盖过的目标——所以不保证精确命中。写入要把文本嵌成向量、检索要把查询嵌成向量，两边都各是一次 embedding 调用，有真实开销。它也不像 core memory 常驻 system 提示，而是放在库里、用到才召回，所以不是每轮吃 token——这正是它便宜地“无限扩容”的原因。",
+                    "en": "archival retrieves by meaning, returning the closest few — it can miss a target phrased very differently or drowned out by more-similar noise, so no exact-hit guarantee. Writing embeds the text into a vector; searching embeds the query — each is one embedding call with real cost. Unlike core memory, it doesn't live in the system prompt; it sits in the store and is recalled only when needed, so it isn't billed by token every turn — which is exactly why it scales \"infinitely\" cheaply.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "你的客服 agent 要记住成百上千条历史工单。结合本课：哪些内容该用 archival_memory_insert 写进向量库（而不是塞进 core memory 块）？为什么 search 有时“明明存过却搜不出来”，你会怎么补救（想想 tags 和措辞）？再算一笔账：把每条用户消息都 insert 一次，代价和噪音会怎样？",
+                "en": "Your support agent must remember hundreds of past tickets. Using this lesson: which content should go into the vector store via archival_memory_insert (rather than into a core-memory block)? Why does search sometimes \"miss a passage you definitely stored,\" and how would you fix it (think tags and phrasing)? Then do the math: if you insert every single user message, what happens to cost and noise?",
+            },
+        ],
+    },
 }
 
 

@@ -18,4 +18,5 @@ CONTENT = {
     "07-memory-tiers.html": part3.LESSON_07,
     "08-memory-blocks.html": part3.LESSON_08,
     "09-self-editing-memory.html": part3.LESSON_09,
+    "10-archival-memory.html": part3.LESSON_10,
 }

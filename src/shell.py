@@ -64,6 +64,8 @@ PAGES = [
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
     ("09-self-editing-memory.html", "自我编辑记忆 = 改写系统提示", "Self-editing memory = rewriting the system prompt",
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("10-archival-memory.html", "归档记忆与向量检索", "Archival memory & vector search",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
 ]
 
 
@@ -520,6 +522,8 @@ SUBTITLES = {
                               "label/value/limit; Memory.compile; shared blocks; versioning"),
     "09-self-editing-memory.html": ("core_memory_append/replace · {CORE_MEMORY} 占位符 · 重建第 0 条 · prefix cache",
                                     "core_memory_append/replace; the {CORE_MEMORY} slot; rebuilding message #0; prefix cache"),
+    "10-archival-memory.html": ("Passage · 嵌入 · insert/search · pgvector / sqlite-vec · tags",
+                                "Passage; embeddings; insert/search; pgvector / sqlite-vec; tags"),
 }
 
 

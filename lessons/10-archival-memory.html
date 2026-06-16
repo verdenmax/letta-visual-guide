@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>10 · 归档记忆与向量检索 / Archival memory &amp; vector search - Letta 图解教程</title>
+<meta name="description" content="第三部分 · 记忆系统｜归档记忆与向量检索 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="10 · 归档记忆与向量检索 / Archival memory &amp; vector search - Letta 图解教程">
+<meta property="og:description" content="第三部分 · 记忆系统｜归档记忆与向量检索 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="10 · 归档记忆与向量检索 / Archival memory &amp; vector search - Letta 图解教程">
+<meta name="twitter:description" content="第三部分 · 记忆系统｜归档记忆与向量检索 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></span>
+    <span class="pill">10 / 10</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></div>
+    <h1><span class="lang-zh">归档记忆与向量检索</span><span class="lang-en">Archival memory &amp; vector search</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第 7 课那张三层地图里，archival（归档）是压在最底下、<strong>容量近乎无限</strong>的那一层：它在上下文窗口<strong>之外</strong>，平时不占一个 token，要用时才按需捞回。这一课把这层"长期记忆"讲到能动手。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+关键词只有四个：<strong>Passage</strong>（一条归档记忆 = 文本 + 向量）、<strong>insert</strong>（嵌入并存）、<strong>search</strong>（按相似度捞），以及让它从笔记本跑到生产<strong>同一套代码</strong>的 pgvector / sqlite-vec 双方言。读完你会明白：archival 就是<strong>内建进 agent 的 RAG</strong>。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把 archival 想成 agent 自己的一间地下档案室——但这间档案室会"按意思"找东西。</strong>普通仓库你得记得"那份合同放在 3 排 B 架第 2 格"，靠精确编号去取；archival 不一样：你只要描述"<strong>关于去年那笔续约的讨论</strong>"，它就能把意思最接近的几份档案<strong>捞出来</strong>，哪怕你一个原词都没说对。秘密在于：存进去的时候，每段文字都被翻译成一串<strong>坐标（向量）</strong>，意思相近的坐标也彼此靠近；查的时候把问题也翻成坐标，找<strong>最近的邻居</strong>即可。于是 agent 拥有了一座<strong>会自己记笔记、又能按语义翻找</strong>的长期资料库，而且它<strong>容量近乎无限</strong>，绝不会"装满了就忘"。这也是它和"贴在额头上、每轮都读"的 core 最大的不同：core 是<strong>随身的便签</strong>，archival 是<strong>身后那座取之不尽的档案室</strong>——平时不打扰你，喊一声才把最相关的几份递到眼前。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：archival = 一座 <span class="mono">Passage</span> 向量库 + 两个工具。</strong><span class="mono">archival_memory_insert(content, tags)</span> 把一段文本<strong>嵌入成向量</strong>、连同标签存成一条 <span class="mono">Passage</span>；<span class="mono">archival_memory_search(query, tags)</span> 把查询也嵌入，再<strong>按余弦相似度</strong>取回最像的几条。两个工具都在 <span class="mono">LettaCoreToolExecutor</span>，声明在 <span class="mono">function_sets/base.py</span>。底层那一列向量，在 Postgres 上是 pgvector、在 SQLite 上是 sqlite-vec——<strong>同一套查询、两种后端</strong>。本课就沿"写一条、搜一条、换个数据库照样跑"走一遍。 看懂这一条，你会发现 archival 没什么神秘：它不过是"把文本算成向量存下来、再按距离取回"，难的不是机制，而是<strong>想清楚什么该长期记、什么时候该去翻</strong>。
+</div>
+
+<h2>先把 archival 摆回三层地图里</h2>
+<p>第 7 课讲过三层的分工：<strong>core</strong> 在窗、最稀缺、agent 自己改；<strong>recall</strong> 是<strong>全量对话历史</strong>，按关键词/时间召回；<strong>archival</strong> 则是窗外的<strong>长期向量库</strong>，按<strong>语义</strong>检索。这一课只聚焦最后一层。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>一句话定位：</strong>archival 就是<strong>内建进 agent 的 RAG</strong>——agent 自己写长期笔记（insert）、再按意思取回（search），不依赖外部检索管线，发起权全在 agent 手里。</span></div>
+
+<p>三层最值得记住的差别是<strong>"怎么检索"</strong>：core 不用检索（一直在眼前），recall 按<strong>字面/时间</strong>翻聊天记录，archival 按<strong>意思</strong>翻向量库。下面这张表把它们并排放一起，一眼对清楚。</p>
+
+<table class="t">
+  <thead><tr><th>记忆层</th><th>在上下文?</th><th>容量</th><th>谁来写</th><th>怎么检索</th></tr></thead>
+  <tbody>
+    <tr><td>core 核心</td><td>✅ 永远在窗</td><td class="mono">极小（字符上限）</td><td>agent 自改</td><td>不用检索</td></tr>
+    <tr><td>recall 回忆</td><td>❌ 仅最近一段在窗</td><td class="mono">全量对话史</td><td>系统自动记</td><td>按字面 / 时间</td></tr>
+    <tr><td>archival 归档</td><td>❌ 全在窗外</td><td class="mono">近乎无限</td><td>agent 主动 insert</td><td>按<strong>语义</strong>（向量）</td></tr>
+  </tbody>
+</table>
+
+<p>注意 archival 这一行的两个"主动"：容量近乎无限，但它<strong>不会自动记</strong>——得 agent 判断"这条值得长期留着"，主动调 insert；要用时也得<strong>主动</strong> search。它是 agent 自己经营的一座库，不是后台默默记的流水账。</p>
+
+<p>为什么 archival 偏偏要"按语义"检索？因为长期库里的东西<strong>时过境迁</strong>：三个月前 agent 记下"客户偏好深色界面"，今天用户问"界面风格我之前怎么说的来着"——用词对不上，但<strong>意思是一回事</strong>。靠字面早就搜不到了，靠语义却能稳稳捞回。这正是 archival 把"按意思找"设成<strong>默认检索方式</strong>的原因，也是它和 recall"按字面/时间"翻历史的根本分工。</p>
+
+<div class="cute"><div class="row"><span class="emoji">📦</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="lab">嵌入向量</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">"按意思找最像的"</span></div>
+<div class="cap">归档记忆 = 会按语义检索的长期笔记本，容量近乎无限</div></div>
+
+<h2>一条归档记忆长什么样：Passage</h2>
+<p>archival 里的最小单位叫 <span class="mono">Passage</span>（<span class="mono">letta/schemas/passage.py</span>）。剥掉元数据，它的核心就两样东西：<strong>一段文本</strong>，和这段文本的<strong>一串向量</strong>；再加上"用哪个嵌入模型算的"和几个标签。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/passage.py</span><span class="ln">Passage（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">Passage</span>(PassageBase):
+    <span class="cm"># 存在 archival memory 里的一条记忆</span>
+    text: str                                <span class="cm"># (1) 原始文本</span>
+    embedding: Optional[List[float]]         <span class="cm"># (2) 向量：这段文本的"坐标"</span>
+    embedding_config: Optional[EmbeddingConfig]   <span class="cm"># (3) 用哪个嵌入模型算的</span>
+    archive_id: Optional[str]                <span class="cm"># 属于哪个 archive（agent 的默认档案库）</span>
+    tags: Optional[List[str]]                <span class="cm"># (4) 标签：给知识分类、好过滤</span>
+</pre></div>
+
+<p>四个字段串起整课：<strong>(1) text</strong> 是你存的原话；<strong>(2) embedding</strong> 是它的语义坐标，search 全靠它；<strong>(3) embedding_config</strong> 记下"用哪个模型嵌入的"，保证存和查用<strong>同一把尺子</strong>；<strong>(4) tags</strong> 让 agent 给自己的知识贴分类标签。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">向量从哪来？由 <span class="mono">embedding_config</span>（<span class="mono">letta/schemas/embedding_config.py</span>）指定的嵌入模型算出。归档向量还会被<strong>补齐到固定维度</strong> <span class="mono">MAX_EMBEDDING_DIM = 4096</span>（<span class="mono">letta/constants.py</span>），这样不同模型产出的向量能存进同一列。</span></div>
+
+<p>这里藏着一条铁律：<strong>insert 和 search 必须用同一个嵌入模型</strong>。向量空间是嵌入模型"私人定义"的坐标系，换了模型，同一句话的坐标就全变了——存进去的旧向量和新查询根本不在一个空间里，没法比距离。<span class="mono">embedding_config</span> 把这把"尺子"钉死在每条 <span class="mono">Passage</span> 上，正是为了让存与查<strong>始终量纲一致</strong>。</p>
+
+<p>还要破一个误会：容量"近乎无限"<strong>不等于"免费随便塞"</strong>。每存一条都要算一次向量、占一行存储；库越大，search 时要比的邻居也越多。所以 archival 的正确姿势是存<strong>提炼过的事实与摘要</strong>，而不是把原始对话一股脑灌进去——这一点下面的"常见误区"卡会再敲一遍。</p>
+
+<h2>两个工具：insert 写、search 读</h2>
+<p>先看"写"。agent 调 <span class="mono">archival_memory_insert(content, tags)</span> 时，发生的事可以画成一条直线：<strong>文本 → 嵌入 → Passage(向量) → 落库</strong>。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">一段文本</div><div class="nd">agent 想长期记住的话</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">嵌入模型</div><div class="nd">embedding_config 指定</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Passage</div><div class="nd">text + 向量 + tags</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">写入向量库</div><div class="nd">archival_passages 表</div></div>
+</div>
+
+<p>再看"读"。<span class="mono">archival_memory_search(query, tags)</span> 走的是<strong>镜像</strong>的一条线：query 先被嵌入成同样的向量，再去库里找<strong>最近的邻居</strong>，按相似度排好端回来。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">查询语句</div><div class="nd">"关于续约的讨论"</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">嵌入模型</div><div class="nd">同一把尺子</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">最近邻搜索</div><div class="nd">cosine_distance 升序</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Top-K 条 Passage</div><div class="nd">按相似度排好</div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">archival_memory_insert / search（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">archival_memory_insert</span>(self, agent_state, actor, content, tags=<span class="kw">None</span>):
+    <span class="kw">await</span> self.passage_manager.<span class="fn">insert_passage</span>(             <span class="cm"># 嵌入文本 + 存成 Passage</span>
+        agent_state=agent_state, text=content, actor=actor, tags=tags)
+    <span class="kw">await</span> self.agent_manager.<span class="fn">rebuild_system_prompt_async</span>(       <span class="cm"># 刷新 &lt;memory_metadata&gt; 计数</span>
+        agent_id=agent_state.id, actor=actor, force=<span class="kw">True</span>)
+
+<span class="kw">async def</span> <span class="fn">archival_memory_search</span>(self, agent_state, actor, query,
+                                 tags=<span class="kw">None</span>, tag_match_mode=<span class="st">"any"</span>, top_k=<span class="kw">None</span>):
+    <span class="kw">return await</span> self.agent_manager.<span class="fn">search_agent_archival_memory_async</span>(  <span class="cm"># 嵌入 query → 最近邻</span>
+        agent_id=agent_state.id, actor=actor, query=query,
+        tags=tags, tag_match_mode=tag_match_mode, top_k=top_k)
+</pre></div>
+
+<p>insert 短得意外：它几乎只是<strong>转交</strong>——把活儿交给 <span class="mono">PassageManager.insert_passage</span>，自己最后补一刀 <span class="mono">rebuild_system_prompt_async(force=True)</span>。那一刀是为了刷新第 7 课讲的<strong>库存清单</strong>：插了新档案，<span class="mono">&lt;memory_metadata&gt;</span> 里"archival 共几条"得跟着变，agent 才知道窗外又多了一条。</p>
+
+<p>那条 Passage 具体存到哪？存进 agent 的<strong>默认 archive</strong>（档案库）。<span class="mono">insert_passage</span> 内部先调 <span class="mono">ArchiveManager.get_or_create_default_archive_for_agent_async</span>——没有就建一个、有就拿来用，再把新 Passage 挂到这座库上。一个 agent 默认对应一座 archive，它所有的归档记忆都装在里面，<span class="mono">archive_id</span> 就是它们的"户口"。</p>
+
+<p>search 也只是<strong>转交</strong>给 <span class="mono">search_agent_archival_memory_async</span>。关键在它内部那句 <span class="mono">order_by(cosine_distance(...).asc())</span>：距离越小 = 意思越近，所以<strong>升序取前 K 条</strong>就是"最像的几条"。<span class="mono">top_k</span> 控制取几条，默认 10。</p>
+
+<p>串个具体场景：用户两周前随口提过"我对花生过敏"，agent 当时 <span class="mono">archival_memory_insert("用户对花生过敏", tags=["健康"])</span> 记了一笔。今天用户问"这家餐厅你觉得我能吃吗"，agent 调 <span class="mono">archival_memory_search("用户的饮食禁忌")</span>——查询里一个"花生"都没提，但语义最近的那条 Passage 还是被捞了回来，agent 于是想起了过敏这件事。这就是"按意思找"在真实对话里的威力：<strong>记得的是意思，而不是字眼</strong>。</p>
+
+<p>那 agent 怎么知道"现在该去搜一下"？还是靠第 7 课那张<strong>库存清单</strong>：<span class="mono">&lt;memory_metadata&gt;</span> 每轮都告诉它"archival 里还压着 N 条"。看到窗外有货、又觉得当前问题可能和过去有关，它就主动发起一次 search——连"<strong>什么时候该翻档案</strong>"这个时机判断，也是 agent 自己做的。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx"><strong>每次 insert 都要一次嵌入调用</strong>：把文本送进嵌入模型算向量，是有成本的（钱 + 延迟）。所以 archival 适合存"<strong>自洽、值得长期留</strong>"的事实或摘要，而不是把每句闲聊都塞进去。</span></div>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>tags 是过滤器：</strong>search 可带 <span class="mono">tags</span> 和 <span class="mono">tag_match_mode</span>（<span class="mono">any</span>/<span class="mono">all</span>）——先按标签缩小范围、再按语义排序。于是 agent 能"只在<strong>会议纪要</strong>里找关于路线图的讨论"，把语义搜索和分类过滤叠起来用。</span></div>
+
+<h2>同一套代码，两种数据库：pgvector / sqlite-vec</h2>
+<p>第 7 课点过一句"双数据库魔法"：开发用 SQLite、生产用 Postgres，<strong>同一套代码</strong>。archival 的向量检索把这句话演到了极致——靠的是一个按数据库类型<strong>二选一</strong>的向量列。</p>
+
+<div class="cols">
+  <div class="col"><h4>🧪 开发：SQLite + sqlite-vec</h4><p>向量列用自定义类型 <span class="mono">CommonVector</span>，把 float 数组序列化成二进制存进 SQLite；相似度用注册进去的 <span class="mono">cosine_distance</span> 函数算。<strong>零外部依赖，笔记本即开即用。</strong></p></div>
+  <div class="col"><h4>🚀 生产：Postgres + pgvector</h4><p>向量列用 <span class="mono">pgvector</span> 的 <span class="mono">Vector(4096)</span> 类型，相似度走原生 <span class="mono">cosine_distance</span> 算子，可建索引、扛大规模。<strong>同样的接口，换更强的后端。</strong></p></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py · sqlalchemy_base.py</span><span class="ln">向量列 + 最近邻（二选一）</span></div>
+<pre><span class="cm"># letta/orm/passage.py —— 向量列按数据库类型二选一</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    <span class="kw">from</span> pgvector.sqlalchemy <span class="kw">import</span> Vector
+    embedding = mapped_column(Vector(MAX_EMBEDDING_DIM))   <span class="cm"># 生产：pgvector</span>
+<span class="kw">else</span>:
+    embedding = Column(CommonVector)                       <span class="cm"># 开发：sqlite-vec</span>
+
+<span class="cm"># letta/orm/sqlalchemy_base.py —— 排序也二选一，但落到同一句语义</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    query = query.order_by(cls.embedding.<span class="fn">cosine_distance</span>(q).asc())
+<span class="kw">else</span>:
+    query = query.order_by(<span class="fn">func.cosine_distance</span>(cls.embedding, q).asc())
+</pre></div>
+
+<p>妙就妙在<strong>上层完全无感</strong>：两个分支最后都落到 <span class="mono">order_by(cosine_distance(...).asc())</span>——同一句"按余弦距离升序取最近邻"。换数据库只换<strong>列类型和距离算子的实现</strong>，<span class="mono">insert</span> / <span class="mono">search</span> 两个工具、agent 的用法，一个字都不用改。</p>
+
+<p>把这层看穿，你对第 6 课"有状态"那句话会有更深体会：agent 的长期知识<strong>外化在数据库里</strong>，换不换数据库、用哪种向量后端，都不影响它"是谁、记得什么"。引擎只是<strong>存取记忆的介质</strong>，记忆本身是一串与介质无关的 Passage——这正是"状态外化"在向量层的兑现。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>这就是"笔记本 → 生产不改代码"的底气：</strong>引擎由 <span class="mono">settings.database_engine</span>（有没有配 <span class="mono">letta_pg_uri</span>）自动选；选 SQLite 还是 Postgres，决定了向量列用 <span class="mono">CommonVector</span> 还是 <span class="mono">pgvector.Vector</span>——但你的检索逻辑浑然不觉。</span></div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>archival 就是把 RAG <em>内建进了 agent 自己</em>。</strong>别的产品把"长期知识库 + 向量检索"做成 agent <strong>外面</strong>的一套管线，由工程师决定何时检索、检索什么；Letta 把这套能力<strong>变成 agent 自己的两个工具</strong>：它自己判断"这条值得长期记"，调 <span class="mono">archival_memory_insert</span> 写下笔记；自己判断"我需要回忆点什么"，调 <span class="mono">archival_memory_search</span> <strong>按意思</strong>取回——检索的发起权在 agent 手里，而不是外部代码。更妙的是<strong>同一手"双方言"魔法</strong>：向量列在开发期是 sqlite-vec、生产期是 pgvector，可 <span class="mono">insert</span> / <span class="mono">search</span> 两个工具与上层逻辑<strong>一字不改</strong>，于是从笔记本到生产<strong>无缝放大</strong>。再加上 <span class="mono">tags</span>——agent 能给自己的知识<strong>分类、过滤</strong>，"只在会议纪要里搜路线图"。把这三点合起来：一个能<strong>自己写笔记、自己按语义翻找、还能自己分门别类</strong>的长期大脑，正是 MemGPT 让 agent "管理自己记忆"的最后一块拼图。 一句话收束：core 让 agent <em>改写自己是谁</em>，archival 让 agent <em>积累并随时调取自己知道的一切</em>——两者合起来，才是一个真正"会成长"的 agent。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>别把 archival_memory_search 当成数据库的精确查询。</strong>它是<strong>相似度</strong>搜索，不是 <span class="mono">WHERE text = '…'</span>：返回的是"意思最接近"的几条，<strong>可能漏掉</strong>用词不同但相关的、也<strong>可能带回</strong>意思沾边却不完全对的——结果<strong>按相似度排序，没有"完全命中"这一说</strong>。所以它擅长"<strong>我大概记得聊过类似的事</strong>"，不擅长"精确匹配某个 ID / 字段"（那是 recall 的字面检索该干的）。还有一笔<strong>成本</strong>要记牢：<strong>每次 insert 和每次 search 都要一次嵌入调用</strong>——把文本或查询送进嵌入模型算向量，既花钱又有延迟。所以别把每句闲聊都 insert，也别拿 search 当 if 判断来频繁轮询；存"自洽、值得长期留"的事实，查"真的需要回忆"的时候。 再纠一个常见想象：search 返回的"相关度"不是布尔的"有/无"，而是连续的"远/近"，所以即便库里没有真正切题的东西，它<strong>照样会端回几条最不离谱的</strong>——别把"有返回"误当成"一定找到了"。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>整条链路的源码坐标。</strong>数据模型 <span class="mono">Passage</span>（text + embedding + embedding_config + tags）在 <span class="mono">letta/schemas/passage.py</span>；落库的 ORM 是 <span class="mono">ArchivalPassage</span>（<span class="mono">letta/orm/passage.py</span>，对应 <span class="mono">archival_passages</span> 表，区别于来自文件的 <span class="mono">SourcePassage</span>）。两个工具 <span class="mono">archival_memory_insert / search</span> 在 <span class="mono">LettaCoreToolExecutor</span>（<span class="mono">core_tool_executor.py</span>），docstring 声明在 <span class="mono">functions/function_sets/base.py</span>。写路径 <span class="mono">PassageManager.insert_passage</span>（<span class="mono">passage_manager.py</span>）先经 <span class="mono">ArchiveManager</span> 取默认 archive、再用 <span class="mono">embedding_config</span> 的模型算向量；搜路径 <span class="mono">search_agent_archival_memory_async</span>（<span class="mono">agent_manager.py</span>）按 <span class="mono">cosine_distance(...).asc()</span> 取最近邻。向量列二选一在 <span class="mono">letta/orm/passage.py</span> / <span class="mono">custom_columns.py</span>（<span class="mono">CommonVector</span>）与 <span class="mono">sqlite_functions.py</span>；维度上限 <span class="mono">MAX_EMBEDDING_DIM = 4096</span>（<span class="mono">constants.py</span>）；引擎选择 <span class="mono">settings.database_engine</span>。tags 的高效查询靠 <span class="mono">PassageTag</span> 联结表（<span class="mono">letta/orm/passage_tag.py</span>）。 想顺藤摸瓜，从这两个工具的 docstring 入手最快——它们把"<strong>按语义、不是按关键词</strong>""加 tag 便于日后查找"写得明明白白，那正是 agent 在 prompt 里读到的使用说明。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>向量检索一分钟：什么叫"按意思找"</summary><div class="acc-body">
+<p><strong>示例：</strong>"狗"和"小狗"用词不同，但向量离得很近；"狗"和"股票"离得很远。把每段文字映射成高维空间里的一个点，<strong>意思近 = 点近</strong>。</p>
+<p><strong>为什么这样设计：</strong>嵌入模型学过海量语料，能把语义压进坐标。检索时把 query 也映射成一个点，找<strong>距离最近</strong>的几个点，就是"意思最接近"的几条——这正是"按意思找"而非"按字面找"。</p>
+<p><strong>源码在哪：</strong>距离用余弦，<span class="mono">cosine_distance = 1 - cos(θ)</span>（<span class="mono">letta/orm/sqlite_functions.py</span> 的 <span class="mono">cosine_distance</span>）；排序在 <span class="mono">sqlalchemy_base.py</span>，<span class="mono">order_by(...asc())</span> 取距离最小者。</p>
+<p><strong>还有什么替代：</strong>关键词检索（BM25 之类）按字面匹配，快但对同义/改写无能为力；向量检索抓语义，但有嵌入成本、且是"相似"非"精确"。两者各有所长，常被组合成 hybrid 检索。</p>
+<p><strong>再补一句直觉：</strong>"维度"听着玄，其实就是用几百上千个数字从不同角度给一段话打分——有的维度大致对应"和钱有关吗"、有的对应"语气正式吗"。两段话这些分都接近，它们在空间里就挨得近。你不必懂每个维度是什么，只要记住<strong>"近 = 像"</strong>就够用了。</p>
+</div></details>
+
+<details class="accordion"><summary>pgvector 还是 sqlite-vec？什么时候用哪个</summary><div class="acc-body">
+<p><strong>示例：</strong>本地跑 demo、写测试，不想装 Postgres——默认就是 SQLite + sqlite-vec，开箱即用；上线要扛量、要索引——配上 <span class="mono">letta_pg_uri</span> 切到 Postgres + pgvector。</p>
+<p><strong>为什么这样设计：</strong>开发期要<strong>零摩擦</strong>，生产期要<strong>能扩展</strong>。把"向量列类型"和"距离算子"做成按引擎二选一，就能在不改上层代码的前提下兼顾两头。</p>
+<p><strong>源码在哪：</strong>引擎判定 <span class="mono">settings.database_engine</span>（配了 <span class="mono">letta_pg_uri</span> 即 Postgres，否则 SQLite）；列定义在 <span class="mono">letta/orm/passage.py</span> 的 <span class="mono">BasePassage</span>，SQLite 用 <span class="mono">CommonVector</span>、Postgres 用 <span class="mono">pgvector.Vector</span>。</p>
+<p><strong>还有什么替代：</strong>专用向量库（如 Turbopuffer）——Letta 也支持，archive 可配 <span class="mono">vector_db_provider</span> 走外部向量服务；好处是更强的检索/规模，代价是多一个外部依赖。</p>
+<p><strong>一个数字感受规模：</strong>sqlite-vec 在本地几万条以内顺滑得很；但当归档涨到几十万、上百万条，pgvector 的近邻索引（如 HNSW / IVFFlat）就成了刚需——这也是"生产切 Postgres"的现实理由，不只是为了多用户并发，更是为了让"找最近邻"这件事在大库上依然够快。</p>
+</div></details>
+
+<details class="accordion"><summary>archive 与 tags：agent 怎么给知识分类</summary><div class="acc-body">
+<p><strong>示例：</strong>insert 时打上 <span class="mono">tags=["会议","路线图"]</span>；search 时用 <span class="mono">tags=["会议"], tag_match_mode="all"</span> 就只在会议类档案里按语义找。</p>
+<p><strong>为什么这样设计：</strong>纯语义搜索有时太"散"。tags 给 agent 一把<strong>结构化的过滤刀</strong>：先按标签圈定范围、再按向量排序，召回更准。每个 agent 默认有一个 <strong>archive</strong>（档案库）装它所有的 Passage。</p>
+<p><strong>源码在哪：</strong>默认 archive 由 <span class="mono">ArchiveManager.get_or_create_default_archive_for_agent_async</span>（<span class="mono">archive_manager.py</span>）取得；tags 既存在 <span class="mono">Passage.tags</span> 的 JSON 列里，又写进 <span class="mono">PassageTag</span> 联结表（<span class="mono">letta/orm/passage_tag.py</span>）做高效过滤/计数。</p>
+<p><strong>还有什么替代：</strong>不打 tags 也能用，全靠语义；但当知识变多、类别清晰时，tags 能显著提升"找得准"。这是"语义 + 结构"的叠加。</p>
+<p><strong>多一层实现细节：</strong>tags 是<strong>双存</strong>的——既塞在 <span class="mono">Passage.tags</span> 的 JSON 列里（取 Passage 时顺手就有），又拆进 <span class="mono">PassageTag</span> 联结表（一行一个 tag）。前者方便随数据带出，后者让"按某 tag 过滤/计数有多少条"这类查询走索引、跑得快。同一份信息、两种摆法，各为一种访问模式服务。</p>
+</div></details>
+
+<details class="accordion"><summary>archival passage vs source passage：两种 Passage</summary><div class="acc-body">
+<p><strong>示例：</strong>agent 自己 <span class="mono">insert</span> 写下的笔记 → <span class="mono">ArchivalPassage</span>；你上传一份 PDF / 文档被切片灌进来的 → <span class="mono">SourcePassage</span>。</p>
+<p><strong>为什么这样设计：</strong>两者都是"文本 + 向量"的可检索片段，共享 <span class="mono">BasePassage</span> 的字段与向量列；但来源与归属不同——一个挂在 agent 的 <strong>archive</strong> 上、由 agent 自写，一个挂在<strong>外部文件 / 数据源</strong>上。分成两张表各自建索引更清晰。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta/orm/passage.py</span>：<span class="mono">ArchivalPassage</span>（<span class="mono">archival_passages</span>，带 <span class="mono">ArchiveMixin</span>）与 <span class="mono">SourcePassage</span>（<span class="mono">source_passages</span>，带 <span class="mono">FileMixin</span>/<span class="mono">SourceMixin</span>）都继承 <span class="mono">BasePassage</span>。</p>
+<p><strong>还有什么替代：</strong>合成一张表加个"来源"字段也行，但分表能让"agent 自写的记忆"和"灌进来的资料"各自演化、各建各的索引。本课聚焦前者。</p>
+</div></details>
+
+<h2>下一站：从"长期向量库"回到"对话历史"</h2>
+<p>这一课你拿下了三层里最"远"的一层：archival 是 agent 自己经营的<strong>长期向量库</strong>，靠 <span class="mono">insert</span> 写、<span class="mono">search</span> 按语义读，底层是一列"二选一"的向量。它把 RAG 收进了 agent 自己手里。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>预告第 11 课：</strong>archival 是"<strong>按意思</strong>翻长期库"，而 recall 是"<strong>按字面/时间</strong>翻完整对话历史"。下一课讲 recall——每条消息怎么作为带类型的 JSON 事件被持久，又怎么用 <span class="mono">conversation_search</span> 捞回。</span></div>
+
+<p>再往后，<strong>第 12 课</strong>回到第 5 课那道"上下文窗口"的墙：当窗口快满，较旧的消息怎么被<strong>压缩成摘要</strong>换出去——也就是第 9 课结尾说的"压缩后会强制重建第 0 条"的那条路径。三层记忆 + 一套压缩，第三部分就闭环了。</p>
+
+<p>临走把这条链默背一遍：<strong>文本 → 嵌入 → Passage(向量) → 落库</strong>是写，<strong>query → 嵌入 → 最近邻 → Top-K</strong>是读，中间靠 <span class="mono">cosine_distance</span> 量"像不像"，底下靠"二选一的向量列"在笔记本与生产之间无缝切换。把这四步记牢，再记住"<strong>相似不是精确、每次都要嵌入</strong>"这句告诫，archival 这层你就真正握在手里了。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>archival = 内建进 agent 的 RAG</strong>：窗外的长期向量库，容量近乎无限，按<strong>语义</strong>检索；agent 自己 <span class="mono">insert</span> 写、自己 <span class="mono">search</span> 读。</li>
+    <li><strong>Passage</strong>：一条归档记忆 = <span class="mono">text</span> + <span class="mono">embedding</span>（向量）+ <span class="mono">embedding_config</span> + <span class="mono">tags</span>（<span class="mono">letta/schemas/passage.py</span>）。</li>
+    <li><strong>两个工具</strong>：<span class="mono">archival_memory_insert</span> 转交 <span class="mono">PassageManager.insert_passage</span>（嵌入 + 存）；<span class="mono">archival_memory_search</span> 按 <span class="mono">cosine_distance(...).asc()</span> 取最近邻（<span class="mono">core_tool_executor.py</span>）。</li>
+    <li><strong>双方言向量列</strong>：开发 SQLite + <span class="mono">CommonVector</span>/sqlite-vec、生产 Postgres + <span class="mono">pgvector.Vector(4096)</span>，由 <span class="mono">settings.database_engine</span> 自动选——<strong>上层一字不改</strong>。</li>
+    <li><strong>search 是"相似"非"精确"</strong>，且<strong>每次 insert/search 都要一次嵌入调用</strong>（有成本）——存自洽事实、按需检索。</li>
+    <li><strong>tags</strong>：给知识分类，search 时先按标签过滤、再按语义排序（<span class="mono">PassageTag</span> 联结表）。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. archival_memory_search 是怎么把一条 passage “找回来”的？</div>
+  <ol class="opts">
+    <li>按关键词出现次数（BM25）排序，命中得越多越靠前</li>
+    <li>执行 SQL WHERE text = '…' 做精确字符串匹配</li>
+    <li>把查询也嵌成向量，按余弦距离取最近邻（cosine_distance 升序）——按“意思”找，不是字面匹配</li>
+    <li>按 created_at 倒序，永远只返回最近写入的几条</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。search 工具先用同一个 embedding 模型把查询变成向量，再让数据库按向量距离排序取最近邻。SQLite 路径靠 sqlite_functions.py 注册的 cosine_distance（=1−相似度），Postgres 路径用 pgvector，两边都是 order_by(cosine_distance(...).asc())。所以它按语义相近度召回——“付款”能命中“已结清账单”，哪怕一个字都不重合；精确 WHERE、按时间、按关键词计数都不是它的检索方式。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. “同一份代码，pgvector 跑生产、sqlite-vec 跑本机”这套双方言，魔法到底在哪一层？</div>
+  <ol class="opts">
+    <li>archival 只能跑在 Postgres 上，本机其实是关掉的</li>
+    <li>向量列和距离算子由 settings.database_engine 在 ORM 层二选一；insert/search 两个工具和上层逻辑一字不改</li>
+    <li>每次换数据库都得把 archival 的两个工具重写一遍</li>
+    <li>SQLite 把向量当 JSON 文本存，根本算不了相似度</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。在 orm/passage.py 里，BasePassage 用 settings.database_engine 决定 embedding 列：Postgres 用 Vector(MAX_EMBEDDING_DIM)，否则用 CommonVector；sqlalchemy_base.py 的排序也同样按引擎分支，但两边都是 cosine_distance(...).asc()。差异被关在 ORM/列类型这一层，archival_memory_insert/search 与调用它们的 agent 完全无感——所以 laptop→prod 不用改业务代码。换库不必重写工具；本机用 sqlite-vec 一样能算相似度。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 关于 archival 的“代价”和“语义”，下面哪句是对的？</div>
+  <ol class="opts">
+    <li>insert 不花钱，因为向量都是预先算好的</li>
+    <li>search 保证一定返回你心里想要的那一条</li>
+    <li>archival 常驻上下文，所以每一轮都按 token 计费</li>
+    <li>search 是相似度召回（不保证精确命中），而且每次 insert / search 都要花一次 embedding 调用</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。archival 是“按意思找”，结果是最相近的若干条，可能漏掉措辞差很远、或被更相似的噪音盖过的目标——所以不保证精确命中。写入要把文本嵌成向量、检索要把查询嵌成向量，两边都各是一次 embedding 调用，有真实开销。它也不像 core memory 常驻 system 提示，而是放在库里、用到才召回，所以不是每轮吃 token——这正是它便宜地“无限扩容”的原因。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>你的客服 agent 要记住成百上千条历史工单。结合本课：哪些内容该用 archival_memory_insert 写进向量库（而不是塞进 core memory 块）？为什么 search 有时“明明存过却搜不出来”，你会怎么补救（想想 tags 和措辞）？再算一笔账：把每条用户消息都 insert 一次，代价和噪音会怎样？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+In Lesson 7's three-tier map, archival sits at the very bottom — the tier with <strong>near-infinite capacity</strong>: it lives <strong>outside</strong> the context window, costs zero tokens at rest, and is fetched on demand only when needed. This lesson takes that "long-term memory" tier all the way to hands-on.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+Just four keywords: <strong>Passage</strong> (one archival memory = text + vector), <strong>insert</strong> (embed and store), <strong>search</strong> (retrieve by similarity), and the pgvector / sqlite-vec dual dialect that runs laptop-to-prod on <strong>the same code</strong>. By the end you'll see: archival is <strong>RAG built right into the agent</strong>.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture archival as the agent's own basement archive room — but one that finds things "by meaning."</strong> An ordinary warehouse makes you remember "that contract is in row 3, shelf B, slot 2," retrieved by exact index; archival is different: you just describe "<strong>the discussion about last year's renewal</strong>," and it <strong>pulls out</strong> the closest-in-meaning files, even if you got not a single original word right. The secret: on the way in, each piece of text is translated into a string of <strong>coordinates (a vector)</strong>, and similar meanings land near each other; on the way out, the question is translated into coordinates too, and you just find the <strong>nearest neighbors</strong>. So the agent gets a long-term library that <strong>takes its own notes and searches them semantically</strong>, with <strong>near-infinite capacity</strong> — it never "fills up and forgets." That's also its biggest difference from core, "taped to its forehead, read every turn": core is a <strong>sticky note it carries</strong>, archival is the <strong>inexhaustible archive room behind it</strong> — quiet until you call, then it hands you the few most relevant files.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>Grab this lesson in one line: archival = a <span class="mono">Passage</span> vector store + two tools.</strong> <span class="mono">archival_memory_insert(content, tags)</span> <strong>embeds</strong> a piece of text into a vector and stores it, with tags, as a <span class="mono">Passage</span>; <span class="mono">archival_memory_search(query, tags)</span> embeds the query too, then returns the closest few <strong>by cosine similarity</strong>. Both tools live in <span class="mono">LettaCoreToolExecutor</span>, declared in <span class="mono">function_sets/base.py</span>. That one vector column underneath is pgvector on Postgres and sqlite-vec on SQLite — <strong>same query, two backends</strong>. We'll walk "write one, search one, swap the database and it still runs." See this, and archival loses its mystery: it's just "compute a vector from text, store it, fetch by distance"; the hard part isn't the mechanism, it's <strong>deciding what's worth keeping long-term and when to go look</strong>.
+</div>
+
+<h2>First, put archival back on the three-tier map</h2>
+<p>Lesson 7 covered the division of labor: <strong>core</strong> is in-window, scarcest, edited by the agent itself; <strong>recall</strong> is the <strong>full conversation history</strong>, recalled by keyword/time; <strong>archival</strong> is the out-of-window <strong>long-term vector store</strong>, searched by <strong>meaning</strong>. This lesson focuses only on the last.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>One-line placement:</strong> archival is <strong>RAG built into the agent</strong> — the agent writes its own long-term notes (insert) and retrieves them by meaning (search), with no external retrieval pipeline; the agent itself holds the trigger.</span></div>
+
+<p>The difference worth memorizing across the three is <strong>"how you retrieve"</strong>: core needs no retrieval (always in view), recall flips through chat logs <strong>by text/time</strong>, archival flips through a vector store <strong>by meaning</strong>. The table below puts them side by side.</p>
+
+<table class="t">
+  <thead><tr><th>Memory tier</th><th>In context?</th><th>Capacity</th><th>Who writes</th><th>How retrieved</th></tr></thead>
+  <tbody>
+    <tr><td>core</td><td>✅ always in-window</td><td class="mono">tiny (char limit)</td><td>agent self-edits</td><td>no retrieval</td></tr>
+    <tr><td>recall</td><td>❌ only recent slice in-window</td><td class="mono">full history</td><td>system auto-logs</td><td>by text / time</td></tr>
+    <tr><td>archival</td><td>❌ all out-of-window</td><td class="mono">near-infinite</td><td>agent actively inserts</td><td>by <strong>meaning</strong> (vectors)</td></tr>
+  </tbody>
+</table>
+
+<p>Note the two "actives" in the archival row: capacity is near-infinite, but it <strong>doesn't auto-record</strong> — the agent must judge "this is worth keeping long-term" and actively call insert; and it must <strong>actively</strong> search to use it. It's a library the agent runs itself, not a ledger quietly kept in the background.</p>
+
+<p>Why must archival retrieve "by meaning"? Because long-term contents <strong>drift over time</strong>: three months ago the agent noted "customer prefers a dark UI"; today the user asks "what did I say about the interface style?" — the words don't match, but <strong>the meaning is the same</strong>. Literal search lost it long ago; semantic search pulls it back reliably. That's why archival makes "search by meaning" its <strong>default</strong>, and the core split from recall's "by text/time."</p>
+
+<div class="cute"><div class="row"><span class="emoji">📦</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="lab">embed vector</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">"find the closest by meaning"</span></div>
+<div class="cap">Archival memory = a long-term notebook searched semantically, with near-infinite capacity</div></div>
+
+<h2>What one archival memory looks like: Passage</h2>
+<p>The smallest unit in archival is the <span class="mono">Passage</span> (<span class="mono">letta/schemas/passage.py</span>). Strip the metadata and its core is two things: <strong>a piece of text</strong> and that text's <strong>vector</strong>; plus "which embedding model computed it" and a few tags.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/passage.py</span><span class="ln">Passage (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">Passage</span>(PassageBase):
+    <span class="cm"># one memory stored in archival memory</span>
+    text: str                                <span class="cm"># (1) the raw text</span>
+    embedding: Optional[List[float]]         <span class="cm"># (2) vector: this text's "coordinates"</span>
+    embedding_config: Optional[EmbeddingConfig]   <span class="cm"># (3) which embedding model computed it</span>
+    archive_id: Optional[str]                <span class="cm"># which archive (the agent's default store)</span>
+    tags: Optional[List[str]]                <span class="cm"># (4) tags: categorize knowledge, easy to filter</span>
+</pre></div>
+
+<p>Four fields tie the lesson together: <strong>(1) text</strong> is what you stored; <strong>(2) embedding</strong> is its semantic coordinates, on which search wholly relies; <strong>(3) embedding_config</strong> records "which model embedded it," so storing and searching use <strong>the same ruler</strong>; <strong>(4) tags</strong> let the agent categorize its own knowledge.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">Where do vectors come from? Computed by the embedding model named in <span class="mono">embedding_config</span> (<span class="mono">letta/schemas/embedding_config.py</span>). Archival vectors are also <strong>padded to a fixed dimension</strong>, <span class="mono">MAX_EMBEDDING_DIM = 4096</span> (<span class="mono">letta/constants.py</span>), so vectors from different models fit one column.</span></div>
+
+<p>There's an iron rule hiding here: <strong>insert and search must use the same embedding model</strong>. A vector space is a coordinate system "privately defined" by the embedding model; change the model and the same sentence's coordinates change entirely — old stored vectors and the new query aren't even in the same space, so distances are meaningless. <span class="mono">embedding_config</span> pins that "ruler" onto every <span class="mono">Passage</span> precisely to keep storing and searching <strong>dimensionally consistent</strong>.</p>
+
+<p>And break one illusion: "near-infinite" capacity <strong>doesn't mean "free, stuff anything in."</strong> Every insert computes a vector and takes a row; the bigger the store, the more neighbors search must compare. So the right posture is to store <strong>distilled facts and summaries</strong>, not dump raw conversation wholesale — the "common pitfall" card below hammers this again.</p>
+
+<h2>Two tools: insert writes, search reads</h2>
+<p>Writing first. When the agent calls <span class="mono">archival_memory_insert(content, tags)</span>, what happens is a straight line: <strong>text → embed → Passage(vector) → store</strong>.</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">a piece of text</div><div class="nd">what the agent wants to keep</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">embedding model</div><div class="nd">named by embedding_config</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Passage</div><div class="nd">text + vector + tags</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">write to store</div><div class="nd">archival_passages table</div></div>
+</div>
+
+<p>Reading next. <span class="mono">archival_memory_search(query, tags)</span> runs the <strong>mirror</strong> line: the query is embedded into the same kind of vector, then it finds the <strong>nearest neighbors</strong> in the store, sorted by similarity and handed back.</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">query</div><div class="nd">"the discussion about renewal"</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">embedding model</div><div class="nd">the same ruler</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">nearest-neighbor search</div><div class="nd">cosine_distance ascending</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Top-K Passages</div><div class="nd">sorted by similarity</div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">archival_memory_insert / search (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">archival_memory_insert</span>(self, agent_state, actor, content, tags=<span class="kw">None</span>):
+    <span class="kw">await</span> self.passage_manager.<span class="fn">insert_passage</span>(             <span class="cm"># embed text + store as a Passage</span>
+        agent_state=agent_state, text=content, actor=actor, tags=tags)
+    <span class="kw">await</span> self.agent_manager.<span class="fn">rebuild_system_prompt_async</span>(       <span class="cm"># refresh &lt;memory_metadata&gt; count</span>
+        agent_id=agent_state.id, actor=actor, force=<span class="kw">True</span>)
+
+<span class="kw">async def</span> <span class="fn">archival_memory_search</span>(self, agent_state, actor, query,
+                                 tags=<span class="kw">None</span>, tag_match_mode=<span class="st">"any"</span>, top_k=<span class="kw">None</span>):
+    <span class="kw">return await</span> self.agent_manager.<span class="fn">search_agent_archival_memory_async</span>(  <span class="cm"># embed query -&gt; nearest</span>
+        agent_id=agent_state.id, actor=actor, query=query,
+        tags=tags, tag_match_mode=tag_match_mode, top_k=top_k)
+</pre></div>
+
+<p>insert is surprisingly tiny: it's almost pure <strong>delegation</strong> — it hands the work to <span class="mono">PassageManager.insert_passage</span> and adds one final stroke, <span class="mono">rebuild_system_prompt_async(force=True)</span>. That stroke refreshes the <strong>inventory list</strong> from Lesson 7: after inserting, the "archival count" in <span class="mono">&lt;memory_metadata&gt;</span> must change, so the agent knows one more thing now sits outside the window.</p>
+
+<p>Where exactly does that Passage go? Into the agent's <strong>default archive</strong>. Inside, <span class="mono">insert_passage</span> first calls <span class="mono">ArchiveManager.get_or_create_default_archive_for_agent_async</span> — create one if absent, reuse if present — then attaches the new Passage to it. One agent maps to one archive by default; all its archival memories live there, and <span class="mono">archive_id</span> is their "address."</p>
+
+<p>search is also pure <strong>delegation</strong>, to <span class="mono">search_agent_archival_memory_async</span>. The key is that inner <span class="mono">order_by(cosine_distance(...).asc())</span>: smaller distance = closer meaning, so <strong>taking the top K in ascending order</strong> is "the closest few." <span class="mono">top_k</span> controls how many; default 10.</p>
+
+<p>A concrete scene: two weeks ago the user mentioned in passing "I'm allergic to peanuts," and the agent noted <span class="mono">archival_memory_insert("user is allergic to peanuts", tags=["health"])</span>. Today the user asks "do you think I can eat at this restaurant?" The agent calls <span class="mono">archival_memory_search("the user's dietary restrictions")</span> — the query never says "peanut," yet the semantically nearest Passage still comes back, and the agent remembers the allergy. That's the power of "search by meaning" in a real conversation: <strong>it remembers meaning, not wording</strong>.</p>
+
+<p>So how does the agent know "now's the time to search"? Again via Lesson 7's <strong>inventory list</strong>: <span class="mono">&lt;memory_metadata&gt;</span> tells it every turn "there are still N out in archival." Seeing goods outside the window and sensing the current question may relate to the past, it actively fires a search — even the <strong>timing decision</strong> of "when to flip through the archive" is the agent's own.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx"><strong>Every insert costs one embedding call</strong>: sending text to the embedding model to compute a vector has a cost (money + latency). So archival suits <strong>self-contained, worth-keeping</strong> facts or summaries — not stuffing in every bit of small talk.</span></div>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>tags are a filter:</strong> search can take <span class="mono">tags</span> and <span class="mono">tag_match_mode</span> (<span class="mono">any</span>/<span class="mono">all</span>) — narrow by tag first, then rank by meaning. So the agent can "find only the roadmap discussion <strong>within meeting notes</strong>," stacking semantic search and categorical filtering.</span></div>
+
+<h2>Same code, two databases: pgvector / sqlite-vec</h2>
+<p>Lesson 7 hinted at "the dual-database magic": SQLite in dev, Postgres in prod, <strong>the same code</strong>. Archival's vector search takes that to the extreme — via a vector column chosen <strong>two-ways</strong> by database type.</p>
+
+<div class="cols">
+  <div class="col"><h4>🧪 Dev: SQLite + sqlite-vec</h4><p>The vector column uses the custom type <span class="mono">CommonVector</span>, serializing the float array to binary in SQLite; similarity is computed by the registered <span class="mono">cosine_distance</span> function. <strong>Zero external deps, instant on a laptop.</strong></p></div>
+  <div class="col"><h4>🚀 Prod: Postgres + pgvector</h4><p>The vector column uses pgvector's <span class="mono">Vector(4096)</span> type, similarity goes through the native <span class="mono">cosine_distance</span> operator, indexable and built to scale. <strong>Same interface, stronger backend.</strong></p></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py · sqlalchemy_base.py</span><span class="ln">vector column + nearest neighbor (two-way)</span></div>
+<pre><span class="cm"># letta/orm/passage.py —— the vector column is chosen two-ways by db type</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    <span class="kw">from</span> pgvector.sqlalchemy <span class="kw">import</span> Vector
+    embedding = mapped_column(Vector(MAX_EMBEDDING_DIM))   <span class="cm"># prod: pgvector</span>
+<span class="kw">else</span>:
+    embedding = Column(CommonVector)                       <span class="cm"># dev: sqlite-vec</span>
+
+<span class="cm"># letta/orm/sqlalchemy_base.py —— ordering is two-way too, but the same semantics</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    query = query.order_by(cls.embedding.<span class="fn">cosine_distance</span>(q).asc())
+<span class="kw">else</span>:
+    query = query.order_by(<span class="fn">func.cosine_distance</span>(cls.embedding, q).asc())
+</pre></div>
+
+<p>The beauty is the upper layer is <strong>completely oblivious</strong>: both branches end at <span class="mono">order_by(cosine_distance(...).asc())</span> — the same "ascending by cosine distance, take nearest neighbors." Swapping databases only swaps <strong>the column type and the distance operator's implementation</strong>; the two tools <span class="mono">insert</span> / <span class="mono">search</span> and the agent's usage don't change one character.</p>
+
+<p>See through this and Lesson 6's "stateful" line lands deeper: the agent's long-term knowledge is <strong>externalized in the database</strong>, and whether you swap databases or which vector backend you use doesn't change "who it is or what it remembers." The engine is merely <strong>the medium for storing/fetching memory</strong>; memory itself is a list of Passages independent of the medium — that's "externalized state," cashed out at the vector layer.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>This is the backbone of "laptop → prod, no code changes":</strong> the engine is auto-chosen by <span class="mono">settings.database_engine</span> (whether <span class="mono">letta_pg_uri</span> is set); SQLite vs Postgres decides whether the vector column is <span class="mono">CommonVector</span> or <span class="mono">pgvector.Vector</span> — but your retrieval logic never notices.</span></div>
+
+<div class="card spark">
+  <div class="tag">💡 Design spark</div>
+  <strong>archival is RAG <em>built into the agent itself</em>.</strong> Other products make "long-term knowledge base + vector retrieval" a pipeline <strong>outside</strong> the agent, where engineers decide when to retrieve and what; Letta turns that capability into <strong>two of the agent's own tools</strong>: it decides "this is worth keeping" and calls <span class="mono">archival_memory_insert</span> to write the note; it decides "I need to recall something" and calls <span class="mono">archival_memory_search</span> to fetch it <strong>by meaning</strong> — the trigger for retrieval is in the agent's hands, not external code. Even better is <strong>the same "dual-dialect" magic</strong>: the vector column is sqlite-vec in dev and pgvector in prod, yet the two tools <span class="mono">insert</span> / <span class="mono">search</span> and the upper logic <strong>don't change a character</strong>, so it <strong>scales laptop-to-prod seamlessly</strong>. Add <span class="mono">tags</span> — the agent can <strong>categorize and filter</strong> its own knowledge, "search the roadmap only within meeting notes." Put the three together: a long-term brain that <strong>writes its own notes, searches them by meaning, and files them by category</strong> is the final puzzle piece of MemGPT letting an agent "manage its own memory." In one line: core lets the agent <em>rewrite who it is</em>, archival lets the agent <em>accumulate and recall everything it knows</em> — together, that's an agent that truly "grows."
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfall</div>
+  <strong>Don't treat archival_memory_search as a database's exact query.</strong> It's a <strong>similarity</strong> search, not <span class="mono">WHERE text = '…'</span>: it returns the "closest in meaning" few, which <strong>may miss</strong> relevant items worded differently and <strong>may bring back</strong> things tangentially related but not quite right — results are <strong>ranked by similarity, with no notion of "exact hit."</strong> So it's great at "<strong>I vaguely recall we talked about something like this</strong>," not at "match a specific ID/field exactly" (that's recall's literal search). And one <strong>cost</strong> to remember: <strong>every insert and every search costs an embedding call</strong> — sending text or a query to the embedding model to compute a vector, which costs money and latency. So don't insert every bit of small talk, and don't poll with search as if it were an if-check; store self-contained, worth-keeping facts, and search when you truly need to recall. One more image to correct: search's "relevance" isn't a boolean "have/haven't" but a continuous "far/near," so even when nothing truly on-topic exists, it <strong>still returns the few least-wrong ones</strong> — don't mistake "got a result" for "definitely found it."
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Source coordinates for the whole chain.</strong> The data model <span class="mono">Passage</span> (text + embedding + embedding_config + tags) is in <span class="mono">letta/schemas/passage.py</span>; the persisted ORM is <span class="mono">ArchivalPassage</span> (<span class="mono">letta/orm/passage.py</span>, the <span class="mono">archival_passages</span> table, distinct from file-derived <span class="mono">SourcePassage</span>). The two tools <span class="mono">archival_memory_insert / search</span> live in <span class="mono">LettaCoreToolExecutor</span> (<span class="mono">core_tool_executor.py</span>), with docstrings declared in <span class="mono">functions/function_sets/base.py</span>. The write path <span class="mono">PassageManager.insert_passage</span> (<span class="mono">passage_manager.py</span>) first gets the default archive via <span class="mono">ArchiveManager</span>, then computes the vector with <span class="mono">embedding_config</span>'s model; the search path <span class="mono">search_agent_archival_memory_async</span> (<span class="mono">agent_manager.py</span>) takes nearest neighbors by <span class="mono">cosine_distance(...).asc()</span>. The two-way vector column is in <span class="mono">letta/orm/passage.py</span> / <span class="mono">custom_columns.py</span> (<span class="mono">CommonVector</span>) and <span class="mono">sqlite_functions.py</span>; the dimension cap <span class="mono">MAX_EMBEDDING_DIM = 4096</span> is in <span class="mono">constants.py</span>; engine choice is <span class="mono">settings.database_engine</span>. Efficient tag queries use the <span class="mono">PassageTag</span> junction table (<span class="mono">letta/orm/passage_tag.py</span>). To pull the thread, start from the two tools' docstrings — they spell out "by meaning, not by keyword" and "add tags for later lookup," exactly the usage manual the agent reads in its prompt.
+</div>
+
+<h2>Dig a little deeper</h2>
+
+<details class="accordion"><summary>Vector retrieval in a minute: what "search by meaning" means</summary><div class="acc-body">
+<p><strong>Example:</strong> "dog" and "puppy" are worded differently but their vectors sit close; "dog" and "stock" sit far apart. Map each piece of text to a point in high-dimensional space, and <strong>close in meaning = close as points</strong>.</p>
+<p><strong>Why it's designed this way:</strong> embedding models have learned from massive corpora and can compress meaning into coordinates. At search time the query is mapped to a point too, and finding the <strong>nearest</strong> points gives "the closest in meaning" — that's "search by meaning," not "by text."</p>
+<p><strong>Where in the source:</strong> distance is cosine, <span class="mono">cosine_distance = 1 - cos(θ)</span> (<span class="mono">cosine_distance</span> in <span class="mono">letta/orm/sqlite_functions.py</span>); sorting is in <span class="mono">sqlalchemy_base.py</span>, <span class="mono">order_by(...asc())</span> taking the smallest distance.</p>
+<p><strong>Alternatives:</strong> keyword search (BM25-style) matches literally, fast but helpless against synonyms/paraphrase; vector search captures meaning but has embedding cost and is "similar," not "exact." Each has strengths; they're often combined into hybrid retrieval.</p>
+<p><strong>One more intuition:</strong> "dimensions" sound mystical but are just a few hundred to a few thousand numbers scoring a piece of text from different angles — one roughly "is it about money?", another "is the tone formal?". When two texts score alike on these, they sit near each other in space. You needn't know what each dimension is; just remember <strong>"near = alike."</strong></p>
+</div></details>
+
+<details class="accordion"><summary>pgvector or sqlite-vec? When to use which</summary><div class="acc-body">
+<p><strong>Example:</strong> running a local demo or writing tests, not wanting to install Postgres — the default is SQLite + sqlite-vec, out of the box; going live with scale and indexes — set <span class="mono">letta_pg_uri</span> to switch to Postgres + pgvector.</p>
+<p><strong>Why it's designed this way:</strong> dev wants <strong>zero friction</strong>; prod wants <strong>scalability</strong>. Making "vector column type" and "distance operator" two-way by engine satisfies both without touching upper code.</p>
+<p><strong>Where in the source:</strong> engine decided by <span class="mono">settings.database_engine</span> (Postgres if <span class="mono">letta_pg_uri</span> is set, else SQLite); the column is defined in <span class="mono">BasePassage</span> in <span class="mono">letta/orm/passage.py</span>, SQLite using <span class="mono">CommonVector</span> and Postgres using <span class="mono">pgvector.Vector</span>.</p>
+<p><strong>Alternatives:</strong> a dedicated vector store (e.g. Turbopuffer) — Letta supports it too; an archive can set <span class="mono">vector_db_provider</span> to use an external vector service; stronger retrieval/scale at the cost of one more external dependency.</p>
+<p><strong>A number for scale:</strong> sqlite-vec is smooth locally up to tens of thousands of rows; but as archival grows to hundreds of thousands or millions, pgvector's nearest-neighbor indexes (like HNSW / IVFFlat) become essential — the real reason to "switch to Postgres in prod," not just multi-user concurrency, but keeping "find the nearest neighbor" fast on a big store.</p>
+</div></details>
+
+<details class="accordion"><summary>archive and tags: how the agent categorizes knowledge</summary><div class="acc-body">
+<p><strong>Example:</strong> insert with <span class="mono">tags=["meetings","roadmap"]</span>; search with <span class="mono">tags=["meetings"], tag_match_mode="all"</span> to find by meaning only within meeting files.</p>
+<p><strong>Why it's designed this way:</strong> pure semantic search is sometimes too "diffuse." tags give the agent a <strong>structured filter knife</strong>: scope by tag first, then rank by vector, for sharper recall. Each agent has one <strong>archive</strong> (store) by default holding all its Passages.</p>
+<p><strong>Where in the source:</strong> the default archive comes from <span class="mono">ArchiveManager.get_or_create_default_archive_for_agent_async</span> (<span class="mono">archive_manager.py</span>); tags are stored both in <span class="mono">Passage.tags</span>'s JSON column and written to the <span class="mono">PassageTag</span> junction table (<span class="mono">letta/orm/passage_tag.py</span>) for efficient filter/count.</p>
+<p><strong>Alternatives:</strong> it works without tags, all by semantics; but as knowledge grows and categories clarify, tags markedly improve "finding precisely." This is "semantics + structure" stacked.</p>
+<p><strong>One more implementation detail:</strong> tags are <strong>dual-stored</strong> — both in <span class="mono">Passage.tags</span>'s JSON column (handy when fetching a Passage) and split into the <span class="mono">PassageTag</span> junction table (one row per tag). The former rides along with the data; the latter lets "filter/count by a tag" use an index and run fast. One piece of info, two layouts, each serving an access pattern.</p>
+</div></details>
+
+<details class="accordion"><summary>archival passage vs source passage: two kinds of Passage</summary><div class="acc-body">
+<p><strong>Example:</strong> a note the agent <span class="mono">insert</span>s itself → <span class="mono">ArchivalPassage</span>; a PDF/document you upload that's chunked in → <span class="mono">SourcePassage</span>.</p>
+<p><strong>Why it's designed this way:</strong> both are searchable "text + vector" fragments sharing <span class="mono">BasePassage</span>'s fields and vector column; but origin and ownership differ — one hangs on the agent's <strong>archive</strong>, written by the agent, the other on an <strong>external file/source</strong>. Two tables, each indexed, is cleaner.</p>
+<p><strong>Where in the source:</strong> <span class="mono">letta/orm/passage.py</span>: <span class="mono">ArchivalPassage</span> (<span class="mono">archival_passages</span>, with <span class="mono">ArchiveMixin</span>) and <span class="mono">SourcePassage</span> (<span class="mono">source_passages</span>, with <span class="mono">FileMixin</span>/<span class="mono">SourceMixin</span>) both inherit <span class="mono">BasePassage</span>.</p>
+<p><strong>Alternatives:</strong> one table with a "source" field works too, but separate tables let "memories the agent wrote" and "material poured in" evolve and index independently. This lesson focuses on the former.</p>
+</div></details>
+
+<h2>Next stop: from "long-term vector store" back to "conversation history"</h2>
+<p>This lesson nailed the "farthest" of the three tiers: archival is a <strong>long-term vector store</strong> the agent runs itself, written by <span class="mono">insert</span> and read by <span class="mono">search</span> by meaning, with a "two-way" vector column underneath. It pulls RAG into the agent's own hands.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>Preview of Lesson 11:</strong> archival "flips through a long-term store <strong>by meaning</strong>," while recall "flips through the full conversation history <strong>by text/time</strong>." Next lesson covers recall — how each message is persisted as a typed JSON event, and how <span class="mono">conversation_search</span> fetches it back.</span></div>
+
+<p>Further on, <strong>Lesson 12</strong> returns to Lesson 5's "context window" wall: when the window nears full, how older messages get <strong>compacted into a summary</strong> and swapped out — the very path Lesson 9 ended on, "after compaction it force-rebuilds message #0." Three tiers of memory + one compaction, and Part 3 closes the loop.</p>
+
+<p>On the way out, recite the chain once: <strong>text → embed → Passage(vector) → store</strong> is the write, <strong>query → embed → nearest neighbors → Top-K</strong> is the read, with <span class="mono">cosine_distance</span> measuring "how alike" in between, and a "two-way vector column" switching seamlessly between laptop and prod underneath. Memorize those four steps, plus the warning "<strong>similar isn't exact, and every call embeds</strong>," and this tier is truly in your hands.</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>archival = RAG built into the agent</strong>: an out-of-window long-term vector store, near-infinite capacity, searched <strong>by meaning</strong>; the agent <span class="mono">insert</span>s and <span class="mono">search</span>es itself.</li>
+    <li><strong>Passage</strong>: one archival memory = <span class="mono">text</span> + <span class="mono">embedding</span> (vector) + <span class="mono">embedding_config</span> + <span class="mono">tags</span> (<span class="mono">letta/schemas/passage.py</span>).</li>
+    <li><strong>Two tools</strong>: <span class="mono">archival_memory_insert</span> delegates to <span class="mono">PassageManager.insert_passage</span> (embed + store); <span class="mono">archival_memory_search</span> takes nearest neighbors by <span class="mono">cosine_distance(...).asc()</span> (<span class="mono">core_tool_executor.py</span>).</li>
+    <li><strong>Dual-dialect vector column</strong>: dev SQLite + <span class="mono">CommonVector</span>/sqlite-vec, prod Postgres + <span class="mono">pgvector.Vector(4096)</span>, auto-chosen by <span class="mono">settings.database_engine</span> — <strong>upper layer unchanged</strong>.</li>
+    <li><strong>search is "similar," not "exact,"</strong> and <strong>every insert/search costs an embedding call</strong> (a cost) — store self-contained facts, search on demand.</li>
+    <li><strong>tags</strong>: categorize knowledge; search filters by tag first, then ranks by meaning (the <span class="mono">PassageTag</span> junction table).</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. How does archival_memory_search actually "find" a passage?</div>
+  <ol class="opts">
+    <li>Ranks by keyword frequency (BM25) — more keyword hits float to the top</li>
+    <li>Runs SQL WHERE text = '…' for an exact string match</li>
+    <li>It embeds the query too, then takes nearest neighbors by cosine distance (cosine_distance ascending) — retrieval by meaning, not literal match</li>
+    <li>Orders by created_at descending and always returns just the most recent rows</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. The search tool first turns the query into a vector with the same embedding model, then asks the database to sort by vector distance and take the nearest neighbors. The SQLite path uses cosine_distance (=1−similarity) registered in sqlite_functions.py; the Postgres path uses pgvector; both do order_by(cosine_distance(...).asc()). So it recalls by semantic closeness — "payment" can hit "invoice already settled" with zero shared words. Exact WHERE, recency, and keyword counting are not how it retrieves.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. The "same code, pgvector in prod / sqlite-vec on a laptop" dual-dialect trick — at which layer does the magic live?</div>
+  <ol class="opts">
+    <li>archival only runs on Postgres; on a laptop it's actually disabled</li>
+    <li>The vector column and distance operator are chosen by settings.database_engine in the ORM layer; the insert/search tools and upper logic don't change at all</li>
+    <li>You must rewrite both archival tools every time you switch databases</li>
+    <li>SQLite stores vectors as JSON text and can't compute similarity at all</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. In orm/passage.py, BasePassage picks the embedding column by settings.database_engine: Vector(MAX_EMBEDDING_DIM) on Postgres, else CommonVector; sqlalchemy_base.py branches the ordering the same way, but both sides do cosine_distance(...).asc(). The difference is sealed inside the ORM/column-type layer, so archival_memory_insert/search and the agent calling them notice nothing — which is why laptop→prod needs no business-code changes. Switching DBs doesn't require rewriting the tools, and sqlite-vec computes similarity just fine.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. About archival's "cost" and "semantics," which statement is true?</div>
+  <ol class="opts">
+    <li>insert is free because the vectors are all precomputed</li>
+    <li>search is guaranteed to return exactly the row you had in mind</li>
+    <li>archival sits in the context window, so it's billed by token every turn</li>
+    <li>search is similarity recall (no guaranteed exact hit), and every insert / search costs one embedding call</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. archival retrieves by meaning, returning the closest few — it can miss a target phrased very differently or drowned out by more-similar noise, so no exact-hit guarantee. Writing embeds the text into a vector; searching embeds the query — each is one embedding call with real cost. Unlike core memory, it doesn't live in the system prompt; it sits in the store and is recalled only when needed, so it isn't billed by token every turn — which is exactly why it scales "infinitely" cheaply.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Your support agent must remember hundreds of past tickets. Using this lesson: which content should go into the vector store via archival_memory_insert (rather than into a core-memory block)? Why does search sometimes "miss a passage you definitely stored," and how would you fix it (think tags and phrasing)? Then do the math: if you insert every single user message, what happens to cost and noise?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="09-self-editing-memory.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">自我编辑记忆 = 改写系统提示</span><span class="lang-en">Self-editing memory = rewriting the system prompt</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>
