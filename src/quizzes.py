@@ -35,7 +35,81 @@ def _shuffle(opts, answer, seed):
 
 
 # Filename -> quiz dict. Empty in M0; lessons render without a self-test block.
-QUIZZES = {}
+QUIZZES = {
+    "01-what-is-letta.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "Letta 存在的根本理由是什么？",
+                    "en": "What is the fundamental reason Letta exists?",
+                },
+                "opts": [
+                    {"zh": "LLM 本身无状态，且上下文窗口有限",
+                     "en": "LLMs are stateless and the context window is finite"},
+                    {"zh": "LLM 太慢，需要缓存来加速",
+                     "en": "LLMs are too slow and need a cache to speed up"},
+                    {"zh": "LLM 不会调用任何工具",
+                     "en": "LLMs cannot call any tools"},
+                    {"zh": "LLM 只能理解英文",
+                     "en": "LLMs only understand English"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "模型每次调用都是一张白纸（无状态），且能塞进的 token 有限，所以必须在模型之外补一层会自我管理的记忆——这正是 Letta 的使命。",
+                    "en": "Each call is a blank slate (stateless) and only a finite number of tokens fit, so a self-managing memory layer must be added around the model - exactly Letta's mission.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "在 Letta 里，“一个 agent 的状态”具体是什么？",
+                    "en": "In Letta, what exactly is 'an agent's state'?",
+                },
+                "opts": [
+                    {"zh": "数据库里的一条 AgentState 记录",
+                     "en": "One AgentState row in the database"},
+                    {"zh": "一个一直驻留在内存里的进程",
+                     "en": "A process that stays resident in memory forever"},
+                    {"zh": "磁盘上的一个 JSON 配置文件",
+                     "en": "A JSON config file on disk"},
+                    {"zh": "模型权重里的一部分参数",
+                     "en": "Part of the model weights"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "agent 的记忆块、消息、工具、模型配置都打包成一条 AgentState（letta/schemas/agent.py）。运行时取出→跑一步→写回，因此可水平扩展、关机也不丢记忆。",
+                    "en": "Memory blocks, messages, tools and model config are packed into one AgentState (letta/schemas/agent.py). The runtime loads it, runs a step, saves it back - hence horizontal scaling and durable memory.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "“自我编辑记忆”在机制上意味着什么？",
+                    "en": "Mechanically, what does 'self-editing memory' mean?",
+                },
+                "opts": [
+                    {"zh": "agent 改写自己的系统提示（核心记忆被重新编译进第 0 条 system 消息）",
+                     "en": "The agent rewrites its own system prompt (core memory is recompiled into message #0)"},
+                    {"zh": "重新训练（微调）底层模型",
+                     "en": "Re-training (fine-tuning) the underlying model"},
+                    {"zh": "把整段对话写进一个日志文件",
+                     "en": "Writing the whole conversation to a log file"},
+                    {"zh": "直接清空上下文窗口",
+                     "en": "Simply clearing the context window"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "core_memory_replace 改了记忆块后，Memory.compile() 会把它重新拼进系统提示，rebuild_system_prompt_async 重写第 0 条消息——等于 agent 在改写“自己是谁”。",
+                    "en": "After core_memory_replace edits a block, Memory.compile() splices it back into the system prompt and rebuild_system_prompt_async rewrites message #0 - the agent literally rewrites 'who it is'.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用 MemGPT 的操作系统类比想一想：如果上下文是 RAM、外部记忆是磁盘，那么“换页”在 Letta 里对应哪些具体动作？什么时候该把内容从 RAM 换出到磁盘？",
+                "en": "Using MemGPT's OS analogy: if context is RAM and external memory is disk, which concrete actions are the 'paging' in Letta, and when should content be paged out from RAM to disk?",
+            },
+        ],
+    },
+}
 
 
 def render(fname, lang):
