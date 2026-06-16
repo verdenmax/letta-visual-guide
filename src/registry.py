@@ -5,6 +5,7 @@ this so the lesson set stays in sync with shell.PAGES.
 """
 import part1
 import part2
+import part3
 
 # Filename -> {"zh": ..., "en": ...}. Keep keys in sync with shell.PAGES.
 CONTENT = {
@@ -14,4 +15,10 @@ CONTENT = {
     "04-agent-and-tools.html": part2.LESSON_04,
     "05-context-window.html": part2.LESSON_05,
     "06-stateful-vs-stateless.html": part2.LESSON_06,
+    "07-memory-tiers.html": part3.LESSON_07,
+    "08-memory-blocks.html": part3.LESSON_08,
+    "09-self-editing-memory.html": part3.LESSON_09,
+    "10-archival-memory.html": part3.LESSON_10,
+    "11-recall-memory.html": part3.LESSON_11,
+    "12-context-compaction.html": part3.LESSON_12,
 }

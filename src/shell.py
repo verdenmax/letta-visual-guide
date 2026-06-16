@@ -58,6 +58,18 @@ PAGES = [
      "第二部分 · 前置基础", "Part 2 · Foundations"),
     ("06-stateful-vs-stateless.html", "有状态 vs 无状态", "Stateful vs stateless",
      "第二部分 · 前置基础", "Part 2 · Foundations"),
+    ("07-memory-tiers.html", "记忆三层总览", "The three memory tiers",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("08-memory-blocks.html", "记忆块 Memory Blocks", "Memory blocks",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("09-self-editing-memory.html", "自我编辑记忆 = 改写系统提示", "Self-editing memory = rewriting the system prompt",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("10-archival-memory.html", "归档记忆与向量检索", "Archival memory & vector search",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("11-recall-memory.html", "回忆记忆与对话历史", "Recall memory & conversation history",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("12-context-compaction.html", "上下文压缩与记忆压力", "Context compaction & memory pressure",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
 ]
 
 
@@ -156,6 +168,31 @@ strong { color: var(--ink); font-weight: 680; }
   background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
 .card.spark .tag { color: #c98a00; }
 @media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
 
 /* ---- code file callout ---- */
 .codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
@@ -483,6 +520,18 @@ SUBTITLES = {
                                "token budget; prefill/decode; prefix cache; why a memory system"),
     "06-stateful-vs-stateless.html": ("AgentState 存档 · prefixed id · schema 与 orm · 对比 OpenAI Assistants",
                                       "The AgentState save; prefixed ids; schema vs orm; vs OpenAI Assistants"),
+    "07-memory-tiers.html": ("core / recall / archival · 在窗与窗外 · 模型怎么知道自己忘了什么",
+                             "core / recall / archival; in vs out of context; how the agent knows what it forgot"),
+    "08-memory-blocks.html": ("label/value/limit · Memory.compile · 共享块 · 版本历史",
+                              "label/value/limit; Memory.compile; shared blocks; versioning"),
+    "09-self-editing-memory.html": ("core_memory_append/replace · {CORE_MEMORY} 占位符 · 重建第 0 条 · prefix cache",
+                                    "core_memory_append/replace; the {CORE_MEMORY} slot; rebuilding message #0; prefix cache"),
+    "10-archival-memory.html": ("Passage · 嵌入 · insert/search · pgvector / sqlite-vec · tags",
+                                "Passage; embeddings; insert/search; pgvector / sqlite-vec; tags"),
+    "11-recall-memory.html": ("Message · message_ids 在窗 · conversation_search · JSON 信封",
+                              "Message; in-window message_ids; conversation_search; JSON envelopes"),
+    "12-context-compaction.html": ("90% 阈值 · compact_messages · 滑窗摘要 · summary 消息 · 系统提示溢出",
+                                   "the 90% threshold; compact_messages; sliding-window summary; the summary message; system-prompt overflow"),
 }
 
 

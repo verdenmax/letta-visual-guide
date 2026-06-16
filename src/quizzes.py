@@ -474,6 +474,444 @@ QUIZZES = {
             },
         ],
     },
+    "07-memory-tiers.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "core / recall / archival 三层里，哪一层始终在上下文窗口里？",
+                    "en": "Of the three tiers core / recall / archival, which one is always in the context window?",
+                },
+                "opts": [
+                    {"zh": "core memory（核心记忆）——始终在窗，且 agent 还能用工具自己改写",
+                     "en": "core memory — always in-window, and the agent can even rewrite it with tools"},
+                    {"zh": "recall memory——它存全部对话历史，所以一直在窗",
+                     "en": "recall memory — it stores all conversation history, so it's always in-window"},
+                    {"zh": "archival memory——长期向量库，所以一直在窗",
+                     "en": "archival memory — it's the long-term vector store, so it's always in-window"},
+                    {"zh": "三层都不在上下文里，每次都得现检索",
+                     "en": "None of the three are in context; everything is retrieved fresh each time"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "只有 core 始终在上下文窗口里（对应 MemGPT 的 working context）；recall 与 archival 都在窗外，靠工具按需取回——recall 只有最近一段在窗，archival 全在窗外。",
+                    "en": "Only core is always in the context window (MemGPT's working context); recall and archival sit out of window and are pulled back by tools — recall keeps only its latest slice in-window, and archival is entirely out of window.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "模型怎么知道“窗外还压着它看不见的内容”、又该去哪一层翻？",
+                    "en": "How does the model know \"there's out-of-window content it can't see\" and which tier to page?",
+                },
+                "opts": [
+                    {"zh": "系统每轮把一段 &lt;memory_metadata&gt; 库存清单拼进 system，告诉它 recall/archival 各有多少、有哪些 tag",
+                     "en": "Each turn the system stitches a &lt;memory_metadata&gt; inventory into the prompt, telling it how much recall/archival hold and which tags exist"},
+                    {"zh": "框架在每次回答前自动检索并把结果塞进提示，模型无需自己知道",
+                     "en": "The framework auto-retrieves before every answer and stuffs results in, so the model needn't know itself"},
+                    {"zh": "模型靠微调记住了所有历史，不需要任何提示",
+                     "en": "The model memorized all history via fine-tuning and needs no hint"},
+                    {"zh": "模型随机猜测，再看工具报错来判断",
+                     "en": "The model guesses at random and infers from tool errors"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "compile_memory_metadata_block 产出的 &lt;memory_metadata&gt; 给的是计数与标签（不是内容本身），写进 system 让模型每轮都读到——于是它知道自己忘了什么、该去哪层翻。注意是 agent 自己发起检索，这和“框架自动 RAG”相反。",
+                    "en": "The &lt;memory_metadata&gt; from compile_memory_metadata_block provides counts and tags (not the content itself), written into system so the model reads it every turn — so it knows what it forgot and which tier to page. Crucially the agent initiates the search itself, the opposite of \"framework auto-RAG.\"",
+                },
+            },
+            {
+                "q": {
+                    "zh": "archival memory 靠什么把相关内容找回来？",
+                    "en": "How does archival memory find relevant content?",
+                },
+                "opts": [
+                    {"zh": "向量相似度（语义检索），用 archival_memory_search，措辞不同也能命中",
+                     "en": "Vector similarity (semantic search) via archival_memory_search, hitting even when worded differently"},
+                    {"zh": "精确关键词匹配，必须和原文一字不差",
+                     "en": "Exact keyword matching, requiring a word-for-word match with the original"},
+                    {"zh": "按写入时间顺序遍历，从最新到最旧",
+                     "en": "Walking write-time order, newest to oldest"},
+                    {"zh": "直接把全部内容塞进上下文窗口，不需要检索",
+                     "en": "Dumping all content into the context window, no retrieval needed"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "archival 是长期向量库，archival_memory_search 按语义相似度检索——你问“API 重构的那个决定”，也能捞回当初用别的措辞记下的那条；这正是它和“精确关键词”的区别。",
+                    "en": "archival is a long-term vector store, and archival_memory_search retrieves by semantic similarity — ask about \"that API-redesign decision\" and you recover the note even if it was worded differently; that's the difference from exact keyword matching.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "随手挑三条信息：用户的名字、三个月前的一次闲聊、整份产品 FAQ 文档。分别该放进 core / recall / archival 哪一层？说出你的理由；再想想：如果故意放错层（比如把 FAQ 灌进 core），会触发本课提到的哪些代价（token 预算、字符上限、检索延迟）？",
+                "en": "Pick three pieces of info: the user's name, a casual chat from three months ago, and a whole product FAQ doc. Which tier — core / recall / archival — should each go in, and why? Then consider: if you deliberately put one in the wrong tier (e.g., pour the FAQ into core), which costs from this lesson does it trigger (token budget, char cap, retrieval latency)?",
+            },
+        ],
+    },
+    "08-memory-blocks.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "core memory 的“最小单位”是什么？一个它有哪几个核心字段？",
+                    "en": "What is core memory's smallest unit, and which core fields does one have?",
+                },
+                "opts": [
+                    {"zh": "Block（记忆块）——核心字段是 label / value / limit / read_only",
+                     "en": "A Block — its core fields are label / value / limit / read_only"},
+                    {"zh": "字符——core memory 就是一长串字符，没有更小的结构",
+                     "en": "The character — core memory is just one long string with no finer structure"},
+                    {"zh": "Message（消息）——每条消息就是一个核心记忆单位",
+                     "en": "A Message — each message is one unit of core memory"},
+                    {"zh": "Passage（段落）——带向量的长期段落就是 core 的单位",
+                     "en": "A Passage — the embedded long-term passage is core's unit"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "core memory 的原子是 Block（letta/schemas/block.py），核心字段四个：label（标签/寻址钥匙）、value（内容）、limit（字符上限）、read_only（能否被 agent 改）。Memory 是 Block 的集合，Memory.compile() 把它们渲染成 system 里的 &lt;memory_blocks&gt; 文本。Message / Passage 分别属于 recall / archival，不是 core 的单位。",
+                    "en": "core memory's atom is the Block (letta/schemas/block.py), with four core fields: label (tag/addressing key), value (content), limit (char cap), read_only (whether the agent can edit it). Memory is the collection of Blocks, and Memory.compile() renders them into the &lt;memory_blocks&gt; text in system. Message / Passage belong to recall / archival, not core.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "agent A 和 agent B 都挂上了同一个 block-xyz。A 改了这张卡，会发生什么？",
+                    "en": "Agents A and B both attach the same block-xyz. A edits the card — what happens?",
+                },
+                "opts": [
+                    {"zh": "B 下一轮 Memory.compile() 就读到新值——因为两者引用的是同一行 block（blocks_agents 多对多）",
+                     "en": "B reads the new value on its next Memory.compile() — both reference the same block row (blocks_agents many-to-many)"},
+                    {"zh": "什么都不会变，B 有自己独立的副本，需要手动同步",
+                     "en": "Nothing changes; B has its own copy and must sync manually"},
+                    {"zh": "A 的改动会被拒绝，因为共享块自动变成 read_only",
+                     "en": "A's edit is rejected because a shared block automatically becomes read_only"},
+                    {"zh": "系统会复制一份给 B，从此两者各走各的",
+                     "en": "The system copies one for B, and the two diverge from then on"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "块是可寻址、可共享的一等实体：共享靠 letta/orm/blocks_agents.py 的 BlocksAgents 关联表把 block.id 与 agent.id 多对多连接。两个 agent 引用的是“同一行”，所以一处改、处处变，无需任何同步步骤——这正是“共享记忆”的实现。",
+                    "en": "A block is an addressable, shareable first-class entity: sharing uses the BlocksAgents join table (letta/orm/blocks_agents.py) linking block.id and agent.id many-to-many. The two agents reference the \"same row,\" so a change in one place shows everywhere with no sync step — that's how \"shared memory\" works.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于 read_only 与 limit，下面哪句是对的？",
+                    "en": "Regarding read_only and limit, which statement is correct?",
+                },
+                "opts": [
+                    {"zh": "read_only 是硬约束（core_memory_* 会抛错），limit 是软提示（只渲染进 metadata，写入路径不拦超限）",
+                     "en": "read_only is a hard constraint (core_memory_* raise), while limit is a soft hint (only rendered into metadata; the write path doesn't block overflow)"},
+                    {"zh": "两个都是硬约束：超 limit 会被直接拒绝，改 read_only 也会被拒绝",
+                     "en": "Both are hard: exceeding limit is rejected, and editing a read_only block is rejected"},
+                    {"zh": "两个都是软提示：只是写进提示给模型看，都不会真的拦",
+                     "en": "Both are soft hints: just written into the prompt; neither truly blocks"},
+                    {"zh": "read_only 是软提示，limit 才是硬性截断的那个",
+                     "en": "read_only is the soft hint; limit is the one that hard-truncates"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "方向正好相反：core_memory_append / replace 改之前检查 block.read_only，是 True 就抛 READ_ONLY_BLOCK_EDIT_ERROR（core_tool_executor.py）——硬约束。而 limit 不在写入路径拦你：update_block_value 只校验“值是字符串”，limit 仅被渲染成 &lt;metadata&gt; 里的 chars_limit 提醒模型——软提示。要硬性限长得在应用层自己做。",
+                    "en": "They point opposite ways: core_memory_append / replace check block.read_only before editing and raise READ_ONLY_BLOCK_EDIT_ERROR on True (core_tool_executor.py) — a hard constraint. But limit doesn't block the write path: update_block_value only checks \"value is a string,\" and limit is merely rendered as chars_limit in &lt;metadata&gt; to nudge the model — a soft hint. To hard-bound length, do it at the application layer.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设你在搭一个客服 agent 团队：有一份全员必须遵守、谁都不能私自改的“退款政策”，还有每个 agent 各自记录的“当前对话进度”。你会怎么用 Block 的 label / read_only、共享（blocks_agents）和版本（BlockHistory）来设计这两类记忆？分别说说为什么。",
+                "en": "Say you're building a team of support agents: there's a \"refund policy\" everyone must follow and nobody may privately edit, plus each agent's own \"current conversation progress.\" How would you use a Block's label / read_only, sharing (blocks_agents), and versioning (BlockHistory) to design these two kinds of memory? Explain your reasoning for each.",
+            },
+        ],
+    },
+    "09-self-editing-memory.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "“自我编辑记忆”本质上改写的是什么？",
+                    "en": "What does \"self-editing memory\" fundamentally rewrite?",
+                },
+                "opts": [
+                    {"zh": "持久化的第 0 条 system 消息——因为 core memory 就是 system 提示的一部分",
+                     "en": "The persisted message #0 (the system message) — because core memory is part of the system prompt"},
+                    {"zh": "一张独立的 user_facts 表，agent 用时再去查",
+                     "en": "A separate user_facts table the agent queries on demand"},
+                    {"zh": "一个常驻在进程内存里的全局变量",
+                     "en": "A global variable kept resident in process memory"},
+                    {"zh": "archival 向量库里的一条 passage",
+                     "en": "One passage inside the archival vector store"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "core memory 不是“存在别处的记忆”——它每轮都被 Memory.compile() 拼进 system 提示，而 system 提示就是持久化的第 0 条消息（message_ids[0]）。所以 core_memory_append/replace 改块、触发 rebuild_system_prompt_async 后，最终落点是“原地重写第 0 条”。user_facts 表是外挂 RAG 的做法；archival passage 属于另一层。",
+                    "en": "core memory isn't \"memory stored elsewhere\" — every turn Memory.compile() splices it into the system prompt, and the system prompt is the persisted message #0 (message_ids[0]). So core_memory_append/replace edit a block, trigger rebuild_system_prompt_async, and ultimately land on \"rewrite message #0 in place.\" A user_facts table is the bolted-on-RAG approach; an archival passage belongs to another tier.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "agent 改了一个块后，rebuild_system_prompt_async 怎么更新第 0 条 system 消息？",
+                    "en": "After the agent edits a block, how does rebuild_system_prompt_async update message #0?",
+                },
+                "opts": [
+                    {"zh": "用同一个 id 原地重写第 0 条（temp.id = curr.id），且只在记忆真的变了时才重建",
+                     "en": "Rewrites #0 in place with the same id (temp.id = curr.id), and only rebuilds when memory actually changed"},
+                    {"zh": "往历史末尾追加一条新的 system 消息（新 id）",
+                     "en": "Appends a new system message (new id) to the end of history"},
+                    {"zh": "立刻在当前这一轮把改动作为一条消息插进对话",
+                     "en": "Immediately inserts the change as a message into the current turn"},
+                    {"zh": "每一步都无条件重建，确保 system 永远最新",
+                     "en": "Unconditionally rebuilds every step to keep system always fresh"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "rebuild_system_prompt_async 取 message_ids[0]，重新 compile 记忆；若新记忆已在当前 system 里且非强制，就直接返回（不重建）。要重建时，新消息沿用旧 id（temp.id = curr.id），再 update_message_by_id_async 原地更新——所以历史里始终只有一条 system。改动不是当场插进对话，而是沉淀进第 0 条、下一轮才被读到；也不是每步都重建（那会砸掉 prefix cache）。",
+                    "en": "rebuild_system_prompt_async takes message_ids[0] and recompiles memory; if the new memory is already in the current system and not forced, it returns early (no rebuild). When it does rebuild, the new message reuses the old id (temp.id = curr.id) and update_message_by_id_async updates it in place — so history always holds exactly one system message. The change isn't inserted into the current turn; it settles into #0 and is read next turn; nor is it rebuilt every step (that would smash the prefix cache).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么“正常对话步骤”故意不重建 system 提示？",
+                    "en": "Why do \"normal conversation steps\" deliberately skip rebuilding the system prompt?",
+                },
+                "opts": [
+                    {"zh": "为保住 prefix cache——稳定前缀命中 KV cache，只在记忆变化或压缩后才重建",
+                     "en": "To preserve the prefix cache — a stable prefix hits the KV cache; rebuild only on a memory change or after compaction"},
+                    {"zh": "因为重建会把对话历史一起清空",
+                     "en": "Because rebuilding also wipes the conversation history"},
+                    {"zh": "因为 core memory 是只读的，根本改不了",
+                     "en": "Because core memory is read-only and can't be changed at all"},
+                    {"zh": "因为模型其实不读 system 提示",
+                     "en": "Because the model doesn't actually read the system prompt"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "system 提示是最靠前、最稳定的前缀，命中 KV cache 能省大量重复 prefill（第 5 课）。letta_agent_v3.py 的 _step 在步开头只刷新消息、跳过 system 重建，注释明写 “preserve prefix caching”；只有记忆真的变了（core_memory_*）或发生压缩后才重建 system（其中只有压缩那次带 force=True）。重建不会清空历史；core 默认可写；模型每轮都会读 system。",
+                    "en": "The system prompt is the leading, stablest prefix; hitting the KV cache saves heavy repeated prefill (Lesson 5). _step in letta_agent_v3.py only refreshes messages at step start and skips the system rebuild, with the comment \"preserve prefix caching\"; it rebuilds the system message only on a real memory change (core_memory_*) or after compaction (only the compaction path passing force=True). Rebuilding doesn't wipe history; core is writable by default; the model reads system every turn.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "你的 agent 反复忘记“用户已经付过款了”，每隔几轮就又问一次。结合本课的自编辑闭环：它应该在什么时机、用 append 还是 replace 改哪个块？为什么这条改动要落到第 0 条 system 消息上、而不是只回一句话？再想想：如果这是一张多 agent 共享的块，会有什么副作用？",
+                "en": "Your agent keeps forgetting that \"the user already paid,\" re-asking every few turns. Using this lesson's self-editing loop: at what moment, with append or replace, and on which block should it write? Why must this edit land on message #0 rather than just a reply? And: if this were a block shared across multiple agents, what side effects might arise?",
+            },
+        ],
+    },
+    "10-archival-memory.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "archival_memory_search 是怎么把一条 passage “找回来”的？",
+                    "en": "How does archival_memory_search actually \"find\" a passage?",
+                },
+                "opts": [
+                    {"zh": "把查询也嵌成向量，按余弦距离取最近邻（cosine_distance 升序）——按“意思”找，不是字面匹配",
+                     "en": "It embeds the query too, then takes nearest neighbors by cosine distance (cosine_distance ascending) — retrieval by meaning, not literal match"},
+                    {"zh": "执行 SQL WHERE text = '…' 做精确字符串匹配",
+                     "en": "Runs SQL WHERE text = '…' for an exact string match"},
+                    {"zh": "按 created_at 倒序，永远只返回最近写入的几条",
+                     "en": "Orders by created_at descending and always returns just the most recent rows"},
+                    {"zh": "按关键词出现次数（BM25）排序，命中得越多越靠前",
+                     "en": "Ranks by keyword frequency (BM25) — more keyword hits float to the top"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "search 工具先用同一个 embedding 模型把查询变成向量，再让数据库按向量距离排序取最近邻。SQLite 路径靠 sqlite_functions.py 注册的 cosine_distance（=1−相似度），Postgres 路径用 pgvector，两边都是 order_by(cosine_distance(...).asc())。所以它按语义相近度召回——“付款”能命中“已结清账单”，哪怕一个字都不重合；精确 WHERE、按时间、按关键词计数都不是它的检索方式。",
+                    "en": "The search tool first turns the query into a vector with the same embedding model, then asks the database to sort by vector distance and take the nearest neighbors. The SQLite path uses cosine_distance (=1−similarity) registered in sqlite_functions.py; the Postgres path uses pgvector; both do order_by(cosine_distance(...).asc()). So it recalls by semantic closeness — \"payment\" can hit \"invoice already settled\" with zero shared words. Exact WHERE, recency, and keyword counting are not how it retrieves.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "“同一份代码，pgvector 跑生产、sqlite-vec 跑本机”这套双方言，魔法到底在哪一层？",
+                    "en": "The \"same code, pgvector in prod / sqlite-vec on a laptop\" dual-dialect trick — at which layer does the magic live?",
+                },
+                "opts": [
+                    {"zh": "向量列和距离算子由 settings.database_engine 在 ORM 层二选一；insert/search 两个工具和上层逻辑一字不改",
+                     "en": "The vector column and distance operator are chosen by settings.database_engine in the ORM layer; the insert/search tools and upper logic don't change at all"},
+                    {"zh": "每次换数据库都得把 archival 的两个工具重写一遍",
+                     "en": "You must rewrite both archival tools every time you switch databases"},
+                    {"zh": "archival 只能跑在 Postgres 上，本机其实是关掉的",
+                     "en": "archival only runs on Postgres; on a laptop it's actually disabled"},
+                    {"zh": "SQLite 把向量当 JSON 文本存，根本算不了相似度",
+                     "en": "SQLite stores vectors as JSON text and can't compute similarity at all"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "在 orm/passage.py 里，BasePassage 用 settings.database_engine 决定 embedding 列：Postgres 用 Vector(MAX_EMBEDDING_DIM)，否则用 CommonVector；sqlalchemy_base.py 的排序也同样按引擎分支，但两边都是 cosine_distance(...).asc()。差异被关在 ORM/列类型这一层，archival_memory_insert/search 与调用它们的 agent 完全无感——所以 laptop→prod 不用改业务代码。换库不必重写工具；本机用 sqlite-vec 一样能算相似度。",
+                    "en": "In orm/passage.py, BasePassage picks the embedding column by settings.database_engine: Vector(MAX_EMBEDDING_DIM) on Postgres, else CommonVector; sqlalchemy_base.py branches the ordering the same way, but both sides do cosine_distance(...).asc(). The difference is sealed inside the ORM/column-type layer, so archival_memory_insert/search and the agent calling them notice nothing — which is why laptop→prod needs no business-code changes. Switching DBs doesn't require rewriting the tools, and sqlite-vec computes similarity just fine.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于 archival 的“代价”和“语义”，下面哪句是对的？",
+                    "en": "About archival's \"cost\" and \"semantics,\" which statement is true?",
+                },
+                "opts": [
+                    {"zh": "search 是相似度召回（不保证精确命中），而且每次 insert / search 都要花一次 embedding 调用",
+                     "en": "search is similarity recall (no guaranteed exact hit), and every insert / search costs one embedding call"},
+                    {"zh": "search 保证一定返回你心里想要的那一条",
+                     "en": "search is guaranteed to return exactly the row you had in mind"},
+                    {"zh": "insert 不花钱，因为向量都是预先算好的",
+                     "en": "insert is free because the vectors are all precomputed"},
+                    {"zh": "archival 常驻上下文，所以每一轮都按 token 计费",
+                     "en": "archival sits in the context window, so it's billed by token every turn"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "archival 是“按意思找”，结果是最相近的若干条，可能漏掉措辞差很远、或被更相似的噪音盖过的目标——所以不保证精确命中。写入要把文本嵌成向量、检索要把查询嵌成向量，两边都各是一次 embedding 调用，有真实开销。它也不像 core memory 常驻 system 提示，而是放在库里、用到才召回，所以不是每轮吃 token——这正是它便宜地“无限扩容”的原因。",
+                    "en": "archival retrieves by meaning, returning the closest few — it can miss a target phrased very differently or drowned out by more-similar noise, so no exact-hit guarantee. Writing embeds the text into a vector; searching embeds the query — each is one embedding call with real cost. Unlike core memory, it doesn't live in the system prompt; it sits in the store and is recalled only when needed, so it isn't billed by token every turn — which is exactly why it scales \"infinitely\" cheaply.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "你的客服 agent 要记住成百上千条历史工单。结合本课：哪些内容该用 archival_memory_insert 写进向量库（而不是塞进 core memory 块）？为什么 search 有时“明明存过却搜不出来”，你会怎么补救（想想 tags 和措辞）？再算一笔账：把每条用户消息都 insert 一次，代价和噪音会怎样？",
+                "en": "Your support agent must remember hundreds of past tickets. Using this lesson: which content should go into the vector store via archival_memory_insert (rather than into a core-memory block)? Why does search sometimes \"miss a passage you definitely stored,\" and how would you fix it (think tags and phrasing)? Then do the math: if you insert every single user message, what happens to cost and noise?",
+            },
+        ],
+    },
+    "11-recall-memory.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "recall 和 archival 都在窗外、都能搜，它们最根本的区别是什么？",
+                    "en": "recall and archival are both out-of-window and both searchable — what is their most fundamental difference?",
+                },
+                "opts": [
+                    {"zh": "区别在“存什么 / 谁来写”：recall 是系统自动记的全量对话，archival 是 agent 主动挑着写的精选笔记",
+                     "en": "It's “what's stored / who writes”: recall is the system's auto-logged full conversation, archival is the agent's actively-curated notes"},
+                    {"zh": "recall 按字面关键词搜、archival 按语义搜——一个纯文本、一个纯向量",
+                     "en": "recall searches by literal keyword and archival by semantics — one pure text, one pure vector"},
+                    {"zh": "recall 在上下文窗口里、archival 在窗外",
+                     "en": "recall is inside the context window, archival is outside it"},
+                    {"zh": "recall 容量有限、会装满，archival 容量无限",
+                     "en": "recall has limited capacity and fills up, archival is unlimited"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "两层都在窗外、都能搜，所以“在不在窗”不是区别。检索方式也都带语义：recall 的 conversation_search 是 hybrid（字面+语义），archival 是纯语义——所以“字面 vs 语义”是常见的记反。真正分野在“存什么 / 谁来写”：recall 由系统自动记下每一条原始消息（你不调任何工具），archival 由 agent 判断“值得长期留”才主动 insert 一条提炼后的笔记。一个被动全收，一个主动精选。",
+                    "en": "Both are out-of-window and both searchable, so “in or out of context” isn't the difference. Both retrieve with semantics too: recall's conversation_search is hybrid (text+meaning), archival is pure semantic — so “literal vs semantic” is the common mix-up. The real split is “what's stored / who writes”: recall auto-logs every raw message (you call no tool), while archival is written only when the agent judges something worth keeping long-term and actively inserts a distilled note. One passively records all, one actively curates.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "用户三周前说“财年从 7 月开始”，今天 agent 用 conversation_search 查“季度起点”——一个原词都没对上，为什么还能把那条消息找回来？",
+                    "en": "Three weeks ago the user said “fiscal year starts in July”; today the agent runs conversation_search for “quarter start” — not one original word matches, so why does the old message still come back?",
+                },
+                "opts": [
+                    {"zh": "conversation_search 是 hybrid 检索（字面 + 语义），语义那一路能匹配意思相近、措辞不同的旧消息",
+                     "en": "conversation_search is hybrid (text + semantic); the semantic path matches old messages that mean the same thing but are worded differently"},
+                    {"zh": "它做的是精确字符串匹配，“季度”和“财年”被当作同义词写死在代码里",
+                     "en": "It does exact string matching, with “quarter” and “fiscal year” hard-coded as synonyms"},
+                    {"zh": "因为那条消息一直在上下文窗口里，根本不用搜",
+                     "en": "Because that message has stayed in the context window all along, so no search is needed"},
+                    {"zh": "因为 archival 早就自动存了一份，search 其实是从 archival 捞的",
+                     "en": "Because archival auto-stored a copy long ago, and search actually pulls it from archival"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "conversation_search 的工具说明原话是“hybrid search (text + semantic similarity)”：它同时算字面和语义，所以措辞全变、意思相近的旧消息也能命中——这正是纯关键词匹配做不到的。那条消息其实早已滑出窗口（不在 message_ids 里），所以不是“一直在窗”；它也从没被 insert 进 archival（那是 recall 的活）。它依旧是库里的一行 Message，被 hybrid 按语义捞了回来。",
+                    "en": "conversation_search's tool description literally says “hybrid search (text + semantic similarity)”: it computes text and meaning together, so a reworded-but-related old message still hits — exactly what pure keyword matching can't do. That message had already slid out of the window (not in message_ids), so it wasn't “still in-window”; nor was it ever inserted into archival (that's recall's job). It's still a Message row in the store, pulled back by hybrid on meaning.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于 message_ids 和“在窗 vs 全部历史”，下面哪句是对的？",
+                    "en": "About message_ids and “in-window vs all history,” which statement is correct?",
+                },
+                "opts": [
+                    {"zh": "message_ids 是一串指针，只圈出最近一段在窗消息；[0] 永远是系统消息，被移出 ≠ 被删除，旧消息可搜不可见",
+                     "en": "message_ids is a list of pointers marking only the recent in-window slice; [0] is always the system message; dropped ≠ deleted, and old messages are searchable-not-visible"},
+                    {"zh": "message_ids 直接存消息正文，trim 掉就等于把那几条 Message 从库里删了",
+                     "en": "message_ids stores message bodies directly, so trimming deletes those Message rows from the store"},
+                    {"zh": "message_ids 里第 0 条是最新的用户消息",
+                     "en": "Index 0 of message_ids is the most recent user message"},
+                    {"zh": "只要不在 message_ids 里，消息就永久丢失、再也找不回",
+                     "en": "Any message not in message_ids is permanently lost and unrecoverable"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "message_ids（AgentState）是一串 id 指针，不是消息本身；第 0 条恒为系统消息（第 9 课“重建第 0 条”靠的就是它）。窗口瘦身用 trim_older_in_context_messages，只是从指针里去掉较旧的几条，真正的 Message 行由 MessageManager 一直留在库里——被移出窗口 ≠ 被删除。所以旧消息“可搜不可见”：看不见，但 conversation_search 一下就回来。",
+                    "en": "message_ids (AgentState) is a list of id pointers, not the messages themselves; index 0 is always the system message (the basis for Lesson 9's “rebuild message #0”). Slimming uses trim_older_in_context_messages, which only drops older entries from the pointer list; the real Message rows stay in the store via MessageManager — dropped from the window ≠ deleted. So old messages are “searchable but not visible”: out of sight, but conversation_search brings them right back.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "你在做一个长期陪伴 agent。结合本课想三件事：(1) 用户两个月前随口说的一句话今天突然有用——你指望 recall 还是 archival 把它找回来，为什么？(2) 如果消息只是裸文本、而不是带 type/time 的 JSON 事件，agent 在“分清谁说的、什么时候说的”上会丢掉什么？(3) 让 agent 频繁 conversation_search 翻历史，代价在哪（想想搜回来的消息要占回 token、hybrid 检索本身也有成本）？",
+                "en": "You're building a long-term companion agent. Using this lesson, think through three things: (1) a line the user mentioned offhand two months ago suddenly matters today — do you count on recall or archival to retrieve it, and why? (2) If messages were raw text instead of JSON events with type/time, what would the agent lose in “telling who said it and when”? (3) If the agent runs conversation_search constantly to flip through history, where's the cost (think: fetched messages cost context tokens again, and hybrid search itself isn't free)?",
+            },
+        ],
+    },
+    "12-context-compaction.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "Letta 的压缩触发阈值是 context_window × 0.9，而不是等到 100% 才压。为什么要留这 10% 余量？",
+                    "en": "Letta's compaction trigger threshold is context_window × 0.9, not waiting until 100%. Why keep that 10% margin?",
+                },
+                "opts": [
+                    {"zh": "提前在 90% 主动压缩，留出余量，避免真撞上“prompt 太长”的报错；这也呼应第 5 课“度量 → 动手”的闭环",
+                     "en": "Compact proactively at 90% to keep a buffer and avoid actually hitting a “prompt too long” error; this echoes Lesson 5's “measure → act” loop"},
+                    {"zh": "因为模型只能数到窗口的 90%，剩下 10% 物理上无法使用",
+                     "en": "Because the model can only count to 90% of the window; the last 10% is physically unusable"},
+                    {"zh": "0.9 是随模型变化的，每个模型都有自己的阈值倍数",
+                     "en": "0.9 varies per model; each model has its own threshold multiplier"},
+                    {"zh": "留 10% 是为了给核心记忆压缩腾地方",
+                     "en": "The 10% is reserved to make room for compacting core memory"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "get_compaction_trigger_threshold = int(context_window × SUMMARIZATION_TRIGGER_MULTIPLIER)，后者在 constants.py 固定为 0.9（不区分模型，force_proactive 目前也不改变结果）。在 90% 就触发，是为了在真正撞满、报“prompt 太长”之前主动腾空间。这正是第 5 课那条“度量 → 判定 → 压缩”闭环里“动手”的一步。核心记忆从不被压缩，所以最后一项是错的。",
+                    "en": "get_compaction_trigger_threshold = int(context_window × SUMMARIZATION_TRIGGER_MULTIPLIER), the latter fixed at 0.9 in constants.py (model-agnostic; force_proactive doesn't change the result today). Triggering at 90% frees space before truly hitting the wall and raising “prompt too long.” That's the “act” step of Lesson 5's “measure → decide → compact” loop. Core memory is never compacted, so the last option is wrong.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你把几万字塞进 persona/human 块，系统提示本身就快顶满窗口。这时 agent 不断压缩对话却仍然报错——发生了什么？",
+                    "en": "You stuff tens of thousands of chars into persona/human blocks, so the system prompt alone nearly fills the window. The agent keeps compacting conversation yet still errors out — what happened?",
+                },
+                "opts": [
+                    {"zh": "走了“系统提示溢出”特判：压缩只驱逐对话、绝不动 core；当第 0 条系统消息自己就 ≥ 窗口，抛 SystemPromptTokenExceededError",
+                     "en": "It took the “system-prompt overflow” special case: compaction only evicts conversation and never touches core; when message[0] alone is ≥ the window, it raises SystemPromptTokenExceededError"},
+                    {"zh": "压缩会把核心记忆也一起摘要掉，多压几次就好了",
+                     "en": "Compaction summarizes core memory too; just compact a few more times and it's fine"},
+                    {"zh": "agent 自动把超出的核心记忆挪进 archival，不会报错",
+                     "en": "The agent auto-moves the overflowing core memory into archival, so it won't error"},
+                    {"zh": "这是 recall 满了，清空对话历史即可",
+                     "en": "This is recall being full; just clear the conversation history"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "summarizer 只总结对话消息，绝不碰核心记忆与系统提示（core 是 agent 的身份、必须始终在窗且逐字稳定）。compact_messages 压完会复核：若 compacted_messages[0]（系统消息）单独就 ≥ 窗口，说明元凶不是对话太长，而是 core/系统提示太大——于是 _check_for_system_prompt_overflow 抛 SystemPromptTokenExceededError，停止原因 context_window_overflow_in_system_prompt。正确做法是精简核心记忆（第 8 课的 limit）或换更大窗口，而不是再压对话。",
+                    "en": "The summarizer only summarizes conversation messages and never touches core memory or the system prompt (core is the agent's identity — it must stay in-window and byte-stable). After compacting, compact_messages rechecks: if compacted_messages[0] (the system message) alone is ≥ the window, the culprit isn't a too-long conversation but a too-big core/system prompt — so _check_for_system_prompt_overflow raises SystemPromptTokenExceededError with stop reason context_window_overflow_in_system_prompt. The fix is to trim core memory (Lesson 8's limit) or use a bigger window, not to compact more conversation.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "压缩把前一小时的对话总结成了一段摘要。那些原始消息的命运是？",
+                    "en": "Compaction summarized the past hour of conversation into one summary. What happens to those original messages?",
+                },
+                "opts": [
+                    {"zh": "摘要是有损的，但原话没被删：原始 Message 仍留在 recall 里，可用 conversation_search 按 hybrid 捞回",
+                     "en": "The summary is lossy, but the originals aren't deleted: the original Message rows stay in recall and can be fetched back by conversation_search (hybrid)"},
+                    {"zh": "原始消息被永久删除，只剩摘要，细节再也找不回",
+                     "en": "The original messages are permanently deleted; only the summary remains and details are gone forever"},
+                    {"zh": "原始消息被原样保留在上下文窗口里，只是折叠起来",
+                     "en": "The originals stay verbatim in the context window, just collapsed"},
+                    {"zh": "原始消息被搬进核心记忆长期保存",
+                     "en": "The originals are moved into core memory for long-term keeping"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "压缩是用“细节精度”换“窗口空间”的有损总结，不是无损归档：具体措辞、语气、边角细节从在窗视野里消失了。但它们没被删——原始 Message 行依旧躺在 recall 里（第 11 课），conversation_search 能按 hybrid 把它们捞回来。所以别把“摘要里没有”当成“模型还记得清”：摘要里没有，就意味着模型当下看不到、得主动去搜。原话退出的是窗口，不是数据库。",
+                    "en": "Compaction is a lossy summary trading “detail precision” for “window space,” not a lossless archive: exact wording, tone, and edge details vanish from the in-window view. But they aren't deleted — the original Message rows still sit in recall (Lesson 11), and conversation_search can fetch them back by hybrid. So don't treat “not in the summary” as “the model still remembers it”: not in the summary means the model can't see it now and must actively search. The originals leave the window, not the database.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "你在做一个要连聊几小时的客服 agent。结合本课想三件事：(1) 为什么“到 90% 就压缩”比“等撞满再处理”更稳？把它和第 5 课的“度量 → 动手”闭环接起来说。(2) 压缩是可见事件（compaction / SummaryMessage）——对用户体验和调试，这种“透明”比悄悄截断历史好在哪？(3) 既然摘要有损、原话又还在 recall，你会怎么设计“什么时候直接读摘要、什么时候该 conversation_search 翻原话”，才不至于既丢细节又浪费 token？",
+                "en": "You're building a support agent that chats for hours. Using this lesson, think through three things: (1) why is “compact at 90%” steadier than “wait until the wall, then deal with it”? Connect it to Lesson 5's “measure → act” loop. (2) Compaction is a visible event (compaction / SummaryMessage) — for UX and debugging, how is this “transparency” better than silently truncating history? (3) Since the summary is lossy but the originals remain in recall, how would you design “when to just read the summary vs when to conversation_search the originals,” so you neither lose detail nor waste tokens?",
+            },
+        ],
+    },
 }
 
 

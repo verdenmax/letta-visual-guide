@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>12 · 上下文压缩与记忆压力 / Context compaction &amp; memory pressure - Letta 图解教程</title>
+<meta name="description" content="第三部分 · 记忆系统｜上下文压缩与记忆压力 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="12 · 上下文压缩与记忆压力 / Context compaction &amp; memory pressure - Letta 图解教程">
+<meta property="og:description" content="第三部分 · 记忆系统｜上下文压缩与记忆压力 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="12 · 上下文压缩与记忆压力 / Context compaction &amp; memory pressure - Letta 图解教程">
+<meta name="twitter:description" content="第三部分 · 记忆系统｜上下文压缩与记忆压力 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></span>
+    <span class="pill">12 / 12</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></div>
+    <h1><span class="lang-zh">上下文压缩与记忆压力</span><span class="lang-en">Context compaction &amp; memory pressure</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第 5 课摊清过一笔账：上下文窗口又小又贵，"把历史一股脑全塞进去"必然失败。当时我们停在两件<strong>可操作</strong>的事上——<strong>可度量</strong>（<span class="mono">ContextWindowOverview</span> 把窗口拆成一本 token 账本）、与<strong>可触发动作</strong>（逼近阈值就压缩）。那一课讲的是"度量"那一半，这一课补上"动手"那一半。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+窗口快满了怎么办？答案是<strong>压缩</strong>：把较旧的对话<strong>总结成一段摘要</strong>，再把原话换出窗外。五个关键词串起整课——<strong>90% 阈值</strong>、<span class="mono">compact_messages</span>、<strong>滑窗摘要</strong>、<span class="mono">role=summary</span> 的<strong>摘要消息</strong>，以及"核心记忆压不动"的<strong>系统提示溢出</strong>。这是第三部分的收尾，也是整套记忆系统真正闭环的一环。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把"记忆压力"想成一张快堆满的办公桌。</strong>你正在桌上摊开资料办事，桌面就那么大——纸越摞越高，眼看连放笔的地方都没了。聪明的做法不是把旧纸<strong>直接扔掉</strong>（万一还要查呢？），而是花一分钟把较旧的那叠<strong>读一遍、写成一张"会议纪要"</strong>：要点都落在纪要上，原始的厚厚一叠则收进抽屉。于是桌面腾出大半，你又能继续摊开新资料，而那张纪要还摆在眼前提醒你"前面聊到哪了"。原纸没销毁，要核对时还能从抽屉翻出来；但日常推进，靠那张<strong>压缩过的纪要</strong>就够了。Letta 的上下文压缩干的正是这件事——只不过"较旧的那叠纸"是旧对话消息，"会议纪要"是一段自动生成的摘要，而决定"什么时候该收桌子"的，是一条画在 90% 处的水位线。记住这张桌子，下面每个机制你都能对号入座。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：当在窗 token 逼近上限的 90%，Letta 就把较旧的对话压成一段摘要、换出原话，腾出空间继续聊——这套机制把"记忆压力"当成操作系统问题来管。</strong>触发靠一条水位线：每次模型调用后顺手记下用量（<span class="mono">context_token_estimate</span>），一旦超过 <span class="mono">context_window × 0.9</span> 这个阈值（<span class="mono">get_compaction_trigger_threshold</span>），就调 <span class="mono">compact</span> 动手。动手的方式是<strong>滑窗摘要</strong>：把较旧的一段消息交给一个 summarizer，递归地总结成一条 <span class="mono">role=summary</span> 的摘要消息插回上下文，原话退到窗外但仍留在 recall 里可搜。整个过程还能（打开开关时）抛出一个<strong>可见事件</strong>，让客户端看到"我刚做了一次压缩"。唯一压不动的是<strong>核心记忆与系统提示</strong>——它们是 system 的一部分，summarizer 只清理对话、绝不动 core，所以另有一条<strong>系统提示溢出</strong>的特判路径来兜底。
+</div>
+
+<h2>先把这一课接回第 5 课</h2>
+<p>第 5 课画过一条闭环：<strong>度量 → 判定 → 压缩 → 重建前缀</strong>。前两步（数清谁占了多少 token、判断是否逼近阈值）那一课已经讲透；这一课从第三步<strong>"压缩"</strong>接着往下挖，看它具体怎么动手、动完之后又发生了什么。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>一句话定位：</strong>第 5 课是"<strong>量得出</strong>"（<span class="mono">ContextWindowOverview</span> 那本账本），第 12 课是"<strong>压得动</strong>"（<span class="mono">compact</span> 那把剪刀）。同一条闭环的两半，这一课补齐后半段。</span></div>
+
+<p>为什么非压不可？因为 recall（第 11 课）保证了"对话<strong>不丢</strong>"，却没解决"在窗装<strong>不下</strong>"。消息只增不减，迟早撑爆预算；压缩就是那把让窗口"转得动"的阀门——它不删历史，只把较旧的一段<strong>换成更短的摘要</strong>。</p>
+
+<div class="cute"><div class="row"><span class="emoji">📚</span><span class="arrow">→</span><span class="emoji">🗜️</span><span class="arrow">→</span><span class="emoji">📝</span><span class="bubble">一段摘要</span></div>
+<div class="cap">窗口快满（~90%）：把较旧的一摞消息压成一张"会议纪要"，腾出空间继续聊；原话退到窗外但仍可搜</div></div>
+
+<h2>90% 阈值：什么时候开始压</h2>
+<p>压缩不等窗口"真满"才动手——那样很容易撞上"prompt 太长"的报错。Letta 留了 10% 余量：在上限的 <strong>90%</strong> 就触发。这个阈值由 <span class="mono">get_compaction_trigger_threshold</span> 算出，等于 <span class="mono">context_window × 0.9</span>。</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">用量</span>
+    <span class="tslot">0% · 安心聊</span>
+    <span class="tslot">70% · 还宽裕</span>
+    <span class="tslot now">90% · 触发阈值</span>
+  </div>
+  <div class="lane"><span class="lane-label">动作</span>
+    <span class="tslot span">逼近 90% → compact：把较旧消息压成摘要</span>
+    <span class="tslot now">换出原话 · 插入 summary</span>
+  </div>
+  <div class="lane"><span class="lane-label">结果</span>
+    <span class="tslot">用量回落 → 继续聊；原话仍在 recall 可搜</span>
+  </div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/thresholds.py · letta/constants.py</span><span class="ln">压缩触发阈值（简化）</span></div>
+<pre><span class="cm"># 触发阈值 = 上下文窗口 × 0.9（留 10% 余量，避免撞上 "prompt 太长"）</span>
+SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm"># letta/constants.py</span>
+
+<span class="kw">def</span> <span class="fn">get_compaction_trigger_threshold</span>(llm_config, *, force_proactive=<span class="kw">False</span>):
+    <span class="cm"># 不区分模型，一律取 上限 × 0.9（force_proactive 目前不改变结果）</span>
+    <span class="kw">return</span> <span class="fn">int</span>(llm_config.context_window * SUMMARIZATION_TRIGGER_MULTIPLIER)
+</pre></div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">阈值<strong>按窗口比例</strong>算，不是写死的某个数字：窗口 8k 就在 ~7.2k 触发，128k 就在 ~115k 触发。<strong>窗口再大，到 90% 照样压</strong>——大窗口只是把"何时压"推后，并没取消它。</span></div>
+
+<h2>触发点：用量 vs 阈值，就在 agent 主循环里</h2>
+<p>阈值在哪被用上？在 <span class="mono">letta/agents/letta_agent_v3.py</span> 的主循环里。运行时为了快，<strong>不每步重算整本账</strong>，而是顺手记下每次模型调用返回的 token 用量，拿这个估算值跟阈值比一下。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>记下用量</h4><p>模型一返回，就把它报告的 <span class="mono">usage.total_tokens</span> 存进 <span class="mono">context_token_estimate</span>。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>比一比阈值</h4><p>估算值 &gt; <span class="mono">get_compaction_trigger_threshold</span>（×0.9）？</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>可选：抛事件</h4><p>开关打开时，先 yield 一个 <span class="mono">compaction</span> 事件告诉客户端"要压了"。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>动手压缩</h4><p>调 <span class="mono">self.compact(messages, ...)</span>，把较旧消息换成摘要。</p></div></div>
+</div>
+
+<p>关键细节：拿来比的不是"账本精算值"，而是<strong>上一次模型调用自己报告的 <span class="mono">usage.total_tokens</span></strong>。这等于让模型<strong>每轮顺带量一次自己的体重</strong>——省去重算，又足够准。一旦超阈值，就进压缩分支。</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx"><strong>两条触发路径，殊途同归。</strong>一条是<strong>事后水位检查</strong>（这步聊完、用量过 90% 就压，<span class="mono">trigger="post_step_context_check"</span>）；另一条是<strong>真撞墙兜底</strong>（模型直接报 <span class="mono">ContextWindowExceededError</span>，就地压完重试，<span class="mono">trigger="context_window_exceeded"</span>）。两条都汇入同一个 <span class="mono">compact</span>。</span></div>
+
+<h2>compact_messages：把旧消息压成摘要</h2>
+<p><span class="mono">self.compact(...)</span> 只是个薄壳，真正干活的是 <span class="mono">letta/services/summarizer/compact.py::compact_messages</span>。它拿到当前在窗消息，交给 summarizer 总结，产出三样东西：<strong>一条摘要消息</strong>、<strong>压缩后的消息列表</strong>、<strong>摘要正文</strong>。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/compact.py</span><span class="ln">compact_messages（伪代码）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">compact_messages</span>(..., messages, use_summary_role=<span class="kw">True</span>, trigger_threshold=<span class="kw">None</span>, ...):
+    <span class="cm"># 1) 用 summarizer 把较旧的一段消息总结掉（滑窗 / 递归）</span>
+    summary, compacted_messages = <span class="kw">await</span> <span class="fn">summarize</span>(messages)
+
+    <span class="cm"># 2) 再数一遍 token，确认压完是否真降到阈值以下</span>
+    context_token_estimate = <span class="kw">await</span> <span class="fn">count_tokens_with_tools</span>(messages=compacted_messages, ...)
+
+    <span class="cm"># 3) 若仍超阈值，且元凶是第 0 条系统消息 -> 走溢出特判</span>
+    <span class="kw">if</span> context_token_estimate &gt;= trigger_threshold:
+        <span class="kw">if</span> <span class="fn">tokens_of</span>(compacted_messages[<span class="nb">0</span>]) &gt;= llm_config.context_window:
+            <span class="kw">raise</span> <span class="fn">SystemPromptTokenExceededError</span>(...)   <span class="cm"># 核心记忆/系统提示太大</span>
+
+    <span class="kw">return</span> <span class="fn">CompactResult</span>(summary_message, compacted_messages, summary, ...)
+</pre></div>
+
+<p>注意第 3 步：压完之后它会<strong>再数一遍 token</strong> 验收（仍超，会先再跑一次"全量总结"兜底）。要是连这都救不回，而且一查发现"元凶是第 0 条系统消息本身"——那就<strong>不是对话太长</strong>，是核心记忆/系统提示撑爆了预算。这条岔路就是后面要讲的"系统提示溢出"。</p>
+
+<h2>滑窗摘要：到底压哪一段、怎么压</h2>
+<p>"压缩"具体怎么选消息？由 <span class="mono">Summarizer</span>（<span class="mono">summarizer.py</span>）负责。它有几种模式，常用这种叫<strong>滑动窗口 / 部分驱逐</strong>（partial-evict）。核心思路一句话：<strong>留最近的一截，把更早的那截总结掉</strong>。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>算一条切割线</h4><p><span class="mono">partial_evict_summarizer_percentage</span>（默认 0.30）是<strong>保留</strong>比例：留最近 ~30%，把更早的 ~70% 总结掉。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>对齐到边界</h4><p>从切割点往后找第一条 <span class="mono">assistant</span> 消息，保证摘要插回后角色顺序合法。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>总结被驱逐段</h4><p>把 <span class="mono">[1 : 该 assistant)</span> 这一段交给 summarizer LLM，生成一段摘要。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>替换 index 1</h4><p>摘要放回<strong>第 1 条</strong>（第 0 条永远是系统消息），原话退出窗口。</p></div></div>
+</div>
+
+<p>这就是 MemGPT 论文里的<strong>递归摘要</strong>：摘要被固定放在 <span class="mono">[1]</span>，下一次再压时，它又会连同后来的新消息<strong>一起被再总结一遍</strong>。于是历史像滚雪球一样被<strong>一层层压进越来越浓缩的一段摘要</strong>，越久远的越凝练。</p>
+
+<p>为什么从切割点"往后找 assistant"？因为摘要要占 <span class="mono">[1]</span>，那 <span class="mono">[2]</span> 就得是一条合法后继（通常是 <span class="mono">assistant</span>）。对齐到 assistant 边界，是为了<strong>不把一次"工具调用 / 工具返回"从中劈开</strong>。</p>
+
+<h2>summary 消息：一段可见的"我做了摘要"</h2>
+<p>压缩的产物是一条特殊消息。在 v3 路径里，它由 <span class="mono">letta/system.py::package_summarize_message_no_counts</span> 打包成一个 <span class="mono">type=system_alert</span> 的 JSON 事件，正文写明"开头 N 条已隐藏，以下是它们的摘要"（带"第几条/共几条"计数的老版 <span class="mono">package_summarize_message</span> 只留给 legacy <span class="mono">agent.py</span>）。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/system.py · letta/services/summarizer/compact.py</span><span class="ln">摘要消息 + role 取值（简化）</span></div>
+<pre><span class="cm"># v3 路径用的打包器：不带 "第几条/共几条" 计数，故名 _no_counts</span>
+<span class="kw">def</span> <span class="fn">package_summarize_message_no_counts</span>(summary, timezone, compaction_stats=<span class="kw">None</span>, mode=<span class="kw">None</span>):
+    <span class="cm"># 滑窗模式：从 stats 算出驱逐了几条</span>
+    num_evicted = compaction_stats[<span class="st">"messages_count_before"</span>] - compaction_stats[<span class="st">"messages_count_after"</span>]
+    context_message = (
+        <span class="st">f"Note: {num_evicted} messages from the beginning of the conversation "</span>
+        <span class="st">f"have been hidden ... due to memory constraints.\n"</span>
+        <span class="st">f"The following is a summary of the previous messages:\n {summary}"</span>
+    )
+    <span class="kw">return</span> <span class="fn">json_dumps</span>({<span class="st">"type"</span>: <span class="st">"system_alert"</span>, <span class="st">"message"</span>: context_message, ...})
+
+<span class="cm"># 摘要以什么 role 入库，取决于开关 use_summary_role（源自 include_compaction_messages）</span>
+<span class="kw">if</span> use_summary_role:                 <span class="cm"># 开 -> 一等公民 role=summary</span>
+    m = <span class="fn">Message</span>(role=MessageRole.summary, ...)
+<span class="kw">else</span>:                                <span class="cm"># 默认关 -> 退化成 role=user</span>
+    m = <span class="fn">Message</span>(role=MessageRole.user, ...)
+</pre></div>
+
+<p>这条摘要消息有两副面孔。<strong>对模型</strong>（始终如此）：它就摆在上下文里（紧跟系统消息之后），让模型一眼读到"前情提要"——这一半<strong>跟开关无关</strong>。<strong>对客户端</strong>（需打开开关）：agent 才额外 yield 一组结构化事件——压缩<strong>开始前</strong>抛 <span class="mono">event_type="compaction"</span> 的 <span class="mono">EventMessage</span>，<strong>完成后</strong>抛 <span class="mono">SummaryMessage</span>，UI 才显示一条"已压缩 N 条消息"。</p>
+
+<p>还记得第 11 课的角色表吗？<span class="mono">Message.role</span> 里那个不起眼的 <span class="mono">summary</span>，正是为这一刻准备的。打开 <span class="mono">use_summary_role</span>，摘要就以 <span class="mono">role=summary</span> 一等公民的身份入库；<strong>默认关</strong>时它退化成一条 <span class="mono">role=user</span> 的 <span class="mono">system_alert</span>——内容照样在、模型照样读，只是少了那个角色标签。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>一个开关，决定"可见 vs 静默"。</strong><span class="mono">include_compaction_messages</span> <strong>默认 False</strong>：此时不向客户端流式抛 <span class="mono">compaction</span> 事件，摘要也以 <span class="mono">role=user</span> 的 <span class="mono">UserMessage</span> 呈现并入库。打开它，才升级成"<span class="mono">compaction</span> 事件 + <span class="mono">role=summary</span> 一等公民"。但<strong>不管开关与否，摘要本身始终生成、始终被模型读到</strong>——可见性是<strong>能力</strong>，不是默认。</span></div>
+
+<h2>能压 / 不能压：核心记忆为什么压不动</h2>
+<p>压缩有个<strong>边界</strong>：它只清理<strong>对话消息</strong>，绝不动<strong>核心记忆与系统提示</strong>。原因很简单——core 是 system 的一部分，是 agent"此刻是谁、记着哪些事"的依据，<strong>压掉它等于让 agent 失忆</strong>。</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>✅ 能压：对话消息</h4>
+    <p>较旧的 user / assistant / tool 消息，总结成一段摘要、换出窗外；原话仍留 recall 可搜。</p>
+    <p class="mono" style="font-size:.82rem">compact_messages → summarize</p>
+  </div>
+  <div class="col">
+    <h4>⛔ 不能压：核心记忆 / 系统提示</h4>
+    <p>第 0 条系统消息（含 core memory）是稳定前缀，summarizer 一行都不碰。</p>
+    <p class="mono" style="font-size:.82rem">system message [0] · 原样保留</p>
+  </div>
+</div>
+
+<p>于是冒出一个尴尬情形：万一<strong>核心记忆自己</strong>就撑爆了预算呢？压缩只能驱逐对话，对话压光了也救不了一个过大的系统提示。这时 Letta 走一条<strong>特判</strong>：<span class="mono">_check_for_system_prompt_overflow</span>。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>系统提示溢出，是一条专门的"压不动"分支。</strong>压完仍超阈值、且一数发现"光第 0 条系统消息就 ≥ 整个窗口"——这不是对话太长，是 core/系统提示太大。Letta 停下并抛 <span class="mono">SystemPromptTokenExceededError</span>，停止原因记为 <span class="mono">context_window_overflow_in_system_prompt</span>，提示你"<strong>该瘦身核心记忆，而不是再压对话</strong>"。</span></div>
+
+<p>这也回扣了第 7、8 课的告诫：core 有字符上限（<span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT</span>），是稀缺资源。压缩能化解"对话型"记忆压力，却化解不了"你往 core 里塞太多"——后者只能靠你自己克制。</p>
+
+<h2>一个真实场景：聊了两小时还没爆窗</h2>
+<p>把机制串成一个故事。你和一个客服 agent 聊了两个钟头，几十轮来回，外加好几次工具调用。换成"把全部历史塞进 prompt"的朴素做法，<strong>早就撞窗报错</strong>了。</p>
+
+<p>但这个 agent 一直好端端的。秘密就是那条 90% 水位线：每当在窗 token 逼近上限，它就<strong>悄悄做一次压缩</strong>——把前一个钟头的闲聊总结成一两段摘要，原始几十条消息退到窗外。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">第 40 轮时，UI 上闪过一行"<strong>已压缩 38 条消息</strong>"——那就是 <span class="mono">compaction</span> 事件。摘要进了上下文，<strong>前情没丢</strong>；你随口提起"开头说的那个订单号"，它还能用 <span class="mono">conversation_search</span>（第 11 课）从 recall 里把原话捞回来。</span></div>
+
+<p>这就是"记忆压力"被管住的样子：<strong>对话可以无限长，窗口却始终在预算内转。</strong>摘要扛起"前情提要"，recall 兜底"原话可查"，两者一配合，agent 既不爆窗、又不真正失忆。</p>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>"记忆压力"被当成一个操作系统问题来解——这正是 MemGPT 论文"队列管理器"的落地。</strong>操作系统怎么应对内存不够？它不会崩，而是<strong>换页</strong>：把不常用的页换出到磁盘，腾出物理内存。Letta 对上下文窗口做的是同一件事：到 ~90% 水位，就把较旧的对话<strong>递归地</strong>总结成一段摘要（旧摘要 + 新消息再压一层，越久越浓缩），把原话"换出"到窗外的 recall。三个设计选择让它格外像 OS：其一，<strong>有水位线</strong>——不等真满（撞 OOM）才动手，留 10% 余量主动触发；其二，<strong>换页可观测</strong>——压缩<strong>能</strong>抛一个 <span class="mono">compaction</span> 事件、把摘要以 <span class="mono">role=summary</span> 一等公民入库（由 <span class="mono">include_compaction_messages</span> 开关控制，默认关时降为静默 + <span class="mono">role=user</span>，但摘要照样生成、照样被读到），让"记忆操作"<strong>可以</strong>对 agent 与用户透明，而不是黑箱丢数据；其三，<strong>有一块"锁定内存"不可换出</strong>——核心记忆与系统提示是 agent 的身份，summarizer 永不触碰，于是必须另设一条<strong>系统提示溢出</strong>特判去处理"锁定区自己就爆了"的极端情况。把这三点合起来，你看到的不是一个"聊久了就失忆"的聊天机器人，而是一个像内核一样<strong>主动管理自身内存压力</strong>的系统——这也是 MemGPT 那篇论文最核心的隐喻：给 LLM 配一个虚拟内存管理器，让有限的上下文窗口，撑起近乎无限的对话。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>摘要是有损的，而且压缩救不了"核心记忆自己太大"。</strong>两件事都容易被想当然，得分开记清。第一，<strong>压缩 = 有损总结，不是无损归档</strong>。一段对话被总结成"用户咨询了退货并给了订单号"，那些<strong>具体措辞、语气、边角细节</strong>就从在窗视野里消失了。好在它们<strong>没被删</strong>——原始 <span class="mono">Message</span> 仍躺在 recall 里，<span class="mono">conversation_search</span> 能捞回来。但你不能假设"摘要里没有 = 模型还记得清"：摘要里没有，就意味着<strong>模型当下看不到、得主动去搜才行</strong>。所以别把压缩当成"免费无限记忆"——它是用"细节精度"换"窗口空间"的一笔交易。第二，<strong>压缩只驱逐对话、不动 core</strong>。如果你把一大堆东西塞进核心记忆，把系统提示撑到逼近甚至超过整个窗口，那么<strong>压多少对话都没用</strong>——summarizer 根本不碰 core。这时触发的是 <span class="mono">_check_for_system_prompt_overflow</span> 那条特判：直接报 <span class="mono">SystemPromptTokenExceededError</span>，停止原因 <span class="mono">context_window_overflow_in_system_prompt</span>。它在<strong>提醒你</strong>："问题不在对话，在你的 core 太胖，去精简记忆块、或换更大的窗口。"记住这条边界，你就不会一边往 core 狂塞、一边纳闷"为什么压缩不管用"。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>整条压缩链路的源码坐标。</strong><strong>阈值</strong>：<span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span> = <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>，后者在 <span class="mono">letta/constants.py</span> 为 <span class="mono">0.9</span>。<strong>触发与动作</strong>：<span class="mono">letta/agents/letta_agent_v3.py</span> 里，<span class="mono">_step</span> 把 <span class="mono">context_token_estimate</span>（取自 LLM 返回的 <span class="mono">usage.total_tokens</span>）跟阈值比，超了就调 <span class="mono">compact</span>，并抛 <span class="mono">_create_compaction_event_message</span>。<strong>压缩实现</strong>：<span class="mono">letta/services/summarizer/compact.py::compact_messages</span>，选段与递归摘要在 <span class="mono">summarizer.py::Summarizer</span>（<span class="mono">_partial_evict_buffer_summarization</span>，默认 <span class="mono">partial_evict_summarizer_percentage=0.30</span>）。<strong>摘要消息</strong>：v3 路径打包用 <span class="mono">letta/system.py::package_summarize_message_no_counts</span>（打成 <span class="mono">system_alert</span>；带计数的老版只留给 legacy <span class="mono">agent.py</span>），角色取值 <span class="mono">letta/schemas/enums.py::MessageRole.summary</span>（默认关时为 <span class="mono">user</span>）。<strong>溢出特判</strong>：<span class="mono">letta/agents/letta_agent_v3.py::_check_for_system_prompt_overflow</span> 与 <span class="mono">compact.py</span> 末尾的同款检查，触发 <span class="mono">SystemPromptTokenExceededError</span>（<span class="mono">letta/errors.py</span>）。顺着这串符号读，你能把"从超阈值到摘要落库"完整走通。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>递归摘要到底怎么做：摘要也会被再摘要</summary><div class="acc-body">
+<p><strong>示例：</strong>第一次压缩，把第 1–30 条总结成摘要 S1，放到 <span class="mono">[1]</span>。又聊了 30 轮、再次逼近 90%，第二次压缩会把"<strong>S1 + 第 31–60 条</strong>"一起总结成 S2。</p>
+<p><strong>为什么这样设计：</strong>历史无限增长，但摘要长度大体可控——越久远的内容被<strong>反复压缩、层层凝练</strong>，近期的保留更多细节。这正是 MemGPT 论文"递归摘要"的核心。</p>
+<p><strong>源码在哪：</strong><span class="mono">summarizer.py::_partial_evict_buffer_summarization</span>——它把摘要消息固定放在 <span class="mono">[1]</span>，下一轮该位置又被纳入新的待总结区间。</p>
+<p><strong>代价：</strong>越老的信息精度损失越大。但"<strong>原话仍在 recall</strong>"是兜底——真要细节，还能搜回来。</p>
+</div></details>
+
+<details class="accordion"><summary>为什么核心记忆压不动：系统提示溢出特判</summary><div class="acc-body">
+<p><strong>示例：</strong>你往 persona / human 块塞了几万字，系统提示本身就快顶满窗口。这时哪怕把对话全压光，也腾不出空间。</p>
+<p><strong>为什么这样设计：</strong>core 是 agent 的身份与即时记忆，<strong>必须始终在窗、且逐字稳定</strong>（还关系到第 5 课的 prefix cache）。让 summarizer 去压它，等于让 agent 一边说话一边失忆——绝不允许。</p>
+<p><strong>源码在哪：</strong><span class="mono">compact.py</span> 压完会复核：若 <span class="mono">compacted_messages[0]</span>（系统消息）单独就 ≥ 窗口，抛 <span class="mono">SystemPromptTokenExceededError</span>；<span class="mono">letta_agent_v3.py::_check_for_system_prompt_overflow</span> 是同款检查，停止原因 <span class="mono">context_window_overflow_in_system_prompt</span>。</p>
+<p><strong>给你的信号：</strong>遇到它，别再想"多压点对话"，而要去<strong>精简核心记忆</strong>（回看第 8 课的 <span class="mono">limit</span>）或换更大的窗口。</p>
+</div></details>
+
+<details class="accordion"><summary>可见的 compaction 事件：客户端怎么知道压过了</summary><div class="acc-body">
+<p><strong>示例：</strong>UI 上出现一行"压缩中…"，紧接着一条"已将 38 条消息总结为摘要"。</p>
+<p><strong>为什么这样设计：</strong>记忆压缩会改变上下文，<strong>偷偷做会让用户困惑</strong>（"它怎么忘了刚才的细节？"）。抛成显式事件，行为可观测、可解释。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta_agent_v3.py::_create_compaction_event_message</span> 产出 <span class="mono">event_type="compaction"</span> 的 <span class="mono">EventMessage</span>（压缩<strong>开始前</strong>抛）；<span class="mono">_create_summary_result_message</span> 产出 <span class="mono">SummaryMessage</span>（压缩<strong>完成后</strong>抛）。<strong>两者都受 <span class="mono">include_compaction_messages</span> 控制</strong>（默认 False → 都不流式抛、摘要降级为 <span class="mono">UserMessage</span>）。</p>
+<p><strong>对比：</strong>很多框架"截断历史"是无声的；Letta 把它做成一等事件，是"<strong>记忆操作要透明</strong>"这一哲学的延续。</p>
+</div></details>
+
+<details class="accordion"><summary>和第 5 课"度量"如何接上"动手"</summary><div class="acc-body">
+<p><strong>示例：</strong>第 5 课用 <span class="mono">ContextWindowOverview</span> 把窗口拆成 system / core / 工具 / 消息各占多少 token——那是"<strong>体检报告</strong>"。第 12 课的压缩，是<strong>读着报告动手治疗</strong>。</p>
+<p><strong>为什么这样设计：</strong>"能量出来"和"能压下去"是两件事。光有账本不压，窗口照样爆；光会压不会量，又不知何时该动手。两半合起来才是闭环。</p>
+<p><strong>源码在哪：</strong>度量 <span class="mono">letta/schemas/memory.py::ContextWindowOverview</span>（第 5 课）；判定 + 动手 <span class="mono">letta_agent_v3.py</span>（<span class="mono">context_token_estimate</span> 比 <span class="mono">get_compaction_trigger_threshold</span>，超则 <span class="mono">compact</span>）。</p>
+<p><strong>一句话：</strong>第 5 课"<strong>量得出</strong>"，第 12 课"<strong>压得动</strong>"——同一条闭环的前后两半。</p>
+</div></details>
+
+<h2>收尾：记忆系统至此闭环</h2>
+<p>这一课你拿下了让整个记忆系统"转得动"的那道阀门：到 90% 阈值就 <span class="mono">compact</span>，用滑窗递归摘要把较旧对话压成一条 <span class="mono">role=summary</span> 消息，过程可观测，唯独核心记忆压不动、另有溢出特判。</p>
+
+<p>把第三部分整个串起来——这正是第 7 课那张三层地图的<strong>收官</strong>：</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>记忆系统全景（07–12）</b>：三层 + 让它转起来的压缩阀</div>
+  <div class="cells">
+    <span class="cell hl">07 三层总览</span>
+    <span class="sep">·</span>
+    <span class="cell">08 记忆块</span>
+    <span class="sep">·</span>
+    <span class="cell">09 自编辑 core</span>
+    <span class="sep">·</span>
+    <span class="cell">10 archival 向量</span>
+    <span class="sep">·</span>
+    <span class="cell">11 recall 历史</span>
+    <span class="sep">→</span>
+    <span class="cell hl">12 压缩阀</span>
+  </div>
+</div>
+
+<p>逐块回放：core 让 agent <strong>改写自己是谁</strong>（07–09），archival 让它<strong>积累长期知识</strong>（10），recall 让它<strong>记得每句话</strong>（11），而压缩（12）让这一切在<strong>有限窗口</strong>里持续运转。四块拼齐，记忆系统才真正闭环。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>承上启下：</strong>第 5 课提出"窗口有限"这条根本约束并给出"度量"；第三部分（07–12）把"记忆系统"整套答案讲完——压缩，正是这套答案里<strong>对抗压力</strong>的最后一块拼图。</span></div>
+
+<p>临走默背一条链：<strong>每轮记下用量 → 过 90% 阈值 → 抛 compaction 事件 → compact 滑窗递归摘要 → 插入 role=summary、原话退到 recall → 唯独 core 压不动，撑爆就走系统提示溢出特判</strong>。把这条链记牢，"上下文压缩与记忆压力"你就真正握住了。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>90% 阈值触发</strong>：<span class="mono">get_compaction_trigger_threshold</span> = <span class="mono">context_window × 0.9</span>（<span class="mono">SUMMARIZATION_TRIGGER_MULTIPLIER</span> 在 <span class="mono">constants.py</span>）；留 10% 余量主动压，不等撞窗。</li>
+    <li><strong>触发在 agent 主循环</strong>：<span class="mono">letta_agent_v3.py</span> 拿 <span class="mono">context_token_estimate</span>（= LLM 报告的 <span class="mono">usage.total_tokens</span>）比阈值，超了调 <span class="mono">compact</span>。</li>
+    <li><strong>compact_messages 干活</strong>：<span class="mono">summarizer/compact.py</span> 把较旧消息总结掉；选段 + 递归摘要在 <span class="mono">Summarizer</span>（partial-evict，默认 0.30），摘要固定放 <span class="mono">[1]</span>。</li>
+    <li><strong>摘要消息</strong>：v3 路径用 <span class="mono">system.py::package_summarize_message_no_counts</span> 打成 <span class="mono">system_alert</span>；开 <span class="mono">include_compaction_messages</span> 才以 <span class="mono">role=summary</span> 入库并抛 <span class="mono">compaction</span> 事件 / <span class="mono">SummaryMessage</span>（默认关 → <span class="mono">role=user</span>、静默）。</li>
+    <li><strong>核心记忆压不动</strong>：summarizer 只驱逐对话、不碰 core/系统提示；core 自己撑爆 → <span class="mono">_check_for_system_prompt_overflow</span> → <span class="mono">SystemPromptTokenExceededError</span>。</li>
+    <li><strong>压缩有损、但不删</strong>：摘要丢的是细节，原话仍在 recall 可 <span class="mono">conversation_search</span> 捞回；这是 MemGPT"队列管理器"的落地。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. Letta 的压缩触发阈值是 context_window × 0.9，而不是等到 100% 才压。为什么要留这 10% 余量？</div>
+  <ol class="opts">
+    <li>提前在 90% 主动压缩，留出余量，避免真撞上“prompt 太长”的报错；这也呼应第 5 课“度量 → 动手”的闭环</li>
+    <li>留 10% 是为了给核心记忆压缩腾地方</li>
+    <li>因为模型只能数到窗口的 90%，剩下 10% 物理上无法使用</li>
+    <li>0.9 是随模型变化的，每个模型都有自己的阈值倍数</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。get_compaction_trigger_threshold = int(context_window × SUMMARIZATION_TRIGGER_MULTIPLIER)，后者在 constants.py 固定为 0.9（不区分模型，force_proactive 目前也不改变结果）。在 90% 就触发，是为了在真正撞满、报“prompt 太长”之前主动腾空间。这正是第 5 课那条“度量 → 判定 → 压缩”闭环里“动手”的一步。核心记忆从不被压缩，所以最后一项是错的。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 你把几万字塞进 persona/human 块，系统提示本身就快顶满窗口。这时 agent 不断压缩对话却仍然报错——发生了什么？</div>
+  <ol class="opts">
+    <li>走了“系统提示溢出”特判：压缩只驱逐对话、绝不动 core；当第 0 条系统消息自己就 ≥ 窗口，抛 SystemPromptTokenExceededError</li>
+    <li>压缩会把核心记忆也一起摘要掉，多压几次就好了</li>
+    <li>这是 recall 满了，清空对话历史即可</li>
+    <li>agent 自动把超出的核心记忆挪进 archival，不会报错</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。summarizer 只总结对话消息，绝不碰核心记忆与系统提示（core 是 agent 的身份、必须始终在窗且逐字稳定）。compact_messages 压完会复核：若 compacted_messages[0]（系统消息）单独就 ≥ 窗口，说明元凶不是对话太长，而是 core/系统提示太大——于是 _check_for_system_prompt_overflow 抛 SystemPromptTokenExceededError，停止原因 context_window_overflow_in_system_prompt。正确做法是精简核心记忆（第 8 课的 limit）或换更大窗口，而不是再压对话。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 压缩把前一小时的对话总结成了一段摘要。那些原始消息的命运是？</div>
+  <ol class="opts">
+    <li>原始消息被原样保留在上下文窗口里，只是折叠起来</li>
+    <li>原始消息被永久删除，只剩摘要，细节再也找不回</li>
+    <li>摘要是有损的，但原话没被删：原始 Message 仍留在 recall 里，可用 conversation_search 按 hybrid 捞回</li>
+    <li>原始消息被搬进核心记忆长期保存</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。压缩是用“细节精度”换“窗口空间”的有损总结，不是无损归档：具体措辞、语气、边角细节从在窗视野里消失了。但它们没被删——原始 Message 行依旧躺在 recall 里（第 11 课），conversation_search 能按 hybrid 把它们捞回来。所以别把“摘要里没有”当成“模型还记得清”：摘要里没有，就意味着模型当下看不到、得主动去搜。原话退出的是窗口，不是数据库。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>你在做一个要连聊几小时的客服 agent。结合本课想三件事：(1) 为什么“到 90% 就压缩”比“等撞满再处理”更稳？把它和第 5 课的“度量 → 动手”闭环接起来说。(2) 压缩是可见事件（compaction / SummaryMessage）——对用户体验和调试，这种“透明”比悄悄截断历史好在哪？(3) 既然摘要有损、原话又还在 recall，你会怎么设计“什么时候直接读摘要、什么时候该 conversation_search 翻原话”，才不至于既丢细节又浪费 token？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Lesson 5 laid out a hard account: the context window is small and expensive, so "just stuff the whole history in" is doomed. We stopped on two <strong>actionable</strong> things — making it <strong>measurable</strong> (<span class="mono">ContextWindowOverview</span> breaks the window into a token ledger) and making it <strong>trigger an action</strong> (compact as you approach the limit). That lesson covered the "measure" half; this one fills in the "act" half.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+What happens when the window fills up? The answer is <strong>compaction</strong>: summarize the older conversation into a <strong>compact summary</strong> and evict the verbatim messages. Five keywords thread the whole lesson — the <strong>90% threshold</strong>, <span class="mono">compact_messages</span>, <strong>sliding-window summary</strong>, the <span class="mono">role=summary</span> <strong>summary message</strong>, and the <strong>system-prompt overflow</strong> path for "core memory can't be compacted." This closes Part 3 and the memory system's loop.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture "memory pressure" as a desk filling up.</strong> You're spreading papers across it to get work done, but the surface is finite — the stack grows until there's no room left to set down a pen. The smart move isn't to <strong>throw the old papers away</strong> (what if you need them?), but to spend a minute <strong>reading the older stack and writing a one-page "meeting minutes"</strong>: the key points land on the minutes, the thick original stack goes into a drawer. Now most of the desk is clear, you can spread new papers again, and that minutes page stays in front of you reminding you "here's where we were." The originals weren't destroyed — you can pull them from the drawer to double-check; but for day-to-day work, the <strong>compressed minutes</strong> is enough. Letta's context compaction does exactly this — except "the older stack" is old conversation messages, the "minutes" is an auto-generated summary, and what decides "when to clear the desk" is a watermark drawn at 90%. Remember this desk and every mechanism below has a place to land.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>Grab this lesson in one line: when in-window tokens approach 90% of the limit, Letta compacts the older conversation into a summary and evicts the originals to free space — treating "memory pressure" as an operating-system problem.</strong> The trigger is a watermark: after each model call it records usage (<span class="mono">context_token_estimate</span>), and once that exceeds the <span class="mono">context_window × 0.9</span> threshold (<span class="mono">get_compaction_trigger_threshold</span>), it calls <span class="mono">compact</span>. The act is a <strong>sliding-window summary</strong>: hand an older slice of messages to a summarizer, recursively condense it into one <span class="mono">role=summary</span> message inserted into context, while the originals drop out of the window but stay searchable in recall. The whole thing can also (when enabled) emit a <strong>visible event</strong> so the client sees "I just compacted." The one thing it can't touch is <strong>core memory and the system prompt</strong> — they're part of system, so the summarizer only clears conversation; hence a separate <strong>system-prompt overflow</strong> path as a backstop.
+</div>
+
+<h2>First, connect this lesson back to Lesson 5</h2>
+<p>Lesson 5 drew a loop: <strong>measure → decide → compact → rebuild prefix</strong>. The first two steps (count who holds how many tokens, decide whether you're near the threshold) were covered there; this lesson picks up at step three, <strong>"compact"</strong> — how it actually acts, and what happens afterward.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>One-line placement:</strong> Lesson 5 is "<strong>you can measure it</strong>" (the <span class="mono">ContextWindowOverview</span> ledger); Lesson 12 is "<strong>you can compact it</strong>" (the <span class="mono">compact</span> scissors). Two halves of one loop; this lesson completes the back half.</span></div>
+
+<p>Why is compaction unavoidable? Because recall (Lesson 11) guarantees the conversation is <strong>never lost</strong>, but doesn't solve "won't <strong>fit</strong> in-window." Messages only grow; eventually they blow the budget. Compaction is the valve that keeps the window turning — it doesn't delete history, it just <strong>swaps an older slice for a shorter summary</strong>.</p>
+
+<div class="cute"><div class="row"><span class="emoji">📚</span><span class="arrow">→</span><span class="emoji">🗜️</span><span class="arrow">→</span><span class="emoji">📝</span><span class="bubble">one summary</span></div>
+<div class="cap">Window nearly full (~90%): compress an older stack of messages into one "meeting minutes," freeing space to keep going; originals drop out of the window but stay searchable</div></div>
+
+<h2>The 90% threshold: when compaction starts</h2>
+<p>Compaction doesn't wait for the window to be "actually full" — that easily slams into a "prompt too long" error. Letta keeps a 10% margin: it triggers at <strong>90%</strong> of the limit. That threshold comes from <span class="mono">get_compaction_trigger_threshold</span>, equal to <span class="mono">context_window × 0.9</span>.</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">usage</span>
+    <span class="tslot">0% · chat freely</span>
+    <span class="tslot">70% · still roomy</span>
+    <span class="tslot now">90% · trigger threshold</span>
+  </div>
+  <div class="lane"><span class="lane-label">action</span>
+    <span class="tslot span">near 90% → compact: compress older messages into a summary</span>
+    <span class="tslot now">evict originals · insert summary</span>
+  </div>
+  <div class="lane"><span class="lane-label">result</span>
+    <span class="tslot">usage drops → keep chatting; originals stay searchable in recall</span>
+  </div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/thresholds.py · letta/constants.py</span><span class="ln">compaction trigger threshold (simplified)</span></div>
+<pre><span class="cm"># trigger threshold = context window x 0.9 (10% margin, avoid "prompt too long")</span>
+SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm"># letta/constants.py</span>
+
+<span class="kw">def</span> <span class="fn">get_compaction_trigger_threshold</span>(llm_config, *, force_proactive=<span class="kw">False</span>):
+    <span class="cm"># model-agnostic: always limit x 0.9 (force_proactive doesn't change the result today)</span>
+    <span class="kw">return</span> <span class="fn">int</span>(llm_config.context_window * SUMMARIZATION_TRIGGER_MULTIPLIER)
+</pre></div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">The threshold is <strong>a fraction of the window</strong>, not a hard-coded number: an 8k window triggers around 7.2k, a 128k window around 115k. <strong>However big the window, 90% still compacts</strong> — a larger window only delays "when," it doesn't cancel it.</span></div>
+
+<h2>The trigger point: usage vs threshold, right in the agent loop</h2>
+<p>Where does the threshold get used? In the main loop of <span class="mono">letta/agents/letta_agent_v3.py</span>. For speed, the runtime <strong>doesn't recompute the whole ledger each step</strong> — it records the token usage each model call reports and compares that estimate to the threshold.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>record usage</h4><p>As the model returns, store the <span class="mono">usage.total_tokens</span> it reports into <span class="mono">context_token_estimate</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>compare threshold</h4><p>estimate &gt; <span class="mono">get_compaction_trigger_threshold</span> (×0.9)?</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>optional: emit event</h4><p>when enabled, first yield a <span class="mono">compaction</span> event telling the client "about to compact."</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>do the compaction</h4><p>call <span class="mono">self.compact(messages, ...)</span> to swap older messages for a summary.</p></div></div>
+</div>
+
+<p>Key detail: what gets compared isn't a "ledger-precise" value but the <strong><span class="mono">usage.total_tokens</span> the last model call reported itself</strong>. That's like having the model <strong>weigh itself each turn</strong> — no recompute, yet accurate enough. Exceed the threshold and it enters the compaction branch.</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx"><strong>Two trigger paths, one destination.</strong> One is the <strong>post-step watermark check</strong> (this step done, usage past 90% → compact, <span class="mono">trigger="post_step_context_check"</span>); the other is the <strong>hit-the-wall backstop</strong> (the model raises <span class="mono">ContextWindowExceededError</span>, compact-and-retry in place, <span class="mono">trigger="context_window_exceeded"</span>). Both funnel into the same <span class="mono">compact</span>.</span></div>
+
+<h2>compact_messages: compress old messages into a summary</h2>
+<p><span class="mono">self.compact(...)</span> is just a thin shell; the real work is in <span class="mono">letta/services/summarizer/compact.py::compact_messages</span>. It takes the current in-window messages, hands them to the summarizer, and produces three things: <strong>a summary message</strong>, <strong>the compacted message list</strong>, and <strong>the summary text</strong>.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/compact.py</span><span class="ln">compact_messages (pseudocode)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">compact_messages</span>(..., messages, use_summary_role=<span class="kw">True</span>, trigger_threshold=<span class="kw">None</span>, ...):
+    <span class="cm"># 1) summarize away an older slice of messages (sliding-window / recursive)</span>
+    summary, compacted_messages = <span class="kw">await</span> <span class="fn">summarize</span>(messages)
+
+    <span class="cm"># 2) re-count tokens, confirm we actually dropped below the threshold</span>
+    context_token_estimate = <span class="kw">await</span> <span class="fn">count_tokens_with_tools</span>(messages=compacted_messages, ...)
+
+    <span class="cm"># 3) if still over AND the culprit is message[0] (system) -> overflow special case</span>
+    <span class="kw">if</span> context_token_estimate &gt;= trigger_threshold:
+        <span class="kw">if</span> <span class="fn">tokens_of</span>(compacted_messages[<span class="nb">0</span>]) &gt;= llm_config.context_window:
+            <span class="kw">raise</span> <span class="fn">SystemPromptTokenExceededError</span>(...)   <span class="cm"># core memory/system prompt too big</span>
+
+    <span class="kw">return</span> <span class="fn">CompactResult</span>(summary_message, compacted_messages, summary, ...)
+</pre></div>
+
+<p>Note step 3: after compacting it <strong>re-counts tokens</strong> to verify (still over → it first tries a full "summarize-all" fallback). If even that can't save it, and a check shows "the culprit is message[0], the system message itself" — then it's <strong>not that the conversation is too long</strong>, it's that core memory/system prompt blew the budget. That fork is the "system-prompt overflow" we'll cover next.</p>
+
+<h2>Sliding-window summary: which slice gets compressed, and how</h2>
+<p>How does "compaction" pick messages? Via the <span class="mono">Summarizer</span> (<span class="mono">summarizer.py</span>). It has several modes; the common one is <strong>sliding-window / partial-evict</strong>. The core idea in one line: <strong>keep the recent slice, summarize away the earlier slice</strong>.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>compute a cut line</h4><p><span class="mono">partial_evict_summarizer_percentage</span> (default 0.30) is the <strong>kept</strong> ratio: keep the most recent ~30%, summarize the older ~70%.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>align to a boundary</h4><p>from the cut point, find the first <span class="mono">assistant</span> message so role order stays valid after re-insert.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>summarize the evicted slice</h4><p>hand <span class="mono">[1 : that assistant)</span> to the summarizer LLM, producing one summary.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>replace index 1</h4><p>put the summary back at <strong>position 1</strong> (position 0 is always the system message); originals leave the window.</p></div></div>
+</div>
+
+<p>This is the MemGPT paper's <strong>recursive summary</strong>: the summary is pinned at <span class="mono">[1]</span>, and the next time you compact, it gets <strong>summarized again together with the newer messages</strong>. History snowballs into an <strong>ever-more-condensed single summary</strong> — the older it is, the more distilled.</p>
+
+<p>Why "find an assistant after the cut point"? Because the summary takes <span class="mono">[1]</span>, so <span class="mono">[2]</span> must be a valid successor (typically an <span class="mono">assistant</span>). Aligning to an assistant boundary avoids <strong>splitting a tool-call / tool-response pair down the middle</strong>.</p>
+
+<h2>The summary message: a visible "I made a summary"</h2>
+<p>The product of compaction is a special message. On the v3 path, <span class="mono">letta/system.py::package_summarize_message_no_counts</span> packs it into a <span class="mono">type=system_alert</span> JSON event whose body says "N messages from the start were hidden; here's their summary" (the with-counts <span class="mono">package_summarize_message</span> is reserved for the legacy <span class="mono">agent.py</span>).</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/system.py · letta/services/summarizer/compact.py</span><span class="ln">summary message + role choice (simplified)</span></div>
+<pre><span class="cm"># the v3 packer: drops the "of N" counts, hence _no_counts</span>
+<span class="kw">def</span> <span class="fn">package_summarize_message_no_counts</span>(summary, timezone, compaction_stats=<span class="kw">None</span>, mode=<span class="kw">None</span>):
+    <span class="cm"># sliding-window: derive how many were evicted from stats</span>
+    num_evicted = compaction_stats[<span class="st">"messages_count_before"</span>] - compaction_stats[<span class="st">"messages_count_after"</span>]
+    context_message = (
+        <span class="st">f"Note: {num_evicted} messages from the beginning of the conversation "</span>
+        <span class="st">f"have been hidden ... due to memory constraints.\n"</span>
+        <span class="st">f"The following is a summary of the previous messages:\n {summary}"</span>
+    )
+    <span class="kw">return</span> <span class="fn">json_dumps</span>({<span class="st">"type"</span>: <span class="st">"system_alert"</span>, <span class="st">"message"</span>: context_message, ...})
+
+<span class="cm"># which role the summary is stored under depends on use_summary_role (from include_compaction_messages)</span>
+<span class="kw">if</span> use_summary_role:                 <span class="cm"># on -> first-class role=summary</span>
+    m = <span class="fn">Message</span>(role=MessageRole.summary, ...)
+<span class="kw">else</span>:                                <span class="cm"># default off -> falls back to role=user</span>
+    m = <span class="fn">Message</span>(role=MessageRole.user, ...)
+</pre></div>
+
+<p>This summary message has two faces. <strong>To the model</strong> (always): it sits right in context (just after the system message), letting the model read the "story so far" at a glance — this half is <strong>switch-independent</strong>. <strong>To the client</strong> (needs the switch): only then does the agent also yield structured events — <strong>before</strong> compaction an <span class="mono">EventMessage</span> with <span class="mono">event_type="compaction"</span>, and <strong>after</strong> a <span class="mono">SummaryMessage</span> — so the UI can show "compacted N messages."</p>
+
+<p>Remember Lesson 11's role table? That unassuming <span class="mono">summary</span> in <span class="mono">Message.role</span> was made for this moment. Turn on <span class="mono">use_summary_role</span> and the summary is stored as a first-class <span class="mono">role=summary</span> citizen; <strong>with the default off</strong> it falls back to a <span class="mono">role=user</span> <span class="mono">system_alert</span> — the content is still there and the model still reads it, just without that role label.</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>One switch decides "visible vs silent."</strong> <span class="mono">include_compaction_messages</span> <strong>defaults to False</strong>: no <span class="mono">compaction</span> events stream to the client, and the summary surfaces and persists as a <span class="mono">role=user</span> <span class="mono">UserMessage</span>. Turn it on to upgrade to "<span class="mono">compaction</span> event + first-class <span class="mono">role=summary</span>." But <strong>switch or not, the summary itself is always created and always read by the model</strong> — visibility is a <strong>capability</strong>, not the default.</span></div>
+
+<h2>Compressible / not: why core memory can't be compacted</h2>
+<p>Compaction has a <strong>boundary</strong>: it only clears <strong>conversation messages</strong> and never touches <strong>core memory or the system prompt</strong>. The reason is simple — core is part of system, the basis for "who the agent is right now and what it remembers"; <strong>compacting it amounts to giving the agent amnesia</strong>.</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>✅ Compressible: conversation</h4>
+    <p>older user / assistant / tool messages — summarized and evicted; originals stay searchable in recall.</p>
+    <p class="mono" style="font-size:.82rem">compact_messages → summarize</p>
+  </div>
+  <div class="col">
+    <h4>⛔ Not: core memory / system prompt</h4>
+    <p>message[0], the system message (with core memory), is the stable prefix; the summarizer never touches a line.</p>
+    <p class="mono" style="font-size:.82rem">system message [0] · kept verbatim</p>
+  </div>
+</div>
+
+<p>So an awkward case arises: what if <strong>core memory itself</strong> blows the budget? Compaction can only evict conversation, and clearing all conversation still won't save an oversized system prompt. Here Letta takes a <strong>special case</strong>: <span class="mono">_check_for_system_prompt_overflow</span>.</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>System-prompt overflow is a dedicated "can't compact" branch.</strong> Still over threshold after compacting, and a count shows "message[0] alone ≥ the whole window" — that's not a too-long conversation, it's too-big core/system prompt. Letta stops and raises <span class="mono">SystemPromptTokenExceededError</span>, stop reason <span class="mono">context_window_overflow_in_system_prompt</span>, telling you "<strong>slim down core memory, don't compact more conversation</strong>."</span></div>
+
+<p>This circles back to Lessons 7 and 8: core has a char limit (<span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT</span>) and is a scarce resource. Compaction relieves "conversational" memory pressure, but it can't relieve "you stuffed too much into core" — that one is on your own restraint.</p>
+
+<h2>A real scenario: two hours of chat, window never blows</h2>
+<p>Let's thread the mechanics into a story. You chat with a support agent for two hours, dozens of turns, plus several tool calls. With the naive "stuff all history into the prompt" approach, it would have <strong>blown the window long ago</strong>.</p>
+
+<p>But this agent stayed perfectly fine. The secret is that 90% watermark: whenever in-window tokens approach the limit, it <strong>quietly runs a compaction</strong> — summarizing the past hour of chatter into a paragraph or two, dropping the original dozens of messages out of the window.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">At turn 40, a line flashes in the UI: "<strong>compacted 38 messages</strong>" — that's the <span class="mono">compaction</span> event. The summary went into context, the <strong>story so far isn't lost</strong>; if you casually mention "that order number from the start," it can still use <span class="mono">conversation_search</span> (Lesson 11) to pull the original back from recall.</span></div>
+
+<p>This is what managed "memory pressure" looks like: <strong>the conversation can be arbitrarily long, yet the window always stays within budget.</strong> The summary carries the "story so far," recall backstops "originals are queryable," and together the agent neither blows the window nor truly forgets.</p>
+
+<div class="card spark">
+  <div class="tag">💡 Design highlight</div>
+  <strong>"Memory pressure" is solved as an operating-system problem — this is exactly the MemGPT paper's "queue manager," realized.</strong> How does an OS handle low memory? It doesn't crash — it <strong>pages</strong>: swap rarely-used pages out to disk to free physical RAM. Letta does the same to the context window: at the ~90% watermark it <strong>recursively</strong> summarizes older conversation into one summary (old summary + new messages compressed one layer further, more condensed over time) and "swaps" the originals out to recall. Three design choices make it feel like an OS. First, <strong>there's a watermark</strong> — it acts at a 10% margin rather than waiting for a true OOM. Second, <strong>paging is observable</strong> — compaction <strong>can</strong> emit a <span class="mono">compaction</span> event and store the summary as a first-class <span class="mono">role=summary</span> message (gated by <span class="mono">include_compaction_messages</span>; with the default off it degrades to silent + <span class="mono">role=user</span>, yet the summary is still produced and still read), so the memory operation <strong>can</strong> be transparent to agent and user instead of a black box dropping data. Third, <strong>there's a "locked" region that can't be swapped</strong> — core memory and the system prompt are the agent's identity, the summarizer never touches them, hence a separate <strong>system-prompt overflow</strong> special case to handle "the locked region itself overflowed." Put these together and you see not a chatbot that forgets after a while, but a system that, like a kernel, <strong>actively manages its own memory pressure</strong> — the core metaphor of the MemGPT paper: give the LLM a virtual memory manager so a finite context window can sustain a near-infinite conversation.
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfalls</div>
+  <strong>The summary is lossy, and compaction can't save "core memory itself is too big."</strong> Both are easy to take for granted; keep them straight. First, <strong>compaction = lossy summary, not lossless archive</strong>. A stretch of conversation summarized to "the user asked about a return and gave an order number" makes the <strong>exact wording, tone, and edge details</strong> vanish from the in-window view. The good news: they <strong>weren't deleted</strong> — the original <span class="mono">Message</span> rows still sit in recall, and <span class="mono">conversation_search</span> can fetch them. But you can't assume "not in the summary = the model still remembers it": not in the summary means <strong>the model can't see it right now and must actively search</strong>. So don't treat compaction as "free infinite memory" — it's a trade of "detail precision" for "window space." Second, <strong>compaction only evicts conversation, not core</strong>. If you stuff a pile into core memory and push the system prompt toward or past the whole window, then <strong>no amount of compacting conversation helps</strong> — the summarizer never touches core. What triggers then is the <span class="mono">_check_for_system_prompt_overflow</span> special case: a direct <span class="mono">SystemPromptTokenExceededError</span>, stop reason <span class="mono">context_window_overflow_in_system_prompt</span>. It's <strong>telling you</strong>: "the problem isn't the conversation, your core is too fat — trim the memory blocks, or use a bigger window." Remember this boundary and you won't keep cramming core while wondering "why isn't compaction working."
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Source coordinates for the whole compaction chain.</strong> <strong>Threshold</strong>: <span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span> = <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>, the latter <span class="mono">0.9</span> in <span class="mono">letta/constants.py</span>. <strong>Trigger & action</strong>: in <span class="mono">letta/agents/letta_agent_v3.py</span>, <span class="mono">_step</span> compares <span class="mono">context_token_estimate</span> (from the LLM-reported <span class="mono">usage.total_tokens</span>) to the threshold; over it calls <span class="mono">compact</span> and emits <span class="mono">_create_compaction_event_message</span>. <strong>Compaction impl</strong>: <span class="mono">letta/services/summarizer/compact.py::compact_messages</span>; slice selection and recursive summary in <span class="mono">summarizer.py::Summarizer</span> (<span class="mono">_partial_evict_buffer_summarization</span>, default <span class="mono">partial_evict_summarizer_percentage=0.30</span>). <strong>Summary message</strong>: the v3 path packs via <span class="mono">letta/system.py::package_summarize_message_no_counts</span> (as <span class="mono">system_alert</span>; the with-counts variant is reserved for the legacy <span class="mono">agent.py</span>), role value <span class="mono">letta/schemas/enums.py::MessageRole.summary</span> (<span class="mono">user</span> when the switch is off). <strong>Overflow special case</strong>: <span class="mono">letta/agents/letta_agent_v3.py::_check_for_system_prompt_overflow</span> plus the same check at the end of <span class="mono">compact.py</span>, raising <span class="mono">SystemPromptTokenExceededError</span> (<span class="mono">letta/errors.py</span>). Follow this chain of symbols and you can walk "from over-threshold to summary persisted" end to end.
+</div>
+
+<h2>Going deeper</h2>
+
+<details class="accordion"><summary>How recursive summary works: summaries get summarized too</summary><div class="acc-body">
+<p><strong>Example:</strong> first compaction summarizes messages 1–30 into summary S1, placed at <span class="mono">[1]</span>. After 30 more turns and nearing 90% again, the second compaction summarizes "<strong>S1 + messages 31–60</strong>" together into S2.</p>
+<p><strong>Why designed this way:</strong> history grows without bound, but summary length stays roughly bounded — older content is <strong>repeatedly compressed, layer by layer</strong>, while recent content keeps more detail. This is the heart of the MemGPT paper's "recursive summarization."</p>
+<p><strong>Where in source:</strong> <span class="mono">summarizer.py::_partial_evict_buffer_summarization</span> — it pins the summary message at <span class="mono">[1]</span>, and the next round folds that position into the new range to summarize.</p>
+<p><strong>The cost:</strong> the older the info, the more precision lost. But "<strong>originals stay in recall</strong>" is the backstop — need the detail, search it back.</p>
+</div></details>
+
+<details class="accordion"><summary>Why core memory can't be compacted: the system-prompt overflow case</summary><div class="acc-body">
+<p><strong>Example:</strong> you stuff tens of thousands of chars into persona / human blocks, and the system prompt alone nearly fills the window. Now even compacting all conversation frees no space.</p>
+<p><strong>Why designed this way:</strong> core is the agent's identity and immediate memory — it <strong>must always be in-window and byte-stable</strong> (it also ties to Lesson 5's prefix cache). Letting the summarizer compress it would make the agent forget mid-sentence — never allowed.</p>
+<p><strong>Where in source:</strong> <span class="mono">compact.py</span> rechecks after compacting: if <span class="mono">compacted_messages[0]</span> (the system message) alone is ≥ the window, raise <span class="mono">SystemPromptTokenExceededError</span>; <span class="mono">letta_agent_v3.py::_check_for_system_prompt_overflow</span> is the same check, stop reason <span class="mono">context_window_overflow_in_system_prompt</span>.</p>
+<p><strong>The signal to you:</strong> when you hit it, stop thinking "compact more conversation" and instead <strong>trim core memory</strong> (revisit Lesson 8's <span class="mono">limit</span>) or use a bigger window.</p>
+</div></details>
+
+<details class="accordion"><summary>The visible compaction event: how the client knows it happened</summary><div class="acc-body">
+<p><strong>Example:</strong> a line appears in the UI, "compacting…", followed by "summarized 38 messages into a summary."</p>
+<p><strong>Why designed this way:</strong> compaction changes the context, and <strong>doing it silently confuses users</strong> ("why did it forget that detail?"). Emitted as an explicit event, the behavior is observable and explainable.</p>
+<p><strong>Where in source:</strong> <span class="mono">letta_agent_v3.py::_create_compaction_event_message</span> yields an <span class="mono">EventMessage</span> with <span class="mono">event_type="compaction"</span> (<strong>before</strong> compaction); <span class="mono">_create_summary_result_message</span> yields a <span class="mono">SummaryMessage</span> (<strong>after</strong>). <strong>Both are gated by <span class="mono">include_compaction_messages</span></strong> (default False → neither streams, and the summary degrades to a <span class="mono">UserMessage</span>).</p>
+<p><strong>Contrast:</strong> many frameworks "truncate history" silently; Letta makes it a first-class event — a continuation of the "<strong>memory operations should be transparent</strong>" philosophy.</p>
+</div></details>
+
+<details class="accordion"><summary>How Lesson 5's "measure" connects to "act"</summary><div class="acc-body">
+<p><strong>Example:</strong> Lesson 5 used <span class="mono">ContextWindowOverview</span> to break the window into how many tokens system / core / tools / messages each hold — that's the "<strong>checkup report</strong>." Lesson 12's compaction is <strong>reading the report and treating the patient</strong>.</p>
+<p><strong>Why designed this way:</strong> "can measure" and "can compact" are two things. Measure without compacting and the window still blows; compact without measuring and you don't know when to act. The two halves together make the loop.</p>
+<p><strong>Where in source:</strong> measure <span class="mono">letta/schemas/memory.py::ContextWindowOverview</span> (Lesson 5); decide + act <span class="mono">letta_agent_v3.py</span> (<span class="mono">context_token_estimate</span> vs <span class="mono">get_compaction_trigger_threshold</span>, over it <span class="mono">compact</span>).</p>
+<p><strong>In one line:</strong> Lesson 5 "<strong>you can measure</strong>," Lesson 12 "<strong>you can compact</strong>" — the front and back halves of one loop.</p>
+</div></details>
+
+<h2>Wrap-up: the memory system is now a closed loop</h2>
+<p>This lesson got you the valve that keeps the whole memory system turning: at the 90% threshold, <span class="mono">compact</span>; use sliding-window recursive summary to compress older conversation into one <span class="mono">role=summary</span> message; the process is observable; only core memory can't be compacted, with its own overflow special case.</p>
+
+<p>Thread all of Part 3 together — this is the <strong>capstone</strong> of Lesson 7's three-tier map:</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>The memory system (07–12)</b>: three tiers + the compaction valve that keeps it turning</div>
+  <div class="cells">
+    <span class="cell hl">07 three tiers</span>
+    <span class="sep">·</span>
+    <span class="cell">08 memory blocks</span>
+    <span class="sep">·</span>
+    <span class="cell">09 self-editing core</span>
+    <span class="sep">·</span>
+    <span class="cell">10 archival vectors</span>
+    <span class="sep">·</span>
+    <span class="cell">11 recall history</span>
+    <span class="sep">→</span>
+    <span class="cell hl">12 compaction valve</span>
+  </div>
+</div>
+
+<p>Replay block by block: core lets the agent <strong>rewrite who it is</strong> (07–09), archival lets it <strong>accumulate long-term knowledge</strong> (10), recall lets it <strong>remember every line</strong> (11), and compaction (12) keeps all of it running inside a <strong>finite window</strong>. With all four in place, the memory system truly closes the loop.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>Bridging back and forward:</strong> Lesson 5 posed the root constraint "the window is finite" and gave you "measure"; Part 3 (07–12) tells the whole "memory system" answer — and compaction is the last piece that <strong>fights the pressure</strong>.</span></div>
+
+<p>Memorize one chain on your way out: <strong>record usage each turn → past the 90% threshold → emit a compaction event → compact via sliding-window recursive summary → insert role=summary, originals retreat to recall → only core can't be compacted; if it overflows, take the system-prompt overflow special case</strong>. Hold this chain and you've truly grasped "context compaction & memory pressure."</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>90% threshold trigger</strong>: <span class="mono">get_compaction_trigger_threshold</span> = <span class="mono">context_window × 0.9</span> (<span class="mono">SUMMARIZATION_TRIGGER_MULTIPLIER</span> in <span class="mono">constants.py</span>); a 10% margin to compact proactively, not at the wall.</li>
+    <li><strong>Trigger in the agent loop</strong>: <span class="mono">letta_agent_v3.py</span> compares <span class="mono">context_token_estimate</span> (= the LLM-reported <span class="mono">usage.total_tokens</span>) to the threshold; over it calls <span class="mono">compact</span>.</li>
+    <li><strong>compact_messages does the work</strong>: <span class="mono">summarizer/compact.py</span> summarizes away older messages; slice selection + recursive summary in <span class="mono">Summarizer</span> (partial-evict, default 0.30), summary pinned at <span class="mono">[1]</span>.</li>
+    <li><strong>The summary message</strong>: the v3 path uses <span class="mono">system.py::package_summarize_message_no_counts</span> to pack a <span class="mono">system_alert</span>; turn on <span class="mono">include_compaction_messages</span> to store it under <span class="mono">role=summary</span> and stream a <span class="mono">compaction</span> event / <span class="mono">SummaryMessage</span> (default off → <span class="mono">role=user</span>, silent).</li>
+    <li><strong>Core memory can't be compacted</strong>: the summarizer only evicts conversation, never core/system prompt; if core overflows → <span class="mono">_check_for_system_prompt_overflow</span> → <span class="mono">SystemPromptTokenExceededError</span>.</li>
+    <li><strong>Compaction is lossy but non-deleting</strong>: the summary drops detail, originals stay in recall via <span class="mono">conversation_search</span>; this is the MemGPT "queue manager," realized.</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. Letta's compaction trigger threshold is context_window × 0.9, not waiting until 100%. Why keep that 10% margin?</div>
+  <ol class="opts">
+    <li>Compact proactively at 90% to keep a buffer and avoid actually hitting a “prompt too long” error; this echoes Lesson 5's “measure → act” loop</li>
+    <li>The 10% is reserved to make room for compacting core memory</li>
+    <li>Because the model can only count to 90% of the window; the last 10% is physically unusable</li>
+    <li>0.9 varies per model; each model has its own threshold multiplier</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. get_compaction_trigger_threshold = int(context_window × SUMMARIZATION_TRIGGER_MULTIPLIER), the latter fixed at 0.9 in constants.py (model-agnostic; force_proactive doesn't change the result today). Triggering at 90% frees space before truly hitting the wall and raising “prompt too long.” That's the “act” step of Lesson 5's “measure → decide → compact” loop. Core memory is never compacted, so the last option is wrong.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. You stuff tens of thousands of chars into persona/human blocks, so the system prompt alone nearly fills the window. The agent keeps compacting conversation yet still errors out — what happened?</div>
+  <ol class="opts">
+    <li>It took the “system-prompt overflow” special case: compaction only evicts conversation and never touches core; when message[0] alone is ≥ the window, it raises SystemPromptTokenExceededError</li>
+    <li>Compaction summarizes core memory too; just compact a few more times and it's fine</li>
+    <li>This is recall being full; just clear the conversation history</li>
+    <li>The agent auto-moves the overflowing core memory into archival, so it won't error</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The summarizer only summarizes conversation messages and never touches core memory or the system prompt (core is the agent's identity — it must stay in-window and byte-stable). After compacting, compact_messages rechecks: if compacted_messages[0] (the system message) alone is ≥ the window, the culprit isn't a too-long conversation but a too-big core/system prompt — so _check_for_system_prompt_overflow raises SystemPromptTokenExceededError with stop reason context_window_overflow_in_system_prompt. The fix is to trim core memory (Lesson 8's limit) or use a bigger window, not to compact more conversation.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. Compaction summarized the past hour of conversation into one summary. What happens to those original messages?</div>
+  <ol class="opts">
+    <li>The originals stay verbatim in the context window, just collapsed</li>
+    <li>The original messages are permanently deleted; only the summary remains and details are gone forever</li>
+    <li>The summary is lossy, but the originals aren't deleted: the original Message rows stay in recall and can be fetched back by conversation_search (hybrid)</li>
+    <li>The originals are moved into core memory for long-term keeping</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. Compaction is a lossy summary trading “detail precision” for “window space,” not a lossless archive: exact wording, tone, and edge details vanish from the in-window view. But they aren't deleted — the original Message rows still sit in recall (Lesson 11), and conversation_search can fetch them back by hybrid. So don't treat “not in the summary” as “the model still remembers it”: not in the summary means the model can't see it now and must actively search. The originals leave the window, not the database.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>You're building a support agent that chats for hours. Using this lesson, think through three things: (1) why is “compact at 90%” steadier than “wait until the wall, then deal with it”? Connect it to Lesson 5's “measure → act” loop. (2) Compaction is a visible event (compaction / SummaryMessage) — for UX and debugging, how is this “transparency” better than silently truncating history? (3) Since the summary is lossy but the originals remain in recall, how would you design “when to just read the summary vs when to conversation_search the originals,” so you neither lose detail nor waste tokens?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="11-recall-memory.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">回忆记忆与对话历史</span><span class="lang-en">Recall memory &amp; conversation history</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

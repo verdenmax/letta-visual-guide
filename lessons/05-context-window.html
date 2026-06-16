@@ -103,6 +103,31 @@ strong { color: var(--ink); font-weight: 680; }
 .card.spark .tag { color: #c98a00; }
 @media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
 
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
 /* ---- code file callout ---- */
 .codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
   box-shadow: var(--shadow); }
@@ -297,10 +322,10 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="topbar-inner">
     <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
     <span class="pill"><span class="lang-zh">第二部分 · 前置基础</span><span class="lang-en">Part 2 · Foundations</span></span>
-    <span class="pill">05 / 06</span>
+    <span class="pill">05 / 12</span>
     <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
   </div>
-  <div class="progress"><span style="width:83%"></span></div>
+  <div class="progress"><span style="width:41%"></span></div>
 </div>
 <div class="wrap">
   <div class="hero">
@@ -309,7 +334,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </div>
   <div class="lang-zh">
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-前四课我们一直在用一个词——"上下文窗口"——却从没真正拆开它：第 1 课说"上下文有限"是 Letta 存在的根本理由，第 3 课说要"稳定前缀 + 变化尾巴"，第 4 课说每一步都要"把整段剧本重新拼好再发给模型"。这三句话背后，是同一条被反复绕开的硬约束：<strong>上下文窗口是一笔固定大小、还按 token 计费的预算</strong>。这一课就把这笔账摊开算清楚——模型怎么读这段 prompt（prefill 与 decode）、为什么稳定前缀能省真金白银（prefix cache）、为什么"把历史全塞进去"必然失败，以及 Letta 如何把这笔账<strong>量出来</strong>（<span class="mono">ContextWindowOverview</span>）并据此<strong>动手</strong>（逼近阈值就压缩）。读完你会明白：记忆系统不是锦上添花，而是被这条约束<strong>逼出来</strong>的刚需。
+前四课我们一直在用一个词——"上下文窗口"——却从没真正拆开它：第 1 课说"上下文有限"是 Letta 存在的根本理由，第 3 课说要"稳定前缀 + 变化尾巴"，第 4 课说每一步都要"把整段剧本重新拼好再发给模型"。这三句话背后，是同一条被反复绕开的硬约束：<strong>上下文窗口是一笔固定大小、还按 token 计费的预算</strong>。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就把这笔账摊开算清楚——模型怎么读这段 prompt（prefill 与 decode）、为什么稳定前缀能省真金白银（prefix cache）、为什么"把历史全塞进去"必然失败，以及 Letta 如何把这笔账<strong>量出来</strong>（<span class="mono">ContextWindowOverview</span>）并据此<strong>动手</strong>（逼近阈值就压缩）。读完你会明白：记忆系统不是锦上添花，而是被这条约束<strong>逼出来</strong>的刚需。
 </p>
 
 <div class="card analogy">
@@ -354,7 +381,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="node"><div class="nt">② decode 解码</div><div class="nd">一个一个往外吐 token<br>每吐一个都要回看缓存</div></div>
 </div>
 
-<p><strong>prefill</strong> 是"读题"：模型把你给的整段 prompt 一口吃下，<strong>所有输入 token 可以并行处理</strong>，算得快；这一步会顺手把每个 token 的中间结果（注意力的 key/value）存成 <strong>KV cache</strong>。<strong>decode</strong> 是"答题"：模型<strong>一次只生成一个 token</strong>，每生成一个都要回看前面所有 token 的 KV cache 再决定下一个——这一步天生串行，<strong>输出越长越慢</strong>。两个关键结论：其一，<strong>输入越长，prefill 越贵</strong>（要读的 token 多）；其二，既然 prefill 会把前缀的 KV 都算出来缓存，那么<strong>如果这次请求的前缀和上次逐 token 一模一样，这部分缓存就能直接复用、不必重算</strong>——这就引出了 prefix cache。</p>
+<p><strong>prefill</strong> 是"读题"：模型把你给的整段 prompt 一口吃下，<strong>所有输入 token 可以并行处理</strong>，算得快；这一步会顺手把每个 token 的中间结果（注意力的 key/value）存成 <strong>KV cache</strong>。<strong>decode</strong> 是"答题"：模型<strong>一次只生成一个 token</strong>，每生成一个都要回看前面所有 token 的 KV cache 再决定下一个——这一步天生串行，<strong>输出越长越慢</strong>。</p>
+
+<p>两个关键结论：其一，<strong>输入越长，prefill 越贵</strong>（要读的 token 多）；其二，既然 prefill 会把前缀的 KV 都算出来缓存，那么<strong>如果这次请求的前缀和上次逐 token 一模一样，这部分缓存就能直接复用、不必重算</strong>——这就引出了 prefix cache。</p>
 
 <h2>稳定前缀为什么省钱：prefix cache</h2>
 <p>现代推理服务（以及一些本地引擎）都会做一件事：<strong>缓存"前缀"的计算结果</strong>。如果两次请求开头的一长串 token 完全相同，第二次就能<strong>跳过这段的 prefill</strong>，直接拿上次缓存好的 KV——又快又便宜（很多厂商对命中缓存的输入 token 直接打折计费）。关键词是<strong>"前缀必须逐 token 完全一致"</strong>：只要前面有一个 token 变了，从那之后的缓存全部作废、得重算。</p>
@@ -374,7 +403,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </div>
 </div>
 
-<p>现在第 3 课那条设计原则就有了经济学解释：<strong>为什么要把 system + 核心记忆放在最前面、且每轮尽量不改？</strong>因为它们是<strong>最长、最稳定的那段前缀</strong>——保持它逐 token 不变，就能让每一轮都吃到 prefix cache，把这段昂贵的 prefill 省掉。反过来，如果你每轮都去改系统提示的开头（哪怕只改一个字），就等于<strong>亲手把缓存作废</strong>，每轮都全量重算。<strong>"稳定前缀 + 变化尾巴"不是审美，是 prefill / prefix-cache 经济学逼出来的结构。</strong>这也是为什么 Letta 在第 3 课里宁可"只往尾巴追加消息、记忆变了才重建系统提示"，也不肯每轮乱动前缀。</p>
+<p>现在第 3 课那条设计原则就有了经济学解释：<strong>为什么要把 system + 核心记忆放在最前面、且每轮尽量不改？</strong>因为它们是<strong>最长、最稳定的那段前缀</strong>——保持它逐 token 不变，就能让每一轮都吃到 prefix cache，把这段昂贵的 prefill 省掉。反过来，如果你每轮都去改系统提示的开头（哪怕只改一个字），就等于<strong>亲手把缓存作废</strong>，每轮都全量重算。</p>
+
+<div class="note tip"><span class="ni">📌</span><span class="nx"><strong>"稳定前缀 + 变化尾巴"不是审美，是 prefill / prefix-cache 经济学逼出来的结构。</strong>这也是为什么 Letta 在第 3 课里宁可"只往尾巴追加消息、记忆变了才重建系统提示"，也不肯每轮乱动前缀。</span></div>
 <h2>Letta 把这笔账量出来，也据此动手</h2>
 <p>到这里，约束和经济学都讲清楚了。Letta 的高明之处，是<strong>不把上下文窗口当黑盒</strong>：它能把"窗口里到底装了啥"<strong>逐块拆开计数</strong>，再据此在<strong>逼近上限时压缩</strong>。先看"计数"——它有一个专门的数据结构 <span class="mono">ContextWindowOverview</span>，是整个上下文窗口的一本<strong>token 账本</strong>（主要在检视 / 接口侧按需算出）：</p>
 
@@ -494,7 +525,9 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 <h2>这一课在整张大图的哪里</h2>
 <p>把前五课串起来：第 1 课说 Letta 的根本理由是"LLM 无状态 + 上下文有限"，第 3 课给了"稳定前缀 + 变化尾巴"的结构，第 4 课展示了每一步都要把整段上下文重拼再发。<strong>这一课补上了那块缺失的"为什么"</strong>：因为上下文是一笔<strong>有限且按 token 计费的预算</strong>，prefill / prefix-cache 的经济学让"稳定前缀"成为省钱的硬道理，而"尾巴只会增长"让"换出旧内容"成为迟早要做的事。Letta 没有回避，而是把它量化成 <span class="mono">ContextWindowOverview</span>、把动作触发在 <span class="mono">context_window × 0.9</span>。</p>
 
-<p>顺着这条逻辑，下一站就水到渠成：<strong>既然预算有限、尾巴必须换出，那"换出去的东西放哪、怎么取回、agent 怎么自己管"——这就是"记忆系统"要回答的问题，也正是第三部分的主题。</strong>核心记忆（始终在窗的 persona / human）、recall（可检索的历史消息）、archival（可检索的长期事实）这三层，本质上就是"桌面 + 抽屉 + 档案室"的工程实现——是对本课这条约束的<strong>正面回答</strong>。读完第三部分，你会看到 <span class="mono">compact</span> 压出来的摘要、归档进去的消息、agent 用记忆工具自我编辑的闭环，如何共同把"有限窗口"变成"看起来无限的记忆"。</p>
+<div class="note info"><span class="ni">👉</span><span class="nx">顺着这条逻辑，下一站就水到渠成：<strong>既然预算有限、尾巴必须换出，那"换出去的东西放哪、怎么取回、agent 怎么自己管"——这就是"记忆系统"要回答的问题，也正是第三部分的主题。</strong></span></div>
+
+<p>核心记忆（始终在窗的 persona / human）、recall（可检索的历史消息）、archival（可检索的长期事实）这三层，本质上就是"桌面 + 抽屉 + 档案室"的工程实现——是对本课这条约束的<strong>正面回答</strong>。读完第三部分，你会看到 <span class="mono">compact</span> 压出来的摘要、归档进去的消息、agent 用记忆工具自我编辑的闭环，如何共同把"有限窗口"变成"看起来无限的记忆"。</p>
 
 <div class="card key">
   <div class="tag">✅ 本课要点</div>
@@ -557,7 +590,9 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 </div></div>
   <div class="lang-en">
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-We've leaned on one phrase for four lessons — "the context window" — without ever cracking it open: Lesson 1 said "context is finite" is the root reason Letta exists, Lesson 3 said keep a "stable prefix + a changing tail," Lesson 4 said every step has to "re-assemble the whole script and send it to the model." Behind all three sits the same hard constraint we kept dodging: <strong>the context window is a fixed-size budget that is also billed per token</strong>. This lesson lays that bill out in full — how the model reads the prompt (prefill and decode), why a stable prefix saves real money (prefix cache), why "just stuff all the history in" is doomed, and how Letta <strong>measures</strong> the bill (<span class="mono">ContextWindowOverview</span>) and <strong>acts</strong> on it (compact as it nears a threshold). By the end you'll see: a memory system isn't a nice-to-have, it's a necessity <strong>forced</strong> by this constraint.
+We've leaned on one phrase for four lessons — "the context window" — without ever cracking it open: Lesson 1 said "context is finite" is the root reason Letta exists, Lesson 3 said keep a "stable prefix + a changing tail," Lesson 4 said every step has to "re-assemble the whole script and send it to the model." Behind all three sits the same hard constraint we kept dodging: <strong>the context window is a fixed-size budget that is also billed per token</strong>.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson lays that bill out in full — how the model reads the prompt (prefill and decode), why a stable prefix saves real money (prefix cache), why "just stuff all the history in" is doomed, and how Letta <strong>measures</strong> the bill (<span class="mono">ContextWindowOverview</span>) and <strong>acts</strong> on it (compact as it nears a threshold). By the end you'll see: a memory system isn't a nice-to-have, it's a necessity <strong>forced</strong> by this constraint.
 </p>
 
 <div class="card analogy">
@@ -602,7 +637,9 @@ We've leaned on one phrase for four lessons — "the context window" — without
   <div class="node"><div class="nt">② decode</div><div class="nd">emits tokens one by one<br>each one re-reads the cache</div></div>
 </div>
 
-<p><strong>prefill</strong> is "reading the question": the model swallows your whole prompt in one bite, <strong>all input tokens processed in parallel</strong>, so it's fast; along the way it stores each token's intermediate results (the attention key/value) as a <strong>KV cache</strong>. <strong>decode</strong> is "answering": the model <strong>generates one token at a time</strong>, each time re-reading the KV cache of all prior tokens before deciding the next — inherently serial, so <strong>the longer the output, the slower</strong>. Two key takeaways: first, <strong>longer input means costlier prefill</strong> (more tokens to read); second, since prefill computes and caches the prefix's KV, then <strong>if this request's prefix is token-for-token identical to last time, that cache can be reused, no recompute</strong> — which brings us to prefix cache.</p>
+<p><strong>prefill</strong> is "reading the question": the model swallows your whole prompt in one bite, <strong>all input tokens processed in parallel</strong>, so it's fast; along the way it stores each token's intermediate results (the attention key/value) as a <strong>KV cache</strong>. <strong>decode</strong> is "answering": the model <strong>generates one token at a time</strong>, each time re-reading the KV cache of all prior tokens before deciding the next — inherently serial, so <strong>the longer the output, the slower</strong>.</p>
+
+<p>Two key takeaways: first, <strong>longer input means costlier prefill</strong> (more tokens to read); second, since prefill computes and caches the prefix's KV, then <strong>if this request's prefix is token-for-token identical to last time, that cache can be reused, no recompute</strong> — which brings us to prefix cache.</p>
 
 <h2>Why a stable prefix saves money: prefix cache</h2>
 <p>Modern inference services (and some local engines) all do one thing: <strong>cache the computed result of the "prefix."</strong> If the long opening run of tokens is identical across two requests, the second can <strong>skip that prefill</strong> and grab last time's cached KV directly — faster and cheaper (many providers bill cache-hit input tokens at a discount). The keyword is <strong>"the prefix must be token-for-token identical"</strong>: change a single earlier token and every cache entry after it is invalidated and must be recomputed.</p>
@@ -622,7 +659,9 @@ We've leaned on one phrase for four lessons — "the context window" — without
   </div>
 </div>
 
-<p>Now Lesson 3's design principle has an economic explanation: <strong>why put system + core memory at the very front and barely touch it each turn?</strong> Because they're the <strong>longest, most stable prefix</strong> — keep it token-for-token unchanged and every turn hits the prefix cache, sparing that expensive prefill. Conversely, edit the opening of the system prompt each turn (even by one character) and you've <strong>invalidated the cache by hand</strong>, forcing a full recompute every turn. <strong>"Stable prefix + changing tail" is not aesthetics, it's a structure forced by prefill / prefix-cache economics.</strong> That's also why, back in Lesson 3, Letta would rather "only append messages to the tail and rebuild the system prompt only when memory changes" than fiddle with the prefix every turn.</p>
+<p>Now Lesson 3's design principle has an economic explanation: <strong>why put system + core memory at the very front and barely touch it each turn?</strong> Because they're the <strong>longest, most stable prefix</strong> — keep it token-for-token unchanged and every turn hits the prefix cache, sparing that expensive prefill. Conversely, edit the opening of the system prompt each turn (even by one character) and you've <strong>invalidated the cache by hand</strong>, forcing a full recompute every turn.</p>
+
+<div class="note tip"><span class="ni">📌</span><span class="nx"><strong>"Stable prefix + changing tail" is not aesthetics, it's a structure forced by prefill / prefix-cache economics.</strong> That's also why, back in Lesson 3, Letta would rather "only append messages to the tail and rebuild the system prompt only when memory changes" than fiddle with the prefix every turn.</span></div>
 <h2>Letta measures the bill, and acts on it</h2>
 <p>By here, both the constraint and the economics are clear. Letta's cleverness is that it <strong>doesn't treat the context window as a black box</strong>: it can count, <strong>block by block</strong>, exactly "what's in the window," and compress as it <strong>approaches the ceiling</strong>. Take "counting" first — it has a dedicated data structure, <span class="mono">ContextWindowOverview</span>, a <strong>token ledger</strong> for the whole window (computed on demand, mainly on the inspection / API side):</p>
 
@@ -742,7 +781,9 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 <h2>Where this lesson sits on the big map</h2>
 <p>Stringing the five lessons together: Lesson 1 said Letta's root reason is "stateless LLM + finite context," Lesson 3 gave the "stable prefix + changing tail" structure, Lesson 4 showed that every step re-assembles and re-sends the whole context. <strong>This lesson supplies the missing "why"</strong>: because context is a <strong>finite, per-token-billed budget</strong>, prefill / prefix-cache economics make a "stable prefix" a hard money-saving rule, and "the tail only grows" makes "swapping out old content" something you'll do sooner or later. Letta doesn't dodge it — it quantifies it as <span class="mono">ContextWindowOverview</span> and triggers action at <span class="mono">context_window × 0.9</span>.</p>
 
-<p>Follow that logic and the next stop comes naturally: <strong>since the budget is finite and the tail must be swapped out, "where does the swapped-out stuff go, how is it fetched back, how does the agent manage it itself" — that's the question the "memory system" answers, and it's exactly Part 3's subject.</strong> The three tiers — core memory (the always-in-window persona / human), recall (searchable past messages), archival (searchable long-term facts) — are essentially the engineering of "desk + drawer + archive room," a <strong>direct answer</strong> to this lesson's constraint. After Part 3, you'll see how the summaries squeezed out by <span class="mono">compact</span>, the messages pushed into archive, and the agent's self-editing loop via memory tools together turn a "finite window" into "seemingly unlimited memory."</p>
+<div class="note info"><span class="ni">👉</span><span class="nx">Follow that logic and the next stop comes naturally: <strong>since the budget is finite and the tail must be swapped out, "where does the swapped-out stuff go, how is it fetched back, how does the agent manage it itself" — that's the question the "memory system" answers, and it's exactly Part 3's subject.</strong></span></div>
+
+<p>The three tiers — core memory (the always-in-window persona / human), recall (searchable past messages), archival (searchable long-term facts) — are essentially the engineering of "desk + drawer + archive room," a <strong>direct answer</strong> to this lesson's constraint. After Part 3, you'll see how the summaries squeezed out by <span class="mono">compact</span>, the messages pushed into archive, and the agent's self-editing loop via memory tools together turn a "finite window" into "seemingly unlimited memory."</p>
 
 <div class="card key">
   <div class="tag">✅ Key points</div>

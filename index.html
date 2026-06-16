@@ -103,6 +103,31 @@ strong { color: var(--ink); font-weight: 680; }
 .card.spark .tag { color: #c98a00; }
 @media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
 
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
 /* ---- code file callout ---- */
 .codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
   box-shadow: var(--shadow); }
@@ -296,7 +321,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="topbar">
   <div class="topbar-inner">
     <span class="home">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></span>
-    <span class="pill"><span class="lang-zh">共 6 课 · 2 个部分</span><span class="lang-en">6 lessons · 2 parts</span></span>
+    <span class="pill"><span class="lang-zh">共 12 课 · 3 个部分</span><span class="lang-en">12 lessons · 3 parts</span></span>
     <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
   </div>
   <div class="progress"><span style="width:100%"></span></div>
@@ -328,7 +353,14 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="toc-part"><span class="lang-zh">第二部分 · 前置基础</span><span class="lang-en">Part 2 · Foundations</span></div>
 <a href="lessons/04-agent-and-tools.html"><span class="n">04</span><span class="tt"><span class="lang-zh">LLM agent 与 tool calling 基础</span><span class="lang-en">LLM agents &amp; tool calling</span></span><span class="ts"><span class="lang-zh">函数调用怎么工作 · ReAct 循环 · 内心独白</span><span class="lang-en">How function calling works; ReAct loop; inner monologue</span></span></a>
 <a href="lessons/05-context-window.html"><span class="n">05</span><span class="tt"><span class="lang-zh">上下文窗口的根本问题</span><span class="lang-en">The context-window problem</span></span><span class="ts"><span class="lang-zh">token 预算 · prefill/decode · prefix cache · 为什么需要记忆系统</span><span class="lang-en">token budget; prefill/decode; prefix cache; why a memory system</span></span></a>
-<a href="lessons/06-stateful-vs-stateless.html"><span class="n">06</span><span class="tt"><span class="lang-zh">有状态 vs 无状态</span><span class="lang-en">Stateful vs stateless</span></span><span class="ts"><span class="lang-zh">AgentState 存档 · prefixed id · schema 与 orm · 对比 OpenAI Assistants</span><span class="lang-en">The AgentState save; prefixed ids; schema vs orm; vs OpenAI Assistants</span></span></a></div>
+<a href="lessons/06-stateful-vs-stateless.html"><span class="n">06</span><span class="tt"><span class="lang-zh">有状态 vs 无状态</span><span class="lang-en">Stateful vs stateless</span></span><span class="ts"><span class="lang-zh">AgentState 存档 · prefixed id · schema 与 orm · 对比 OpenAI Assistants</span><span class="lang-en">The AgentState save; prefixed ids; schema vs orm; vs OpenAI Assistants</span></span></a>
+<div class="toc-part"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></div>
+<a href="lessons/07-memory-tiers.html"><span class="n">07</span><span class="tt"><span class="lang-zh">记忆三层总览</span><span class="lang-en">The three memory tiers</span></span><span class="ts"><span class="lang-zh">core / recall / archival · 在窗与窗外 · 模型怎么知道自己忘了什么</span><span class="lang-en">core / recall / archival; in vs out of context; how the agent knows what it forgot</span></span></a>
+<a href="lessons/08-memory-blocks.html"><span class="n">08</span><span class="tt"><span class="lang-zh">记忆块 Memory Blocks</span><span class="lang-en">Memory blocks</span></span><span class="ts"><span class="lang-zh">label/value/limit · Memory.compile · 共享块 · 版本历史</span><span class="lang-en">label/value/limit; Memory.compile; shared blocks; versioning</span></span></a>
+<a href="lessons/09-self-editing-memory.html"><span class="n">09</span><span class="tt"><span class="lang-zh">自我编辑记忆 = 改写系统提示</span><span class="lang-en">Self-editing memory = rewriting the system prompt</span></span><span class="ts"><span class="lang-zh">core_memory_append/replace · {CORE_MEMORY} 占位符 · 重建第 0 条 · prefix cache</span><span class="lang-en">core_memory_append/replace; the {CORE_MEMORY} slot; rebuilding message #0; prefix cache</span></span></a>
+<a href="lessons/10-archival-memory.html"><span class="n">10</span><span class="tt"><span class="lang-zh">归档记忆与向量检索</span><span class="lang-en">Archival memory &amp; vector search</span></span><span class="ts"><span class="lang-zh">Passage · 嵌入 · insert/search · pgvector / sqlite-vec · tags</span><span class="lang-en">Passage; embeddings; insert/search; pgvector / sqlite-vec; tags</span></span></a>
+<a href="lessons/11-recall-memory.html"><span class="n">11</span><span class="tt"><span class="lang-zh">回忆记忆与对话历史</span><span class="lang-en">Recall memory &amp; conversation history</span></span><span class="ts"><span class="lang-zh">Message · message_ids 在窗 · conversation_search · JSON 信封</span><span class="lang-en">Message; in-window message_ids; conversation_search; JSON envelopes</span></span></a>
+<a href="lessons/12-context-compaction.html"><span class="n">12</span><span class="tt"><span class="lang-zh">上下文压缩与记忆压力</span><span class="lang-en">Context compaction &amp; memory pressure</span></span><span class="ts"><span class="lang-zh">90% 阈值 · compact_messages · 滑窗摘要 · summary 消息 · 系统提示溢出</span><span class="lang-en">the 90% threshold; compact_messages; sliding-window summary; the summary message; system-prompt overflow</span></span></a></div>
   <div class="toc-empty" id="tocempty"><span class="lang-zh">没有匹配的课程，换个关键词试试。</span><span class="lang-en">No matching lessons, try another keyword.</span></div>
 </div>
 <script>

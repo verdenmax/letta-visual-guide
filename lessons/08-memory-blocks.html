@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>08 · 记忆块 Memory Blocks / Memory blocks - Letta 图解教程</title>
+<meta name="description" content="第三部分 · 记忆系统｜记忆块 Memory Blocks - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="08 · 记忆块 Memory Blocks / Memory blocks - Letta 图解教程">
+<meta property="og:description" content="第三部分 · 记忆系统｜记忆块 Memory Blocks - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="08 · 记忆块 Memory Blocks / Memory blocks - Letta 图解教程">
+<meta name="twitter:description" content="第三部分 · 记忆系统｜记忆块 Memory Blocks - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></span>
+    <span class="pill">08 / 12</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:66%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></div>
+    <h1><span class="lang-zh">记忆块 Memory Blocks</span><span class="lang-en">Memory blocks</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第 7 课给了你三层地图：core 在窗、可自改。这一课把放大镜对准 core 的<strong>最小单位——记忆块 Block</strong>。你会发现 core memory 不是一团文字，而是一组<strong>有结构的卡片</strong>。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+一个 Block 只有四个核心字段：<span class="mono">label / value / limit / read_only</span>。就这四个字段，撑起了"可共享、可版本、可自我编辑"三件大事。读完你会明白第 9 课"自我编辑记忆"到底在改什么。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把 core memory 想成 agent 面前的一块白板。</strong>这块白板没被当成一整张随便写的纸，而是贴着几张<strong>分了区的便利贴</strong>：一张写"用户是谁"（<span class="mono">label: human</span>），一张写"我是谁"（<span class="mono">label: persona</span>）。每张便利贴都有抬头（label）、有内容（value）、有大小（limit，快写满了就提醒你别再塞）、还可能盖了"只读"章（read_only，agent 自己不能改）。要改记忆，就是<strong>撕下某一张便利贴重写</strong>——而不是把整块白板擦了重来。便利贴还能从一块白板挪到另一块、被两个人共看，甚至贴歪了能揭下来贴回原处——这正对应着本课后面的"共享"与"版本"。记住这块贴满分区便利贴的白板，本课所有结论都从它展开。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：core memory 是一组 Block，每个 Block 是带 <span class="mono">label / value / limit / read_only</span> 四个字段的卡片；<span class="mono">Memory</span> 是这些卡片的集合，<span class="mono">Memory.compile()</span> 把它们渲染成 system 里的 <span class="mono">&lt;memory_blocks&gt;</span> 文本。</strong>更妙的是，块还是<strong>一等实体</strong>：每张卡有自己的 <span class="mono">block-…</span> id，于是能被多个 agent 共享、能像 git 一样回滚。记住"卡片"这个词——记忆不是一团 blob，而是一叠有标签、有上限、有版本的卡。四个字段、三个性质（可寻址、可共享、可版本），就是本课的全部骨架，后面每一节都是给这副骨架添肉。
+</div>
+
+<h2>Block：core memory 的最小单位</h2>
+<p>第 7 课说 core 是"一组 Block"。现在把这叠卡片拆开，看清楚一张。一个 Block 就是 LLM 上下文里被<strong>预留出来的一小段</strong>，对应 <span class="mono">letta/schemas/block.py</span> 的 <span class="mono">Block</span> 类。</p>
+
+<p>它的字段少得惊人，真正要记的只有四个：<strong>label</strong>（这张卡叫什么）、<strong>value</strong>（卡上写了什么）、<strong>limit</strong>（最多能写多少字符）、<strong>read_only</strong>（agent 能不能改）。其余都是模板、项目、tag 之类的元数据。</p>
+
+<p>这种"少字段、强语义"的设计是有意为之：字段越少，agent 越不容易在工具调用里填错；语义越清晰，模型越知道每个字段该写什么。Letta 把"好用"摆在了"功能全"前面。</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>一个 Block 的解剖</b>：四个字段，各管一件事</div>
+  <div class="cells">
+    <span class="cell hl">label · 标签</span>
+    <span class="sep">·</span>
+    <span class="cell">value · 内容</span>
+    <span class="sep">·</span>
+    <span class="cell q">limit · 字符上限</span>
+    <span class="sep">·</span>
+    <span class="cell scale">read_only · 只读?</span>
+  </div>
+</div>
+
+<div class="cute"><div class="row"><span class="emoji">📝</span><span class="bubble">label: human · "名字叫 Timber"</span></div>
+<div class="cap">一个 Block 就是一张贴在 agent 眼前的便利贴：有标签、有内容、有字数上限</div></div>
+
+<p>有人会担心"字段这么少，够用吗？"——恰恰是这种克制让 Block 好理解、好操作。复杂度不堆在字段上，而是靠<strong>多张简单卡片的组合</strong>来表达，这和 Unix"小工具拼装"的哲学一脉相承。</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">记住一句话：core memory 的"原子"是 <strong>Block</strong>，不是字符。你对记忆的一切操作——读、写、共享、回滚——都以<strong>一整张卡片</strong>为单位。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/block.py</span><span class="ln">Block 的核心字段（简化）</span></div>
+<pre><span class="cm"># 一个 Block = 上下文里被预留的一段；下面四个字段是重点</span>
+<span class="kw">class</span> <span class="fn">Block</span>(BaseBlock):
+    value: str                                  <span class="cm"># 卡上的内容（必填）</span>
+    limit: int = CORE_MEMORY_BLOCK_CHAR_LIMIT   <span class="cm"># 字符上限，默认 10 万</span>
+    label: Optional[str] = <span class="kw">None</span>             <span class="cm"># 标签：human / persona / …</span>
+    read_only: bool = <span class="kw">False</span>                 <span class="cm"># 只读则 agent 不能改</span>
+    id: str  <span class="cm"># block-… 前缀：可寻址、可被共享、可版本化</span>
+</pre></div>
+
+<p>注意最后那个 <span class="mono">id</span>：它带 <span class="mono">block-</span> 前缀（第 6 课讲过 prefixed id）。正因为每张卡片有自己<strong>稳定的 id</strong>，块才能成为"可寻址、可共享"的一等实体——这是本课后半段的伏笔。</p>
+
+<h2>为什么把 core 切成一张张块</h2>
+<p>你可能会问：既然 core 最后都渲染成一段文字，为什么不直接存一大段，非要切成块？答案和第 7 课"分层"是同一种思路——<strong>用结构换可控</strong>。</p>
+
+<p>切成块，第一桩好处是<strong>可寻址</strong>。agent 想改"关于用户"的事，只需点名 <span class="mono">label="human"</span> 这一张卡，不会误伤"人设"那张。一大段文字做不到这种精准定位。</p>
+
+<p>第二桩好处是<strong>可分别授权</strong>。系统规则那张卡可以单独设 <span class="mono">read_only</span>，而用户偏好那张照样让 agent 自由改。粒度落在卡片上，权限才能落在卡片上。</p>
+
+<p>第三桩好处是<strong>可分别共享与回滚</strong>。一张"公司政策"卡能单独被整个团队共享、单独留版本历史，而不必牵动其他卡。块越独立，这些能力越自然。</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">一句话：<strong>把记忆切成块，是为了让"寻址、授权、共享、回滚"都能精确到一张卡。</strong>一大段文字什么都混在一起，这些能力就无从谈起。</span></div>
+
+<h2>三个字段，各管一件事</h2>
+<p>把四个字段里最关键的三个再说细一点，因为第 9–12 课会反复用到它们。先说结论：<strong>label 是钥匙、value 是内容、limit 是预算。</strong></p>
+
+<p><strong>label：卡片的抬头，也是工具寻址的钥匙。</strong>agent 改记忆时写 <span class="mono">core_memory_replace(label="human", …)</span>，靠的就是 label 找到那张卡。没有正确的 label，agent 根本不知道改哪张。</p>
+
+<p><strong>value：真正进 system 的内容。</strong><span class="mono">Memory.compile()</span> 渲染时会把 value 原样放进 <span class="mono">&lt;value&gt;</span> 标签里——所以"改记忆"的本质，就是改某个 block 的 value。</p>
+
+<p><strong>limit：这张卡的字符预算。</strong>它<strong>不会硬性拦你写超</strong>（很多人会想当然，下面"常见误区"专门讲），而是被写进系统提示，提醒模型"还剩多少额度"。</p>
+
+<p>这三者最容易混的是 label 和 value：label 是<strong>卡的名字</strong>、相对固定，agent 一般不改它；value 是<strong>卡的内容</strong>、经常被改写。一句话——label 决定"这是哪张卡"，value 决定"卡上此刻写着什么"。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">label 是工具的"门牌号"：<span class="mono">core_memory_append / replace</span> 的第一个参数就是 label——它把"改哪张卡"这件事，变成了一次普通的按名查找。</span></div>
+
+<h2>Block 怎么变成 system 里的文字</h2>
+<p>core 之所以"始终在窗"，靠的是每轮一次渲染。<span class="mono">Memory</span> 是 Block 的集合（<span class="mono">letta/schemas/memory.py</span> 的 <span class="mono">Memory</span> 类），<span class="mono">Memory.compile()</span> 把每张卡片拼成一段带标签的文本，塞进 system 的最前面。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">Block 们</div><div class="nd">human / persona …</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Memory.compile()</div><div class="nd">逐块渲染</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">&lt;memory_blocks&gt;</div><div class="nd">带标签文本</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">进 system</div><div class="nd">第 0 条消息</div></div>
+</div>
+
+<p>这条链路每轮都重走一遍——所以 core 看起来"一直在那儿"，其实是被反复<strong>现渲染</strong>出来的。块没变时渲染结果稳定（对 prefix cache 友好，见第 5 课）；块一变，渲染结果才跟着变，下一轮就生效。</p>
+
+<p>渲染出来长什么样？下面是 <span class="mono">Memory.compile()</span> 产物的简化版——每张卡片变成一段 XML 风格的块，标签、元信息、内容都摆得清清楚楚。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/memory.py</span><span class="ln">Memory.compile() 产物（简化）</span></div>
+<pre><span class="cm"># 每张 Block 渲染成一段；chars_current / chars_limit 把"额度"摆给模型看</span>
+&lt;memory_blocks&gt;
+&lt;human&gt;
+&lt;description&gt; 关于用户的事实 &lt;/description&gt;
+&lt;metadata&gt;
+- chars_current=17
+- chars_limit=5000
+&lt;/metadata&gt;
+&lt;value&gt;
+名字叫 Timber，住在多伦多。
+&lt;/value&gt;
+&lt;/human&gt;
+&lt;/memory_blocks&gt;
+</pre></div>
+
+<p>看到 <span class="mono">&lt;metadata&gt;</span> 里的 <span class="mono">chars_current / chars_limit</span> 了吗？这就是 limit 的真身：它不在写入时拦你，而是被<strong>渲染进提示</strong>、让模型自己心里有数。只读的块还会多一行 <span class="mono">read_only=true</span>。</p>
+
+<p>多张块会按顺序一张张渲染，彼此之间用空行隔开，最后整体包在一对 <span class="mono">&lt;memory_blocks&gt;</span> 标签里。模型读到的，就是这样一份结构清晰、带元信息的"卡片清单"——而不是一堆混在一起的散文。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">这把第 3 课"每步现拼上下文"接上了：core 不是常驻变量，而是<strong>每轮由 <span class="mono">Memory.compile()</span> 现渲染</strong>进 system 的一段文字。块一变，下一轮 system 就跟着变——这正是第 9 课"自我编辑"的底座。</span></div>
+
+<h2>Human 与 Persona：两个最常用的块</h2>
+<p>大多数 agent 一开张就带两张卡：<strong>human</strong>（记关于用户的事）和 <strong>persona</strong>（记 agent 自己的人设）。它们是 Block 的两个子类——<span class="mono">letta/schemas/block.py</span> 里的 <span class="mono">Human</span> / <span class="mono">Persona</span>，只是把 label 预设成了 <span class="mono">"human"</span> / <span class="mono">"persona"</span>。</p>
+
+<p>Letta 还给了一个顺手的构造器 <span class="mono">ChatMemory(persona=…, human=…)</span>，一行就建好这两张卡。它在 <span class="mono">letta/schemas/memory.py</span>，继承自 <span class="mono">BasicBlockMemory</span>。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/memory.py</span><span class="ln">ChatMemory 便捷构造</span></div>
+<pre><span class="cm"># 一行建好 persona + human 两张卡（各是一个 Block）</span>
+memory = <span class="fn">ChatMemory</span>(
+    persona=<span class="st">"我是一个友好的助手，爱用 emoji。"</span>,
+    human=<span class="st">"名字叫 Timber，住在多伦多。"</span>,
+)
+<span class="cm"># 等价于手动建 Block(label="persona") + Block(label="human")</span>
+</pre></div>
+
+<p>为什么偏偏是这两张？因为几乎每个对话 agent 都要回答两个问题：<strong>"我在跟谁说话"</strong>（human）和<strong>"我是谁、该用什么口吻"</strong>（persona）。把这两件最高频的事各给一张专卡，是经验沉淀出来的默认配置。</p>
+
+<p>当然，你完全可以再加别的卡。很多生产 agent 会另开一张 <span class="mono">task_state</span> 记当前进度、一张 <span class="mono">scratchpad</span> 当草稿纸——human / persona 只是起点，不是上限。</p>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>每个角色都有归宿。</strong>一个 Block 是 <span class="mono">letta/schemas/block.py</span> 的 <span class="mono">Block</span>（基类 <span class="mono">BaseBlock</span>，子类 <span class="mono">Human</span> / <span class="mono">Persona</span>）。<span class="mono">Memory</span>（<span class="mono">letta/schemas/memory.py</span>）持有一组 Block，<span class="mono">Memory.compile()</span> 把它们渲染成 <span class="mono">&lt;memory_blocks&gt;</span>；写入改的是 <span class="mono">block.value</span>，走 <span class="mono">Memory.update_block_value</span>。增删改查由 <span class="mono">BlockManager</span>（<span class="mono">letta/services/block_manager.py</span>）负责；多 agent 共享靠 <span class="mono">blocks_agents</span> 关联表；版本历史由 <span class="mono">BlockHistory</span>（<span class="mono">letta/orm/block_history.py</span>）记录。三个常用 schema：<span class="mono">CreateBlock</span>（建）、<span class="mono">BlockUpdate</span>（改，注意是 <span class="mono">BlockUpdate</span> 不是 UpdateBlock）、<span class="mono">Block</span>（读）。这一课只看"它们各是什么、谁来管"；增删改查与共享、版本的完整调用，第 9 课与后续会逐一动手。
+</div>
+
+<h2>三件套：建 / 改 / 读</h2>
+<p>日后用 SDK 或 REST 操作块时，你会反复打交道的就是这三个 schema。把它们并排放一张表，"哪个干哪件事"立刻清楚。</p>
+
+<table class="t">
+  <tr><th>动作</th><th>Schema</th><th>关键字段</th><th>说明</th></tr>
+  <tr><td>建块</td><td class="mono">CreateBlock</td><td>label, value, limit</td><td>label 必填、value 必填，limit 默认 10 万</td></tr>
+  <tr><td>改块</td><td class="mono">BlockUpdate</td><td>value?, limit?</td><td>字段都可选，只传想改的那个</td></tr>
+  <tr><td>读块</td><td class="mono">Block</td><td>id, label, value, limit, read_only</td><td>带 <span class="mono">block-</span> 前缀 id，可寻址</td></tr>
+</table>
+
+<p>记住一个易错点：改块是 <span class="mono">BlockUpdate</span>，字段<strong>全可选</strong>，只传你要动的那个——其余保持不变。建块是 <span class="mono">CreateBlock</span>，label 与 value 必填。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">改块时只传想动的字段：<span class="mono">BlockUpdate</span> 里没传的字段保持原值。<strong>别把"没传"误当成"清空"</strong>——真要清空，得显式传一个空字符串。</span></div>
+
+<h2>块是可共享的实体</h2>
+<p>现在揭开本课最有意思的性质。因为每张卡片有自己的 <span class="mono">block-</span> id，它就不只属于某一个 agent——<strong>多个 agent 可以挂同一张卡</strong>。</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>各自独立的块</h4>
+    <p>agent A 有自己的 human 卡，agent B 有自己的 human 卡，互不相干。</p>
+    <p class="mono" style="font-size:.82rem">A → block-aaa ；B → block-bbb</p>
+  </div>
+  <div class="col">
+    <h4>共享同一张块</h4>
+    <p>A 和 B 都挂到 <span class="mono">block-xyz</span>：一方改了，另一方下一轮就看见。</p>
+    <p class="mono" style="font-size:.82rem">A → block-xyz ← B</p>
+  </div>
+</div>
+
+<p>共享在数据库层面靠一张<strong>多对多关联表</strong>实现：<span class="mono">letta/orm/blocks_agents.py</span> 的 <span class="mono">BlocksAgents</span>，把 <span class="mono">block.id</span> 和 <span class="mono">agent.id</span> 连起来。于是"共享记忆"不需要任何额外魔法——它就是<strong>同一张卡挂到了两个 agent 上</strong>。</p>
+
+<p>这里的关键是"引用"而非"复制"：两个 agent 指向的是数据库里<strong>同一行 block</strong>。所以不存在"把内容同步过去"这一步——它们本来就读同一张卡，自然永远一致。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">共享块 = 团队共用的一块白板。一个客服团队多个 agent 共享同一张"公司政策"卡，运营改一次，全员当轮同步——<strong>一处改、处处变</strong>。</span></div>
+
+<p>共享也有要当心的地方：既然是同一张卡，一个 agent 写脏了，所有挂着它的 agent 都会读到脏内容。所以共享块更适合放"<strong>团队级、相对稳定</strong>"的事实，而不是某个 agent 的临时草稿。</p>
+
+<h2>块还是可版本化的</h2>
+<p>第二个高级性质：块有 <strong>git 式的历史</strong>。每次改动都能留下一个快照，可以回滚（undo）也可以重做（redo）。改错了不必慌。</p>
+
+<p>快照存在 <span class="mono">letta/orm/block_history.py</span> 的 <span class="mono">BlockHistory</span> 表里，每条带一个<strong>单调递增的 <span class="mono">sequence_number</span></strong>。<span class="mono">BlockManager</span>（<span class="mono">letta/services/block_manager.py</span>）提供 <span class="mono">checkpoint_block_async</span>（存档）、<span class="mono">undo_checkpoint_block</span>（撤销）、<span class="mono">redo_checkpoint_block</span>（重做）。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>改动并存档</h4><p>每次改完 value 就 checkpoint，写一条 BlockHistory（seq=1,2,3…）。</p><span class="mono">checkpoint_block_async</span></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>撤销</h4><p>回到上一个 sequence_number 的快照，value 复原。</p><span class="mono">undo_checkpoint_block</span></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>重做</h4><p>撤销错了？再前进一个快照即可。</p><span class="mono">redo_checkpoint_block</span></div></div>
+</div>
+
+<p>为什么记忆需要版本？因为 agent 会<strong>自己改自己的记忆</strong>（第 9 课的主题），改错在所难免。给每次改动留快照，等于给"会自我编辑的记忆"配了一张安全网——错了能退回去，也能审计"这条记忆是哪一步、被谁改的"。</p>
+
+<p>每条 <span class="mono">BlockHistory</span> 还记了"谁改的"（<span class="mono">actor_type / actor_id</span>）：是用户、是 agent、还是系统迁移。于是"这句话怎么进的记忆"也有据可查，调试与合规都用得上。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">还有更强形态：<span class="mono">GitEnabledBlockManager</span>（<span class="mono">letta/services/block_manager_git.py</span>）把块的历史接进<strong>真正的 git 仓库</strong>，能取某次提交时的块内容。普通版本化用 <span class="mono">BlockHistory</span> 就够了。</span></div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>块是一等、可寻址、可共享、可回滚的实体。</strong>每张卡片有自己的 <span class="mono">block-</span> id（第 6 课的 prefixed id），于是两件以前需要"额外架构"的事变得理所当然。其一，两个 agent 挂同一张 block（靠 <span class="mono">blocks_agents</span> 关联表）= <strong>共享记忆</strong>，一处改、处处变；想象一支客服团队共用一张"公司政策"卡，改一次全员同步。其二，每次改动留一份 <span class="mono">BlockHistory</span> 快照（<span class="mono">sequence_number</span> 单调递增），于是记忆能像 git 一样 <strong>undo / redo</strong>，甚至接进真正的 git 仓库（<span class="mono">GitEnabledBlockManager</span>）。换句话说，记忆<strong>不是一团 blob</strong>，而是一组有标签、有上限、有版本、能被多方引用的卡片。把"卡片"这个心智模型立起来，你会发现 Letta 的记忆系统更像一个小型数据库：行有主键、能被引用、还自带审计日志——而不是一段随手 append 的纯文本。把它和第 6 课接上：状态被外化成数据之后，"记忆"这件事就能享受数据库的一切好处——主键、引用、历史。Block 正是这套思路落在 core memory 上的产物。看清这一层，Letta 的"记忆"就不再是黑盒，而是一组你能数得清、叫得出名、还能回放的卡片。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>两件事最容易想当然，方向还正好相反。</strong>其一，<span class="mono">read_only</span> 的块 agent 真的<strong>改不动</strong>：<span class="mono">core_memory_append / core_memory_replace</span> 在动手前会先看 <span class="mono">block.read_only</span>，是 True 就直接抛错（<span class="mono">READ_ONLY_BLOCK_EDIT_ERROR</span>，见 <span class="mono">letta/services/tool_executor/core_tool_executor.py</span>）。所以"只读卡"是<strong>硬约束</strong>，不是建议。其二，<span class="mono">limit</span> 恰恰相反——它是<strong>软提示</strong>，不是硬墙。写入路径（<span class="mono">Memory.update_block_value</span>）只检查"值是不是字符串"，<strong>并不会因为超过 limit 就拒绝</strong>；limit 只是被渲染进 <span class="mono">&lt;metadata&gt;</span> 的 <span class="mono">chars_limit</span>，提醒模型自觉别写爆。别指望 limit 帮你硬性截断——那不是它的职责，要硬约束长度得在应用层自己做。记住这组对照：<strong>read_only 防的是"agent 乱改"，靠抛错硬挡；limit 管的是"别写太长"，靠提示软劝。</strong>把两者用反，要么挡不住、要么白等一场。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>共享块怎么实现（<span class="mono">blocks_agents</span> 多对多）？</summary><div class="acc-body">
+<p><strong>示例：</strong>一个客服团队有 5 个 agent，都要遵守同一份"退款政策"。与其在 5 张卡上各写一遍，不如建一张 <span class="mono">block-policy</span>，5 个 agent 全挂上去。</p>
+<p><strong>怎么实现：</strong>靠 <span class="mono">letta/orm/blocks_agents.py</span> 的 <span class="mono">BlocksAgents</span> 关联表（表名 <span class="mono">blocks_agents</span>），把 <span class="mono">block.id</span> 与 <span class="mono">agent.id</span> 多对多连接。挂载即共享，无需复制内容。</p>
+<p><strong>一处改、处处变：</strong>任一 agent（或管理员）改了这张卡的 value，其余 agent 下一轮 <span class="mono">Memory.compile()</span> 就读到新值——因为它们引用的是<strong>同一行</strong>。</p>
+<p><strong>注意边界：</strong>共享的是<strong>同一张块</strong>，不是各自一份副本。所以谁都别假设"我改的只影响自己"——共享块上的每次改动，对所有挂着它的 agent 都即时可见。</p>
+<p><strong>还有什么替代：</strong>给每个 agent 各复制一份——会漂移、难同步。共享同一张块从根上消除了不一致。</p>
+</div></details>
+
+<details class="accordion"><summary>块的版本历史与 undo / redo 怎么做？</summary><div class="acc-body">
+<p><strong>示例：</strong>agent 把 human 卡里"住在多伦多"误改成"住在温哥华"。有了历史，一次 undo 就回去了。</p>
+<p><strong>怎么实现：</strong>每次 checkpoint 往 <span class="mono">letta/orm/block_history.py</span> 的 <span class="mono">BlockHistory</span> 写一行快照，带单调递增的 <span class="mono">sequence_number</span>。<span class="mono">BlockManager</span> 的 <span class="mono">undo_checkpoint_block</span> / <span class="mono">redo_checkpoint_block</span> 就在序号间前后移动。</p>
+<p><strong>更强形态：</strong><span class="mono">GitEnabledBlockManager</span>（<span class="mono">block_manager_git.py</span>）把历史接进真正的 git 仓库，可取某次提交时的块内容。</p>
+<p><strong>和第 9 课的关系：</strong>正因为 agent 能自我编辑记忆，版本历史才格外有用——它是"会改自己的系统"的一颗后悔药。</p>
+<p><strong>还有什么替代：</strong>不留历史——改错就回不去。审计与回滚，是把记忆当"数据"而非"草稿"的必备能力。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">limit</span> 与 <span class="mono">read_only</span> 的取舍</summary><div class="acc-body">
+<p><strong>示例：</strong>你想保证某张"系统规则"卡 agent 绝不能自己改，于是设 <span class="mono">read_only=True</span>；又担心 persona 卡被写得太长，于是设一个 <span class="mono">limit</span>。</p>
+<p><strong>read_only 是硬的：</strong><span class="mono">core_memory_append / replace</span> 改之前检查 read_only，是 True 就抛 <span class="mono">READ_ONLY_BLOCK_EDIT_ERROR</span>（<span class="mono">core_tool_executor.py</span>）。agent 真的改不动。</p>
+<p><strong>limit 是软的：</strong>写入路径不因超限拒绝，只把 <span class="mono">chars_limit</span> 渲染进 metadata 提示模型。要硬性约束长度，得在应用层自己做。</p>
+<p><strong>还有什么替代：</strong>把 limit 当硬墙用——会落空。理解"一个硬、一个软"，才不会用错工具。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">Human</span> / <span class="mono">Persona</span> 与自定义块</summary><div class="acc-body">
+<p><strong>示例：</strong>除了 human / persona，你还能建任意 label 的块，比如 <span class="mono">task_state</span>（当前任务进度）、<span class="mono">preferences</span>（用户偏好）。</p>
+<p><strong>怎么实现：</strong><span class="mono">Human</span> / <span class="mono">Persona</span> 只是把 label 预设成 <span class="mono">"human"</span> / <span class="mono">"persona"</span> 的 Block 子类（<span class="mono">block.py</span>）。自定义块就是 <span class="mono">Block(label="task_state", …)</span>，或用 <span class="mono">CreateBlock(label=…)</span> 建。</p>
+<p><strong>为什么：</strong>把不同主题分到不同 label 的卡上，比塞进一张大卡更清晰，也便于<strong>分别共享、分别设 read_only</strong>。</p>
+<p><strong>还有什么替代：</strong>所有东西塞进一张 persona——可读性差、没法分别授权与共享。分卡是更结构化的做法。</p>
+</div></details>
+
+<h2>把零件串起来：改一张卡会发生什么</h2>
+<p>用一个最小流程把本课的零件串起来。假设 agent 学到"用户其实住在温哥华"，要更新 human 这张卡。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>按 label 找卡</h4><p>调 <span class="mono">core_memory_replace(label="human", …)</span>，靠 label 定位到那张卡。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>过 read_only 关</h4><p>工具先看这张卡是不是只读；不是，才继续往下。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>改的是 value</h4><p>把旧内容替换成新内容，新值写回 <span class="mono">Memory</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>重渲染进 system</h4><p>下一轮 <span class="mono">Memory.compile()</span> 把新 value 渲染进 <span class="mono">&lt;memory_blocks&gt;</span>。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>留一份快照</h4><p>若开了版本化，这次改动写一条 <span class="mono">BlockHistory</span>，改错可 undo。</p></div></div>
+</div>
+
+<p>看，本课每个零件都派上了用场：<strong>label 寻址、read_only 把关、value 承载内容、compile 渲染、history 留底</strong>。第 9 课会把第一步那只"手"——agent 怎么决定调用 <span class="mono">core_memory_replace</span>——讲到底。</p>
+
+<h2>下一站：从"卡片"到"改卡片的手"</h2>
+<p>这一课把 core memory 拆到了最小单位——<span class="mono">Block</span>。你现在知道一张卡有哪四个字段、怎么被渲染进 system、怎么被共享和回滚。第 7 课三层地图里 core 那一格，已经被你彻底拆开了。</p>
+
+<p>第 9 课接着问最关键的一步：agent 到底怎么"<strong>自己改</strong>"这些卡片？答案藏在 <span class="mono">core_memory_append / replace</span> 改 <span class="mono">block.value</span>、再触发 system 重建的闭环里。记忆块是<strong>被改的对象</strong>，第 9 课讲的是那只<strong>改它的手</strong>。带着"卡片"这个模型往下读，自我编辑就不再神秘。</p>
+
+<p>快速回放一遍这张"卡片清单"：一个 Block 有 <span class="mono">label / value / limit / read_only</span> 四个字段；<span class="mono">Memory</span> 收着一叠块，<span class="mono">compile()</span> 把它们渲染进 system；块可寻址、可共享（<span class="mono">blocks_agents</span>）、可回滚（<span class="mono">BlockHistory</span>）。四个字段、三个性质，就是 core memory 的全部骨架——把这副骨架记牢，第 9 到 12 课无非是把它逐个性质放大、各拍一张特写。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>Block 是 core 的最小单位</strong>：四个核心字段 <span class="mono">label / value / limit / read_only</span>（<span class="mono">letta/schemas/block.py</span>）。</li>
+    <li><strong>Memory 是 Block 的集合</strong>：<span class="mono">Memory.compile()</span> 把每张卡渲染成 system 里的 <span class="mono">&lt;memory_blocks&gt;</span> 文本（<span class="mono">letta/schemas/memory.py</span>）。</li>
+    <li><strong>改记忆 = 改 block 的 value</strong>，靠 label 寻址；<span class="mono">Human</span> / <span class="mono">Persona</span> 是预设 label 的子类，<span class="mono">ChatMemory</span> 一行建好两张卡。</li>
+    <li><strong>三件套</strong>：<span class="mono">CreateBlock</span> 建、<span class="mono">BlockUpdate</span> 改（不是 UpdateBlock）、<span class="mono">Block</span> 读。</li>
+    <li><strong>块可共享</strong>：靠 <span class="mono">blocks_agents</span> 多对多关联表，多个 agent 挂同一张 <span class="mono">block-…</span> = 共享记忆。</li>
+    <li><strong>块可版本化</strong>：<span class="mono">BlockHistory</span>（<span class="mono">sequence_number</span>）+ <span class="mono">BlockManager</span> 的 checkpoint / undo / redo；<span class="mono">GitEnabledBlockManager</span> 接真 git。</li>
+    <li><strong>两个坑</strong>：read_only 块 agent 改不动（<span class="mono">core_memory_*</span> 抛错，硬约束）；limit 是软提示（写进 metadata，不在写入路径硬拦）。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. core memory 的“最小单位”是什么？一个它有哪几个核心字段？</div>
+  <ol class="opts">
+    <li>Block（记忆块）——核心字段是 label / value / limit / read_only</li>
+    <li>Passage（段落）——带向量的长期段落就是 core 的单位</li>
+    <li>Message（消息）——每条消息就是一个核心记忆单位</li>
+    <li>字符——core memory 就是一长串字符，没有更小的结构</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。core memory 的原子是 Block（letta/schemas/block.py），核心字段四个：label（标签/寻址钥匙）、value（内容）、limit（字符上限）、read_only（能否被 agent 改）。Memory 是 Block 的集合，Memory.compile() 把它们渲染成 system 里的 &lt;memory_blocks&gt; 文本。Message / Passage 分别属于 recall / archival，不是 core 的单位。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. agent A 和 agent B 都挂上了同一个 block-xyz。A 改了这张卡，会发生什么？</div>
+  <ol class="opts">
+    <li>B 下一轮 Memory.compile() 就读到新值——因为两者引用的是同一行 block（blocks_agents 多对多）</li>
+    <li>什么都不会变，B 有自己独立的副本，需要手动同步</li>
+    <li>A 的改动会被拒绝，因为共享块自动变成 read_only</li>
+    <li>系统会复制一份给 B，从此两者各走各的</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。块是可寻址、可共享的一等实体：共享靠 letta/orm/blocks_agents.py 的 BlocksAgents 关联表把 block.id 与 agent.id 多对多连接。两个 agent 引用的是“同一行”，所以一处改、处处变，无需任何同步步骤——这正是“共享记忆”的实现。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 关于 read_only 与 limit，下面哪句是对的？</div>
+  <ol class="opts">
+    <li>两个都是硬约束：超 limit 会被直接拒绝，改 read_only 也会被拒绝</li>
+    <li>read_only 是软提示，limit 才是硬性截断的那个</li>
+    <li>两个都是软提示：只是写进提示给模型看，都不会真的拦</li>
+    <li>read_only 是硬约束（core_memory_* 会抛错），limit 是软提示（只渲染进 metadata，写入路径不拦超限）</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。方向正好相反：core_memory_append / replace 改之前检查 block.read_only，是 True 就抛 READ_ONLY_BLOCK_EDIT_ERROR（core_tool_executor.py）——硬约束。而 limit 不在写入路径拦你：update_block_value 只校验“值是字符串”，limit 仅被渲染成 &lt;metadata&gt; 里的 chars_limit 提醒模型——软提示。要硬性限长得在应用层自己做。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>假设你在搭一个客服 agent 团队：有一份全员必须遵守、谁都不能私自改的“退款政策”，还有每个 agent 各自记录的“当前对话进度”。你会怎么用 Block 的 label / read_only、共享（blocks_agents）和版本（BlockHistory）来设计这两类记忆？分别说说为什么。</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Lesson 7 gave you the three-tier map: core is in-window and self-editable. This lesson zooms in on core's <strong>smallest unit — the memory Block</strong>. You'll find core memory isn't a blob of text, but a set of <strong>structured cards</strong>.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+A Block has just four core fields: <span class="mono">label / value / limit / read_only</span>. Those four fields carry three big ideas — shareable, versioned, self-editable. By the end you'll know exactly what Lesson 9's "self-editing memory" is editing.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture core memory as a whiteboard in front of the agent.</strong> It isn't one big sheet scribbled freely; it's covered with <strong>zoned sticky notes</strong>: one says "who the user is" (<span class="mono">label: human</span>), one says "who I am" (<span class="mono">label: persona</span>). Each note has a heading (label), content (value), a size (limit — when it's nearly full it nudges you to stop), and maybe a "read-only" stamp (read_only — the agent can't edit it). Editing memory means <strong>peeling off one note and rewriting it</strong> — not wiping the whole board. Notes can also move between boards, be read by two people, or be peeled off and re-stuck — exactly the "sharing" and "versioning" coming later. Keep this sticky-note whiteboard in mind; every conclusion flows from it.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>Grab this lesson in one line: core memory is a set of Blocks; each Block is a card with four fields — <span class="mono">label / value / limit / read_only</span>; <span class="mono">Memory</span> is the collection of those cards, and <span class="mono">Memory.compile()</span> renders them into the <span class="mono">&lt;memory_blocks&gt;</span> text of the system prompt.</strong> Better still, a block is a <strong>first-class entity</strong>: each card has its own <span class="mono">block-…</span> id, so it can be shared by multiple agents and rolled back like git. Remember the word "card" — memory isn't a blob, it's a stack of labeled, size-limited, versioned cards. Four fields, three properties (addressable, shareable, versioned) are the whole skeleton; every later section just adds flesh.
+</div>
+
+<h2>Block: core memory's smallest unit</h2>
+<p>Lesson 7 said core is "a set of Blocks." Now let's split the stack and look at one card. A Block is just a <strong>reserved slice</strong> of the LLM's context — the <span class="mono">Block</span> class in <span class="mono">letta/schemas/block.py</span>.</p>
+
+<p>It has surprisingly few fields; only four really matter: <strong>label</strong> (what the card is called), <strong>value</strong> (what's written on it), <strong>limit</strong> (max characters), <strong>read_only</strong> (can the agent edit it). The rest is template / project / tag metadata.</p>
+
+<p>This "few fields, strong semantics" design is deliberate: fewer fields mean the agent is less likely to misfill a tool call; clearer semantics mean the model knows what each field is for. Letta puts <strong>"easy to use" ahead of "feature-complete."</strong></p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>Anatomy of a Block</b>: four fields, each does one job</div>
+  <div class="cells">
+    <span class="cell hl">label · the tag</span>
+    <span class="sep">·</span>
+    <span class="cell">value · the content</span>
+    <span class="sep">·</span>
+    <span class="cell q">limit · char cap</span>
+    <span class="sep">·</span>
+    <span class="cell scale">read_only · locked?</span>
+  </div>
+</div>
+
+<div class="cute"><div class="row"><span class="emoji">📝</span><span class="bubble">label: human · "name is Timber"</span></div>
+<div class="cap">A Block is one sticky note in front of the agent: a tag, content, and a character cap</div></div>
+
+<p>Some worry "so few fields — is that enough?" That restraint is exactly what makes a Block easy to grasp and operate. Complexity isn't piled onto fields; it's expressed by <strong>composing many simple cards</strong> — the same philosophy as Unix's "small tools, combined."</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">Remember one line: core memory's "atom" is the <strong>Block</strong>, not the character. Every operation on memory — read, write, share, roll back — works on a <strong>whole card</strong>.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/block.py</span><span class="ln">Block's core fields (simplified)</span></div>
+<pre><span class="cm"># A Block = a reserved slice of context; these four fields are the point</span>
+<span class="kw">class</span> <span class="fn">Block</span>(BaseBlock):
+    value: str                                  <span class="cm"># content on the card (required)</span>
+    limit: int = CORE_MEMORY_BLOCK_CHAR_LIMIT   <span class="cm"># char cap, default 100k</span>
+    label: Optional[str] = <span class="kw">None</span>             <span class="cm"># tag: human / persona / …</span>
+    read_only: bool = <span class="kw">False</span>                 <span class="cm"># if true, the agent can't edit it</span>
+    id: str  <span class="cm"># block-… prefix: addressable, shareable, versionable</span>
+</pre></div>
+
+<p>Note that last <span class="mono">id</span>: it carries a <span class="mono">block-</span> prefix (prefixed ids, Lesson 6). Because each card has its own <strong>stable id</strong>, a block becomes an addressable, shareable first-class entity — the setup for the second half of this lesson.</p>
+
+<h2>Why slice core into separate blocks</h2>
+<p>You might ask: since core ends up as one block of text anyway, why slice it into blocks instead of one big chunk? The answer echoes Lesson 7's "tiering" — <strong>trade structure for control</strong>.</p>
+
+<p>First payoff: <strong>addressability</strong>. To edit "about the user," the agent just names <span class="mono">label="human"</span> — without touching the persona card. One big chunk can't pinpoint like that.</p>
+
+<p>Second payoff: <strong>per-card permissions</strong>. The system-rules card can be <span class="mono">read_only</span> on its own, while the preferences card stays freely editable by the agent. Granularity on cards means permissions on cards.</p>
+
+<p>Third payoff: <strong>per-card sharing and rollback</strong>. A "company policy" card can be shared with a whole team and keep its own version history, without disturbing other cards. The more independent the block, the more natural these abilities.</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">One line: <strong>slicing memory into blocks lets "addressing, permissions, sharing, rollback" each target a single card.</strong> In one big chunk everything is tangled, and these abilities are impossible.</span></div>
+
+<h2>Three fields, each does one job</h2>
+<p>Let's detail the three most important of the four fields, since Lessons 9–12 use them constantly. The punchline: <strong>label is the key, value is the content, limit is the budget.</strong></p>
+
+<p><strong>label: the card's heading, and the key tools address by.</strong> To edit memory the agent writes <span class="mono">core_memory_replace(label="human", …)</span> — label is how it finds the card. Without the right label, it can't tell which card to change.</p>
+
+<p><strong>value: the content that actually enters the system.</strong> When <span class="mono">Memory.compile()</span> renders, it drops value verbatim into the <span class="mono">&lt;value&gt;</span> tag — so "editing memory" is essentially editing some block's value.</p>
+
+<p><strong>limit: the card's character budget.</strong> It <strong>does not hard-stop</strong> you from overflowing (many assume it does — see "Pitfalls"); instead it's written into the system prompt to remind the model how much room is left.</p>
+
+<p>The easiest pair to confuse is label vs value: label is the card's <strong>name</strong>, relatively fixed, rarely changed by the agent; value is the card's <strong>content</strong>, edited often. In short — label decides "which card this is," value decides "what's on it right now."</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">label is the tool's "house number": the first argument of <span class="mono">core_memory_append / replace</span> is label — it turns "which card to edit" into an ordinary lookup by name.</span></div>
+
+<h2>How a Block becomes text in the system</h2>
+<p>core is "always in-window" thanks to one render per turn. <span class="mono">Memory</span> is the collection of Blocks (the <span class="mono">Memory</span> class in <span class="mono">letta/schemas/memory.py</span>), and <span class="mono">Memory.compile()</span> stitches each card into a labeled block of text at the very front of the system prompt.</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">Blocks</div><div class="nd">human / persona …</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Memory.compile()</div><div class="nd">render per block</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">&lt;memory_blocks&gt;</div><div class="nd">labeled text</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">into system</div><div class="nd">message #0</div></div>
+</div>
+
+<p>This chain reruns every turn — so core looks "always there," but it's actually <strong>re-rendered</strong> repeatedly. When blocks don't change, the render is stable (prefix-cache friendly, Lesson 5); only when a block changes does the render change, taking effect next turn.</p>
+
+<p>What does it look like? Below is a simplified <span class="mono">Memory.compile()</span> output — each card becomes an XML-style block with label, metadata, and content laid out clearly.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/memory.py</span><span class="ln">Memory.compile() output (simplified)</span></div>
+<pre><span class="cm"># each Block renders into one section; chars_current / chars_limit show the model its budget</span>
+&lt;memory_blocks&gt;
+&lt;human&gt;
+&lt;description&gt; facts about the user &lt;/description&gt;
+&lt;metadata&gt;
+- chars_current=33
+- chars_limit=5000
+&lt;/metadata&gt;
+&lt;value&gt;
+Name is Timber, lives in Toronto.
+&lt;/value&gt;
+&lt;/human&gt;
+&lt;/memory_blocks&gt;
+</pre></div>
+
+<p>See <span class="mono">chars_current / chars_limit</span> in <span class="mono">&lt;metadata&gt;</span>? That's the true face of limit: it doesn't block you on write, it's <strong>rendered into the prompt</strong> so the model is aware. A read-only block adds a <span class="mono">read_only=true</span> line.</p>
+
+<p>Multiple blocks render one after another, separated by blank lines, all wrapped in a single pair of <span class="mono">&lt;memory_blocks&gt;</span> tags. What the model reads is exactly this clean, metadata-tagged <strong>card list</strong> — not a pile of tangled prose.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">This connects to Lesson 3's "assemble context every step": core isn't a resident variable, it's text <strong>re-rendered into system each turn</strong> by <span class="mono">Memory.compile()</span>. Change a block and the next turn's system follows — the foundation of Lesson 9's "self-editing."</span></div>
+
+<h2>Human and Persona: the two most common blocks</h2>
+<p>Most agents start with two cards: <strong>human</strong> (facts about the user) and <strong>persona</strong> (the agent's own persona). They're two Block subclasses — <span class="mono">Human</span> / <span class="mono">Persona</span> in <span class="mono">letta/schemas/block.py</span> — that simply preset label to <span class="mono">"human"</span> / <span class="mono">"persona"</span>.</p>
+
+<p>Letta also gives a handy constructor, <span class="mono">ChatMemory(persona=…, human=…)</span>, building both cards in one line. It lives in <span class="mono">letta/schemas/memory.py</span> and extends <span class="mono">BasicBlockMemory</span>.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/memory.py</span><span class="ln">ChatMemory convenience constructor</span></div>
+<pre><span class="cm"># build persona + human in one line (each is a Block)</span>
+memory = <span class="fn">ChatMemory</span>(
+    persona=<span class="st">"I'm a friendly assistant who loves emoji."</span>,
+    human=<span class="st">"Name is Timber, lives in Toronto."</span>,
+)
+<span class="cm"># equivalent to Block(label="persona") + Block(label="human")</span>
+</pre></div>
+
+<p>Why these two? Because nearly every chat agent answers two questions: <strong>"who am I talking to"</strong> (human) and <strong>"who am I, in what tone"</strong> (persona). Giving each high-frequency concern its own card is a battle-tested default.</p>
+
+<p>Of course you can add more cards. Many production agents open a <span class="mono">task_state</span> card for progress and a <span class="mono">scratchpad</span> for drafts — human / persona are a starting point, not a ceiling.</p>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Every role has a home.</strong> A Block is the <span class="mono">Block</span> in <span class="mono">letta/schemas/block.py</span> (base <span class="mono">BaseBlock</span>, subclasses <span class="mono">Human</span> / <span class="mono">Persona</span>). <span class="mono">Memory</span> (<span class="mono">letta/schemas/memory.py</span>) holds a set of Blocks, and <span class="mono">Memory.compile()</span> renders them into <span class="mono">&lt;memory_blocks&gt;</span>; a write changes <span class="mono">block.value</span> via <span class="mono">Memory.update_block_value</span>. CRUD goes through <span class="mono">BlockManager</span> (<span class="mono">letta/services/block_manager.py</span>); multi-agent sharing uses the <span class="mono">blocks_agents</span> join table; version history is recorded by <span class="mono">BlockHistory</span> (<span class="mono">letta/orm/block_history.py</span>). Three common schemas: <span class="mono">CreateBlock</span> (create), <span class="mono">BlockUpdate</span> (update — note it's <span class="mono">BlockUpdate</span>, not UpdateBlock), <span class="mono">Block</span> (read). This lesson only covers "what they are and who manages them"; the full CRUD, sharing, and versioning calls are exercised in Lesson 9 onward.
+</div>
+
+<h2>The trio: create / update / read</h2>
+<p>When you later operate on blocks via SDK or REST, these three schemas are what you keep dealing with. Put them side by side and "which does what" is instantly clear.</p>
+
+<table class="t">
+  <tr><th>Action</th><th>Schema</th><th>Key fields</th><th>Notes</th></tr>
+  <tr><td>create</td><td class="mono">CreateBlock</td><td>label, value, limit</td><td>label &amp; value required; limit defaults to 100k</td></tr>
+  <tr><td>update</td><td class="mono">BlockUpdate</td><td>value?, limit?</td><td>all fields optional; pass only what you change</td></tr>
+  <tr><td>read</td><td class="mono">Block</td><td>id, label, value, limit, read_only</td><td><span class="mono">block-</span> prefixed id, addressable</td></tr>
+</table>
+
+<p>Remember an easy trap: updating is <span class="mono">BlockUpdate</span>, all fields <strong>optional</strong>, pass only the one you want to change — the rest stay put. Creating is <span class="mono">CreateBlock</span>, with label and value required.</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">When updating, pass only the fields you mean to change: any field omitted from <span class="mono">BlockUpdate</span> keeps its old value. <strong>Don't mistake "omitted" for "cleared"</strong> — to clear, explicitly pass an empty string.</span></div>
+
+<h2>Blocks are shareable entities</h2>
+<p>Now the most interesting property. Because each card has its own <span class="mono">block-</span> id, it doesn't belong to just one agent — <strong>multiple agents can attach the same card</strong>.</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>Separate blocks</h4>
+    <p>agent A has its own human card, agent B has its own — unrelated.</p>
+    <p class="mono" style="font-size:.82rem">A → block-aaa ; B → block-bbb</p>
+  </div>
+  <div class="col">
+    <h4>Sharing one block</h4>
+    <p>A and B both attach <span class="mono">block-xyz</span>: one edits, the other sees it next turn.</p>
+    <p class="mono" style="font-size:.82rem">A → block-xyz ← B</p>
+  </div>
+</div>
+
+<p>Sharing is implemented at the database layer by a <strong>many-to-many join table</strong>: <span class="mono">BlocksAgents</span> in <span class="mono">letta/orm/blocks_agents.py</span>, linking <span class="mono">block.id</span> and <span class="mono">agent.id</span>. So "shared memory" needs no extra magic — it's just <strong>the same card attached to two agents</strong>.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">A shared block = a whiteboard the team shares. Several agents in a support team share one "company policy" card; ops edits it once and everyone syncs that turn — <strong>change once, change everywhere</strong>.</span></div>
+
+<p>Sharing has a catch too: since it's the same card, if one agent writes garbage, every agent attached to it reads that garbage. So shared blocks suit "<strong>team-level, relatively stable</strong>" facts, not one agent's scratch notes.</p>
+
+<h2>Blocks are versioned too</h2>
+<p>A second advanced property: blocks have <strong>git-style history</strong>. Every change can leave a snapshot you can undo and redo. A wrong edit isn't a disaster.</p>
+
+<p>Snapshots live in the <span class="mono">BlockHistory</span> table (<span class="mono">letta/orm/block_history.py</span>), each with a <strong>monotonically increasing <span class="mono">sequence_number</span></strong>. <span class="mono">BlockManager</span> (<span class="mono">letta/services/block_manager.py</span>) offers <span class="mono">checkpoint_block_async</span> (save), <span class="mono">undo_checkpoint_block</span> (undo), <span class="mono">redo_checkpoint_block</span> (redo).</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>edit and checkpoint</h4><p>After each value change, checkpoint writes a BlockHistory row (seq=1,2,3…).</p><span class="mono">checkpoint_block_async</span></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>undo</h4><p>Step back to the previous sequence_number's snapshot; value is restored.</p><span class="mono">undo_checkpoint_block</span></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>redo</h4><p>Undid by mistake? Step forward one snapshot.</p><span class="mono">redo_checkpoint_block</span></div></div>
+</div>
+
+<p>Why version a memory? Because the agent <strong>edits its own memory</strong> (Lesson 9's topic), and mistakes happen. Snapshotting each change is a safety net for "memory that edits itself" — you can roll back, and audit "which step changed this, and who."</p>
+
+<p>Each <span class="mono">BlockHistory</span> also records "who changed it" (<span class="mono">actor_type / actor_id</span>): the user, the agent, or a system migration. So "how did this sentence get into memory" is traceable — handy for debugging and compliance.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">There's an even stronger form: <span class="mono">GitEnabledBlockManager</span> (<span class="mono">letta/services/block_manager_git.py</span>) wires block history into a <strong>real git repo</strong>, letting you fetch a block's content at a given commit. For ordinary versioning, <span class="mono">BlockHistory</span> is enough.</span></div>
+
+<div class="card spark">
+  <div class="tag">💡 The spark</div>
+  <strong>A block is a first-class, addressable, shareable, rollbackable entity.</strong> Each card has its own <span class="mono">block-</span> id (the prefixed id of Lesson 6), which makes two things that used to need "extra architecture" feel obvious. First, two agents attaching the same block (via the <span class="mono">blocks_agents</span> join table) = <strong>shared memory</strong>, change once / change everywhere; picture a support team sharing one "company policy" card, edited once and synced for all. Second, every change leaves a <span class="mono">BlockHistory</span> snapshot (monotonic <span class="mono">sequence_number</span>), so memory can <strong>undo / redo</strong> like git, even wired into a real git repo (<span class="mono">GitEnabledBlockManager</span>). In other words, memory <strong>isn't a blob</strong>, it's a set of labeled, size-limited, versioned cards that multiple parties can reference. Stand the "card" model up and Letta's memory looks more like a small database — rows with primary keys, referencable, with an audit log — than a string you append to. Tie it back to Lesson 6: once state is externalized into data, "memory" enjoys all the perks of a database — keys, references, history. Block is that idea applied to core memory. See this layer clearly and Letta's "memory" stops being a black box and becomes a set of cards you can count, name, and replay.
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Pitfalls</div>
+  <strong>Two things are easy to assume — and they point in opposite directions.</strong> First, a <span class="mono">read_only</span> block really <strong>can't be edited</strong> by the agent: <span class="mono">core_memory_append / core_memory_replace</span> check <span class="mono">block.read_only</span> before acting, and on True they raise (<span class="mono">READ_ONLY_BLOCK_EDIT_ERROR</span>, see <span class="mono">letta/services/tool_executor/core_tool_executor.py</span>). So a "read-only card" is a <strong>hard constraint</strong>, not a suggestion. Second, <span class="mono">limit</span> is the opposite — a <strong>soft hint</strong>, not a hard wall. The write path (<span class="mono">Memory.update_block_value</span>) only checks "is the value a string," and <strong>won't reject for exceeding limit</strong>; limit is merely rendered into <span class="mono">&lt;metadata&gt;</span> as <span class="mono">chars_limit</span> to nudge the model. Don't count on limit to truncate for you — that's not its job; to hard-bound length, do it at the application layer. Remember the contrast: read_only guards against "the agent messing things up," enforced by raising; limit manages "don't write too long," nudged by a hint. Swap the two and you'll either fail to block or wait in vain.
+</div>
+
+<h2>Going deeper</h2>
+
+<details class="accordion"><summary>How is block sharing implemented (<span class="mono">blocks_agents</span> many-to-many)?</summary><div class="acc-body">
+<p><strong>Example:</strong> a support team has 5 agents, all bound by the same "refund policy." Rather than writing it on 5 cards, create one <span class="mono">block-policy</span> and attach all 5 agents.</p>
+<p><strong>How:</strong> via the <span class="mono">BlocksAgents</span> join table in <span class="mono">letta/orm/blocks_agents.py</span> (table <span class="mono">blocks_agents</span>), linking <span class="mono">block.id</span> and <span class="mono">agent.id</span> many-to-many. Attaching is sharing — no content copy.</p>
+<p><strong>Change once, change everywhere:</strong> any agent (or an admin) edits this card's value and the others read the new value on their next <span class="mono">Memory.compile()</span> — because they reference the <strong>same row</strong>.</p>
+<p><strong>Boundary note:</strong> what's shared is <strong>one card</strong>, not per-agent copies. So nobody should assume "my edit only affects me" — every change on a shared block is instantly visible to all agents attached.</p>
+<p><strong>Alternative:</strong> copy a card per agent — drifts, hard to sync. Sharing one block removes inconsistency at the root.</p>
+</div></details>
+
+<details class="accordion"><summary>How do block history and undo / redo work?</summary><div class="acc-body">
+<p><strong>Example:</strong> the agent mis-edits the human card from "lives in Toronto" to "lives in Vancouver." With history, one undo reverts it.</p>
+<p><strong>How:</strong> each checkpoint writes a snapshot row to <span class="mono">BlockHistory</span> (<span class="mono">letta/orm/block_history.py</span>) with a monotonic <span class="mono">sequence_number</span>. <span class="mono">BlockManager</span>'s <span class="mono">undo_checkpoint_block</span> / <span class="mono">redo_checkpoint_block</span> move backward and forward across the numbers.</p>
+<p><strong>Tie to Lesson 9:</strong> precisely because the agent self-edits memory, history is so useful — it's the "undo button" for a system that rewrites itself.</p>
+<p><strong>Stronger form:</strong> <span class="mono">GitEnabledBlockManager</span> (<span class="mono">block_manager_git.py</span>) wires history into a real git repo, fetching a block's content at a given commit.</p>
+<p><strong>Alternative:</strong> keep no history — a wrong edit is unrecoverable. Audit and rollback are essential to treating memory as "data," not a "draft."</p>
+</div></details>
+
+<details class="accordion"><summary>The trade-offs of <span class="mono">limit</span> vs <span class="mono">read_only</span></summary><div class="acc-body">
+<p><strong>Example:</strong> you want a "system rules" card the agent can never self-edit, so set <span class="mono">read_only=True</span>; and you worry the persona card grows too long, so set a <span class="mono">limit</span>.</p>
+<p><strong>read_only is hard:</strong> <span class="mono">core_memory_append / replace</span> check read_only before editing and raise <span class="mono">READ_ONLY_BLOCK_EDIT_ERROR</span> on True (<span class="mono">core_tool_executor.py</span>). The agent truly can't edit it.</p>
+<p><strong>limit is soft:</strong> the write path doesn't reject on overflow; it only renders <span class="mono">chars_limit</span> into metadata to nudge the model. To hard-bound length, do it at the application layer.</p>
+<p><strong>Alternative:</strong> using limit as a hard wall — it won't hold. Understand "one hard, one soft" and you won't reach for the wrong tool.</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">Human</span> / <span class="mono">Persona</span> and custom blocks</summary><div class="acc-body">
+<p><strong>Example:</strong> beyond human / persona, you can create blocks with any label, e.g. <span class="mono">task_state</span> (current progress) or <span class="mono">preferences</span> (user prefs).</p>
+<p><strong>How:</strong> <span class="mono">Human</span> / <span class="mono">Persona</span> are just Block subclasses that preset label to <span class="mono">"human"</span> / <span class="mono">"persona"</span> (<span class="mono">block.py</span>). A custom block is <span class="mono">Block(label="task_state", …)</span>, or created via <span class="mono">CreateBlock(label=…)</span>.</p>
+<p><strong>Why:</strong> splitting topics across labeled cards is clearer than one big card, and lets you <strong>share and set read_only per card</strong>.</p>
+<p><strong>Alternative:</strong> stuff everything into one persona — poor readability, no per-card authorization or sharing. Splitting into cards is the more structured approach.</p>
+</div></details>
+
+<h2>Pulling the parts together: what happens when you edit a card</h2>
+<p>Let's wire the lesson's parts into one minimal flow. Say the agent learns "the user actually lives in Vancouver" and needs to update the human card.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>find the card by label</h4><p>Call <span class="mono">core_memory_replace(label="human", …)</span>, locating the card by label.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>pass the read_only gate</h4><p>The tool first checks whether this card is read-only; only if not does it continue.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>edit the value</h4><p>Replace old content with new; the new value is written back to <span class="mono">Memory</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>re-render into system</h4><p>Next turn <span class="mono">Memory.compile()</span> renders the new value into <span class="mono">&lt;memory_blocks&gt;</span>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>leave a snapshot</h4><p>If versioning is on, the change writes a <span class="mono">BlockHistory</span> row; a wrong edit can be undone.</p></div></div>
+</div>
+
+<p>See — every part of this lesson pulls its weight: <strong>label addresses, read_only guards, value carries content, compile renders, history records</strong>. Lesson 9 takes step one — how the agent decides to call <span class="mono">core_memory_replace</span> — all the way down.</p>
+
+<h2>Next stop: from "card" to "the hand that edits it"</h2>
+<p>This lesson split core memory down to its smallest unit — the <span class="mono">Block</span>. You now know a card's four fields, how it's rendered into system, and how it's shared and rolled back. The core cell of Lesson 7's three-tier map is now fully unpacked.</p>
+
+<p>Lesson 9 asks the crucial next step: how does the agent <strong>edit these cards itself</strong>? The answer lives in the loop where <span class="mono">core_memory_append / replace</span> change <span class="mono">block.value</span> and trigger a system rebuild. The memory block is the <strong>object being edited</strong>; Lesson 9 is about the <strong>hand that edits it</strong>. Read on with the "card" model and self-editing won't feel mysterious.</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>Block is core's smallest unit</strong>: four core fields <span class="mono">label / value / limit / read_only</span> (<span class="mono">letta/schemas/block.py</span>).</li>
+    <li><strong>Memory is the collection of Blocks</strong>: <span class="mono">Memory.compile()</span> renders each card into the <span class="mono">&lt;memory_blocks&gt;</span> text in system (<span class="mono">letta/schemas/memory.py</span>).</li>
+    <li><strong>Editing memory = editing a block's value</strong>, addressed by label; <span class="mono">Human</span> / <span class="mono">Persona</span> are label-preset subclasses, and <span class="mono">ChatMemory</span> builds both cards in one line.</li>
+    <li><strong>The trio</strong>: <span class="mono">CreateBlock</span> create, <span class="mono">BlockUpdate</span> update (not UpdateBlock), <span class="mono">Block</span> read.</li>
+    <li><strong>Blocks are shareable</strong>: via the <span class="mono">blocks_agents</span> many-to-many table, multiple agents attach the same <span class="mono">block-…</span> = shared memory.</li>
+    <li><strong>Blocks are versioned</strong>: <span class="mono">BlockHistory</span> (<span class="mono">sequence_number</span>) + <span class="mono">BlockManager</span>'s checkpoint / undo / redo; <span class="mono">GitEnabledBlockManager</span> wires real git.</li>
+    <li><strong>Two pitfalls</strong>: a read_only block can't be edited by the agent (<span class="mono">core_memory_*</span> raise — hard constraint); limit is a soft hint (rendered into metadata, not enforced on the write path).</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. What is core memory's smallest unit, and which core fields does one have?</div>
+  <ol class="opts">
+    <li>A Block — its core fields are label / value / limit / read_only</li>
+    <li>A Passage — the embedded long-term passage is core's unit</li>
+    <li>A Message — each message is one unit of core memory</li>
+    <li>The character — core memory is just one long string with no finer structure</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. core memory's atom is the Block (letta/schemas/block.py), with four core fields: label (tag/addressing key), value (content), limit (char cap), read_only (whether the agent can edit it). Memory is the collection of Blocks, and Memory.compile() renders them into the &lt;memory_blocks&gt; text in system. Message / Passage belong to recall / archival, not core.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. Agents A and B both attach the same block-xyz. A edits the card — what happens?</div>
+  <ol class="opts">
+    <li>B reads the new value on its next Memory.compile() — both reference the same block row (blocks_agents many-to-many)</li>
+    <li>Nothing changes; B has its own copy and must sync manually</li>
+    <li>A's edit is rejected because a shared block automatically becomes read_only</li>
+    <li>The system copies one for B, and the two diverge from then on</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. A block is an addressable, shareable first-class entity: sharing uses the BlocksAgents join table (letta/orm/blocks_agents.py) linking block.id and agent.id many-to-many. The two agents reference the "same row," so a change in one place shows everywhere with no sync step — that's how "shared memory" works.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. Regarding read_only and limit, which statement is correct?</div>
+  <ol class="opts">
+    <li>Both are hard: exceeding limit is rejected, and editing a read_only block is rejected</li>
+    <li>read_only is the soft hint; limit is the one that hard-truncates</li>
+    <li>Both are soft hints: just written into the prompt; neither truly blocks</li>
+    <li>read_only is a hard constraint (core_memory_* raise), while limit is a soft hint (only rendered into metadata; the write path doesn't block overflow)</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. They point opposite ways: core_memory_append / replace check block.read_only before editing and raise READ_ONLY_BLOCK_EDIT_ERROR on True (core_tool_executor.py) — a hard constraint. But limit doesn't block the write path: update_block_value only checks "value is a string," and limit is merely rendered as chars_limit in &lt;metadata&gt; to nudge the model — a soft hint. To hard-bound length, do it at the application layer.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Say you're building a team of support agents: there's a "refund policy" everyone must follow and nobody may privately edit, plus each agent's own "current conversation progress." How would you use a Block's label / read_only, sharing (blocks_agents), and versioning (BlockHistory) to design these two kinds of memory? Explain your reasoning for each.</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="07-memory-tiers.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">记忆三层总览</span><span class="lang-en">The three memory tiers</span></div></a><a class="next" href="09-self-editing-memory.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">自我编辑记忆 = 改写系统提示</span><span class="lang-en">Self-editing memory = rewriting the system prompt</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>
