@@ -547,6 +547,79 @@ QUIZZES = {
             },
         ],
     },
+    "08-memory-blocks.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "core memory 的“最小单位”是什么？一个它有哪几个核心字段？",
+                    "en": "What is core memory's smallest unit, and which core fields does one have?",
+                },
+                "opts": [
+                    {"zh": "Block（记忆块）——核心字段是 label / value / limit / read_only",
+                     "en": "A Block — its core fields are label / value / limit / read_only"},
+                    {"zh": "字符——core memory 就是一长串字符，没有更小的结构",
+                     "en": "The character — core memory is just one long string with no finer structure"},
+                    {"zh": "Message（消息）——每条消息就是一个核心记忆单位",
+                     "en": "A Message — each message is one unit of core memory"},
+                    {"zh": "Passage（段落）——带向量的长期段落就是 core 的单位",
+                     "en": "A Passage — the embedded long-term passage is core's unit"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "core memory 的原子是 Block（letta/schemas/block.py），核心字段四个：label（标签/寻址钥匙）、value（内容）、limit（字符上限）、read_only（能否被 agent 改）。Memory 是 Block 的集合，Memory.compile() 把它们渲染成 system 里的 &lt;memory_blocks&gt; 文本。Message / Passage 分别属于 recall / archival，不是 core 的单位。",
+                    "en": "core memory's atom is the Block (letta/schemas/block.py), with four core fields: label (tag/addressing key), value (content), limit (char cap), read_only (whether the agent can edit it). Memory is the collection of Blocks, and Memory.compile() renders them into the &lt;memory_blocks&gt; text in system. Message / Passage belong to recall / archival, not core.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "agent A 和 agent B 都挂上了同一个 block-xyz。A 改了这张卡，会发生什么？",
+                    "en": "Agents A and B both attach the same block-xyz. A edits the card — what happens?",
+                },
+                "opts": [
+                    {"zh": "B 下一轮 Memory.compile() 就读到新值——因为两者引用的是同一行 block（blocks_agents 多对多）",
+                     "en": "B reads the new value on its next Memory.compile() — both reference the same block row (blocks_agents many-to-many)"},
+                    {"zh": "什么都不会变，B 有自己独立的副本，需要手动同步",
+                     "en": "Nothing changes; B has its own copy and must sync manually"},
+                    {"zh": "A 的改动会被拒绝，因为共享块自动变成 read_only",
+                     "en": "A's edit is rejected because a shared block automatically becomes read_only"},
+                    {"zh": "系统会复制一份给 B，从此两者各走各的",
+                     "en": "The system copies one for B, and the two diverge from then on"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "块是可寻址、可共享的一等实体：共享靠 letta/orm/blocks_agents.py 的 BlocksAgents 关联表把 block.id 与 agent.id 多对多连接。两个 agent 引用的是“同一行”，所以一处改、处处变，无需任何同步步骤——这正是“共享记忆”的实现。",
+                    "en": "A block is an addressable, shareable first-class entity: sharing uses the BlocksAgents join table (letta/orm/blocks_agents.py) linking block.id and agent.id many-to-many. The two agents reference the \"same row,\" so a change in one place shows everywhere with no sync step — that's how \"shared memory\" works.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于 read_only 与 limit，下面哪句是对的？",
+                    "en": "Regarding read_only and limit, which statement is correct?",
+                },
+                "opts": [
+                    {"zh": "read_only 是硬约束（core_memory_* 会抛错），limit 是软提示（只渲染进 metadata，写入路径不拦超限）",
+                     "en": "read_only is a hard constraint (core_memory_* raise), while limit is a soft hint (only rendered into metadata; the write path doesn't block overflow)"},
+                    {"zh": "两个都是硬约束：超 limit 会被直接拒绝，改 read_only 也会被拒绝",
+                     "en": "Both are hard: exceeding limit is rejected, and editing a read_only block is rejected"},
+                    {"zh": "两个都是软提示：只是写进提示给模型看，都不会真的拦",
+                     "en": "Both are soft hints: just written into the prompt; neither truly blocks"},
+                    {"zh": "read_only 是软提示，limit 才是硬性截断的那个",
+                     "en": "read_only is the soft hint; limit is the one that hard-truncates"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "方向正好相反：core_memory_append / replace 改之前检查 block.read_only，是 True 就抛 READ_ONLY_BLOCK_EDIT_ERROR（core_tool_executor.py）——硬约束。而 limit 不在写入路径拦你：update_block_value 只校验“值是字符串”，limit 仅被渲染成 &lt;metadata&gt; 里的 chars_limit 提醒模型——软提示。要硬性限长得在应用层自己做。",
+                    "en": "They point opposite ways: core_memory_append / replace check block.read_only before editing and raise READ_ONLY_BLOCK_EDIT_ERROR on True (core_tool_executor.py) — a hard constraint. But limit doesn't block the write path: update_block_value only checks \"value is a string,\" and limit is merely rendered as chars_limit in &lt;metadata&gt; to nudge the model — a soft hint. To hard-bound length, do it at the application layer.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设你在搭一个客服 agent 团队：有一份全员必须遵守、谁都不能私自改的“退款政策”，还有每个 agent 各自记录的“当前对话进度”。你会怎么用 Block 的 label / read_only、共享（blocks_agents）和版本（BlockHistory）来设计这两类记忆？分别说说为什么。",
+                "en": "Say you're building a team of support agents: there's a \"refund policy\" everyone must follow and nobody may privately edit, plus each agent's own \"current conversation progress.\" How would you use a Block's label / read_only, sharing (blocks_agents), and versioning (BlockHistory) to design these two kinds of memory? Explain your reasoning for each.",
+            },
+        ],
+    },
 }
 
 

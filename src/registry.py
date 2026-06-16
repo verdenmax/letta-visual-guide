@@ -16,4 +16,5 @@ CONTENT = {
     "05-context-window.html": part2.LESSON_05,
     "06-stateful-vs-stateless.html": part2.LESSON_06,
     "07-memory-tiers.html": part3.LESSON_07,
+    "08-memory-blocks.html": part3.LESSON_08,
 }
