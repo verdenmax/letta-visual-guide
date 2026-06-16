@@ -54,7 +54,7 @@ LESSON_07 = {
   <div class="row">
     <span class="emoji">🧠</span><span class="lab">core · 眼前</span>
     <span class="arrow">·</span>
-    <span class="emoji">🗄️</span><span class="lab">recall · 最近</span>
+    <span class="emoji">🗄️</span><span class="lab">recall · 历史</span>
     <span class="arrow">·</span>
     <span class="emoji">📦</span><span class="lab">archival · 长期</span>
   </div>
@@ -178,7 +178,7 @@ LESSON_07 = {
 
 <div class="card warn">
   <div class="tag">⚠️ 常见误区</div>
-  <strong>core 是最贵的那层，别什么都往里塞。</strong>核心记忆始终占着上下文窗口——它越大，留给对话和工具结果的 token 就越少（第 5 课的预算账）。每个块还有字符上限：默认 <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT = 100000</span>（<span class="mono">letta/constants.py</span>），超了写入会被拒。正确姿势：core 只放"必须时刻在眼前"的精炼事实（用户是谁、当前任务、关键偏好）；其余统统交给 recall 与 archival，需要时再翻回来。<strong>把 core 当便签，不是当仓库。</strong>一个典型反模式：把整份 FAQ 灌进 persona 块——结果窗口被吃掉一大半、还可能撞上字符上限，而这种海量资料本就是 archival 的活。
+  <strong>core 是最贵的那层，别什么都往里塞。</strong>核心记忆始终占着上下文窗口——它越大，留给对话和工具结果的 token 就越少（第 5 课的预算账）。每个块还有字符上限：默认 <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT = 100000</span>（<span class="mono">letta/constants.py</span>），这个上限会随记忆一起写进系统提示、提醒模型自觉别写超。正确姿势：core 只放"必须时刻在眼前"的精炼事实（用户是谁、当前任务、关键偏好）；其余统统交给 recall 与 archival，需要时再翻回来。<strong>把 core 当便签，不是当仓库。</strong>一个典型反模式：把整份 FAQ 灌进 persona 块——结果窗口被吃掉一大半、还可能撞上字符上限，而这种海量资料本就是 archival 的活。
 </div>
 
 <h2>再挖深一点</h2>
@@ -277,7 +277,7 @@ The answer is three tiers: <strong>core / recall / archival</strong>. They reall
   <div class="row">
     <span class="emoji">🧠</span><span class="lab">core · now</span>
     <span class="arrow">·</span>
-    <span class="emoji">🗄️</span><span class="lab">recall · recent</span>
+    <span class="emoji">🗄️</span><span class="lab">recall · history</span>
     <span class="arrow">·</span>
     <span class="emoji">📦</span><span class="lab">archival · long-term</span>
   </div>
@@ -401,7 +401,7 @@ The answer is three tiers: <strong>core / recall / archival</strong>. They reall
 
 <div class="card warn">
   <div class="tag">⚠️ Common pitfall</div>
-  <strong>core is the priciest tier — don't dump everything into it.</strong> Core memory always occupies the context window — the bigger it is, the fewer tokens are left for the conversation and tool results (Lesson 5's budget math). Each block also has a character cap: by default <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT = 100000</span> (<span class="mono">letta/constants.py</span>), and writes over it are rejected. The right posture: keep in core only the distilled facts that "must be visible at all times" (who the user is, the current task, key preferences); hand everything else to recall and archival, paging it back when needed. <strong>Treat core as a sticky note, not a warehouse.</strong> A classic anti-pattern: pouring a whole FAQ into the persona block — it eats the window and may hit the char cap, when that bulk is archival's job.
+  <strong>core is the priciest tier — don't dump everything into it.</strong> Core memory always occupies the context window — the bigger it is, the fewer tokens are left for the conversation and tool results (Lesson 5's budget math). Each block also has a character cap: by default <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT = 100000</span> (<span class="mono">letta/constants.py</span>), and that cap is surfaced to the model in the system prompt so it keeps each block under it. The right posture: keep in core only the distilled facts that "must be visible at all times" (who the user is, the current task, key preferences); hand everything else to recall and archival, paging it back when needed. <strong>Treat core as a sticky note, not a warehouse.</strong> A classic anti-pattern: pouring a whole FAQ into the persona block — it eats the window and may hit the char cap, when that bulk is archival's job.
 </div>
 
 <h2>Go a little deeper</h2>
