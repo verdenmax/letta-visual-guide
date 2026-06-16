@@ -109,6 +109,79 @@ QUIZZES = {
             },
         ],
     },
+    "02-project-map.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "Letta 后端的三层架构，从上到下（离请求最近到最底层）的顺序是？",
+                    "en": "In Letta's 3-layer backend, what is the order from top (closest to the request) to bottom?",
+                },
+                "opts": [
+                    {"zh": "REST 路由 -> services/managers -> ORM/数据库",
+                     "en": "REST routes -> services/managers -> ORM/database"},
+                    {"zh": "ORM/数据库 -> services -> REST 路由",
+                     "en": "ORM/database -> services -> REST routes"},
+                    {"zh": "services -> REST 路由 -> ORM/数据库",
+                     "en": "services -> REST routes -> ORM/database"},
+                    {"zh": "REST 路由 -> ORM/数据库 -> services",
+                     "en": "REST routes -> ORM/database -> services"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "路由（server/rest_api/routers/v1/*）很薄，只解析 actor、收发 HTTP；它把活交给 services 的各 *Manager；manager 再经 ORM（SqlalchemyBase）落到数据库。",
+                    "en": "Routes (server/rest_api/routers/v1/*) are thin: resolve the actor, send/receive HTTP. They hand work to the services' *Managers, which reach the database via the ORM (SqlalchemyBase).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "业务逻辑（开 DB 会话、查改数据、schema&lt;-&gt;orm 转换）主要落在哪一层？",
+                    "en": "Which layer holds the business logic (open a DB session, query/modify, schema&lt;-&gt;orm conversion)?",
+                },
+                "opts": [
+                    {"zh": "services 层的各 *Manager（如 AgentManager）",
+                     "en": "The *Managers in the services layer (e.g. AgentManager)"},
+                    {"zh": "REST 路由层",
+                     "en": "The REST routes layer"},
+                    {"zh": "数据库本身（SQLite / Postgres）",
+                     "en": "The database itself (SQLite / Postgres)"},
+                    {"zh": "前端调用方",
+                     "en": "The front-end caller"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "路由薄、ORM 通用，真正的业务规则都压在 services 层的 *Manager 里——所以 REST、CLI、测试可以复用同一套方法。",
+                    "en": "Routes are thin and the ORM is generic; the real business rules sit in the services layer's *Managers - so REST, CLI, and tests reuse the same methods.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "SqlalchemyBase.apply_access_predicate 的作用是什么？",
+                    "en": "What does SqlalchemyBase.apply_access_predicate do?",
+                },
+                "opts": [
+                    {"zh": "给任意查询自动加一道 WHERE，按组织（actor.organization_id）做行级隔离，只看本组织数据",
+                     "en": "Auto-adds a WHERE to any query for row-level isolation by organization (actor.organization_id), so it only sees that org's rows"},
+                    {"zh": "把 pydantic 模型转换成 ORM 模型",
+                     "en": "Converts a pydantic model into an ORM model"},
+                    {"zh": "在记忆变化时重新编译系统提示",
+                     "en": "Recompiles the system prompt when memory changes"},
+                    {"zh": "决定用 SQLite 还是 Postgres",
+                     "en": "Decides whether to use SQLite or Postgres"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "它是多租户隔离的入口：默认按 actor 的 organization_id 加过滤，让每张表的查询都'只看自己组织'，而且是 secure by default——想绕都得特意绕。",
+                    "en": "It's the entry point of multi-tenant isolation: by default it filters on the actor's organization_id so every table's query only sees its own org - secure by default, hard to bypass by accident.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设给 Letta 加一张新表（比如“笔记 notes”）。让它继承 SqlalchemyBase 后，它大致自动获得了哪些能力？为什么把这些做进一个基类、而不是每张表各写一遍，对多租户安全特别重要？",
+                "en": "Suppose you add a new table to Letta (say 'notes'). Once it inherits SqlalchemyBase, what does it roughly get for free? Why does putting these into one base class - instead of re-writing them per table - matter so much for multi-tenant safety?",
+            },
+        ],
+    },
 }
 
 
