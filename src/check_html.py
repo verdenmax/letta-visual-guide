@@ -39,9 +39,11 @@ PRE_INLINE = ("span", "strong", "b", "em", "u", "a")
 SOFT_EXEMPT = {"31-glossary.html"}
 
 # Visual-block density (soft): containers that count as a "diagram/table".
-DIAGRAM_CLASSES = ("layers", "vflow", "flow", "cols", "cellgroup", "timeline")
+DIAGRAM_CLASSES = ("layers", "vflow", "flow", "cols", "cellgroup", "timeline", "cute")
 MIN_DIAGRAMS = 6  # per lesson, counting BOTH languages (>= 3 per language)
 MIN_CJK = 3000  # per-lesson zh CJK chars (soft floor; authoring target ~4000+)
+MAX_PARAGRAPH_CJK = 200  # soft: discourage walls of text in a single <p> (break with note/figure/list)
+MAX_PARAGRAPH_WORDS = 120  # soft: same wall-of-text guard for English paragraphs
 
 issues = []
 
@@ -86,6 +88,14 @@ def check_lesson(fname, html):
         nvis += html.count('<table class="t"')
         if nvis < MIN_DIAGRAMS:
             add("WARN", fname, f"only {nvis} visual blocks (want >= {MIN_DIAGRAMS}; add diagrams)")
+        body_no_pre = re.sub(r"<pre.*?</pre>", "", html, flags=re.S)
+        for para in re.findall(r"<p\b[^>]*>(.*?)</p>", body_no_pre, re.S):
+            ptxt = re.sub(r"<[^>]+>", "", para)
+            pcjk = len(re.findall(r"[\u4e00-\u9fff]", ptxt))
+            pwords = len(re.findall(r"[A-Za-z]+", ptxt))
+            if pcjk > MAX_PARAGRAPH_CJK or pwords > MAX_PARAGRAPH_WORDS:
+                metric = f"{pcjk} CJK" if pcjk > MAX_PARAGRAPH_CJK else f"{pwords} words"
+                add("WARN", fname, f"wall of text: a <p> has {metric}; split it / add a note, figure or list")
 
     for pre in re.findall(r"<pre[^>]*>(.*?)</pre>", html, re.S):
         cleaned = re.sub(r"</?(?:%s)\b[^>]*>" % "|".join(PRE_INLINE), "", pre)
