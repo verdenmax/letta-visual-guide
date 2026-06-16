@@ -840,7 +840,7 @@ LESSON_06 = {
   <tr><td>Block（记忆块）</td><td class="mono">block-9f8e…</td><td class="mono">block</td><td>可被多个 agent 共享引用的记忆单元</td></tr>
   <tr><td>Message</td><td class="mono">message-7c6d…</td><td class="mono">message</td><td>recall / 历史里按 id 精确定位一条消息</td></tr>
   <tr><td>Tool</td><td class="mono">tool-3e4f…</td><td class="mono">tool</td><td>一个可被多个 agent 装配的工具</td></tr>
-  <tr><td>User / Org</td><td class="mono">user-… / organization-…</td><td class="mono">user / organization</td><td>多租户作用域：谁拥有、谁可见</td></tr>
+  <tr><td>User / Org</td><td class="mono">user-… / org-…</td><td class="mono">user / org</td><td>多租户作用域：谁拥有、谁可见</td></tr>
 </table>
 
 <p>这套 id 怎么来的？答案简单得令人安心：每个 schema 声明一个 <span class="mono">__id_prefix__</span>，<span class="mono">generate_id</span> 就把"前缀 + 一个 uuid4"拼起来。比如 <span class="mono">AgentState</span> 的前缀解析为 <span class="mono">agent</span>，于是它的 id 永远长成 <span class="mono">agent-&lt;uuid&gt;</span>：</p>
@@ -1043,7 +1043,7 @@ We've leaned on two words for several lessons — "stateful" and "stateless" —
   <tr><td>Block (memory block)</td><td class="mono">block-9f8e…</td><td class="mono">block</td><td>a memory unit shareable across many agents</td></tr>
   <tr><td>Message</td><td class="mono">message-7c6d…</td><td class="mono">message</td><td>pinpoint one message by id in recall / history</td></tr>
   <tr><td>Tool</td><td class="mono">tool-3e4f…</td><td class="mono">tool</td><td>a tool that many agents can be equipped with</td></tr>
-  <tr><td>User / Org</td><td class="mono">user-… / organization-…</td><td class="mono">user / organization</td><td>multi-tenant scope: who owns it, who can see it</td></tr>
+  <tr><td>User / Org</td><td class="mono">user-… / org-…</td><td class="mono">user / org</td><td>multi-tenant scope: who owns it, who can see it</td></tr>
 </table>
 
 <p>Where do these ids come from? Reassuringly simple: each schema declares an <span class="mono">__id_prefix__</span>, and <span class="mono">generate_id</span> stitches together "prefix + a uuid4." For example <span class="mono">AgentState</span>'s prefix resolves to <span class="mono">agent</span>, so its id always looks like <span class="mono">agent-&lt;uuid&gt;</span>:</p>
