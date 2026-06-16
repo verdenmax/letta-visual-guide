@@ -431,7 +431,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>一个好记的画面：<span class="mono">message_ids</span> 像录像机的<strong>播放头</strong>——它在整卷录像（全量 Message）上滑动，决定"此刻屏幕上放哪一段"。播放头往后移，前面的画面退出屏幕，但<strong>胶片一格没少</strong>，随时能倒回去看。</p>
 
 <h2>消息不是裸文本：带类型的 JSON 事件</h2>
-<p>这里有个容易被忽略的关键：进入上下文的消息<strong>不是裸文本</strong>。每条在被模型读到之前，都被 <span class="mono">letta/system.py</span> 包成一个<strong>带类型的 JSON 事件</strong>，标明"这是什么、什么时候发生的"。</p>
+<p>这里有个容易被忽略的关键：<strong>传入</strong>上下文的消息（用户输入、工具返回、心跳、系统提醒）<strong>不是裸文本</strong>——每条在被模型读到之前，都被 <span class="mono">letta/system.py</span> 包成一个<strong>带类型的 JSON 事件</strong>，标明"这是什么、什么时候发生的"。（agent 自己的回复则作为结构化的 <span class="mono">Message</span> 行原样存取。）</p>
 
 <p>这些信封长得很像：都是一个小 JSON 对象，至少有 <span class="mono">type</span>（或 <span class="mono">status</span>）和 <span class="mono">time</span> 两个字段，再加一个装正文的 <span class="mono">message</span>。统一的形状让"打包 / 拆包 / 按类型分流"都有章可循。</p>
 
@@ -460,7 +460,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <span class="kw">return</span> json_dumps({<span class="st">"type"</span>: <span class="st">"heartbeat"</span>, <span class="st">"reason"</span>: reason, <span class="st">"time"</span>: ...})
 </pre></div>
 
-<p>三类最常见的事件：<strong>user_message</strong>（用户说的话）、<strong>function_response</strong>（工具执行的返回，带 <span class="mono">status</span>）、<strong>heartbeat</strong>（系统定时唤醒 agent 的"心跳"）。它们都带 <span class="mono">time</span>，于是"按时间检索"和"知道多久以前"都成了可能。</p>
+<p>三类最常见的事件：<strong>user_message</strong>（用户说的话）、<strong>function_response</strong>（工具执行的返回，带 <span class="mono">status</span>）、<strong>heartbeat</strong>（agent 的"心跳"——多由 agent 请求续跑或工具失败触发，也可定时）。它们都带 <span class="mono">time</span>，于是"按时间检索"和"知道多久以前"都成了可能。</p>
 
 <p>三类里 <span class="mono">heartbeat</span> 最特别：它不是谁说的话，而是系统<strong>定时唤醒</strong> agent 的一次"心跳"，让它在没有用户输入时也有机会主动接着做事。心跳同样是一条带 <span class="mono">type</span> 的 JSON 事件，照样进 recall、照样可搜——连"系统什么时候戳了它一下"都留了痕。</p>
 
@@ -496,7 +496,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <span class="kw">return</span> formatted_results
 </pre></div>
 
-<p>两个细节值得记。其一：它默认走 <strong>hybrid</strong>——委托 <span class="mono">search_messages_async(search_mode="hybrid")</span>，字面与语义一起算，所以换了措辞也搜得到。其二：它会<strong>滤掉 tool 消息</strong>、以及"调用 conversation_search 本身"的那条 assistant 消息，避免把搜索结果层层嵌套、越转义越乱。</p>
+<p>两个细节值得记。其一：它默认走 <strong>hybrid</strong>——委托 <span class="mono">search_messages_async</span>（<span class="mono">search_mode</span> 默认即 hybrid），字面与语义一起算，所以换了措辞也搜得到。其二：它会<strong>滤掉 tool 消息</strong>、以及"调用 conversation_search 本身"的那条 assistant 消息，避免把搜索结果层层嵌套、越转义越乱。</p>
 
 <p>还能按<strong>角色和时间</strong>过滤：<span class="mono">roles=["user"]</span> 只搜用户说的，<span class="mono">start_date</span> / <span class="mono">end_date</span> 圈定时间窗。返回的每条都带<strong>时间戳和 "Xd ago"</strong>，让 agent 知道这话是"多久以前"说的。</p>
 
@@ -515,7 +515,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 
 <div class="card spark">
   <div class="tag">💡 设计亮点</div>
-  <strong>对话从不丢失——而且它不是一堆裸文本，是一串带类型的 JSON 事件。</strong>两件事叠在一起，才是 recall 的真正威力。第一：每条消息都是一行可持久、可检索的 <span class="mono">Message</span>，写下就永远在库里；窗口里只留 <span class="mono">message_ids</span> 指着的最近一段，其余<strong>看不见但搜得到</strong>。第二：消息进入上下文前，都被 <span class="mono">letta/system.py</span> 包成<strong>带类型的事件</strong>——<span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span> 各有 <span class="mono">type</span> 和 <span class="mono">time</span>。于是 agent 不是在读一段流水文字，而是在<strong>一连串结构化事件</strong>上推理：它分得清"这是用户说的""这是工具返回的""这是定时心跳"。把这两点合起来：一部<strong>永不丢失、可按 hybrid 搜回、且每条都自带语义类型</strong>的对话史——agent 既不会"忘了说过什么"，也不会"分不清谁说的"。这正是 MemGPT 把"对话历史"也当成一等记忆来管的关键：历史不是日志垃圾堆，而是<strong>可推理、可检索的结构化记忆</strong>——也正因如此，agent 才能在三周后、十几轮对话之后，依然精准引用你随口说过的一句话。
+  <strong>对话从不丢失——而且它不是一堆裸文本，是一串带类型的 JSON 事件。</strong>两件事叠在一起，才是 recall 的真正威力。第一：每条消息都是一行可持久、可检索的 <span class="mono">Message</span>，写下就永远在库里；窗口里只留 <span class="mono">message_ids</span> 指着的最近一段，其余<strong>看不见但搜得到</strong>。第二：传入消息（用户输入、工具返回、心跳）进入上下文前，都被 <span class="mono">letta/system.py</span> 包成<strong>带类型的事件</strong>——<span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span> 各有 <span class="mono">type</span> 和 <span class="mono">time</span>。于是 agent 不是在读一段流水文字，而是在<strong>一连串结构化事件</strong>上推理：它分得清"这是用户说的""这是工具返回的""这是定时心跳"。把这两点合起来：一部<strong>永不丢失、可按 hybrid 搜回、且每条都自带语义类型</strong>的对话史——agent 既不会"忘了说过什么"，也不会"分不清谁说的"。这正是 MemGPT 把"对话历史"也当成一等记忆来管的关键：历史不是日志垃圾堆，而是<strong>可推理、可检索的结构化记忆</strong>——也正因如此，agent 才能在三周后、十几轮对话之后，依然精准引用你随口说过的一句话。
 </div>
 
 <div class="card warn">
@@ -727,7 +727,7 @@ Just three keywords: <strong>Message</strong> (one message = one durable, search
 <p>A handy image: <span class="mono">message_ids</span> is like a tape player's <strong>playhead</strong> — it slides over the whole reel (all Messages), deciding "which segment is on screen now." Move the playhead forward and earlier frames leave the screen, but <strong>not a frame of film is lost</strong>; you can always rewind.</p>
 
 <h2>Messages aren't raw text: typed JSON events</h2>
-<p>Here's an easily-missed key point: messages entering the context are <strong>not raw text</strong>. Before the model reads each one, <span class="mono">letta/system.py</span> wraps it into a <strong>typed JSON event</strong> stating "what this is and when it happened."</p>
+<p>Here's an easily-missed key point: <strong>incoming</strong> messages (user input, tool returns, heartbeats, system alerts) are <strong>not raw text</strong> — before the model reads each one, <span class="mono">letta/system.py</span> wraps it into a <strong>typed JSON event</strong> stating "what this is and when it happened." (The agent's own replies are stored and read back as structured <span class="mono">Message</span> rows, as-is.)</p>
 
 <p>These envelopes look alike: each is a small JSON object with at least <span class="mono">type</span> (or <span class="mono">status</span>) and <span class="mono">time</span>, plus a <span class="mono">message</span> holding the body. The uniform shape gives "pack / unpack / route by type" a predictable structure.</p>
 
@@ -756,7 +756,7 @@ Just three keywords: <strong>Message</strong> (one message = one durable, search
     <span class="kw">return</span> json_dumps({<span class="st">"type"</span>: <span class="st">"heartbeat"</span>, <span class="st">"reason"</span>: reason, <span class="st">"time"</span>: ...})
 </pre></div>
 
-<p>The three most common events: <strong>user_message</strong> (what the user said), <strong>function_response</strong> (a tool's return, with <span class="mono">status</span>), <strong>heartbeat</strong> (a system timer waking the agent). All carry <span class="mono">time</span>, so "retrieve by time" and "know how long ago" both become possible.</p>
+<p>The three most common events: <strong>user_message</strong> (what the user said), <strong>function_response</strong> (a tool's return, with <span class="mono">status</span>), <strong>heartbeat</strong> (a "heartbeat" — usually the agent asking to continue or a tool-failure retry, sometimes a timer). All carry <span class="mono">time</span>, so "retrieve by time" and "know how long ago" both become possible.</p>
 
 <p>Of the three, <span class="mono">heartbeat</span> is the odd one: it isn't anyone's speech but a system <strong>timed wake-up</strong>, giving the agent a chance to act even with no user input. A heartbeat is still a typed JSON event — it enters recall and is searchable too, leaving a trace of "when the system nudged it."</p>
 
@@ -792,7 +792,7 @@ Just three keywords: <strong>Message</strong> (one message = one durable, search
     <span class="kw">return</span> formatted_results
 </pre></div>
 
-<p>Two details worth remembering. One: it defaults to <strong>hybrid</strong> — delegating to <span class="mono">search_messages_async(search_mode="hybrid")</span>, computing text and meaning together, so rephrasing still hits. Two: it <strong>filters out tool messages</strong>, plus the assistant message that "called conversation_search itself," to avoid nesting search results layer upon layer with runaway escaping.</p>
+<p>Two details worth remembering. One: it defaults to <strong>hybrid</strong> — delegating to <span class="mono">search_messages_async</span> (whose <span class="mono">search_mode</span> defaults to hybrid), computing text and meaning together, so rephrasing still hits. Two: it <strong>filters out tool messages</strong>, plus the assistant message that "called conversation_search itself," to avoid nesting search results layer upon layer with runaway escaping.</p>
 
 <p>You can also filter by <strong>role and time</strong>: <span class="mono">roles=["user"]</span> searches only user lines, <span class="mono">start_date</span> / <span class="mono">end_date</span> bound a time window. Each result carries a <strong>timestamp and "Xd ago,"</strong> so the agent knows how long ago it was said.</p>
 
@@ -811,7 +811,7 @@ Just three keywords: <strong>Message</strong> (one message = one durable, search
 
 <div class="card spark">
   <div class="tag">💡 Design highlight</div>
-  <strong>The conversation is never lost — and it isn't a pile of raw text, it's a stream of typed JSON events.</strong> Two things stacked together are recall's real power. First: every message is one durable, searchable <span class="mono">Message</span>; once written it lives in the store forever, while only the recent slice <span class="mono">message_ids</span> points to stays in the window — the rest is <strong>invisible but searchable</strong>. Second: before entering context, each message is wrapped by <span class="mono">letta/system.py</span> into a <strong>typed event</strong> — <span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span>, each with <span class="mono">type</span> and <span class="mono">time</span>. So the agent isn't reading a flat stream of prose, it reasons over <strong>a sequence of structured events</strong>: it can tell "this is the user," "this is a tool return," "this is a timed heartbeat." Put them together: a conversation history that is <strong>never lost, hybrid-searchable, and self-typed per message</strong> — the agent neither "forgets what was said" nor "confuses who said it." That's the key to MemGPT treating "conversation history" as first-class memory: history isn't a junk log, it's <strong>reasoning-ready, searchable structured memory</strong> — which is exactly why the agent can, three weeks and a dozen turns later, precisely cite a line you mentioned offhand.
+  <strong>The conversation is never lost — and it isn't a pile of raw text, it's a stream of typed JSON events.</strong> Two things stacked together are recall's real power. First: every message is one durable, searchable <span class="mono">Message</span>; once written it lives in the store forever, while only the recent slice <span class="mono">message_ids</span> points to stays in the window — the rest is <strong>invisible but searchable</strong>. Second: incoming messages (user input, tool returns, heartbeats) are wrapped by <span class="mono">letta/system.py</span> into <strong>typed events</strong> before entering context — <span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span>, each with <span class="mono">type</span> and <span class="mono">time</span>. So the agent isn't reading a flat stream of prose, it reasons over <strong>a sequence of structured events</strong>: it can tell "this is the user," "this is a tool return," "this is a timed heartbeat." Put them together: a conversation history that is <strong>never lost, hybrid-searchable, and self-typed per message</strong> — the agent neither "forgets what was said" nor "confuses who said it." That's the key to MemGPT treating "conversation history" as first-class memory: history isn't a junk log, it's <strong>reasoning-ready, searchable structured memory</strong> — which is exactly why the agent can, three weeks and a dozen turns later, precisely cite a line you mentioned offhand.
 </div>
 
 <div class="card warn">
