@@ -328,6 +328,79 @@ QUIZZES = {
             },
         ],
     },
+    "05-context-window.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "Letta（以及 MemGPT）要解决的“上下文窗口”核心约束，最准确的描述是？",
+                    "en": "What most accurately describes the core 'context window' constraint Letta (and MemGPT) address?",
+                },
+                "opts": [
+                    {"zh": "它是一笔固定大小、且按 token 计费的预算，system + 核心记忆 + 工具 schema + 在窗消息共享它",
+                     "en": "It's a fixed-size, per-token-billed budget shared by system + core memory + tool schemas + in-context messages"},
+                    {"zh": "它只是对话历史的存储上限，与 system 和工具无关",
+                     "en": "It's only a cap on conversation history, unrelated to system or tools"},
+                    {"zh": "它是模型权重的大小限制",
+                     "en": "It's a limit on the size of the model weights"},
+                    {"zh": "它是磁盘上能存多少条消息的限制",
+                     "en": "It's a limit on how many messages can be stored on disk"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "上下文窗口是一次调用能“看见”的 token 上限，而且 system、核心记忆、工具 schema 和在窗消息一起挤这条预算——真正留给历史的只是剩余。预算有限、尾巴只会增长，这正是记忆管理被逼出来的根本原因。",
+                    "en": "The window is the token ceiling a single call can 'see,' and system, core memory, tool schemas, and in-context messages all squeeze into it — only the remainder is left for history. Finite budget plus an ever-growing tail is exactly why memory management is forced into existence.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么 Letta 坚持“稳定前缀 + 变化尾巴”，正常步骤里不刷新系统提示？",
+                    "en": "Why does Letta insist on 'stable prefix + changing tail,' not refreshing the system prompt during normal steps?",
+                },
+                "opts": [
+                    {"zh": "前缀逐 token 不变才能命中 prefix cache、跳过昂贵的 prefill，省时省钱",
+                     "en": "A token-for-token stable prefix hits the prefix cache and skips the costly prefill, saving time and money"},
+                    {"zh": "因为系统提示不允许被修改",
+                     "en": "Because the system prompt is not allowed to be modified"},
+                    {"zh": "因为模型读不懂太长的系统提示",
+                     "en": "Because the model can't understand a long system prompt"},
+                    {"zh": "为了让 decode 阶段并行化",
+                     "en": "To parallelize the decode phase"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "prefill 按输入 token 计费/耗时，且会把前缀的 KV 缓存起来。只要前缀逐 token 一致，第二次就能复用缓存、跳过这段 prefill；改动前缀（哪怕一个字）会让缓存作废、全量重算。所以 rebuild_system_prompt_async 只在记忆变化或压缩后才重写第 0 条消息。",
+                    "en": "prefill is billed/timed by input tokens and caches the prefix's KV. As long as the prefix is token-for-token identical, the next request reuses the cache and skips that prefill; changing the prefix (even one character) invalidates it and forces a full recompute. That's why rebuild_system_prompt_async rewrites message 0 only on memory change or after compaction.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "“换个 1M 上下文的模型就不用管理记忆了”——这个说法的问题在哪？",
+                    "en": "'Just switch to a 1M-context model and you won't need memory management' — what's wrong with this?",
+                },
+                "opts": [
+                    {"zh": "长上下文只是放宽约束而非取消它：成本随 token 涨、prefill 延迟涨、还有 lost-in-the-middle",
+                     "en": "Long context only loosens, not removes, the constraint: cost rises with tokens, prefill latency rises, plus lost-in-the-middle"},
+                    {"zh": "1M 上下文的模型根本不存在",
+                     "en": "1M-context models don't exist at all"},
+                    {"zh": "长上下文模型不能调用工具",
+                     "en": "Long-context models cannot call tools"},
+                    {"zh": "长上下文会让模型忘记系统提示",
+                     "en": "Long context makes the model forget the system prompt"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "更大的窗口抬高了上限，但三条代价仍在：按 token 计费导致成本线性上涨、prefill 读得越多越慢、研究反复发现放在超长上下文中间的信息容易被忽略（lost in the middle）。所以“放什么进窗口”的决策依然要做——Letta 用 ContextWindowOverview 量化、用 context_window×0.9 触发压缩来系统化地回答它。",
+                    "en": "A bigger window raises the ceiling, but three costs remain: per-token billing makes cost rise linearly, more tokens make prefill slower, and research repeatedly finds mid-context info gets ignored (lost in the middle). So the 'what goes into the window' decision still must be made — Letta answers it systematically by quantifying with ContextWindowOverview and triggering compaction at context_window×0.9.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设你的 agent 逼近了 context_window×0.9 的阈值。结合本课的 token 账本（ContextWindowOverview）和压缩闭环，你会优先换出/压缩哪一部分（旧消息？工具 schema？核心记忆？），又会尽量保住哪一部分前缀来吃 prefix cache？为什么？",
+                "en": "Suppose your agent nears the context_window×0.9 threshold. Given this lesson's token ledger (ContextWindowOverview) and the compaction loop, which part would you swap out/compress first (old messages? tool schemas? core memory?), and which prefix would you preserve to keep hitting the prefix cache? Why?",
+            },
+        ],
+    },
 }
 
 

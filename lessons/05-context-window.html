@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>05 · 上下文窗口的根本问题 / The context-window problem - Letta 图解教程</title>
+<meta name="description" content="第二部分 · 前置基础｜上下文窗口的根本问题 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="05 · 上下文窗口的根本问题 / The context-window problem - Letta 图解教程">
+<meta property="og:description" content="第二部分 · 前置基础｜上下文窗口的根本问题 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="05 · 上下文窗口的根本问题 / The context-window problem - Letta 图解教程">
+<meta name="twitter:description" content="第二部分 · 前置基础｜上下文窗口的根本问题 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第二部分 · 前置基础</span><span class="lang-en">Part 2 · Foundations</span></span>
+    <span class="pill">05 / 05</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第二部分 · 前置基础</span><span class="lang-en">Part 2 · Foundations</span></div>
+    <h1><span class="lang-zh">上下文窗口的根本问题</span><span class="lang-en">The context-window problem</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+前四课我们一直在用一个词——"上下文窗口"——却从没真正拆开它：第 1 课说"上下文有限"是 Letta 存在的根本理由，第 3 课说要"稳定前缀 + 变化尾巴"，第 4 课说每一步都要"把整段剧本重新拼好再发给模型"。这三句话背后，是同一条被反复绕开的硬约束：<strong>上下文窗口是一笔固定大小、还按 token 计费的预算</strong>。这一课就把这笔账摊开算清楚——模型怎么读这段 prompt（prefill 与 decode）、为什么稳定前缀能省真金白银（prefix cache）、为什么"把历史全塞进去"必然失败，以及 Letta 如何把这笔账<strong>量出来</strong>（<span class="mono">ContextWindowOverview</span>）并据此<strong>动手</strong>（逼近阈值就压缩）。读完你会明白：记忆系统不是锦上添花，而是被这条约束<strong>逼出来</strong>的刚需。
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  把上下文窗口想象成一张<strong>固定大小的办公桌台面</strong>。所有要"现在就看着办"的材料——系统说明书（system）、便利贴上的核心备忘（核心记忆）、刚来回的几封信（在窗消息）、还有一张"我能用哪些工具"的清单（工具 schema）——都得<strong>摊在这张桌面上</strong>；模型只能看见桌面上的东西，桌子外的一概看不到。桌面有两个残酷的事实：① <strong>它就这么大</strong>，新材料铺上来，旧的就得收走，否则放不下；② <strong>每一格都在计费</strong>——桌上铺得越满，每"看一眼"（每次调用）越贵、越慢。于是你被迫做一件事：<strong>把不常用的材料归档进抽屉，只在桌面留最相关的</strong>，要用时再取回来。这套"放不下就归档、要用再取回"的收拾动作，就是记忆管理；而 Letta 的高明之处在于，它会<strong>随时量一量桌面还剩多少、谁占了多少</strong>，快满了就自动收拾——这正是这一课的主线。
+</div>
+
+<h2>有限的 token 预算：这才是核心约束</h2>
+<p>先把"上下文窗口"翻译成一句大白话：<strong>模型一次调用最多能"看见"的 token 数，是一个写死的上限</strong>（比如 8k、128k、200k、甚至 1M）。token 是模型眼里的最小单位——一个汉字大约 1～2 个 token，一个常见英文单词约 1 个多。这个上限不是建议，是<strong>物理边界</strong>：超了，要么直接报错（<span class="mono">ContextWindowExceededError</span>），要么把最前面的内容悄悄截掉。更要命的是，这条预算<strong>不是只装对话历史</strong>——它得同时容纳四样东西，它们一起挤同一条预算：</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>一条固定大小的 token 预算</b>：下面这些加起来不能超过上限；逼近上限，就得把旧内容"换出"</div>
+  <div class="cells">
+    <span class="cell scale">system 提示</span>
+    <span class="cell hl">核心记忆<br>persona / human</span>
+    <span class="cell q">工具 schema</span>
+    <span class="cell">在窗消息<br>（会增长）</span>
+    <span class="cell dim">…放不下的</span>
+  </div>
+  <div class="cells">
+    <span class="lab">← 稳定前缀（每轮尽量不动）</span>
+    <span class="sep">|</span>
+    <span class="lab">变化尾巴（不断增长）→</span>
+  </div>
+</div>
+
+<p>把这四块一加你就明白了：<strong>真正留给"对话历史"的空间，是上限减去 system、核心记忆、工具清单之后的剩余</strong>。其中 system 与核心记忆是<strong>稳定前缀</strong>（每轮几乎不变，第 3 课讲过），工具 schema 也基本固定；只有"在窗消息"这条<strong>尾巴</strong>会随着对话不断变长。尾巴越长，离上限越近；一旦逼近，就必须把旧消息"换出"——要么截断、要么归档、要么压缩成摘要。<strong>这就是记忆管理的全部动机：预算有限，而尾巴只会增长。</strong></p>
+
+<h2>模型怎么读这段 prompt：prefill 与 decode</h2>
+<p>要理解"为什么稳定前缀能省钱"，得先看模型生成一次回复的两个阶段。它们的成本结构完全不同：</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">① prefill 预填充</div><div class="nd">一次性"读完"整段 prompt<br>system+历史+工具，可并行</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">建立 KV cache</div><div class="nd">把读过的每个 token<br>算成键值对缓存起来</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">② decode 解码</div><div class="nd">一个一个往外吐 token<br>每吐一个都要回看缓存</div></div>
+</div>
+
+<p><strong>prefill</strong> 是"读题"：模型把你给的整段 prompt 一口吃下，<strong>所有输入 token 可以并行处理</strong>，算得快；这一步会顺手把每个 token 的中间结果（注意力的 key/value）存成 <strong>KV cache</strong>。<strong>decode</strong> 是"答题"：模型<strong>一次只生成一个 token</strong>，每生成一个都要回看前面所有 token 的 KV cache 再决定下一个——这一步天生串行，<strong>输出越长越慢</strong>。两个关键结论：其一，<strong>输入越长，prefill 越贵</strong>（要读的 token 多）；其二，既然 prefill 会把前缀的 KV 都算出来缓存，那么<strong>如果这次请求的前缀和上次逐 token 一模一样，这部分缓存就能直接复用、不必重算</strong>——这就引出了 prefix cache。</p>
+
+<h2>稳定前缀为什么省钱：prefix cache</h2>
+<p>现代推理服务（以及一些本地引擎）都会做一件事：<strong>缓存"前缀"的计算结果</strong>。如果两次请求开头的一长串 token 完全相同，第二次就能<strong>跳过这段的 prefill</strong>，直接拿上次缓存好的 KV——又快又便宜（很多厂商对命中缓存的输入 token 直接打折计费）。关键词是<strong>"前缀必须逐 token 完全一致"</strong>：只要前面有一个 token 变了，从那之后的缓存全部作废、得重算。</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">第 1 轮</span>
+    <span class="tslot span">system + 核心记忆（稳定前缀，全量 prefill）</span>
+    <span class="tslot now">新消息</span>
+  </div>
+  <div class="lane"><span class="lane-label">第 2 轮</span>
+    <span class="tslot span">同样的前缀 → 命中缓存，跳过重算</span>
+    <span class="tslot">旧消息</span>
+    <span class="tslot now">新消息</span>
+  </div>
+  <div class="lane"><span class="lane-label">省下的</span>
+    <span class="tslot">前缀那段的 prefill 时间 &amp; 费用</span>
+  </div>
+</div>
+
+<p>现在第 3 课那条设计原则就有了经济学解释：<strong>为什么要把 system + 核心记忆放在最前面、且每轮尽量不改？</strong>因为它们是<strong>最长、最稳定的那段前缀</strong>——保持它逐 token 不变，就能让每一轮都吃到 prefix cache，把这段昂贵的 prefill 省掉。反过来，如果你每轮都去改系统提示的开头（哪怕只改一个字），就等于<strong>亲手把缓存作废</strong>，每轮都全量重算。<strong>"稳定前缀 + 变化尾巴"不是审美，是 prefill / prefix-cache 经济学逼出来的结构。</strong>这也是为什么 Letta 在第 3 课里宁可"只往尾巴追加消息、记忆变了才重建系统提示"，也不肯每轮乱动前缀。</p>
+<h2>Letta 把这笔账量出来，也据此动手</h2>
+<p>到这里，约束和经济学都讲清楚了。Letta 的回应分两步：<strong>先把"窗口里到底装了啥"精确量出来，再据此决定何时压缩。</strong>"量"这件事，落在一个叫 <span class="mono">ContextWindowOverview</span> 的数据结构上——它就是整个上下文窗口的一本<strong>token 账本</strong>：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/memory.py</span><span class="ln">class ContextWindowOverview（节选真实字段）</span></div>
+<pre><span class="kw">class</span> <span class="fn">ContextWindowOverview</span>(BaseModel):
+    context_window_size_max: int             <span class="cm"># 这个模型的上限（预算总额）</span>
+    context_window_size_current: int         <span class="cm"># 当前已用了多少 token</span>
+    num_tokens_system: int                   <span class="cm"># system 提示占多少</span>
+    num_tokens_core_memory: int              <span class="cm"># 核心记忆（persona/human 块）占多少</span>
+    num_tokens_functions_definitions: int    <span class="cm"># 工具 schema 占多少</span>
+    num_tokens_messages: int                 <span class="cm"># 在窗消息占多少</span>
+    num_tokens_summary_memory: int           <span class="cm"># 摘要记忆占多少</span>
+    num_tokens_external_memory_summary: int  <span class="cm"># 外部记忆(归档/recall)元信息占多少</span>
+    num_messages: int                        <span class="cm"># 在窗消息条数</span>
+    num_archival_memory: int                 <span class="cm"># 归档记忆条数（在桌外）</span>
+    num_recall_memory: int                   <span class="cm"># recall 记忆条数（在桌外）</span>
+    <span class="cm"># ... 还带每段原文(system_prompt/core_memory/...)，便于审计</span>
+</pre></div>
+
+<p>看清这张账本，你就抓住了 Letta 的关键一手：它<strong>不把上下文当黑盒</strong>，而是把"上限多少、现在用了多少、每一块（system / 核心记忆 / 工具 / 消息 / 摘要）各占多少"全部<strong>拆开计数</strong>。这本账由 <span class="mono">ContextWindowCalculator.calculate_context_window</span> 现场算出来，背后用一组 <span class="mono">TokenCounter</span>（按 provider 分 <span class="mono">AnthropicTokenCounter</span> / <span class="mono">ApproxTokenCounter</span>）分别数 system、消息、工具的 token。<strong>能量化，才能决策。</strong></p>
+
+<div class="card detail">
+  <div class="tag">🔬 源码对应</div>
+  这一课的每个环节落在哪：<strong>token 账本</strong>是 <span class="mono">letta/schemas/memory.py::ContextWindowOverview</span>；<strong>现场计算</strong>在 <span class="mono">letta/services/context_window_calculator/context_window_calculator.py::ContextWindowCalculator</span>（<span class="mono">calculate_context_window</span>），由 <span class="mono">letta/services/agent_manager.py::AgentManager.get_context_window</span> 调用；<strong>数 token</strong>用 <span class="mono">letta/services/context_window_calculator/token_counter.py::TokenCounter</span>（<span class="mono">count_text_tokens</span> / <span class="mono">count_message_tokens</span> / <span class="mono">count_tool_tokens</span>，实现类 <span class="mono">AnthropicTokenCounter</span> / <span class="mono">ApproxTokenCounter</span>）；<strong>压缩阈值</strong>在 <span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span>（= <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>，后者在 <span class="mono">letta/constants.py</span> 为 0.9）；<strong>压缩动作</strong>在 <span class="mono">letta/agents/letta_agent_v3.py::LettaAgentV3</span>（<span class="mono">compact</span>，由 <span class="mono">_step</span> 在逼近阈值/超窗时触发）。
+</div>
+
+<p>有了账本，"何时动手"就只剩一个简单判断：<strong>把当前估算的 token 数，和一个阈值比一比</strong>。这个阈值不等到窗口满了才算，而是留了余量——默认在<strong>上限的 90%</strong> 就触发，避免真的撞上"prompt 太长"的报错：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/thresholds.py</span><span class="ln">get_compaction_trigger_threshold（简化）</span></div>
+<pre><span class="cm"># 压缩触发阈值 = 上下文窗口 × 0.9（留 10% 余量，避免撞上报错）</span>
+SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm"># letta/constants.py</span>
+
+<span class="kw">def</span> <span class="fn">get_compaction_trigger_threshold</span>(llm_config, *, force_proactive=<span class="kw">False</span>):
+    <span class="cm"># GPT-5 一族更激进，靠近 90% 就主动压缩；这里给出统一的上限算法</span>
+    <span class="kw">return</span> <span class="fn">int</span>(llm_config.context_window * SUMMARIZATION_TRIGGER_MULTIPLIER)
+</pre></div>
+
+<p>把"量"和"动"串进第 3、4 课那个 step 循环，就是下面这段伪代码——每走一步，先估算用量、再和阈值比，逼近了就压缩，然后才继续：</p>
+
+<pre class="code"><span class="cm"># agent 每一步：估算上下文用量 -&gt; 比阈值 -&gt; 逼近就压缩（伪代码）</span>
+threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)   <span class="cm"># = context_window * 0.9</span>
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(max_steps):
+    used = <span class="fn">estimate_tokens</span>(system, core_memory, tools, messages)
+    <span class="kw">if</span> used &gt;= threshold:                       <span class="cm"># 桌面快满了</span>
+        messages = <span class="fn">compact</span>(messages)            <span class="cm"># 把旧消息压成摘要，换出尾巴</span>
+        <span class="fn">rebuild_system_prompt</span>()                 <span class="cm"># 压缩后重建系统提示（前缀只在这一刻变）</span>
+    reply = llm.<span class="fn">call</span>(system, messages, tools)    <span class="cm"># prefill 整段 -&gt; decode 逐 token</span>
+    <span class="kw">if</span> <span class="kw">not</span> reply.tool_calls:
+        <span class="kw">break</span>
+</pre>
+
+<p>这条"度量 → 判定 → 压缩 → 重建前缀"的闭环，可以画成四步：</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>度量</h4><p>用 <span class="mono">TokenCounter</span> 数清 system / 核心记忆 / 工具 / 消息各占多少 token</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>判定</h4><p>当前用量是否 ≥ 阈值（<span class="mono">context_window × 0.9</span>）</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>压缩</h4><p><span class="mono">compact</span>：把较旧的在窗消息总结成摘要，腾出尾巴空间</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>重建前缀</h4><p>压缩后 <span class="mono">rebuild_system_prompt_async</span> 重写第 0 条消息，下一轮继续吃缓存</p></div></div>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>上下文窗口就是 agent 的 RAM——而它"既有限、每个 token 又要花钱"，这一条经济事实，逼出了整个记忆系统。</strong>很多框架把"加记忆"当成可选功能；Letta 的视角根本不同：既然桌面就这么大、还按格子收费，那"管理记忆"就<strong>不是锦上添花，而是被经济规律逼出来的刚需</strong>。更妙的是，Letta 没有停在"知道有这约束"，而是把它做成了两件<strong>可操作</strong>的事：一是<strong>可度量</strong>——<span class="mono">ContextWindowOverview</span> 把窗口拆成一本逐项 token 账本，"用了多少、谁占的"一清二楚；二是<strong>可触发动作</strong>——一旦逼近 <span class="mono">context_window × 0.9</span> 的阈值，就自动 <span class="mono">compact</span> 把旧消息压成摘要。把这条线和第 3 课接上你会恍然大悟：<strong>"稳定前缀 + 变化尾巴"不是某人拍脑袋的风格，而是 prefill / prefix-cache 经济学的直接产物</strong>——前缀稳定才能命中缓存、省下最贵的那段 prefill。一句话：<strong>Letta 把"上下文很贵"这条物理约束，翻译成了"量得出、压得动"的工程闭环。</strong>
+</div>
+
+<h2>窗口满了，你只有两条路</h2>
+<p>当尾巴增长到逼近上限，区别一个玩具 demo 和一个能长期运行的 agent 的，就是这一步怎么处理：</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>路 A：硬塞（玩具做法）</h4>
+    <p>把所有历史一股脑塞进 prompt，指望"窗口够大就行"。结果：要么<strong>撞上上限报错</strong>（<span class="mono">ContextWindowExceededError</span>），要么把最早的消息<strong>悄悄截掉</strong>——agent 突然"失忆"，且你无法控制丢了什么。成本和延迟还随历史<strong>线性上涨</strong>。</p>
+  </div>
+  <div class="col">
+    <h4>路 B：分层 + 压缩（Letta）</h4>
+    <p>只把<strong>最相关</strong>的留在窗口（核心记忆 + 近期消息），其余<strong>归档到窗外</strong>（archival / recall，第三部分细讲），需要时再取回；逼近阈值就把旧消息<strong>压成摘要</strong>。窗口始终可控，历史不丢、可检索。</p>
+  </div>
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>"上下文越大越好"是个危险的直觉。</strong>就算模型号称 1M token，把东西全塞进去也有三个代价：① <strong>更贵</strong>——按 token 计费，塞得越多每轮越烧钱；② <strong>更慢</strong>——prefill 要读的 token 越多、延迟越高；③ <strong>反而更笨</strong>——研究反复发现"<span class="mono">lost in the middle</span>"：放在超长上下文<strong>中间</strong>的信息最容易被模型忽略，关键内容淹没在噪声里，答得还不如精简上下文准。所以"长上下文模型"只是<strong>放宽</strong>了约束，<strong>并没有取消它</strong>——你仍然需要"放什么、不放什么"的记忆管理。
+</div>
+
+<table class="t">
+  <tr><th>做法</th><th>成本 / 延迟</th><th>记得住多久</th><th>失忆风险</th></tr>
+  <tr><td>裸塞历史进 prompt</td><td>随历史线性上涨</td><td>到窗口满为止</td><td>高：满了就截断 / 报错</td></tr>
+  <tr><td>只靠超长上下文模型</td><td>更高（读得越多越贵）</td><td>更久，但仍有上限</td><td>中：lost-in-the-middle</td></tr>
+  <tr><td><strong>Letta：分层 + 压缩</strong></td><td><strong>可控（前缀吃缓存）</strong></td><td><strong>理论无限（归档可检索）</strong></td><td><strong>低：旧消息压成摘要，不丢</strong></td></tr>
+</table>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>prefill / decode / KV cache，一分钟搞懂</summary><div class="acc-body">
+<p><strong>示例：</strong>你发一段 2000 token 的 prompt，模型回 200 token。prefill 阶段一次性"读"这 2000 个输入 token（可并行，快）；decode 阶段把那 200 个输出 token <strong>一个一个</strong>生成（串行，慢）。</p>
+<p><strong>为什么这样设计：</strong>Transformer 算注意力时，每个新 token 都要和前面所有 token 比一遍。把前面 token 的 key/value 算一次就<strong>缓存（KV cache）</strong>起来，之后每生成一个新 token 只需算它自己、再去查缓存，避免重复计算。代价是缓存要占显存，所以上下文越长越吃显存——这也是窗口有上限的原因之一。</p>
+<p><strong>源码在哪：</strong>Letta 不自己跑推理（那是 provider / 推理引擎的事），但它<strong>估算</strong>这些 token 账：<span class="mono">letta/services/context_window_calculator/token_counter.py::TokenCounter</span> 负责数 token，<span class="mono">ContextWindowCalculator.calculate_context_window</span> 汇总成账本。</p>
+<p><strong>还有什么替代：</strong>不缓存就每生成一个新 token 都从头重算整段注意力——慢到不可用；这正是 KV cache 成为现代推理标配的原因。</p>
+</div></details>
+
+<details class="accordion"><summary>为什么"稳定前缀"能省钱（prefix cache）</summary><div class="acc-body">
+<p><strong>示例：</strong>两轮请求都以同样的 system + 核心记忆开头，只是结尾多了一条新消息。第二轮里，那段相同的开头能直接命中上一轮缓存的 KV，<strong>跳过 prefill</strong>。</p>
+<p><strong>为什么这样设计：</strong>prefill 是按输入 token 收费 / 耗时的，而前缀往往又长又稳定（system + persona / human）。只要逐 token 一致就能复用缓存，于是"别乱动前缀"直接转化成省钱省延迟。Letta 因此选择：正常步骤里<strong>不</strong>刷新系统提示，只往尾巴追加消息；只有记忆变化或压缩后才重建前缀。</p>
+<p><strong>源码在哪：</strong>第 3 课的 <span class="mono">letta/services/agent_manager.py::rebuild_system_prompt_async</span>——它只在必要时（记忆变更 / 压缩后）重写第 0 条 system 消息；<span class="mono">letta/agents/letta_agent_v3.py</span> 的步骤注释明确写着"跳过 system 刷新以保留 prefix 缓存"。</p>
+<p><strong>还有什么替代：</strong>每轮都重建系统提示——简单，但<strong>每轮都作废缓存</strong>、全量重算，长对话下成本高得多。</p>
+</div></details>
+
+<details class="accordion"><summary>"换个长上下文模型不就行了？"</summary><div class="acc-body">
+<p><strong>示例：</strong>把模型从 8k 换成 1M 上下文，似乎就能把所有历史塞进去。但跑久了你会发现：账单飙升、响应变慢，而且模型经常"看不见"埋在中间的关键信息。</p>
+<p><strong>为什么这样设计：</strong>长上下文<strong>抬高了上限</strong>，但三条代价没消失——成本随 token 线性涨、prefill 延迟随长度涨、"lost in the middle"让中段信息被忽略。约束被<strong>放宽</strong>而非<strong>取消</strong>，所以"放什么进窗口"的决策依然要做。Letta 的分层记忆 + 压缩，就是这个决策的系统化答案。</p>
+<p><strong>源码在哪：</strong>阈值仍按窗口比例算（<span class="mono">get_compaction_trigger_threshold</span> = <span class="mono">context_window × 0.9</span>）——窗口再大，逼近 90% 照样压缩；账本 <span class="mono">ContextWindowOverview</span> 对大窗口同样适用。</p>
+<p><strong>还有什么替代：</strong>无限堆上下文——被成本和 lost-in-the-middle 反噬；纯向量检索（RAG）外挂——能扩容，但缺少"agent 自己编辑 / 分层"的主动记忆管理，正是第三部分要补的。</p>
+</div></details>
+
+<h2>这一课在整张大图的哪里</h2>
+<p>把前五课串起来：第 1 课说 Letta 的根本理由是"LLM 无状态 + 上下文有限"，第 3 课给了"稳定前缀 + 变化尾巴"的结构，第 4 课展示了每一步都要把整段上下文重拼再发。<strong>这一课补上了那块缺失的"为什么"</strong>：因为上下文是一笔<strong>有限且按 token 计费的预算</strong>，prefill / prefix-cache 的经济学让"稳定前缀"成为省钱的硬道理，而"尾巴只会增长"让"换出旧内容"成为迟早要做的事。Letta 没有回避，而是把它量化成 <span class="mono">ContextWindowOverview</span>、把动作触发在 <span class="mono">context_window × 0.9</span>。</p>
+
+<p>顺着这条逻辑，下一站就水到渠成：<strong>既然预算有限、尾巴必须换出，那"换出去的东西放哪、怎么取回、agent 怎么自己管"——这就是"记忆系统"要回答的问题，也正是第三部分的主题。</strong>核心记忆（始终在窗的 persona / human）、recall（可检索的历史消息）、archival（可检索的长期事实）这三层，本质上就是"桌面 + 抽屉 + 档案室"的工程实现——是对本课这条约束的<strong>正面回答</strong>。读完第三部分，你会看到 <span class="mono">compact</span> 压出来的摘要、归档进去的消息、agent 用记忆工具自我编辑的闭环，如何共同把"有限窗口"变成"看起来无限的记忆"。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>核心约束 = 有限的 token 预算</strong>：一次调用能看见的 token 有写死的上限，且 system + 核心记忆 + 工具 schema + 在窗消息<strong>共享</strong>这条预算。</li>
+    <li><strong>prefill vs decode</strong>：prefill 并行读入整段 prompt（越长越贵），decode 串行逐 token 生成（越长越慢）；prefill 会建立 KV cache。</li>
+    <li><strong>稳定前缀省钱（prefix cache）</strong>：前缀逐 token 一致就能命中缓存、跳过 prefill——这正是第 3 课"稳定前缀 + 变化尾巴"的经济学原因。</li>
+    <li><strong>Letta 量化它</strong>：<span class="mono">ContextWindowOverview</span> 把窗口拆成逐项 token 账本（<span class="mono">ContextWindowCalculator</span> + <span class="mono">TokenCounter</span> 现场计算）。</li>
+    <li><strong>Letta 据此行动</strong>：逼近 <span class="mono">context_window × 0.9</span>（<span class="mono">get_compaction_trigger_threshold</span>）就 <span class="mono">compact</span> 压缩旧消息。</li>
+    <li><strong>更多上下文 ≠ 更好</strong>：成本、延迟、lost-in-the-middle 三重代价；长上下文放宽约束但不取消它——记忆管理仍是刚需，正是第三部分的主题。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. Letta（以及 MemGPT）要解决的“上下文窗口”核心约束，最准确的描述是？</div>
+  <ol class="opts">
+    <li>它是一笔固定大小、且按 token 计费的预算，system + 核心记忆 + 工具 schema + 在窗消息共享它</li>
+    <li>它是模型权重的大小限制</li>
+    <li>它是磁盘上能存多少条消息的限制</li>
+    <li>它只是对话历史的存储上限，与 system 和工具无关</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。上下文窗口是一次调用能“看见”的 token 上限，而且 system、核心记忆、工具 schema 和在窗消息一起挤这条预算——真正留给历史的只是剩余。预算有限、尾巴只会增长，这正是记忆管理被逼出来的根本原因。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 为什么 Letta 坚持“稳定前缀 + 变化尾巴”，正常步骤里不刷新系统提示？</div>
+  <ol class="opts">
+    <li>因为系统提示不允许被修改</li>
+    <li>为了让 decode 阶段并行化</li>
+    <li>前缀逐 token 不变才能命中 prefix cache、跳过昂贵的 prefill，省时省钱</li>
+    <li>因为模型读不懂太长的系统提示</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。prefill 按输入 token 计费/耗时，且会把前缀的 KV 缓存起来。只要前缀逐 token 一致，第二次就能复用缓存、跳过这段 prefill；改动前缀（哪怕一个字）会让缓存作废、全量重算。所以 rebuild_system_prompt_async 只在记忆变化或压缩后才重写第 0 条消息。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. “换个 1M 上下文的模型就不用管理记忆了”——这个说法的问题在哪？</div>
+  <ol class="opts">
+    <li>长上下文只是放宽约束而非取消它：成本随 token 涨、prefill 延迟涨、还有 lost-in-the-middle</li>
+    <li>长上下文会让模型忘记系统提示</li>
+    <li>1M 上下文的模型根本不存在</li>
+    <li>长上下文模型不能调用工具</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。更大的窗口抬高了上限，但三条代价仍在：按 token 计费导致成本线性上涨、prefill 读得越多越慢、研究反复发现放在超长上下文中间的信息容易被忽略（lost in the middle）。所以“放什么进窗口”的决策依然要做——Letta 用 ContextWindowOverview 量化、用 context_window×0.9 触发压缩来系统化地回答它。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>假设你的 agent 逼近了 context_window×0.9 的阈值。结合本课的 token 账本（ContextWindowOverview）和压缩闭环，你会优先换出/压缩哪一部分（旧消息？工具 schema？核心记忆？），又会尽量保住哪一部分前缀来吃 prefix cache？为什么？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+We've leaned on one phrase for four lessons — "the context window" — without ever cracking it open: Lesson 1 said "context is finite" is the root reason Letta exists, Lesson 3 said keep a "stable prefix + a changing tail," Lesson 4 said every step has to "re-assemble the whole script and send it to the model." Behind all three sits the same hard constraint we kept dodging: <strong>the context window is a fixed-size budget that is also billed per token</strong>. This lesson lays that bill out in full — how the model reads the prompt (prefill and decode), why a stable prefix saves real money (prefix cache), why "just stuff all the history in" is doomed, and how Letta <strong>measures</strong> the bill (<span class="mono">ContextWindowOverview</span>) and <strong>acts</strong> on it (compact as it nears a threshold). By the end you'll see: a memory system isn't a nice-to-have, it's a necessity <strong>forced</strong> by this constraint.
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  Picture the context window as a <strong>fixed-size desktop</strong>. Everything you need to "act on right now" — the manual (system), the sticky-note core memos (core memory), the few letters just exchanged (in-context messages), and a checklist of "which tools I can use" (tool schemas) — all has to be <strong>spread out on this desktop</strong>; the model can only see what's on the desk, nothing off it. The desk has two brutal facts: ① <strong>it's only this big</strong> — lay down something new and something old must go, or it won't fit; ② <strong>every square is billed</strong> — the fuller the desk, the more expensive and slower each "glance" (each call). So you're forced into one habit: <strong>file the rarely-used material into a drawer, keep only the most relevant on the desk</strong>, fetch it back when needed. That "file it when it won't fit, fetch it when you need it" tidying <strong>is</strong> memory management; and Letta's cleverness is that it <strong>constantly measures how much desk is left and who's using it</strong>, tidying up automatically as it fills — the throughline of this lesson.
+</div>
+
+<h2>A finite token budget: this is the core constraint</h2>
+<p>First, plain English for "context window": <strong>the maximum number of tokens a model can "see" in one call is a hard-coded ceiling</strong> (say 8k, 128k, 200k, even 1M). A token is the model's smallest unit — a Chinese character is roughly 1-2 tokens, a common English word about one. This ceiling isn't a suggestion, it's a <strong>physical boundary</strong>: exceed it and you either get an error (<span class="mono">ContextWindowExceededError</span>) or the earliest content gets silently truncated. Worse, this budget <strong>doesn't only hold conversation history</strong> — it must simultaneously fit four things, all squeezed into the same budget:</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>One fixed-size token budget</b>: the items below must sum to under the ceiling; as you near it, old content must be "swapped out"</div>
+  <div class="cells">
+    <span class="cell scale">system prompt</span>
+    <span class="cell hl">core memory<br>persona / human</span>
+    <span class="cell q">tool schemas</span>
+    <span class="cell">in-context msgs<br>(grows)</span>
+    <span class="cell dim">…what won't fit</span>
+  </div>
+  <div class="cells">
+    <span class="lab">← stable prefix (kept put each turn)</span>
+    <span class="sep">|</span>
+    <span class="lab">changing tail (keeps growing) →</span>
+  </div>
+</div>
+
+<p>Add those four up and it clicks: <strong>the room actually left for "conversation history" is the ceiling minus system, core memory, and the tool list</strong>. Of these, system and core memory are the <strong>stable prefix</strong> (barely changing each turn, as Lesson 3 explained), and tool schemas are mostly fixed too; only the "in-context messages" <strong>tail</strong> keeps growing as the dialogue goes on. The longer the tail, the closer to the ceiling; once you near it, old messages must be "swapped out" — truncated, archived, or compressed into a summary. <strong>That's the entire motive for memory management: the budget is finite, and the tail only grows.</strong></p>
+
+<h2>How the model reads the prompt: prefill and decode</h2>
+<p>To understand "why a stable prefix saves money," first look at the two phases of generating one reply. Their cost structures are completely different:</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">① prefill</div><div class="nd">"reads" the whole prompt at once<br>system+history+tools, in parallel</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">build KV cache</div><div class="nd">every token read becomes<br>a cached key/value pair</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">② decode</div><div class="nd">emits tokens one by one<br>each one re-reads the cache</div></div>
+</div>
+
+<p><strong>prefill</strong> is "reading the question": the model swallows your whole prompt in one bite, <strong>all input tokens processed in parallel</strong>, so it's fast; along the way it stores each token's intermediate results (the attention key/value) as a <strong>KV cache</strong>. <strong>decode</strong> is "answering": the model <strong>generates one token at a time</strong>, each time re-reading the KV cache of all prior tokens before deciding the next — inherently serial, so <strong>the longer the output, the slower</strong>. Two key takeaways: first, <strong>longer input means costlier prefill</strong> (more tokens to read); second, since prefill computes and caches the prefix's KV, then <strong>if this request's prefix is token-for-token identical to last time, that cache can be reused, no recompute</strong> — which brings us to prefix cache.</p>
+
+<h2>Why a stable prefix saves money: prefix cache</h2>
+<p>Modern inference services (and some local engines) all do one thing: <strong>cache the computed result of the "prefix."</strong> If the long opening run of tokens is identical across two requests, the second can <strong>skip that prefill</strong> and grab last time's cached KV directly — faster and cheaper (many providers bill cache-hit input tokens at a discount). The keyword is <strong>"the prefix must be token-for-token identical"</strong>: change a single earlier token and every cache entry after it is invalidated and must be recomputed.</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">turn 1</span>
+    <span class="tslot span">system + core memory (stable prefix, full prefill)</span>
+    <span class="tslot now">new msg</span>
+  </div>
+  <div class="lane"><span class="lane-label">turn 2</span>
+    <span class="tslot span">same prefix → cache hit, skip recompute</span>
+    <span class="tslot">old msgs</span>
+    <span class="tslot now">new msg</span>
+  </div>
+  <div class="lane"><span class="lane-label">saved</span>
+    <span class="tslot">the prefix's prefill time &amp; cost</span>
+  </div>
+</div>
+
+<p>Now Lesson 3's design principle has an economic explanation: <strong>why put system + core memory at the very front and barely touch it each turn?</strong> Because they're the <strong>longest, most stable prefix</strong> — keep it token-for-token unchanged and every turn hits the prefix cache, sparing that expensive prefill. Conversely, edit the opening of the system prompt each turn (even by one character) and you've <strong>invalidated the cache by hand</strong>, forcing a full recompute every turn. <strong>"Stable prefix + changing tail" is not aesthetics, it's a structure forced by prefill / prefix-cache economics.</strong> That's also why, back in Lesson 3, Letta would rather "only append messages to the tail and rebuild the system prompt only when memory changes" than fiddle with the prefix every turn.</p>
+<h2>Letta measures the bill, and acts on it</h2>
+<p>By here, both the constraint and the economics are clear. Letta's response has two moves: <strong>first measure exactly "what's in the window," then decide when to compress.</strong> The "measure" part lives in a data structure called <span class="mono">ContextWindowOverview</span> — a <strong>token ledger</strong> for the entire context window:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/memory.py</span><span class="ln">class ContextWindowOverview (real fields, excerpt)</span></div>
+<pre><span class="kw">class</span> <span class="fn">ContextWindowOverview</span>(BaseModel):
+    context_window_size_max: int             <span class="cm"># this model's ceiling (total budget)</span>
+    context_window_size_current: int         <span class="cm"># how many tokens used right now</span>
+    num_tokens_system: int                   <span class="cm"># tokens in the system prompt</span>
+    num_tokens_core_memory: int              <span class="cm"># tokens in core memory (persona/human)</span>
+    num_tokens_functions_definitions: int    <span class="cm"># tokens in the tool schemas</span>
+    num_tokens_messages: int                 <span class="cm"># tokens in in-context messages</span>
+    num_tokens_summary_memory: int           <span class="cm"># tokens in the summary memory</span>
+    num_tokens_external_memory_summary: int  <span class="cm"># tokens for external (archival/recall) metadata</span>
+    num_messages: int                        <span class="cm"># count of in-context messages</span>
+    num_archival_memory: int                 <span class="cm"># count of archival items (off-desk)</span>
+    num_recall_memory: int                   <span class="cm"># count of recall items (off-desk)</span>
+    <span class="cm"># ... also carries each section's text (system_prompt/core_memory/...) for auditing</span>
+</pre></div>
+
+<p>See this ledger and you've grasped Letta's key move: it <strong>doesn't treat context as a black box</strong> — it <strong>counts every piece separately</strong>: what's the ceiling, how much is used now, and how much each block (system / core memory / tools / messages / summary) takes. The ledger is computed on the spot by <span class="mono">ContextWindowCalculator.calculate_context_window</span>, backed by a set of <span class="mono">TokenCounter</span>s (per provider: <span class="mono">AnthropicTokenCounter</span> / <span class="mono">ApproxTokenCounter</span>) that count system, message, and tool tokens. <strong>You can only decide what you can quantify.</strong></p>
+
+<div class="card detail">
+  <div class="tag">🔬 Source map</div>
+  Where each beat of this lesson lives: the <strong>token ledger</strong> is <span class="mono">letta/schemas/memory.py::ContextWindowOverview</span>; the <strong>on-the-spot calculation</strong> is in <span class="mono">letta/services/context_window_calculator/context_window_calculator.py::ContextWindowCalculator</span> (<span class="mono">calculate_context_window</span>), called by <span class="mono">letta/services/agent_manager.py::AgentManager.get_context_window</span>; <strong>counting tokens</strong> uses <span class="mono">letta/services/context_window_calculator/token_counter.py::TokenCounter</span> (<span class="mono">count_text_tokens</span> / <span class="mono">count_message_tokens</span> / <span class="mono">count_tool_tokens</span>, implemented by <span class="mono">AnthropicTokenCounter</span> / <span class="mono">ApproxTokenCounter</span>); the <strong>compaction threshold</strong> is in <span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span> (= <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>, the latter 0.9 in <span class="mono">letta/constants.py</span>); the <strong>compaction action</strong> is in <span class="mono">letta/agents/letta_agent_v3.py::LettaAgentV3</span> (<span class="mono">compact</span>, triggered by <span class="mono">_step</span> near the threshold / on overflow).
+</div>
+
+<p>With the ledger in hand, "when to act" reduces to one simple comparison: <strong>compare the current estimated token count to a threshold</strong>. That threshold doesn't wait until the window is full — it leaves headroom, firing by default at <strong>90% of the ceiling</strong> to avoid actually hitting the "prompt too long" error:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/thresholds.py</span><span class="ln">get_compaction_trigger_threshold (simplified)</span></div>
+<pre><span class="cm"># compaction trigger threshold = context window * 0.9 (10% headroom to avoid errors)</span>
+SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm"># letta/constants.py</span>
+
+<span class="kw">def</span> <span class="fn">get_compaction_trigger_threshold</span>(llm_config, *, force_proactive=<span class="kw">False</span>):
+    <span class="cm"># GPT-5 family is more proactive near 90%; this is the unified ceiling formula</span>
+    <span class="kw">return</span> <span class="fn">int</span>(llm_config.context_window * SUMMARIZATION_TRIGGER_MULTIPLIER)
+</pre></div>
+
+<p>String "measure" and "act" into that step loop from Lessons 3 and 4, and you get the pseudocode below — each step, estimate usage, compare to the threshold, compress if near, then continue:</p>
+
+<pre class="code"><span class="cm"># each agent step: estimate context usage -&gt; compare threshold -&gt; compress if near (pseudocode)</span>
+threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)   <span class="cm"># = context_window * 0.9</span>
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(max_steps):
+    used = <span class="fn">estimate_tokens</span>(system, core_memory, tools, messages)
+    <span class="kw">if</span> used &gt;= threshold:                       <span class="cm"># desk is nearly full</span>
+        messages = <span class="fn">compact</span>(messages)            <span class="cm"># summarize old msgs, swap out the tail</span>
+        <span class="fn">rebuild_system_prompt</span>()                 <span class="cm"># rebuild prompt post-compaction (prefix changes only now)</span>
+    reply = llm.<span class="fn">call</span>(system, messages, tools)    <span class="cm"># prefill whole -&gt; decode token by token</span>
+    <span class="kw">if</span> <span class="kw">not</span> reply.tool_calls:
+        <span class="kw">break</span>
+</pre>
+
+<p>This "measure → decide → compact → rebuild prefix" loop draws as four steps:</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Measure</h4><p>use <span class="mono">TokenCounter</span> to count tokens for system / core memory / tools / messages</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Decide</h4><p>is current usage ≥ the threshold (<span class="mono">context_window × 0.9</span>)?</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Compact</h4><p><span class="mono">compact</span>: summarize older in-context messages, freeing tail space</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Rebuild prefix</h4><p>post-compaction, <span class="mono">rebuild_system_prompt_async</span> rewrites message 0 so the next turn keeps hitting the cache</p></div></div>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 The spark</div>
+  <strong>The context window is the agent's RAM — and it's both finite AND costly per token. That one economic fact forces the entire memory system into existence.</strong> Many frameworks treat "add memory" as an optional feature; Letta's view is fundamentally different: since the desk is only this big and billed by the square, "managing memory" is <strong>not a nice-to-have but a necessity forced by economics</strong>. Better still, Letta doesn't stop at "knowing the constraint exists" — it turns it into two <strong>actionable</strong> things: one, it's <strong>measurable</strong> — <span class="mono">ContextWindowOverview</span> breaks the window into an itemized token ledger, so "how much is used, by whom" is crystal clear; two, it's <strong>action-triggering</strong> — once usage nears the <span class="mono">context_window × 0.9</span> threshold, it auto-<span class="mono">compact</span>s old messages into a summary. Wire this to Lesson 3 and it dawns on you: <strong>"stable prefix + changing tail" wasn't someone's stylistic whim, it's a direct product of prefill / prefix-cache economics</strong> — only a stable prefix hits the cache and spares the priciest prefill. In one line: <strong>Letta translates the physical constraint "context is expensive" into an engineering loop that's "measurable and compressible."</strong>
+</div>
+
+<h2>When the window is full, you have exactly two roads</h2>
+<p>When the tail grows to near the ceiling, what separates a toy demo from a long-running agent is how this step is handled:</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>Road A: cram it in (the toy way)</h4>
+    <p>Stuff all history into the prompt and hope "a big enough window will do." Result: either you <strong>hit the ceiling error</strong> (<span class="mono">ContextWindowExceededError</span>) or the earliest messages get <strong>silently truncated</strong> — the agent suddenly "forgets," and you can't control what was lost. Cost and latency also rise <strong>linearly</strong> with history.</p>
+  </div>
+  <div class="col">
+    <h4>Road B: tiered + compress (Letta)</h4>
+    <p>Keep only the <strong>most relevant</strong> in the window (core memory + recent messages), <strong>archive the rest off-window</strong> (archival / recall, detailed in Part 3), fetch back on demand; near the threshold, <strong>compress old messages into a summary</strong>. The window stays bounded, history is kept and searchable.</p>
+  </div>
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common misconception</div>
+  <strong>"Bigger context is always better" is a dangerous intuition.</strong> Even if a model boasts 1M tokens, cramming everything in has three costs: ① <strong>pricier</strong> — billed per token, the more you stuff, the more each turn burns; ② <strong>slower</strong> — the more tokens prefill must read, the higher the latency; ③ <strong>actually dumber</strong> — research keeps finding "<span class="mono">lost in the middle</span>": information placed in the <strong>middle</strong> of a very long context is the most likely to be ignored, key content drowning in noise, often less accurate than a trimmed context. So a "long-context model" only <strong>loosens</strong> the constraint, it doesn't <strong>remove</strong> it — you still need the memory management of "what to put in, what to leave out."
+</div>
+
+<table class="t">
+  <tr><th>approach</th><th>cost / latency</th><th>how long it remembers</th><th>amnesia risk</th></tr>
+  <tr><td>raw-stuff history into prompt</td><td>rises linearly with history</td><td>until the window fills</td><td>high: truncates / errors when full</td></tr>
+  <tr><td>rely on a long-context model only</td><td>higher (more to read)</td><td>longer, but still capped</td><td>medium: lost-in-the-middle</td></tr>
+  <tr><td><strong>Letta: tiered + compress</strong></td><td><strong>bounded (prefix hits cache)</strong></td><td><strong>effectively unlimited (archive is searchable)</strong></td><td><strong>low: old msgs summarized, not lost</strong></td></tr>
+</table>
+
+<h2>Digging a little deeper</h2>
+
+<details class="accordion"><summary>prefill / decode / KV cache, in one minute</summary><div class="acc-body">
+<p><strong>Example:</strong> you send a 2000-token prompt and the model replies with 200 tokens. The prefill phase "reads" those 2000 input tokens at once (parallel, fast); the decode phase generates those 200 output tokens <strong>one at a time</strong> (serial, slow).</p>
+<p><strong>Why designed this way:</strong> when a Transformer computes attention, each new token must compare against all prior tokens. Compute each prior token's key/value once and <strong>cache it (the KV cache)</strong>, then each new token only computes itself and looks up the cache, avoiding repeated work. The price is that the cache eats GPU memory, so longer context costs more memory — one reason the window has a ceiling at all.</p>
+<p><strong>Where in the source:</strong> Letta doesn't run inference itself (that's the provider / inference engine), but it <strong>estimates</strong> these token bills: <span class="mono">letta/services/context_window_calculator/token_counter.py::TokenCounter</span> counts tokens, and <span class="mono">ContextWindowCalculator.calculate_context_window</span> aggregates the ledger.</p>
+<p><strong>Alternatives:</strong> without caching, every new token recomputes the whole attention from scratch — unusably slow; that's exactly why the KV cache is standard in modern inference.</p>
+</div></details>
+
+<details class="accordion"><summary>Why a "stable prefix" saves money (prefix cache)</summary><div class="acc-body">
+<p><strong>Example:</strong> two requests both open with the same system + core memory, differing only by one new message at the end. In the second, that identical opening can hit the previous turn's cached KV and <strong>skip prefill</strong>.</p>
+<p><strong>Why designed this way:</strong> prefill is billed / timed by input tokens, and the prefix tends to be long and stable (system + persona / human). As long as it's token-for-token identical, the cache is reusable, so "don't fiddle with the prefix" converts directly into saved money and latency. Letta therefore chooses: during normal steps it does <strong>not</strong> refresh the system prompt, only appends messages to the tail; it rebuilds the prefix only after memory changes or compaction.</p>
+<p><strong>Where in the source:</strong> Lesson 3's <span class="mono">letta/services/agent_manager.py::rebuild_system_prompt_async</span> rewrites message 0 only when needed (memory change / post-compaction); <span class="mono">letta/agents/letta_agent_v3.py</span>'s step comments explicitly say "skip system refresh to preserve prefix caching."</p>
+<p><strong>Alternatives:</strong> rebuild the system prompt every turn — simple, but <strong>invalidates the cache every turn</strong> and recomputes in full, far costlier over long dialogues.</p>
+</div></details>
+
+<details class="accordion"><summary>"Can't I just switch to a long-context model?"</summary><div class="acc-body">
+<p><strong>Example:</strong> swap the model from 8k to 1M context and it seems you could stuff all history in. But run it long enough and you'll find: the bill spikes, responses slow down, and the model often "can't see" key info buried in the middle.</p>
+<p><strong>Why designed this way:</strong> long context <strong>raises the ceiling</strong>, but the three costs don't vanish — cost rises linearly with tokens, prefill latency rises with length, and "lost in the middle" ignores mid-context info. The constraint is <strong>loosened</strong>, not <strong>removed</strong>, so the "what goes into the window" decision still has to be made. Letta's tiered memory + compaction is the systematic answer to that decision.</p>
+<p><strong>Where in the source:</strong> the threshold is still computed as a fraction of the window (<span class="mono">get_compaction_trigger_threshold</span> = <span class="mono">context_window × 0.9</span>) — no matter how big the window, nearing 90% still triggers compaction; the ledger <span class="mono">ContextWindowOverview</span> applies to big windows just the same.</p>
+<p><strong>Alternatives:</strong> pile on infinite context — bitten by cost and lost-in-the-middle; bolt on pure vector retrieval (RAG) — it scales storage but lacks the "agent self-edits / tiers" active memory management that Part 3 fills in.</p>
+</div></details>
+
+<h2>Where this lesson sits on the big map</h2>
+<p>Stringing the five lessons together: Lesson 1 said Letta's root reason is "stateless LLM + finite context," Lesson 3 gave the "stable prefix + changing tail" structure, Lesson 4 showed that every step re-assembles and re-sends the whole context. <strong>This lesson supplies the missing "why"</strong>: because context is a <strong>finite, per-token-billed budget</strong>, prefill / prefix-cache economics make a "stable prefix" a hard money-saving rule, and "the tail only grows" makes "swapping out old content" something you'll do sooner or later. Letta doesn't dodge it — it quantifies it as <span class="mono">ContextWindowOverview</span> and triggers action at <span class="mono">context_window × 0.9</span>.</p>
+
+<p>Follow that logic and the next stop comes naturally: <strong>since the budget is finite and the tail must be swapped out, "where does the swapped-out stuff go, how is it fetched back, how does the agent manage it itself" — that's the question the "memory system" answers, and it's exactly Part 3's subject.</strong> The three tiers — core memory (the always-in-window persona / human), recall (searchable past messages), archival (searchable long-term facts) — are essentially the engineering of "desk + drawer + archive room," a <strong>direct answer</strong> to this lesson's constraint. After Part 3, you'll see how the summaries squeezed out by <span class="mono">compact</span>, the messages pushed into archive, and the agent's self-editing loop via memory tools together turn a "finite window" into "seemingly unlimited memory."</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>Core constraint = a finite token budget</strong>: the tokens visible in one call have a hard-coded ceiling, and system + core memory + tool schemas + in-context messages all <strong>share</strong> that budget.</li>
+    <li><strong>prefill vs decode</strong>: prefill reads the whole prompt in parallel (longer = pricier), decode generates token by token serially (longer = slower); prefill builds the KV cache.</li>
+    <li><strong>Stable prefix saves money (prefix cache)</strong>: a token-for-token identical prefix hits the cache and skips prefill — exactly the economic reason behind Lesson 3's "stable prefix + changing tail."</li>
+    <li><strong>Letta quantifies it</strong>: <span class="mono">ContextWindowOverview</span> breaks the window into an itemized token ledger (computed live by <span class="mono">ContextWindowCalculator</span> + <span class="mono">TokenCounter</span>).</li>
+    <li><strong>Letta acts on it</strong>: nearing <span class="mono">context_window × 0.9</span> (<span class="mono">get_compaction_trigger_threshold</span>) it <span class="mono">compact</span>s old messages.</li>
+    <li><strong>More context ≠ better</strong>: a triple cost of price, latency, and lost-in-the-middle; long context loosens but doesn't remove the constraint — memory management is still a necessity, the subject of Part 3.</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. What most accurately describes the core 'context window' constraint Letta (and MemGPT) address?</div>
+  <ol class="opts">
+    <li>It's a fixed-size, per-token-billed budget shared by system + core memory + tool schemas + in-context messages</li>
+    <li>It's a limit on the size of the model weights</li>
+    <li>It's a limit on how many messages can be stored on disk</li>
+    <li>It's only a cap on conversation history, unrelated to system or tools</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The window is the token ceiling a single call can 'see,' and system, core memory, tool schemas, and in-context messages all squeeze into it — only the remainder is left for history. Finite budget plus an ever-growing tail is exactly why memory management is forced into existence.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. Why does Letta insist on 'stable prefix + changing tail,' not refreshing the system prompt during normal steps?</div>
+  <ol class="opts">
+    <li>Because the system prompt is not allowed to be modified</li>
+    <li>To parallelize the decode phase</li>
+    <li>A token-for-token stable prefix hits the prefix cache and skips the costly prefill, saving time and money</li>
+    <li>Because the model can't understand a long system prompt</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. prefill is billed/timed by input tokens and caches the prefix's KV. As long as the prefix is token-for-token identical, the next request reuses the cache and skips that prefill; changing the prefix (even one character) invalidates it and forces a full recompute. That's why rebuild_system_prompt_async rewrites message 0 only on memory change or after compaction.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 'Just switch to a 1M-context model and you won't need memory management' — what's wrong with this?</div>
+  <ol class="opts">
+    <li>Long context only loosens, not removes, the constraint: cost rises with tokens, prefill latency rises, plus lost-in-the-middle</li>
+    <li>Long context makes the model forget the system prompt</li>
+    <li>1M-context models don't exist at all</li>
+    <li>Long-context models cannot call tools</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. A bigger window raises the ceiling, but three costs remain: per-token billing makes cost rise linearly, more tokens make prefill slower, and research repeatedly finds mid-context info gets ignored (lost in the middle). So the 'what goes into the window' decision still must be made — Letta answers it systematically by quantifying with ContextWindowOverview and triggering compaction at context_window×0.9.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Suppose your agent nears the context_window×0.9 threshold. Given this lesson's token ledger (ContextWindowOverview) and the compaction loop, which part would you swap out/compress first (old messages? tool schemas? core memory?), and which prefix would you preserve to keep hitting the prefix cache? Why?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="04-agent-and-tools.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">LLM agent 与 tool calling 基础</span><span class="lang-en">LLM agents &amp; tool calling</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

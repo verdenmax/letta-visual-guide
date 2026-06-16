@@ -54,6 +54,8 @@ PAGES = [
      "第一部分 · 宏观全景", "Part 1 · The Big Picture"),
     ("04-agent-and-tools.html", "LLM agent 与 tool calling 基础", "LLM agents & tool calling",
      "第二部分 · 前置基础", "Part 2 · Foundations"),
+    ("05-context-window.html", "上下文窗口的根本问题", "The context-window problem",
+     "第二部分 · 前置基础", "Part 2 · Foundations"),
 ]
 
 
@@ -475,6 +477,8 @@ SUBTITLES = {
                                   "POST -> actor -> AgentState -> step loop -> tools/memory -> persist -> response"),
     "04-agent-and-tools.html": ("函数调用怎么工作 · ReAct 循环 · 内心独白",
                                 "How function calling works; ReAct loop; inner monologue"),
+    "05-context-window.html": ("token 预算 · prefill/decode · prefix cache · 为什么需要记忆系统",
+                               "token budget; prefill/decode; prefix cache; why a memory system"),
 }
 
 
