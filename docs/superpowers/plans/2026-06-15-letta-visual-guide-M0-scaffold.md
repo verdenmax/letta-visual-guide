@@ -80,6 +80,11 @@ cp ../llama-cpp-visual-guide/src/shell.py src/shell.py
 
 ```bash
 cd /home/verden/course/letta-visual-guide/src
+# 内部标识符换前缀：lcvg(llama-cpp-visual-guide) -> lvg(letta-visual-guide)
+# 即 lvgToggleLang() 与 localStorage 键 'lvg-lang'，避免与参考站点同源串味
+sed -i 's/lcvg/lvg/g' shell.py
+# 模块 docstring 里的遗留品牌名
+sed -i 's/for the llama\.cpp visual guide/for the Letta visual guide/' shell.py
 # 主题色（亮色 accent / accent-soft / accent-ink；#c2630e 同时是 theme-color 与 favicon 填充）
 sed -i 's/#c2630e/#6d5efc/g; s/#fbeede/#ecebfe/g; s/#8a4708/#4733cf/g' shell.py
 # 主题色（暗色 accent / accent-soft / accent-ink）
@@ -95,9 +100,9 @@ sed -i 's/llama\.cpp 图解教程/Letta 图解教程/g; s/llama\.cpp Visual Guid
 Run:
 ```bash
 cd /home/verden/course/letta-visual-guide/src
-grep -nF '🦙' shell.py; grep -nF 'llama.cpp 图解教程' shell.py; grep -nF '#c2630e' shell.py
+grep -nF '🦙' shell.py; grep -nF 'llama.cpp 图解教程' shell.py; grep -nF '#c2630e' shell.py; grep -nF 'lcvg' shell.py; grep -niF 'llama' shell.py
 ```
-Expected: 三条命令均**无输出**（grep 退出码 1）。若某条仍有输出，用 `perl -CSD -i -pe 's/.../.../g' shell.py` 重做该替换。
+Expected: 五条命令均**无输出**（grep 退出码 1）。若某条仍有输出，用 `perl -CSD -i -pe 's/.../.../g' shell.py` 重做该替换。
 
 - [ ] **Step 4: 替换 PAGES（M0 只含第 1 课）**
 
@@ -468,11 +473,12 @@ Expected: 打印 `''`（空串）。
 **Files:**
 - Create: `src/build.py`（从参考复制，无需改动）
 
-- [ ] **Step 1: 复制 build.py**
+- [ ] **Step 1: 复制 build.py（并修正遗留品牌名 docstring）**
 
 ```bash
 cd /home/verden/course/letta-visual-guide
 cp ../llama-cpp-visual-guide/src/build.py src/build.py
+sed -i 's/Build the llama\.cpp visual guide/Build the Letta visual guide/' src/build.py
 ```
 
 - [ ] **Step 2: 构建站点**

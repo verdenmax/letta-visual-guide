@@ -1,4 +1,4 @@
-"""Build the llama.cpp visual guide as a standalone bilingual static site.
+"""Build the Letta visual guide as a standalone bilingual static site.
 
 Layout produced (relative to project root):
 

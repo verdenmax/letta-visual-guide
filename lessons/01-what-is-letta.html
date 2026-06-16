@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-lang="zh"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>try{var l=localStorage.getItem('lcvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
 <title>01 · Letta / MemGPT 是什么 / What is Letta / MemGPT - Letta 图解教程</title>
 <meta name="description" content="第一部分 · 宏观全景｜Letta / MemGPT 是什么 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
 <meta name="theme-color" content="#6d5efc">
@@ -298,7 +298,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
     <span class="pill"><span class="lang-zh">第一部分 · 宏观全景</span><span class="lang-en">Part 1 · The Big Picture</span></span>
     <span class="pill">01 / 01</span>
-    <button class="langtoggle" onclick="lcvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
   </div>
   <div class="progress"><span style="width:100%"></span></div>
 </div>
@@ -400,14 +400,14 @@ so an agent can <strong>remember you, accumulate knowledge, and self-improve ove
   <div class="footnav"><a class="prev" href="../index.html"><div class="dir"><span class="lang-zh">← 返回</span><span class="lang-en">← Back</span></div><div class="ttl"><span class="lang-zh">目录</span><span class="lang-en">Contents</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
-function lcvgSetLang(l){
+function lvgSetLang(l){
   l=(l==='en')?'en':'zh';
   var d=document.documentElement;
   d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
-  try{localStorage.setItem('lcvg-lang',l);}catch(e){}
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
 }
-function lcvgToggleLang(){
-  lcvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
 }
 </script>
 </body></html>

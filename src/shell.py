@@ -1,4 +1,4 @@
-"""Shared HTML shell (CSS design system + navigation) for the llama.cpp visual guide."""
+"""Shared HTML shell (CSS design system + navigation) for the Letta visual guide."""
 
 import base64
 
@@ -368,20 +368,20 @@ SEARCH_JS = """
 """
 
 LANG_JS = """
-function lcvgSetLang(l){
+function lvgSetLang(l){
   l=(l==='en')?'en':'zh';
   var d=document.documentElement;
   d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
-  try{localStorage.setItem('lcvg-lang',l);}catch(e){}
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
 }
-function lcvgToggleLang(){
-  lcvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
 }
 """
 
 # Runs in <head> before first paint to avoid a flash of the wrong language.
 LANG_BOOT = (
-    "<script>try{var l=localStorage.getItem('lcvg-lang');"
+    "<script>try{var l=localStorage.getItem('lvg-lang');"
     "if(l==='en'){document.documentElement.dataset.lang='en';"
     "document.documentElement.lang='en';}}catch(e){}</script>"
 )
@@ -441,7 +441,7 @@ def page(filename, content, home_href="../index.html"):
     <a class="home" href="{home}">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
     <span class="pill">{bi(esc(part_zh), esc(part_en))}</span>
     <span class="pill">{idx+1:02d} / {total:02d}</span>
-    <button class="langtoggle" onclick="lcvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
   </div>
   <div class="progress"><span style="width:{pct}%"></span></div>
 </div>
@@ -509,7 +509,7 @@ def index_page(lesson_prefix="lessons/"):
   <div class="topbar-inner">
     <span class="home">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></span>
     <span class="pill"><span class="lang-zh">共 {total} 课 · {nparts} 个部分</span><span class="lang-en">{total} lesson{'' if total == 1 else 's'} · {nparts} part{'' if nparts == 1 else 's'}</span></span>
-    <button class="langtoggle" onclick="lcvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
   </div>
   <div class="progress"><span style="width:100%"></span></div>
 </div>

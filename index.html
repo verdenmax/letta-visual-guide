@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-lang="zh"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>try{var l=localStorage.getItem('lcvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
 <title>Letta 图解教程 · 从零理解整个项目 / Letta Visual Guide</title>
 <meta name="description" content="从零理解整个 Letta（原 MemGPT）项目的中英双语图解教程：宏观结构、记忆系统、agent 执行循环、工具与 LLM provider、服务端与持久化，每课配真实源码对应、折叠深挖与设计亮点。">
 <meta name="theme-color" content="#6d5efc">
@@ -297,7 +297,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="topbar-inner">
     <span class="home">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></span>
     <span class="pill"><span class="lang-zh">共 1 课 · 1 个部分</span><span class="lang-en">1 lesson · 1 part</span></span>
-    <button class="langtoggle" onclick="lcvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
   </div>
   <div class="progress"><span style="width:100%"></span></div>
 </div>
@@ -326,14 +326,14 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="toc-empty" id="tocempty"><span class="lang-zh">没有匹配的课程，换个关键词试试。</span><span class="lang-en">No matching lessons, try another keyword.</span></div>
 </div>
 <script>
-function lcvgSetLang(l){
+function lvgSetLang(l){
   l=(l==='en')?'en':'zh';
   var d=document.documentElement;
   d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
-  try{localStorage.setItem('lcvg-lang',l);}catch(e){}
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
 }
-function lcvgToggleLang(){
-  lcvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
 }
 </script>
 <script>
