@@ -1003,3 +1003,493 @@ memory = <span class="fn">ChatMemory</span>(
 </div>
 """,
 }
+
+
+LESSON_09 = {
+    "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第 7 课给了你三层地图，其中点了一句：core memory 是<strong>唯一能被 agent 自己改写</strong>的那一层。第 8 课又拆开了 core 的最小单位——带 <span class="mono">label / value / limit / read_only</span> 四个字段的<strong>记忆块 Block</strong>。这一课把那句"自我编辑记忆"讲到机制底。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+答案会让你有点意外：agent "记住一件事"，本质是<strong>改写自己的系统提示</strong>。改一个块 → 持久化 → 重新编译 → <strong>原地重写第 0 条 system 消息</strong>。读完你会明白，core memory 根本不是"存在别处的记忆"，它<strong>就是 system 提示的一部分</strong>。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把 core memory 想成一张贴在 agent 额头上的"人设卡"。</strong>这张卡写着"你是谁、用户是谁、现在在做什么"，而且 agent <strong>每开口前都会先读一遍</strong>。神奇的地方在于：agent 能拿起笔<strong>改这张卡</strong>——划掉旧的一行、补上新的一句。卡一改，从下一句话起，它读到的"自己"就变了，于是它的言行也跟着变。它不是"在某个数据库里记了一笔"，而是<strong>把自己的"出厂设定"重写了一遍</strong>。这就是本课要拆穿的核心魔术：记忆不在别处，记忆就贴在脸上、每轮都读。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：agent 调 <span class="mono">core_memory_append / replace</span> 改某个块的 <span class="mono">value</span> → 持久化 → 触发 <span class="mono">rebuild_system_prompt_async</span> <strong>原地重写第 0 条 system 消息</strong>。</strong>而 system 提示里有个写死的占位符 <span class="mono">{CORE_MEMORY}</span>，编译好的块就<strong>填进这个洞</strong>。所以"改记忆"和"改系统提示"在 Letta 里是<strong>同一件事</strong>。本课就沿着这条闭环走一遍：从一次工具调用，到第 0 条被换掉，再到为什么"正常步骤故意不重建"。
+</div>
+
+<h2>先记住一句话：core memory 就是 system 的一部分</h2>
+<p>很多人以为 core memory 像 recall / archival 那样"存在某个表里、要时才取"。<strong>不是。</strong>core 始终在窗，靠的是每轮把 <span class="mono">Memory.compile()</span> 的产物拼进 system 提示（第 7、8 课讲过）。它<strong>本身就是 system 文本</strong>。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>关键一句：</strong>core memory 不是"存在别处的记忆"，它<strong>就是 system 提示的一部分</strong>。agent 改记忆 = 改自己每轮都会读到的"出厂设定"。</span></div>
+
+<p>对比一下就清楚：recall 和 archival 是"窗外的库"，要靠工具调用才取得回；而 core <strong>不需要"取"</strong>——它每轮都被 <span class="mono">Memory.compile()</span> 现拼进 system，模型睁眼就看见。正因为它"长在 system 上"，改它才等于改 system。</p>
+
+
+<p>抓住这一点，本课后面全是推论：既然 core 就是 system 文本，那"改记忆"就必然意味着"改 system 文本"；而 system 文本是<strong>持久化的第 0 条消息</strong>，于是改记忆最终会<strong>落到那一条消息上</strong>。下面把这条因果链一步步走清。</p>
+
+<h2>自编辑闭环：从"想记住"到"下一轮就生效"</h2>
+<p>先看全景。一次自我编辑要走六步——从用户说了点该记的事，到 agent 的"自我"在下一轮真正变样。把这六步记住，后面每一节都是给其中一步做特写。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>出现该记的事</h4><p>用户说"以后叫我老王"，或任务状态变了——agent 判断这值得写进 core。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>调用记忆工具</h4><p>agent 发起一次工具调用 <span class="mono">core_memory_replace(label, 旧, 新)</span>（或 append）。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>改 block.value</h4><p>执行器先在内存里把块的 <span class="mono">value</span> 改掉（<span class="mono">update_block_value</span>）。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>持久化到库</h4><p><span class="mono">update_memory_if_changed_async</span> 把变更写进数据库（块表，last-write-wins）。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>重写第 0 条</h4><p><span class="mono">rebuild_system_prompt_async</span> 重新编译记忆，<strong>原地</strong>改掉第 0 条 system 消息。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>下一轮即生效</h4><p>下一轮一开头，模型读到的 system 已是新内容——agent "就是"新设定了。</p></div></div>
+</div>
+
+<p>注意第 6 步的"时差"：改动不是当场插进对话，而是<strong>沉淀进第 0 条</strong>，等下一轮拼上下文时一并被读到。所以自我编辑是"写给未来的自己"——这一轮动笔，下一轮起效。</p>
+
+<p>举个具体的：human 块原本写着"用户在调研选型"。用户说"我们定了，下单 Letta"。agent 调 <span class="mono">core_memory_replace('human', '在调研选型', '已选定 Letta')</span>——块值被改、落库、第 0 条重编译。下一轮模型一读 system 就知道"项目已定"，不会再傻问"选得怎么样了"。</p>
+
+<p>这条闭环里，第 4、5 步并不总会"真干活"：只有当编译出的记忆和当前 system <strong>确有差异</strong>时，才会落库并重写第 0 条。"改了等于没改"的调用会被悄悄短路——下一节看 <span class="mono">rebuild_system_prompt_async</span> 时会更清楚。</p>
+
+
+
+<h2>core_memory_append / replace 改的是什么</h2>
+<p>先看最贴近"动手"的一层：两个工具到底做了什么。它们的实现都在 <span class="mono">LettaCoreToolExecutor</span>（<span class="mono">letta/services/tool_executor/core_tool_executor.py</span>），短得超乎想象。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">core_memory_replace（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">core_memory_replace</span>(self, agent_state, actor, label, old_content, new_content):
+    block = agent_state.memory.get_block(label)
+    <span class="kw">if</span> block.read_only:                       <span class="cm"># 只读块：agent 不能改（第 8 课的硬约束）</span>
+        <span class="kw">raise</span> ValueError(READ_ONLY_BLOCK_EDIT_ERROR)
+    current = <span class="kw">str</span>(block.value)
+    <span class="kw">if</span> old_content <span class="kw">not in</span> current:            <span class="cm"># old 必须精确出现，否则报错</span>
+        <span class="kw">raise</span> ValueError(<span class="st">"Old content not found"</span>)
+    new_value = current.replace(old_content, new_content)
+    agent_state.memory.<span class="fn">update_block_value</span>(label=label, value=new_value)   <span class="cm"># ① 改内存里的块</span>
+    <span class="kw">await</span> self.agent_manager.<span class="fn">update_memory_if_changed_async</span>(            <span class="cm"># ② 持久化 + 触发重建</span>
+        agent_id=agent_state.id, new_memory=agent_state.memory, actor=actor)
+    <span class="kw">return</span> new_value
+</pre></div>
+
+<p>三件事，按顺序：<strong>① 把关</strong>——只读块直接抛 <span class="mono">READ_ONLY_BLOCK_EDIT_ERROR</span>（第 8 课说的硬约束就在这一行）；<strong>② 改值</strong>——在内存对象里替换 <span class="mono">block.value</span>；<strong>③ 交棒</strong>——把"持久化 + 重建 system"这件大事交给 <span class="mono">update_memory_if_changed_async</span>。</p>
+
+<div class="cols">
+  <div class="col"><h4><span class="mono">core_memory_append</span></h4><p>往块尾<strong>追加一行</strong>：<span class="mono">current + "\n" + content</span>。适合"又多知道了一件事"，不动原有内容。</p></div>
+  <div class="col"><h4><span class="mono">core_memory_replace</span></h4><p><strong>精确替换</strong>一段：<span class="mono">old</span> 必须存在且匹配。适合"事实变了，把旧的纠正成新的"。</p></div>
+</div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">两个工具<strong>第一步都查 <span class="mono">read_only</span></strong>：只读块（如团队共享的"政策"卡）会直接抛错，agent 改不动——这正是第 8 课"读写权限"在自编辑路径上的落地。</span></div>
+
+<p>有意思的是实现<strong>短得离谱</strong>：真正的重活——持久化、判断要不要重建、原地换消息——全被推给了 <span class="mono">update_memory_if_changed_async</span>。工具本身只管"把块改对"，把"让改动生效"留给下游。这种<strong>关注点分离</strong>让两个工具既好读、又难写错。</p>
+
+<p>还有个细节：工具<strong>返回改完后的新值</strong>（<span class="mono">return new_value</span>）。这个返回会作为工具结果回到对话里，等于让 agent <strong>当场确认</strong>"我刚把卡改成了这样"——它对自己的修改有即时反馈，而不是改完两眼一抹黑。</p>
+
+
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">🤖</span><span class="arrow">✏️</span><span class="emoji">📋</span>
+    <span class="bubble">"把'叫小李'改成'叫老王'"</span>
+  </div>
+  <div class="cap">自我编辑记忆 = agent 拿起笔，改写自己每轮都会读到的那张 system "人设卡"</div>
+</div>
+
+<h2>{CORE_MEMORY}：模板上预留的一个洞</h2>
+<p>第 ② 步把球传给了"持久化 + 重建"。但在看重建之前，得先搞懂一件事：编译好的块<strong>到底拼到 system 的哪里</strong>？答案是一个写死的占位符 <span class="mono">{CORE_MEMORY}</span>。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">system 模板</div><div class="nd">含 <span class="mono">{CORE_MEMORY}</span> 洞</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Memory.compile()</div><div class="nd">块渲染成 &lt;memory_blocks&gt;</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">.replace 填洞</div><div class="nd">洞 → 真实记忆 + 库存单</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">完整 system#0</div><div class="nd">模型真正读到的</div></div>
+</div>
+
+<p>这个洞由 <span class="mono">get_system_message_from_compiled_memory</span>（<span class="mono">letta/prompts/prompt_generator.py</span>）来填。它把编译好的块、再加上第 7 课那张 <span class="mono">&lt;memory_metadata&gt;</span> 库存单，一起替换进占位符。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/prompts/prompt_generator.py</span><span class="ln">get_system_message_from_compiled_memory（简化）</span></div>
+<pre><span class="cm"># 1) 编译好的块 + 库存单 拼成一大段在窗记忆</span>
+full_memory_string = memory_with_sources + <span class="st">"\n\n"</span> + memory_metadata_string
+
+<span class="cm"># 2) 占位符就是字符串 "{CORE_MEMORY}"（名字来自常量 IN_CONTEXT_MEMORY_KEYWORD）</span>
+memory_variable_string = <span class="st">"{"</span> + IN_CONTEXT_MEMORY_KEYWORD + <span class="st">"}"</span>
+
+<span class="cm"># 3) 把模板里的洞，替换成真实记忆 —— 这一步就是"记忆进 system"</span>
+formatted_prompt = system_prompt.replace(memory_variable_string, full_memory_string)
+<span class="kw">return</span> formatted_prompt
+</pre></div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx"><span class="mono">{CORE_MEMORY}</span> 这个名字写死在常量 <span class="mono">IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"</span>（<span class="mono">letta/constants.py</span>）。它是系统提示模板里唯一"受保护"的变量——你的自定义提示词只要留着这个洞，记忆就能被注进去。</span></div>
+
+<p>万一你的自定义系统提示<strong>忘了写</strong>这个洞呢？别担心，注入函数有个兜底：发现模板里没有 <span class="mono">{CORE_MEMORY}</span>，就<strong>自动把它补到末尾</strong>（<span class="mono">append_icm_if_missing</span>），保证记忆无论如何都进得了 system。</p>
+
+
+<p>所以"core 在窗"不是什么后台魔法，就是一次朴素的字符串替换：模板里挖个 <span class="mono">{CORE_MEMORY}</span>，每次重建时把当前的块填进去。理解了这个洞，你就理解了"记忆怎么变成模型读到的文字"。</p>
+
+<p>填进洞里的也不只是块本身。<span class="mono">full_memory_string</span> = 编译后的 <span class="mono">&lt;memory_blocks&gt;</span> + 第 7 课那张 <span class="mono">&lt;memory_metadata&gt;</span> 库存单。前者是"眼前卡片的内容"，后者是"窗外还压着多少条"。两段拼在一起，模型既看见当下、又对窗外心里有数。</p>
+
+
+<h2>原地重写第 0 条：rebuild_system_prompt_async</h2>
+<p>现在看闭环里份量最重的一步。把"洞被填好的新 system 文本"真正<strong>写回那条消息</strong>的，是 <span class="mono">rebuild_system_prompt_async</span>（<span class="mono">letta/services/agent_manager.py</span>）。它的关键有两点：<strong>没变就不写</strong>、<strong>变了就原地换</strong>。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/agent_manager.py</span><span class="ln">rebuild_system_prompt_async（伪代码）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">rebuild_system_prompt_async</span>(agent_id, actor, force=<span class="kw">False</span>):
+    curr = message_manager.get(message_ids[<span class="nb">0</span>])        <span class="cm"># 第 0 条 = system 消息</span>
+    memory_str = agent_state.memory.<span class="fn">compile</span>(...)        <span class="cm"># 重新编译当前核心记忆</span>
+
+    <span class="kw">if</span> memory_str <span class="kw">in</span> curr.content <span class="kw">and not</span> force:    <span class="cm"># 记忆没变 → 直接返回，不重建</span>
+        <span class="kw">return</span>                                       <span class="cm">#   （这是 prefix cache 的护城河）</span>
+
+    new_system = PromptGenerator.<span class="fn">get_system_message_from_compiled_memory</span>(
+        system_prompt=agent_state.system, memory_with_sources=memory_str, ...)
+
+    temp = Message(role=<span class="st">"system"</span>, content=new_system)
+    temp.id = curr.id                            <span class="cm"># ★ 关键：沿用同一个 id</span>
+    <span class="kw">await</span> message_manager.<span class="fn">update_message_by_id_async</span>(curr.id, ...)   <span class="cm"># 原地重写第 0 条</span>
+</pre></div>
+
+<p>两个设计决定值得停下来看。第一，<strong>没变就不写</strong>：先比对"新编译的记忆"是否已在当前 system 里，若在且非强制，直接返回——这一步省下大量无谓重建。第二，<strong>原地换</strong>：新消息<strong>沿用旧消息的 id</strong>（<span class="mono">temp.id = curr.id</span>），所以第 0 条还是那一条，只是内容被换了。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">重写时 <span class="mono">temp.id = curr.id</span>：第 0 条的<strong>身份没变</strong>，变的只是它的<strong>内容</strong>——同一个 id、原地更新，<strong>不是</strong>新插一条 system 消息。这让"历史只有一条 system"这件事始终成立。</span></div>
+
+<p>"没变就不写"这条短路也别小看：它先比对"新编译的记忆是否已在当前 system 里"，是就直接返回。于是即便 agent 调了工具、内容其实没变（把"老王"又改成"老王"），也不会平白重写第 0 条、不会无谓打碎缓存。<strong>正确</strong>与<strong>省钱</strong>在这里恰好一致。</p>
+
+
+<p>把这一步和第 6 课接上：agent 的状态是外化、持久的，而 system 提示就是 <span class="mono">message_ids[0]</span> 这一条持久消息。所以"改记忆"最终落在一条<strong>数据库里的消息</strong>上——既不丢、又能被下一次加载读回。</p>
+
+<p>形象点说：第 0 条像一块门牌号固定的展示板。改记忆不是<strong>换一块新板</strong>（新 id），而是<strong>擦掉旧字、写上新字</strong>（同 id）。门牌没变，下一次加载走到老地方，读到的却是新内容。这也是为什么 agent 的"历史"里始终只有一条 system 消息。</p>
+
+<p>落库这一步走的是<strong>"有变才写"</strong>：<span class="mono">update_memory_if_changed_async</span> 先比对编译结果，只有真变了才把块写进数据库（<span class="mono">update_block_async</span>，后写覆盖先写）。多个 agent 抢改同一张共享卡时，这就是一条朴素的 last-write-wins 规则。</p>
+
+
+
+<h2>为什么"正常步骤故意不重建"——为了 prefix cache</h2>
+<p>这里有个容易被忽略、却很关键的取舍。既然记忆这么重要，为什么不<strong>每一步</strong>都重建一遍 system、保证它绝对最新？因为那会<strong>砸掉 prefix cache</strong>（第 5 课）。</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">正常步骤</span><span class="tslot">第 1 轮·system#0 稳定</span><span class="tslot">第 2 轮·前缀不变 → 命中缓存</span><span class="tslot span">不动第 0 条…</span><span class="tslot now">第 N 轮·仍命中</span></div>
+  <div class="lane"><span class="lane-label">记忆变 / 压缩后</span><span class="tslot">改了 core 块</span><span class="tslot">重建第 0 条</span><span class="tslot span">前缀变了 · 这次缓存失效</span><span class="tslot now">换来正确状态</span></div>
+</div>
+
+<p>道理在第 5 课算过：稳定的<strong>前缀</strong>能命中 KV cache，省下大量重复 prefill。system 提示正好是最前面那段最稳定的前缀。每步都重写它，等于每步都让缓存失效——又慢又贵。</p>
+
+<p>算笔账更直观：假设 system 提示有几千 token，每轮重写就意味着这几千 token 的 prefill <strong>无法复用</strong>、得从头重算。十轮下来就是几万 token 的白烧。把"不动第 0 条"设成默认，正是把第 5 课的省钱手艺用到了底。</p>
+
+
+<div class="note info"><span class="ni">👉</span><span class="nx">看源码里的原话：<span class="mono">letta_agent_v3.py</span> 的 <span class="mono">_step</span> 在每步开头只刷新消息、<strong>跳过 system 重建</strong>，注释写着"preserve prefix caching"；只有<strong>记忆变化</strong>或<strong>压缩之后</strong>才会 <span class="mono">rebuild_system_prompt_async(force=True)</span>。</span></div>
+
+<p>于是策略很清楚：<strong>能不动第 0 条就不动</strong>。普通对话轮次保持前缀稳定、吃满缓存；只有当核心记忆真的被改了、或发生上下文压缩（第 12 课）时，才不得不重建一次——用一次缓存失效，换一份正确的"自我"。</p>
+
+<p>那"压缩之后为什么要强制重建"？因为压缩会重写消息序列、可能动到靠前的内容，前缀本就破了；既然缓存这一次反正要失效，就顺手用 <span class="mono">force=True</span> 把第 0 条也刷成最新的记忆与时间戳。第 12 课会把这条压缩路径讲透。</p>
+
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>这是 agent 在运行时给自己"重新编程"。</strong>别的系统把记忆存到一张<strong>外挂的表</strong>里，用时再查；Letta 反其道而行——把记忆直接<strong>编进系统提示</strong>。<span class="mono">Memory.compile()</span> 的产物，经 <span class="mono">{CORE_MEMORY}</span> 占位符拼进那条<strong>持久化的 system 消息</strong>；块一变，<span class="mono">rebuild_system_prompt_async</span> 就<strong>原地</strong>重写第 0 条（<span class="mono">temp.id = curr.id</span>，同一个 id）。于是 agent "记住一件事"不再是"在数据库里记一笔"，而是<strong>改写自己的出厂设定</strong>——它读到的"我是谁"变了，言行随之而变。这正是 MemGPT 区别于"LLM + 外挂记忆"的根本一手：记忆不是 agent 之外的附件，而是<strong>它自我定义的源代码</strong>，而且这份源代码<strong>由 agent 自己维护</strong>。把这层看透，你会发现"自我编辑记忆"既不玄、也不重——它就是"改一段字符串、换一条消息"，但因为那段字符串<strong>定义了 agent 是谁</strong>，这件小事就成了整个 MemGPT 的灵魂。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>别以为"每一步都会重建 system 来同步最新记忆"。</strong>恰恰相反：正常步骤<strong>故意跳过</strong> system 重建，为的是<strong>保住 prefix cache</strong>（<span class="mono">_step</span> 注释明写 "preserve prefix caching"）。第 0 条只在<strong>两种时刻</strong>被重写：① 核心记忆<strong>真的变了</strong>（<span class="mono">core_memory_*</span> 触发）；② 发生<strong>上下文压缩</strong>之后（<span class="mono">rebuild_system_prompt_async(force=True)</span>）。这还带来一个推论：<span class="mono">&lt;memory_metadata&gt;</span> 里 recall / archival 的<strong>计数可能略微滞后</strong>——因为只有 core 变化才触发重建，光是来了几条新消息并不会立刻刷新那串数字。知道这点，你就不会被"为什么计数没马上更新"绊住。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>整条闭环的源码坐标。</strong>两个写工具 <span class="mono">core_memory_append / replace</span> 在 <span class="mono">LettaCoreToolExecutor</span>（<span class="mono">core_tool_executor.py</span>），都先验 <span class="mono">read_only</span>、再 <span class="mono">update_block_value</span>、最后 <span class="mono">update_memory_if_changed_async</span> 持久化；后者在 <span class="mono">letta/services/agent_manager.py</span>，比对记忆若有变就 <span class="mono">update_block_async</span> 落库（last-write-wins）并调 <span class="mono">rebuild_system_prompt_async</span>。重建逻辑同在 <span class="mono">agent_manager.py</span>：取 <span class="mono">message_ids[0]</span>、<span class="mono">memory.compile()</span>、未变则跳过，变了就用 <span class="mono">get_system_message_from_compiled_memory</span>（<span class="mono">prompt_generator.py</span>）拼出新 system，并令 <span class="mono">temp.id = curr.id</span> 原地 <span class="mono">update_message_by_id_async</span>。占位符常量 <span class="mono">IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"</span> 在 <span class="mono">letta/constants.py</span>；"正常步骤不重建"的注释在 <span class="mono">letta/agents/letta_agent_v3.py</span> 的 <span class="mono">_step</span>。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>为什么把记忆编进 prompt，而不是另存一张表？</summary><div class="acc-body">
+<p><strong>示例：</strong>你也可以把"用户叫老王"存进一张 user_facts 表，每次提问前查出来塞进提示。很多 RAG 产品就是这么做的。</p>
+<p><strong>为什么这样设计：</strong>Letta 让记忆<strong>本身就是 system 提示</strong>，于是模型每轮"无条件"读到它，不依赖任何检索步骤是否被触发；而且 agent 能用同一套工具<strong>读写自己</strong>，把"我是谁"变成可推理、可编辑的对象，而不是外部注入的只读上下文。</p>
+<p><strong>源码在哪：</strong>编译在 <span class="mono">Memory.compile</span>（<span class="mono">letta/schemas/memory.py</span>），注入在 <span class="mono">get_system_message_from_compiled_memory</span>（<span class="mono">prompt_generator.py</span>）。</p>
+<p><strong>还有什么替代：</strong>外挂表 + 每轮检索——好处是 core 不占稳定前缀，坏处是多一道"会不会查、查得准不准"的不确定性，且记忆变成 agent 改不动的只读外设。</p>
+</div></details>
+
+<details class="accordion"><summary>prefix cache 与第 0 条：到底何时才重建？</summary><div class="acc-body">
+<p><strong>示例：</strong>连续聊十轮普通对话，第 0 条<strong>一次都不会重写</strong>；直到某轮 agent 调了 <span class="mono">core_memory_replace</span>，或窗口满了触发压缩，第 0 条才被重建一次。</p>
+<p><strong>为什么这样设计：</strong>system 提示是最靠前、最稳定的前缀，命中 KV cache 能省大量 prefill（第 5 课）。每步重建会持续打碎缓存，得不偿失，所以默认"按需重建"。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta/agents/letta_agent_v3.py</span> 的 <span class="mono">_step</span> 在步开头 <span class="mono">_refresh_messages</span> 但跳过 system 重建（注释 "preserve prefix caching"）；压缩后才 <span class="mono">rebuild_system_prompt_async(force=True)</span>。</p>
+<p><strong>还有什么替代：</strong>每步强制重建——绝对最新，但缓存常年失效、又慢又贵；完全不重建——便宜，但 agent 改了记忆却读不到，自我编辑形同虚设。Letta 取"变了才重建"的折中。</p>
+</div></details>
+
+<details class="accordion"><summary>append 还是 replace？两个写工具怎么选</summary><div class="acc-body">
+<p><strong>示例：</strong>用户说"我还养了只猫"——用 <span class="mono">append</span> 往 human 块尾加一行；用户说"我搬到上海了，不在北京了"——用 <span class="mono">replace</span> 把"北京"那段精确换成"上海"。</p>
+<p><strong>为什么这样设计：</strong><span class="mono">append</span> 只做 <span class="mono">current + "\n" + content</span>，安全、不碰旧内容，适合"新增事实"；<span class="mono">replace</span> 要求 <span class="mono">old_content</span> 在块里<strong>精确出现</strong>，适合"纠正/更新"，匹配不到会直接报错，避免误改。</p>
+<p><strong>源码在哪：</strong>两者都在 <span class="mono">core_tool_executor.py</span>；<span class="mono">replace</span> 用 <span class="mono">current.replace(old, new)</span>，若 <span class="mono">old_content not in current</span> 就抛错。</p>
+<p><strong>还有什么替代：</strong>只给一个"整块覆写"的工具——简单但危险，agent 容易把整张卡写崩；拆成 append / replace 让"加"和"改"各有其稳妥语义。</p>
+</div></details>
+
+<details class="accordion"><summary>多个 agent 共享同一个块，一处改会怎样？</summary><div class="acc-body">
+<p><strong>示例：</strong>第 8 课讲过，两个 agent 可以挂同一张 <span class="mono">block-…</span>。若 agent A 用 <span class="mono">core_memory_replace</span> 改了它，agent B 下一轮重编译 system 时就读到了新值。</p>
+<p><strong>为什么这样设计：</strong>块是可寻址的一等实体，共享靠 <span class="mono">blocks_agents</span> 多对多表把同一行连给多个 agent。自编辑写的是<strong>那一行</strong>，所以"一处改、处处变"，天然实现共享记忆。</p>
+<p><strong>源码在哪：</strong>落库走 <span class="mono">block_manager.update_block_async</span>（<span class="mono">update_memory_if_changed_async</span> 里调用），共享关系在 <span class="mono">letta/orm/blocks_agents.py</span>；B 端的"读到新值"发生在它自己的 <span class="mono">rebuild_system_prompt_async</span>。</p>
+<p><strong>还有什么替代：</strong>每个 agent 各存副本——要写同步逻辑、易不一致；共享同一行 + 各自按需重建，是更省心的做法（但也要小心只读块与并发覆写）。</p>
+</div></details>
+
+<h2>下一站：把这套"动手"铺到其余三层</h2>
+<p>这一课是第三部分的灵魂：你看清了 core 怎么被 agent <strong>自己改写</strong>，以及"改记忆 = 改 system"这条闭环。接下来三课，把"动手"的视角铺到其余两层与收尾。</p>
+
+<p>为什么说它是"灵魂"？因为"自我编辑记忆"正是 MemGPT 那篇论文最反直觉、也最关键的一手：让 LLM <strong>用工具管理自己的上下文</strong>。一旦"读、写、改自己的 system"这件事成立，agent 就从"被动应答的模型"变成了"会经营自己记忆的主体"——其余各层、各种工具，都是围着这个核心转。</p>
+
+
+<p><strong>第 10 课</strong>讲 archival 的"写与搜"——<span class="mono">archival_memory_insert / search</span> 怎么把长期知识嵌入成向量、再按相似度捞回；<strong>第 11 课</strong>讲 recall 与对话历史——消息怎么作为带类型的 JSON 事件被持久与检索；<strong>第 12 课</strong>回到第 5 课那道墙，讲<strong>上下文压缩</strong>，也正是本课说的"压缩后会强制重建第 0 条"的那条路径。</p>
+
+<p>临走再把闭环默背一遍：<strong>改块 → 落库 → 编译填洞 → 原地换第 0 条 → 下一轮生效</strong>；而且<strong>能不重建就不重建</strong>，只为护住 prefix cache。这五步加一条"按需重建"的纪律，把这条链记牢，你就握住了 Letta 记忆系统跳动的心脏，也就读懂了 MemGPT 最想说的那句话。</p>
+
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>core memory 就是 system 提示的一部分</strong>：所以"自我编辑记忆"本质是<strong>改写系统提示</strong>，不是往别处的表里记一笔。</li>
+    <li><strong>两个写工具</strong>：<span class="mono">core_memory_append</span>（尾部追加）/ <span class="mono">core_memory_replace</span>（精确替换），都先验 <span class="mono">read_only</span>、再改 <span class="mono">block.value</span>、再持久化（<span class="mono">core_tool_executor.py</span>）。</li>
+    <li><strong>{CORE_MEMORY} 占位符</strong>：编译好的块经 <span class="mono">get_system_message_from_compiled_memory</span> 的 <span class="mono">.replace</span> 填进这个洞；常量 <span class="mono">IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"</span>（<span class="mono">constants.py</span>）。</li>
+    <li><strong>原地重写第 0 条</strong>：<span class="mono">rebuild_system_prompt_async</span> 取 <span class="mono">message_ids[0]</span>，记忆变了才重建，并令 <span class="mono">temp.id = curr.id</span> 同 id 原地更新。</li>
+    <li><strong>正常步骤不重建</strong>：为保 prefix cache，<span class="mono">_step</span> 故意跳过 system 重建；只在<strong>记忆变化</strong>或<strong>压缩</strong>后重建（<span class="mono">letta_agent_v3.py</span>）。</li>
+    <li><strong>一句话</strong>：agent 在运行时给自己"重新编程"——改一段定义"我是谁"的字符串、换掉那一条 system 消息，这就是 MemGPT 的灵魂。</li>
+  </ul>
+</div>
+""",
+    "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Lesson 7 gave you the three-tier map and dropped one line: core memory is the <strong>only</strong> tier the agent can rewrite itself. Lesson 8 cracked open core's smallest unit — the <strong>memory Block</strong>, with its four fields <span class="mono">label / value / limit / read_only</span>. This lesson takes that line about self-editing all the way down to the mechanism.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+The answer is a little surprising: when an agent "remembers" something, it is <strong>rewriting its own system prompt</strong>. Edit a block → persist → recompile → <strong>rewrite message #0 in place</strong>. By the end you'll see core memory isn't "memory stored elsewhere" — it <strong>is part of the system prompt itself</strong>.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture core memory as a character sheet taped to the agent's forehead.</strong> It says who you are, who the user is, what you're doing now — and the agent <strong>reads it before every single utterance</strong>. The magic: the agent can pick up a pen and <strong>edit that sheet</strong> — cross out an old line, write in a new one. Change the sheet, and from its next sentence on, the "self" it reads is different, so its words and actions follow. It isn't "noting something in some database" — it is <strong>rewriting its own factory settings</strong>. That's the trick this lesson exposes: memory isn't elsewhere; it's on its face, read every turn.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>Grab this lesson in one line: the agent calls <span class="mono">core_memory_append / replace</span> to change a block's <span class="mono">value</span> → persist → trigger <span class="mono">rebuild_system_prompt_async</span>, which <strong>rewrites message #0 (the system message) in place</strong>.</strong> And the system prompt has a hardcoded placeholder <span class="mono">{CORE_MEMORY}</span> where the compiled blocks get <strong>spliced in</strong>. So "editing memory" and "editing the system prompt" are the <strong>same act</strong> in Letta. We'll walk the whole loop: from one tool call, to message #0 being swapped, to why "normal steps deliberately don't rebuild."
+</div>
+
+<h2>First, one line: core memory IS part of system</h2>
+<p>Many assume core memory is like recall / archival — stored in some table, fetched on demand. <strong>It isn't.</strong> core stays in-window because every turn the output of <span class="mono">Memory.compile()</span> is spliced into the system prompt (Lessons 7 & 8). It <strong>is the system text itself</strong>.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>Key line:</strong> core memory isn't "memory stored elsewhere" — it <strong>is part of the system prompt</strong>. An agent editing memory = editing the "factory settings" it reads every turn.</span></div>
+
+<p>Contrast makes it clear: recall and archival are "out-of-window stores" you must fetch with a tool; core needs <strong>no fetch</strong> — it's freshly spliced into system by <span class="mono">Memory.compile()</span> every turn, visible the moment the model opens its eyes. Because it "lives on" system, editing it equals editing system.</p>
+
+<p>Hold that, and the rest is corollaries: since core is system text, editing memory must mean editing system text; and system text is the <strong>persisted message #0</strong>, so an edit ultimately <strong>lands on that one message</strong>. Let's walk the causal chain step by step.</p>
+
+<h2>The self-editing loop: from "want to remember" to "live next turn"</h2>
+<p>Big picture first. One self-edit takes six steps — from the user saying something worth keeping, to the agent's "self" actually changing next turn. Memorize these six; every later section just zooms into one.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Something worth keeping</h4><p>User says "call me Boss from now on," or a task's status changes — the agent decides it belongs in core.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Call a memory tool</h4><p>The agent issues a tool call <span class="mono">core_memory_replace(label, old, new)</span> (or append).</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Change block.value</h4><p>The executor first edits the block's <span class="mono">value</span> in memory (<span class="mono">update_block_value</span>).</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Persist to the store</h4><p><span class="mono">update_memory_if_changed_async</span> writes the change to the database (block table, last-write-wins).</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Rewrite message #0</h4><p><span class="mono">rebuild_system_prompt_async</span> recompiles memory and edits message #0, the system message, <strong>in place</strong>.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>Live next turn</h4><p>At the start of the next turn, the model reads the new system — the agent now "is" the new setting.</p></div></div>
+</div>
+
+<p>Note the "lag" in step 6: the change isn't injected into the conversation on the spot — it <strong>settles into message #0</strong> and gets read when the next turn assembles context. Self-editing is "writing to your future self" — pen down this turn, effect next turn.</p>
+
+<p>Concretely: the human block said "user is evaluating options." The user says "we decided — buying Letta." The agent calls <span class="mono">core_memory_replace('human', 'evaluating options', 'chose Letta')</span> — value changed, persisted, #0 recompiled. Next turn the model reads system, knows "project decided," and won't dumbly ask "how's the evaluation going?"</p>
+
+<p>In this loop, steps 4 and 5 don't always "do real work": only when the compiled memory <strong>actually differs</strong> from the current system do they persist and rewrite #0. A "changed but unchanged" call gets quietly short-circuited — clearer when we look at <span class="mono">rebuild_system_prompt_async</span> next.</p>
+
+<h2>What core_memory_append / replace actually change</h2>
+<p>Start at the layer closest to "hands on": what the two tools do. Both live in <span class="mono">LettaCoreToolExecutor</span> (<span class="mono">letta/services/tool_executor/core_tool_executor.py</span>), and they're shorter than you'd guess.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">core_memory_replace (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">core_memory_replace</span>(self, agent_state, actor, label, old_content, new_content):
+    block = agent_state.memory.get_block(label)
+    <span class="kw">if</span> block.read_only:                       <span class="cm"># read-only block: the agent can't edit it (Lesson 8's hard rule)</span>
+        <span class="kw">raise</span> ValueError(READ_ONLY_BLOCK_EDIT_ERROR)
+    current = <span class="kw">str</span>(block.value)
+    <span class="kw">if</span> old_content <span class="kw">not in</span> current:            <span class="cm"># old must appear verbatim, else error</span>
+        <span class="kw">raise</span> ValueError(<span class="st">"Old content not found"</span>)
+    new_value = current.replace(old_content, new_content)
+    agent_state.memory.<span class="fn">update_block_value</span>(label=label, value=new_value)   <span class="cm"># (1) edit the in-memory block</span>
+    <span class="kw">await</span> self.agent_manager.<span class="fn">update_memory_if_changed_async</span>(            <span class="cm"># (2) persist + trigger rebuild</span>
+        agent_id=agent_state.id, new_memory=agent_state.memory, actor=actor)
+    <span class="kw">return</span> new_value
+</pre></div>
+
+<p>Three things, in order: <strong>(1) gatekeep</strong> — a read_only block raises <span class="mono">READ_ONLY_BLOCK_EDIT_ERROR</span> (Lesson 8's hard constraint is this very line); <strong>(2) change the value</strong> — replace <span class="mono">block.value</span> in the in-memory object; <strong>(3) hand off</strong> — delegate the big job of "persist + rebuild system" to <span class="mono">update_memory_if_changed_async</span>.</p>
+
+<div class="cols">
+  <div class="col"><h4><span class="mono">core_memory_append</span></h4><p><strong>Appends a line</strong> at the block's end: <span class="mono">current + "\n" + content</span>. Good for "learned one more thing"; leaves existing content alone.</p></div>
+  <div class="col"><h4><span class="mono">core_memory_replace</span></h4><p><strong>Exact replace</strong> of a span: <span class="mono">old</span> must exist and match. Good for "a fact changed; correct old into new."</p></div>
+</div>
+
+<p>What's striking is how tiny the implementation is: the real heavy lifting — persisting, deciding whether to rebuild, swapping the message in place — is all pushed to <span class="mono">update_memory_if_changed_async</span>. The tools only "get the block right" and leave "make it take effect" downstream. This <strong>separation of concerns</strong> makes both tools easy to read and hard to misuse.</p>
+
+<p>One more detail: the tools <strong>return the new value</strong> (<span class="mono">return new_value</span>). That return goes back into the conversation as the tool result, letting the agent <strong>confirm on the spot</strong> "I just changed the card to this" — it has immediate feedback on its own edit, not a blind write.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">Both tools <strong>check <span class="mono">read_only</span> first</strong>: a read-only block (like a team-shared "policy" card) raises immediately and the agent can't change it — Lesson 8's read/write permission, realized on the self-edit path.</span></div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">🤖</span><span class="arrow">✏️</span><span class="emoji">📋</span>
+    <span class="bubble">"change 'call me Lee' to 'call me Boss'"</span>
+  </div>
+  <div class="cap">Self-editing memory = the agent picks up a pen and rewrites the very system "character sheet" it reads each turn</div>
+</div>
+
+<h2>{CORE_MEMORY}: a hole reserved in the template</h2>
+<p>Step (2) passed the ball to "persist + rebuild." But before the rebuild, settle one thing: <strong>where exactly</strong> do the compiled blocks get spliced into system? Into a hardcoded placeholder, <span class="mono">{CORE_MEMORY}</span>.</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">system template</div><div class="nd">has the <span class="mono">{CORE_MEMORY}</span> hole</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Memory.compile()</div><div class="nd">blocks → &lt;memory_blocks&gt;</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">.replace fills it</div><div class="nd">hole → real memory + inventory</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">full system#0</div><div class="nd">what the model truly reads</div></div>
+</div>
+
+<p>That hole is filled by <span class="mono">get_system_message_from_compiled_memory</span> (<span class="mono">letta/prompts/prompt_generator.py</span>). It replaces the placeholder with the compiled blocks plus Lesson 7's <span class="mono">&lt;memory_metadata&gt;</span> inventory.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/prompts/prompt_generator.py</span><span class="ln">get_system_message_from_compiled_memory (simplified)</span></div>
+<pre><span class="cm"># 1) compiled blocks + inventory joined into one big in-context-memory string</span>
+full_memory_string = memory_with_sources + <span class="st">"\n\n"</span> + memory_metadata_string
+
+<span class="cm"># 2) the placeholder is the string "{CORE_MEMORY}" (name from constant IN_CONTEXT_MEMORY_KEYWORD)</span>
+memory_variable_string = <span class="st">"{"</span> + IN_CONTEXT_MEMORY_KEYWORD + <span class="st">"}"</span>
+
+<span class="cm"># 3) replace the hole in the template with real memory -- this is "memory enters system"</span>
+formatted_prompt = system_prompt.replace(memory_variable_string, full_memory_string)
+<span class="kw">return</span> formatted_prompt
+</pre></div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">The name <span class="mono">{CORE_MEMORY}</span> is hardcoded in the constant <span class="mono">IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"</span> (<span class="mono">letta/constants.py</span>). It's the only "protected" variable in the system-prompt template — as long as your custom prompt keeps this hole, memory gets injected.</span></div>
+
+<p>What if your custom system prompt <strong>forgets the hole</strong>? No worry — the injector has a fallback: if <span class="mono">{CORE_MEMORY}</span> is missing from the template, it <strong>appends it to the end automatically</strong> (<span class="mono">append_icm_if_missing</span>), so memory makes it into system no matter what.</p>
+
+<p>So "core in-window" is no background magic — it's a plain string replace: carve a <span class="mono">{CORE_MEMORY}</span> into the template, fill it with the current blocks on each rebuild. Understand the hole and you understand "how memory becomes the text the model reads."</p>
+
+<p>What fills the hole isn't only the blocks. <span class="mono">full_memory_string</span> = the compiled <span class="mono">&lt;memory_blocks&gt;</span> + Lesson 7's <span class="mono">&lt;memory_metadata&gt;</span> inventory. The former is "what's on the cards in front of you"; the latter is "how much is still out of window." Joined, the model sees the present and stays aware of what's outside.</p>
+
+<h2>Rewriting message #0 in place: rebuild_system_prompt_async</h2>
+<p>Now the heaviest step in the loop. What actually writes the "hole-filled new system text" back to the message is <span class="mono">rebuild_system_prompt_async</span> (<span class="mono">letta/services/agent_manager.py</span>). Two key moves: <strong>don't write if unchanged</strong>, <strong>swap in place if changed</strong>.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/agent_manager.py</span><span class="ln">rebuild_system_prompt_async (pseudocode)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">rebuild_system_prompt_async</span>(agent_id, actor, force=<span class="kw">False</span>):
+    curr = message_manager.get(message_ids[<span class="nb">0</span>])        <span class="cm"># message #0 = the system message</span>
+    memory_str = agent_state.memory.<span class="fn">compile</span>(...)        <span class="cm"># recompile current core memory</span>
+
+    <span class="kw">if</span> memory_str <span class="kw">in</span> curr.content <span class="kw">and not</span> force:    <span class="cm"># memory unchanged -> return, no rebuild</span>
+        <span class="kw">return</span>                                       <span class="cm">#   (this is the prefix-cache moat)</span>
+
+    new_system = PromptGenerator.<span class="fn">get_system_message_from_compiled_memory</span>(
+        system_prompt=agent_state.system, memory_with_sources=memory_str, ...)
+
+    temp = Message(role=<span class="st">"system"</span>, content=new_system)
+    temp.id = curr.id                            <span class="cm"># * key: keep the SAME id</span>
+    <span class="kw">await</span> message_manager.<span class="fn">update_message_by_id_async</span>(curr.id, ...)   <span class="cm"># rewrite #0 in place</span>
+</pre></div>
+
+<p>Two design decisions worth a pause. First, <strong>don't write if unchanged</strong>: compare whether the "newly compiled memory" is already in the current system; if so and not forced, return — saving lots of pointless rebuilds. Second, <strong>swap in place</strong>: the new message <strong>reuses the old message's id</strong> (<span class="mono">temp.id = curr.id</span>), so message #0 is still that one message, only its content changed.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">On rewrite, <span class="mono">temp.id = curr.id</span>: message #0's <strong>identity is unchanged</strong>; only its <strong>content</strong> changes — same id, in-place update, <strong>not</strong> a newly inserted system message. This keeps "history holds exactly one system message" always true.</span></div>
+
+<p>Don't underestimate the "don't write if unchanged" short-circuit: it first checks whether the newly compiled memory is already in the current system, and returns if so. So even if the agent called a tool but the content didn't actually change (re-replacing "Boss" with "Boss"), it won't needlessly rewrite #0 or pointlessly bust the cache. Here, <strong>correct</strong> and <strong>cheap</strong> happen to align.</p>
+
+<p>Tie this to Lesson 6: the agent's state is externalized and persistent, and the system prompt is that one persistent message, <span class="mono">message_ids[0]</span>. So "editing memory" ultimately lands on a <strong>message in the database</strong> — neither lost, nor unreadable on the next load.</p>
+
+<p>Vividly: message #0 is a display board with a fixed address number. Editing memory isn't <strong>swapping in a new board</strong> (new id) — it's <strong>erasing old text and writing new</strong> (same id). The address didn't change; the next load walks to the same spot and reads new content. That's why an agent's "history" always holds exactly one system message.</p>
+
+<p>Persistence follows <strong>"write only if changed"</strong>: <span class="mono">update_memory_if_changed_async</span> compares the compiled result first, and only writes blocks to the database (<span class="mono">update_block_async</span>, later write wins) when something truly changed. When multiple agents race to edit the same shared card, that's a plain last-write-wins rule.</p>
+
+<h2>Why "normal steps deliberately don't rebuild" — for prefix cache</h2>
+<p>Here's an easily-missed but crucial trade-off. If memory matters this much, why not rebuild system <strong>every step</strong> to guarantee it's absolutely fresh? Because that would <strong>smash the prefix cache</strong> (Lesson 5).</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">normal steps</span><span class="tslot">turn 1 · system#0 stable</span><span class="tslot">turn 2 · prefix unchanged → cache hit</span><span class="tslot span">leave #0 alone…</span><span class="tslot now">turn N · still hits</span></div>
+  <div class="lane"><span class="lane-label">memory change / post-compaction</span><span class="tslot">edited a core block</span><span class="tslot">rebuild #0</span><span class="tslot span">prefix changed · miss this once</span><span class="tslot now">buys a correct state</span></div>
+</div>
+
+<p>The math is from Lesson 5: a stable <strong>prefix</strong> hits the KV cache, saving lots of repeated prefill. The system prompt is exactly that stablest leading prefix. Rewriting it every step invalidates the cache every step — slow and expensive.</p>
+
+<p>Concretely: say the system prompt is a few thousand tokens; rewriting it every turn means those tokens of prefill <strong>can't be reused</strong> and must be recomputed. Ten turns is tens of thousands of tokens burned. Making "don't touch #0" the default is Lesson 5's cost-saving craft taken to its conclusion.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">Straight from the source: <span class="mono">_step</span> in <span class="mono">letta_agent_v3.py</span> only refreshes messages at the start of each step and <strong>skips the system rebuild</strong>, with the comment "preserve prefix caching"; only on a <strong>memory change</strong> or <strong>after compaction</strong> does it call <span class="mono">rebuild_system_prompt_async(force=True)</span>.</span></div>
+
+<p>So the strategy is clear: <strong>don't touch #0 if you can avoid it</strong>. Normal turns keep the prefix stable and feast on the cache; only when core memory truly changed, or compaction (Lesson 12) happens, is a rebuild forced — trading one cache miss for a correct "self."</p>
+
+<p>Why force a rebuild after compaction? Because compaction rewrites the message sequence and may touch leading content — the prefix is already broken; since the cache will miss this once anyway, it also uses <span class="mono">force=True</span> to refresh #0 to the latest memory and timestamp. Lesson 12 walks this compaction path in full.</p>
+
+<div class="card spark">
+  <div class="tag">💡 Design highlight</div>
+  <strong>This is the agent "reprogramming" itself at runtime.</strong> Other systems stash memory in an <strong>external table</strong> and query it when needed; Letta goes the other way — it <strong>compiles memory directly into the system prompt</strong>. The output of <span class="mono">Memory.compile()</span> is spliced, via the <span class="mono">{CORE_MEMORY}</span> placeholder, into that <strong>persisted system message</strong>; when a block changes, <span class="mono">rebuild_system_prompt_async</span> rewrites message #0 <strong>in place</strong> (<span class="mono">temp.id = curr.id</span>, same id). So an agent "remembering" isn't "noting a row in a database" — it's <strong>rewriting its own factory settings</strong>: the "who I am" it reads changes, and its behavior follows. This is exactly what separates MemGPT from "an LLM + bolted-on memory": memory isn't an attachment outside the agent, it's the <strong>source code of the agent's self-definition</strong> — and that source code is <strong>maintained by the agent itself</strong>. See through this layer and "self-editing memory" feels neither mystical nor heavy — it's "change a string, swap a message," but because that string <strong>defines who the agent is</strong>, this small act becomes the soul of all MemGPT.
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common misconception</div>
+  <strong>Don't assume "every step rebuilds system to sync the latest memory."</strong> Quite the opposite: normal steps <strong>deliberately skip</strong> the system rebuild to <strong>preserve the prefix cache</strong> (the <span class="mono">_step</span> comment literally says "preserve prefix caching"). Message #0 is rewritten only at <strong>two moments</strong>: (1) core memory <strong>actually changed</strong> (triggered by <span class="mono">core_memory_*</span>); (2) <strong>after compaction</strong> (<span class="mono">rebuild_system_prompt_async(force=True)</span>). A corollary: the recall / archival <strong>counts in <span class="mono">&lt;memory_metadata&gt;</span> may lag slightly</strong> — since only a core change triggers a rebuild, merely receiving a few new messages won't refresh those numbers immediately. Know this and you won't be tripped up by "why didn't the count update right away."
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 In the code</div>
+  <strong>Source coordinates for the whole loop.</strong> The two write tools <span class="mono">core_memory_append / replace</span> are in <span class="mono">LettaCoreToolExecutor</span> (<span class="mono">core_tool_executor.py</span>): each checks <span class="mono">read_only</span>, then <span class="mono">update_block_value</span>, then persists via <span class="mono">update_memory_if_changed_async</span>; the latter (in <span class="mono">letta/services/agent_manager.py</span>) compares memory and, if changed, writes blocks with <span class="mono">update_block_async</span> (last-write-wins) and calls <span class="mono">rebuild_system_prompt_async</span>. The rebuild (also in <span class="mono">agent_manager.py</span>) takes <span class="mono">message_ids[0]</span>, runs <span class="mono">memory.compile()</span>, returns early if unchanged, else builds the new system via <span class="mono">get_system_message_from_compiled_memory</span> (<span class="mono">prompt_generator.py</span>) and sets <span class="mono">temp.id = curr.id</span> for an in-place <span class="mono">update_message_by_id_async</span>. The placeholder constant <span class="mono">IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"</span> is in <span class="mono">letta/constants.py</span>; the "normal steps don't rebuild" comment is in <span class="mono">_step</span> (<span class="mono">letta/agents/letta_agent_v3.py</span>).
+</div>
+
+<h2>Going deeper</h2>
+
+<details class="accordion"><summary>Why compile memory into the prompt instead of a side table?</summary><div class="acc-body">
+<p><strong>Example:</strong> you could store "user is Boss" in a user_facts table and inject it into the prompt before each question. Many RAG products do exactly that.</p>
+<p><strong>Why it's designed this way:</strong> Letta makes memory <strong>the system prompt itself</strong>, so the model "unconditionally" reads it every turn, independent of whether some retrieval step fired; and the agent uses the <strong>same tools to read and write itself</strong>, turning "who I am" into a reasoned, editable object rather than read-only injected context.</p>
+<p><strong>Where in code:</strong> compilation in <span class="mono">Memory.compile</span> (<span class="mono">letta/schemas/memory.py</span>); injection in <span class="mono">get_system_message_from_compiled_memory</span> (<span class="mono">prompt_generator.py</span>).</p>
+<p><strong>Alternatives:</strong> side table + per-turn retrieval — keeps core out of the stable prefix, but adds the uncertainty of "did it fetch, did it fetch right," and memory becomes a read-only peripheral the agent can't edit.</p>
+</div></details>
+
+<details class="accordion"><summary>Prefix cache and message #0: when exactly is it rebuilt?</summary><div class="acc-body">
+<p><strong>Example:</strong> chat ten normal turns and message #0 is <strong>never rewritten</strong>; not until some turn the agent calls <span class="mono">core_memory_replace</span>, or the window fills and triggers compaction, is #0 rebuilt once.</p>
+<p><strong>Why it's designed this way:</strong> the system prompt is the leading, stablest prefix; hitting the KV cache saves heavy prefill (Lesson 5). Rebuilding every step keeps shattering the cache — not worth it, so the default is "rebuild on demand."</p>
+<p><strong>Where in code:</strong> <span class="mono">_step</span> in <span class="mono">letta/agents/letta_agent_v3.py</span> calls <span class="mono">_refresh_messages</span> at step start but skips the system rebuild (comment "preserve prefix caching"); only after compaction does it <span class="mono">rebuild_system_prompt_async(force=True)</span>.</p>
+<p><strong>Alternatives:</strong> force a rebuild every step — absolutely fresh, but the cache misses constantly, slow and costly; never rebuild — cheap, but the agent edits memory and can't read it, so self-editing is moot. Letta takes the "rebuild when changed" middle.</p>
+</div></details>
+
+<details class="accordion"><summary>append or replace? choosing between the two write tools</summary><div class="acc-body">
+<p><strong>Example:</strong> the user says "I also have a cat" — use <span class="mono">append</span> to add a line to the human block; "I moved to Shanghai, not Beijing anymore" — use <span class="mono">replace</span> to swap the "Beijing" span exactly for "Shanghai."</p>
+<p><strong>Why it's designed this way:</strong> <span class="mono">append</span> just does <span class="mono">current + "\n" + content</span> — safe, doesn't touch old content, good for "new facts"; <span class="mono">replace</span> requires <span class="mono">old_content</span> to appear <strong>verbatim</strong>, good for "correct/update," and errors out if it can't match — avoiding accidental edits.</p>
+<p><strong>Where in code:</strong> both in <span class="mono">core_tool_executor.py</span>; <span class="mono">replace</span> uses <span class="mono">current.replace(old, new)</span> and raises if <span class="mono">old_content not in current</span>.</p>
+<p><strong>Alternatives:</strong> a single "overwrite the whole block" tool — simple but risky, the agent easily wrecks the card; splitting into append / replace gives "add" and "edit" each a safe, distinct semantic.</p>
+</div></details>
+
+<details class="accordion"><summary>Multiple agents sharing one block — what happens on an edit?</summary><div class="acc-body">
+<p><strong>Example:</strong> Lesson 8 showed two agents can attach the same <span class="mono">block-…</span>. If agent A edits it via <span class="mono">core_memory_replace</span>, agent B reads the new value when it recompiles system next turn.</p>
+<p><strong>Why it's designed this way:</strong> a block is an addressable first-class entity; sharing uses the <span class="mono">blocks_agents</span> many-to-many table to link the same row to multiple agents. Self-editing writes <strong>that row</strong>, so "change once, change everywhere" — shared memory falls out naturally.</p>
+<p><strong>Where in code:</strong> persistence goes through <span class="mono">block_manager.update_block_async</span> (called inside <span class="mono">update_memory_if_changed_async</span>); the sharing relation is in <span class="mono">letta/orm/blocks_agents.py</span>; B "reading the new value" happens in its own <span class="mono">rebuild_system_prompt_async</span>.</p>
+<p><strong>Alternatives:</strong> each agent keeps a copy — needs sync logic, easy to drift; sharing one row + each rebuilding on demand is simpler (but mind read-only blocks and concurrent overwrites).</p>
+</div></details>
+
+<h2>Next stop: spread "hands-on" across the other tiers</h2>
+<p>This lesson is Part 3's soul: you've seen how core gets <strong>rewritten by the agent itself</strong>, and the loop where "editing memory = editing system." The next three lessons spread the hands-on view across the other two tiers and the wrap-up.</p>
+
+<p>Why call it the "soul"? Because "self-editing memory" is the MemGPT paper's most counterintuitive — and most crucial — move: letting an LLM <strong>manage its own context with tools</strong>. Once "read, write, edit your own system" holds, the agent turns from "a passive responder" into "a subject that curates its own memory" — every other tier and tool orbits this core.</p>
+
+<p><strong>Lesson 10</strong> covers archival's "write & search" — how <span class="mono">archival_memory_insert / search</span> embed long-term knowledge into vectors and pull it back by similarity; <strong>Lesson 11</strong> covers recall and conversation history — how messages are persisted and searched as typed JSON events; <strong>Lesson 12</strong> returns to Lesson 5's wall with <strong>context compaction</strong> — exactly the "force-rebuild #0 after compaction" path this lesson mentioned.</p>
+
+<p>One last recitation of the loop: <strong>edit block → persist → compile & fill the hole → swap #0 in place → live next turn</strong>; and <strong>don't rebuild unless you must</strong>, purely to protect the prefix cache. These five steps plus a "rebuild on demand" discipline — keep this chain and you hold the beating heart of Letta's memory system, and you've understood the one thing MemGPT most wants to say.</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>core memory IS part of the system prompt</strong>: so "self-editing memory" is fundamentally <strong>rewriting the system prompt</strong>, not noting a row in some other table.</li>
+    <li><strong>Two write tools</strong>: <span class="mono">core_memory_append</span> (append a line) / <span class="mono">core_memory_replace</span> (exact replace), both check <span class="mono">read_only</span> first, then edit <span class="mono">block.value</span>, then persist (<span class="mono">core_tool_executor.py</span>).</li>
+    <li><strong>The {CORE_MEMORY} placeholder</strong>: compiled blocks fill this hole via the <span class="mono">.replace</span> in <span class="mono">get_system_message_from_compiled_memory</span>; the constant is <span class="mono">IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"</span> (<span class="mono">constants.py</span>).</li>
+    <li><strong>Rewrite message #0 in place</strong>: <span class="mono">rebuild_system_prompt_async</span> takes <span class="mono">message_ids[0]</span>, rebuilds only if memory changed, and sets <span class="mono">temp.id = curr.id</span> for a same-id in-place update.</li>
+    <li><strong>Normal steps don't rebuild</strong>: to preserve the prefix cache, <span class="mono">_step</span> deliberately skips the system rebuild; it rebuilds only on a <strong>memory change</strong> or <strong>after compaction</strong> (<span class="mono">letta_agent_v3.py</span>).</li>
+    <li><strong>In one line</strong>: the agent "reprograms" itself at runtime — change a string that defines "who I am," swap that one system message, and that is the soul of MemGPT.</li>
+  </ul>
+</div>
+""",
+}

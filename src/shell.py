@@ -62,6 +62,8 @@ PAGES = [
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
     ("08-memory-blocks.html", "记忆块 Memory Blocks", "Memory blocks",
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("09-self-editing-memory.html", "自我编辑记忆 = 改写系统提示", "Self-editing memory = rewriting the system prompt",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
 ]
 
 
@@ -516,6 +518,8 @@ SUBTITLES = {
                              "core / recall / archival; in vs out of context; how the agent knows what it forgot"),
     "08-memory-blocks.html": ("label/value/limit · Memory.compile · 共享块 · 版本历史",
                               "label/value/limit; Memory.compile; shared blocks; versioning"),
+    "09-self-editing-memory.html": ("core_memory_append/replace · {CORE_MEMORY} 占位符 · 重建第 0 条 · prefix cache",
+                                    "core_memory_append/replace; the {CORE_MEMORY} slot; rebuilding message #0; prefix cache"),
 }
 
 

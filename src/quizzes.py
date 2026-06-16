@@ -620,6 +620,79 @@ QUIZZES = {
             },
         ],
     },
+    "09-self-editing-memory.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "“自我编辑记忆”本质上改写的是什么？",
+                    "en": "What does \"self-editing memory\" fundamentally rewrite?",
+                },
+                "opts": [
+                    {"zh": "持久化的第 0 条 system 消息——因为 core memory 就是 system 提示的一部分",
+                     "en": "The persisted message #0 (the system message) — because core memory is part of the system prompt"},
+                    {"zh": "一张独立的 user_facts 表，agent 用时再去查",
+                     "en": "A separate user_facts table the agent queries on demand"},
+                    {"zh": "一个常驻在进程内存里的全局变量",
+                     "en": "A global variable kept resident in process memory"},
+                    {"zh": "archival 向量库里的一条 passage",
+                     "en": "One passage inside the archival vector store"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "core memory 不是“存在别处的记忆”——它每轮都被 Memory.compile() 拼进 system 提示，而 system 提示就是持久化的第 0 条消息（message_ids[0]）。所以 core_memory_append/replace 改块、触发 rebuild_system_prompt_async 后，最终落点是“原地重写第 0 条”。user_facts 表是外挂 RAG 的做法；archival passage 属于另一层。",
+                    "en": "core memory isn't \"memory stored elsewhere\" — every turn Memory.compile() splices it into the system prompt, and the system prompt is the persisted message #0 (message_ids[0]). So core_memory_append/replace edit a block, trigger rebuild_system_prompt_async, and ultimately land on \"rewrite message #0 in place.\" A user_facts table is the bolted-on-RAG approach; an archival passage belongs to another tier.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "agent 改了一个块后，rebuild_system_prompt_async 怎么更新第 0 条 system 消息？",
+                    "en": "After the agent edits a block, how does rebuild_system_prompt_async update message #0?",
+                },
+                "opts": [
+                    {"zh": "用同一个 id 原地重写第 0 条（temp.id = curr.id），且只在记忆真的变了时才重建",
+                     "en": "Rewrites #0 in place with the same id (temp.id = curr.id), and only rebuilds when memory actually changed"},
+                    {"zh": "往历史末尾追加一条新的 system 消息（新 id）",
+                     "en": "Appends a new system message (new id) to the end of history"},
+                    {"zh": "立刻在当前这一轮把改动作为一条消息插进对话",
+                     "en": "Immediately inserts the change as a message into the current turn"},
+                    {"zh": "每一步都无条件重建，确保 system 永远最新",
+                     "en": "Unconditionally rebuilds every step to keep system always fresh"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "rebuild_system_prompt_async 取 message_ids[0]，重新 compile 记忆；若新记忆已在当前 system 里且非强制，就直接返回（不重建）。要重建时，新消息沿用旧 id（temp.id = curr.id），再 update_message_by_id_async 原地更新——所以历史里始终只有一条 system。改动不是当场插进对话，而是沉淀进第 0 条、下一轮才被读到；也不是每步都重建（那会砸掉 prefix cache）。",
+                    "en": "rebuild_system_prompt_async takes message_ids[0] and recompiles memory; if the new memory is already in the current system and not forced, it returns early (no rebuild). When it does rebuild, the new message reuses the old id (temp.id = curr.id) and update_message_by_id_async updates it in place — so history always holds exactly one system message. The change isn't inserted into the current turn; it settles into #0 and is read next turn; nor is it rebuilt every step (that would smash the prefix cache).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么“正常对话步骤”故意不重建 system 提示？",
+                    "en": "Why do \"normal conversation steps\" deliberately skip rebuilding the system prompt?",
+                },
+                "opts": [
+                    {"zh": "为保住 prefix cache——稳定前缀命中 KV cache，只在记忆变化或压缩后才重建",
+                     "en": "To preserve the prefix cache — a stable prefix hits the KV cache; rebuild only on a memory change or after compaction"},
+                    {"zh": "因为重建会把对话历史一起清空",
+                     "en": "Because rebuilding also wipes the conversation history"},
+                    {"zh": "因为 core memory 是只读的，根本改不了",
+                     "en": "Because core memory is read-only and can't be changed at all"},
+                    {"zh": "因为模型其实不读 system 提示",
+                     "en": "Because the model doesn't actually read the system prompt"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "system 提示是最靠前、最稳定的前缀，命中 KV cache 能省大量重复 prefill（第 5 课）。letta_agent_v3.py 的 _step 在步开头只刷新消息、跳过 system 重建，注释明写 “preserve prefix caching”；只有记忆真的变了（core_memory_*）或发生压缩后才 rebuild_system_prompt_async(force=True)。重建不会清空历史；core 默认可写；模型每轮都会读 system。",
+                    "en": "The system prompt is the leading, stablest prefix; hitting the KV cache saves heavy repeated prefill (Lesson 5). _step in letta_agent_v3.py only refreshes messages at step start and skips the system rebuild, with the comment \"preserve prefix caching\"; it rebuilds via rebuild_system_prompt_async(force=True) only on a real memory change (core_memory_*) or after compaction. Rebuilding doesn't wipe history; core is writable by default; the model reads system every turn.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "你的 agent 反复忘记“用户已经付过款了”，每隔几轮就又问一次。结合本课的自编辑闭环：它应该在什么时机、用 append 还是 replace 改哪个块？为什么这条改动要落到第 0 条 system 消息上、而不是只回一句话？再想想：如果这是一张多 agent 共享的块，会有什么副作用？",
+                "en": "Your agent keeps forgetting that \"the user already paid,\" re-asking every few turns. Using this lesson's self-editing loop: at what moment, with append or replace, and on which block should it write? Why must this edit land on message #0 rather than just a reply? And: if this were a block shared across multiple agents, what side effects might arise?",
+            },
+        ],
+    },
 }
 
 
