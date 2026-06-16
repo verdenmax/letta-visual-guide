@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>07 · 记忆三层总览 / The three memory tiers - Letta 图解教程</title>
+<meta name="description" content="第三部分 · 记忆系统｜记忆三层总览 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="07 · 记忆三层总览 / The three memory tiers - Letta 图解教程">
+<meta property="og:description" content="第三部分 · 记忆系统｜记忆三层总览 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="07 · 记忆三层总览 / The three memory tiers - Letta 图解教程">
+<meta name="twitter:description" content="第三部分 · 记忆系统｜记忆三层总览 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></span>
+    <span class="pill">07 / 07</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第三部分 · 记忆系统</span><span class="lang-en">Part 3 · The memory system</span></div>
+    <h1><span class="lang-zh">记忆三层总览</span><span class="lang-en">The three memory tiers</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第 5 课讲过一道绕不开的墙：上下文窗口是有限的，装不下一个 agent 的全部历史与知识。第 6 课又讲过：agent 的状态被外化成一份可持久化的数据。这一课把两条线接上——看 Letta 具体怎么用一套<strong>分层记忆</strong>，把"装不下"变成"按需取回"。这套机制，正是 Letta 区别于"只会聊天的 LLM"的核心。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+答案是三层：<strong>core（核心）/ recall（回忆）/ archival（归档）</strong>。它们的区别其实只有两点——<strong>在不在上下文窗口里</strong>、以及<strong>怎么读怎么写</strong>。读完这一课，你会拿到第三部分的整张地图，知道 08–12 每课在深挖哪一层。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把记忆系统想象成一间办公室。</strong>core 是你面前的<strong>办公桌台面</strong>——抬眼就见、随手能改，但面积很小，只摆当下要用的几张纸。recall 是<strong>桌边的抽屉</strong>——最近用过的东西都收在里面，关上抽屉它还在，需要时拉开就能翻到。archival 是<strong>地下档案室</strong>——容量近乎无限、存着长期资料，但你得"按主题去检索"才找得到。三层越往外越大、越远，但都能按需取回；而你（agent）始终知道每层大概压着多少东西。记住这间办公室，你就能预判每条信息该落在哪一层。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：Letta 把记忆分成三层（core / recall / archival），区别只有两件事——在不在上下文窗口里、以及怎么读怎么写。</strong>core 始终在窗、agent 可自改；recall 与 archival 在窗外、靠工具检索捞回。窗口装不下整个世界，于是 Letta 用"分层 + 按需换页"绕开了第 5 课那道根本约束。这一课是第三部分的地图，08–12 各自深挖一层。记住这张地图，你就不会再纠结"这条信息到底存哪了"——它一定落在这三层之一，区别只是离窗口的远近。三层之外没有第四种可能，这种"穷尽"恰恰让心智模型变得简单。
+</div>
+
+<h2>三层总览：在窗 / 窗外</h2>
+<p>先建立总图。三层按"在不在上下文窗口里"分成两组：<strong>core 始终在窗</strong>，<strong>recall 与 archival 在窗外</strong>。在窗的部分模型直接看得见；窗外的部分要靠工具"捞"回来。</p>
+
+<p>这条"在窗 / 窗外"的分界，是本课所有结论的总开关。<strong>在窗</strong>意味着模型直接读得到、但要持续付 token；<strong>窗外</strong>意味着不占 token、却要一次工具调用才能取回。三层的全部差异，都从这一条分界派生出来。</p>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">在窗 · 可自改</span><span class="name">core memory 核心记忆</span></div>
+    <div class="ld">persona / human 等块，永远在上下文里；agent 用 <span class="mono">core_memory_append / replace</span> 自己改。容量小，是稀缺资源。</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">窗外 · 可检索</span><span class="name">recall memory 回忆记忆</span></div>
+    <div class="ld">全部对话历史的存档，只有最近一段在窗内；用 <span class="mono">conversation_search</span> 按文本 + 语义捞回。</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">窗外 · 向量搜</span><span class="name">archival memory 归档记忆</span></div>
+    <div class="ld">长期知识库，容量近乎无限；<span class="mono">archival_memory_insert</span> 写、<span class="mono">archival_memory_search</span> 按相似度搜。</div></div>
+</div>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">记住一句话就够了：<strong>在窗的只有 core</strong>；recall 和 archival 都在窗外，靠工具按需取回。</span></div>
+
+<h2>一眼看清：三层对照表</h2>
+<p>把三层的关键属性并排放一张表，差异立刻清楚——在不在上下文、容量多大、怎么写、怎么读、对应 MemGPT 论文的哪一层。</p>
+
+<table class="t">
+  <tr><th>层</th><th>在上下文?</th><th>容量</th><th>怎么写</th><th>怎么读</th><th>MemGPT 术语</th></tr>
+  <tr><td>core 核心</td><td>✅ 始终在窗</td><td>小（每块上限 10 万字符）</td><td class="mono">core_memory_append / replace</td><td>直接读（已在 system 里）</td><td>working context</td></tr>
+  <tr><td>recall 回忆</td><td>⛔ 窗外（仅最近在窗）</td><td>全部对话历史</td><td>自动落库（每条消息）</td><td class="mono">conversation_search</td><td>recall storage</td></tr>
+  <tr><td>archival 归档</td><td>⛔ 窗外</td><td>近乎无限</td><td class="mono">archival_memory_insert</td><td class="mono">archival_memory_search（向量）</td><td>archival storage</td></tr>
+</table>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">🧠</span><span class="lab">core · 眼前</span>
+    <span class="arrow">·</span>
+    <span class="emoji">🗄️</span><span class="lab">recall · 最近</span>
+    <span class="arrow">·</span>
+    <span class="emoji">📦</span><span class="lab">archival · 长期</span>
+  </div>
+  <div class="cap">三层记忆 = 桌面 / 抽屉 / 档案室：越往外越大、越远，但都能按需取回</div>
+</div>
+
+<h2>逐层细看：三层各自的脾气</h2>
+<p>总图记住了，再花三段把每层的"脾气"说清——它最该装什么、不该装什么。选错层是新手最常见的坑：该进 archival 的长文塞进了 core，或指望 recall 去存"该长期记住"的事实。</p>
+
+<p><strong>core（核心）：精，不在多。</strong>它是唯一始终在窗的层，每个字都在反复占用 token 预算（第 5 课的账还得继续算）。所以 core 只该放"必须时刻在眼前"的事实：用户是谁、当前任务进行到哪、有哪些关键偏好与约束。它还有别层没有的本事——能被 agent <strong>自己改写</strong>（<span class="mono">core_memory_append / replace</span>），这正是第 9 课"自我编辑记忆"的主题。把 core 想成贴在显示器边上的便签：显眼、好改，但贴满了就什么都看不清。</p>
+
+<p><strong>recall（回忆）：自动、全量、可搜。</strong>你不用手动往 recall 写——每条来往消息都会<strong>自动落库</strong>，由 <span class="mono">MessageManager</span> 持有。它存的是<strong>原始对话历史</strong>本身，只有最近一段还留在窗内，其余都在窗外候着。需要时用 <span class="mono">conversation_search</span> 按文本或语义把旧消息捞回——比如"上次聊到的那个报错"，哪怕隔了几百条也能找回来。recall 是"聊过就有"，不需要 agent 操心。</p>
+
+<p><strong>archival（归档）：刻意、长期、按义检索。</strong>和 recall 的"自动"相反，archival 要 agent <strong>主动</strong>写入（<span class="mono">archival_memory_insert</span>），适合存"将来可能要用"的长期事实与知识，由 <span class="mono">PassageManager</span> 持有。它的读取不靠精确关键词，而靠<strong>向量相似度</strong>：你问"API 重构的那个决定"，也能捞回当初用完全不同措辞记下的那条。容量近乎无限，是 agent 的"长期资料库"。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">一个判断口诀：<strong>"现在就要看见的"放 core，"聊过的"自动进 recall，"将来想查的"主动写 archival。</strong></span></div>
+
+<h2>模型怎么知道"窗外还有什么"</h2>
+<p>这是本课最容易被忽略、却最关键的一点。窗外的东西模型看不见，那它凭什么知道"还有内容没翻"、又该去哪一层翻？答案是 Letta <strong>每轮都给它一张实时"库存清单"</strong>。这张单不是给人看的调试信息，而是<strong>写进 system、模型每轮真的会读到</strong>的一段文字。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx"><strong>模型每轮都先瞄一眼"库存单"。</strong><span class="mono">&lt;memory_metadata&gt;</span> 会告诉它：recall 里还压着 N 条、archival 里存了 M 条、有哪些 tag——于是它<strong>知道自己忘了什么、该去哪层翻</strong>。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/prompts/prompt_generator.py</span><span class="ln">compile_memory_metadata_block 产出（示例）</span></div>
+<pre><span class="cm"># 每轮拼进 system 的"库存清单"：只给计数与标签，不给内容本身</span>
+&lt;memory_metadata&gt;
+- AGENT_ID: agent-123
+- CONVERSATION_ID: default
+- System prompt last recompiled: 2024-01-15 09:00 AM PST
+- 42 previous messages between you and the user are stored in recall memory
+- 156 total memories you created are stored in archival memory (use tools to access them)
+- Available archival memory tags: project_x, meeting_notes, research
+&lt;/memory_metadata&gt;
+</pre></div>
+
+<p>这段文字由 <span class="mono">compile_memory_metadata_block</span>（<span class="mono">letta/prompts/prompt_generator.py</span>）生成，拼进 system 提示。注意它只给"计数和标签"这种<strong>元信息</strong>，不把内容本身塞进窗口——既让模型心里有数，又不浪费宝贵的 token。这一行之差，正是 MemGPT 省 token 的关键设计之一。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">元信息不是内容本身：库存单只说"recall 里有 42 条"，要看<strong>具体内容</strong>，仍得调用 <span class="mono">conversation_search</span> 把它们捞回窗内。</span></div>
+
+<p>打个比方，这很像操作系统的"缺页中断"：程序访问的页不在内存里，硬件不会假装它不存在，而是发个信号去磁盘把它调进来。库存单就是给模型的那个"信号源"——它一眼看到"窗外还压着 156 条归档"，才会动念去 <span class="mono">archival_memory_search</span> 翻一翻。没有这张单，模型会误以为自己只知道窗里这点东西。</p>
+
+<p>所以库存单的设计哲学很克制：<strong>只给导航、不给货物</strong>。它告诉模型"哪儿有、有多少、什么类别"，但绝不把内容本身搬进窗口。导航信息几乎不花 token，却足以让模型做出"要不要翻、翻哪层"的决定——用最小的代价，换最大的"自我感知"。</p>
+
+<h2>三组记忆工具：改 core、搜 recall、写搜 archival</h2>
+<p>三层各配一组工具，名字直接说明用途。改 core 用 <span class="mono">core_memory_append / replace</span>；搜 recall 用 <span class="mono">conversation_search</span>；写 / 搜 archival 用 <span class="mono">archival_memory_insert / search</span>。工具名几乎就是说明书——动词 + 层名，看一眼就知道它动的是哪一层。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/base.py</span><span class="ln">三组记忆工具签名（简化）</span></div>
+<pre><span class="cm"># core：agent 自己改"眼前"的核心记忆（实现在 core_tool_executor.py）</span>
+<span class="fn">core_memory_append</span>(label, content)                  <span class="cm"># 往某个块追加一行</span>
+<span class="fn">core_memory_replace</span>(label, old_content, new_content) <span class="cm"># 精确替换一段</span>
+
+<span class="cm"># recall：搜"窗外"的对话历史（文本 + 语义混合检索）</span>
+<span class="fn">conversation_search</span>(query, roles=<span class="kw">None</span>, limit=<span class="kw">None</span>)
+
+<span class="cm"># archival：写 / 搜长期向量库（按相似度）</span>
+<span class="fn">archival_memory_insert</span>(content, tags=<span class="kw">None</span>)
+<span class="fn">archival_memory_search</span>(query, tags=<span class="kw">None</span>, top_k=<span class="kw">None</span>)
+</pre></div>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>OS 存储层级搬进 agent</b>：越往外越大、越慢，但都能按需调度</div>
+  <div class="cells">
+    <span class="cell hl">RAM · 眼前可改 → core</span>
+    <span class="sep">·</span>
+    <span class="cell q">磁盘日志 · 可检索 → recall</span>
+    <span class="sep">·</span>
+    <span class="cell scale">长期向量库 · 相似度捞 → archival</span>
+  </div>
+</div>
+
+<p>把它和操作系统对照，三层正好是一套<strong>存储层级</strong>：core≈RAM、recall≈磁盘日志、archival≈长期向量库。越往外越大越慢，但都能按需调度。</p>
+
+<p>这套分级不是为了好看，而是<strong>成本与速度的权衡</strong>：越靠近窗口的层，读得越快、但每个 token 都在烧钱；越往外的层，几乎不占 token、但每次取用都要一次检索的延迟。Letta 让 agent 自己在"快而贵"和"慢而省"之间按需调度——这正是记忆管理的全部艺术。</p>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>三层各有归宿。</strong>core memory 是 <span class="mono">Memory</span>（<span class="mono">letta/schemas/memory.py</span>）里一组 <span class="mono">Block</span>，<span class="mono">Memory.compile()</span> 把它们渲染进 system 提示；三组工具的实现在 <span class="mono">LettaCoreToolExecutor</span>（<span class="mono">letta/services/tool_executor/core_tool_executor.py</span>），声明在 <span class="mono">letta/functions/function_sets/base.py</span>。recall 是全部消息历史，由 <span class="mono">MessageManager</span>（<span class="mono">message_manager.py</span>）管；archival 是长期段落，由 <span class="mono">PassageManager</span>（<span class="mono">passage_manager.py</span>）管。那张"库存单"由 <span class="mono">PromptGenerator.compile_memory_metadata_block</span>（<span class="mono">prompt_generator.py</span>）生成。这一课只看"它们各是什么、谁来管"；每个 manager 的细节留给 08–12 逐一展开。你现在只需记住一件事：<strong>每一层都是一个独立的服务对象，各管各的存取</strong>。
+</div>
+
+<h2>core 怎么变成 system 里的文字</h2>
+<p>core 始终"在窗"，靠的是每轮一步渲染：<span class="mono">Memory.compile()</span> 把各个 <span class="mono">Block</span> 拼成一段带标签的文本，连同那张库存单一起，塞进 system 提示的最前面。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">Block 们</div><div class="nd">persona / human …</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Memory.compile()</div><div class="nd">渲染成带标签文本</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">+ 库存单</div><div class="nd">&lt;memory_metadata&gt;</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">进 system</div><div class="nd">每轮现拼（第 3 课）</div></div>
+</div>
+
+<p>这把第 3 课"每步现拼上下文"和本课接上了：core 不是某个常驻变量，而是<strong>每轮由 <span class="mono">Memory.compile()</span> 现渲染</strong>进 system 的一段文字。所以你一旦改了 core，下一轮 system 就跟着变——这正是 agent 能"自我编辑记忆"的底座，第 9 课会专门拆。</p>
+
+<h2>一次完整的"换页"：窗口快满了怎么办</h2>
+<p>把这些拼起来看一次真实流程。当窗口快被填满（第 5 课的 token 预算），旧消息必须让位——但"让位"<strong>不等于</strong>"丢弃"。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>窗口快满</h4><p>新消息不断进来，token 预算见底（第 5 课）——旧消息必须让位。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>换出到 recall</h4><p>让位 ≠ 丢弃：旧消息留在 recall storage，仍可被检索。</p><span class="mono">message_manager.py</span></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>看库存单</h4><p><span class="mono">&lt;memory_metadata&gt;</span> 告诉模型 recall / archival 还压着多少、有哪些 tag。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>按需捞回</h4><p>需要旧信息时，用 <span class="mono">conversation_search</span> / <span class="mono">archival_memory_search</span> 把它捞回窗内。</p></div></div>
+</div>
+
+<p>整条链路的关键在于：换出去的东西<strong>从未真正消失</strong>，只是从"在窗"挪到了"窗外"。模型靠库存单知道它们还在，再用对应工具按需捞回。这就是 MemGPT 给 LLM 装的"虚拟内存"。</p>
+
+<h2>谁来翻档案：是 agent 自己，不是框架</h2>
+<p>还有个容易想当然的点：到底是<strong>谁</strong>决定去翻 recall 或 archival？不是 Letta 框架在背后偷偷检索，而是<strong>模型自己</strong>——它读到库存单、判断"我需要更早的信息"，于是<strong>主动发起一次工具调用</strong>。框架只负责把工具和库存单摆好。</p>
+
+<p>这件事的份量在于：记忆调度成了 agent <strong>可学、可推理</strong>的行为，而不是写死的规则。该不该翻、翻哪一层、用什么查询词，都由模型当场决定。这也是为什么"自我编辑记忆"能成立——读和写，都是 agent 自己的动作。</p>
+
+<p>顺带分清一个常见混淆：这和很多产品里的"自动 RAG"不一样。自动 RAG 是<strong>框架</strong>在每次提问前替你检索、把结果硬塞进提示；而 Letta 是 <strong>agent</strong> 自己判断要不要查、查什么。前者是被动注入，后者是主动调度——区别就在"谁在做决定"。当 agent 能把"查记忆"当成一个普通工具来用，它就能把检索和推理交织起来，而不是只在开头被动吃一口。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">那如果换页也救不了、窗口实在装不下了呢？那就轮到<strong>上下文压缩</strong>登场——把旧消息总结成更短的摘要。这是第 12 课"记忆压力"的主题。</span></div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>这其实是把操作系统的存储层级搬进了 agent。</strong>core 像 <strong>RAM</strong>——永远在眼前、且 agent 能用 <span class="mono">core_memory_append / replace</span> 自己改写；recall 像<strong>磁盘上的对话日志</strong>——写下就不丢、可按文本 + 语义检索；archival 像<strong>长期向量库</strong>——容量近乎无限、按相似度捞。更妙的是：模型不是盲目地在黑暗里翻找。Letta 每轮都给它塞一张实时<strong>"库存清单"</strong>——<span class="mono">compile_memory_metadata_block</span> 产出的 <span class="mono">&lt;memory_metadata&gt;</span>：recall 里还压着 N 条、archival 里存了 M 条、有哪些 tag。于是模型<strong>知道自己忘了什么、该去哪一层翻</strong>——"换页"由 agent 自己发起，而不是框架替它决定。这正是 MemGPT 把虚拟内存的"分页"思想搬给 LLM 的精髓：有限的窗口当 RAM、无限的外存当磁盘，再给一张目录让它自己调度。把这套机制吃透，你会发现 Letta 的"记忆"不是玄学，而是一套你早就熟悉的<strong>分级缓存</strong>：热的放近处、冷的放远处，再加一张目录按需取用。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>core 是最贵的那层，别什么都往里塞。</strong>核心记忆始终占着上下文窗口——它越大，留给对话和工具结果的 token 就越少（第 5 课的预算账）。每个块还有字符上限：默认 <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT = 100000</span>（<span class="mono">letta/constants.py</span>），超了写入会被拒。正确姿势：core 只放"必须时刻在眼前"的精炼事实（用户是谁、当前任务、关键偏好）；其余统统交给 recall 与 archival，需要时再翻回来。<strong>把 core 当便签，不是当仓库。</strong>一个典型反模式：把整份 FAQ 灌进 persona 块——结果窗口被吃掉一大半、还可能撞上字符上限，而这种海量资料本就是 archival 的活。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>MemGPT 论文的三层怎么映射？</summary><div class="acc-body">
+<p><strong>示例：</strong>你读 MemGPT 论文时会看到 <span class="mono">main context</span> 与 <span class="mono">external context</span> 两个词，还有 FIFO queue、recall storage、archival storage。它们和 Letta 的三层是一一对应的——换句话说，Letta 是这篇论文相当忠实的一个工程实现。</p>
+<p><strong>为什么这样设计：</strong>MemGPT 把 LLM 的有限窗口类比成操作系统的 RAM，把外部存储类比成磁盘，用"分页"在两者间搬运。main context（在窗）= system + core memory + 最近消息；external context（窗外）= recall storage + archival storage。</p>
+<p><strong>源码在哪：</strong>core 对应 <span class="mono">Memory</span>（<span class="mono">letta/schemas/memory.py</span>）的 <span class="mono">Block</span>；recall 由 <span class="mono">MessageManager</span>（<span class="mono">letta/services/message_manager.py</span>）管；archival 由 <span class="mono">PassageManager</span>（<span class="mono">letta/services/passage_manager.py</span>）管。</p>
+<p><strong>还有什么替代：</strong>不分层、只给一个超大窗口——成本与延迟随历史线性上涨，且仍有硬上限；或每次全量检索——慢且贵。分层 + 按需换页是工程上的折中。</p>
+</div></details>
+
+<details class="accordion"><summary>为什么要分三层，而不是一个大库？</summary><div class="acc-body">
+<p><strong>示例：</strong>假设把所有记忆都塞进 core（在窗）。窗口几下就满了，每轮还要为这些 token 反复付费——哪怕这轮根本用不到它们。反过来，若全靠检索，连"用户叫什么"都要现查，那又慢又不稳。</p>
+<p><strong>为什么这样设计：</strong>三层是按"访问频率 vs 成本"分的。core 最贵（占窗口）但最快（直接可见），只放高频必需；recall / archival 便宜（在窗外、不占 token）但要一次工具调用才能取到，放低频海量。各取所长。</p>
+<p><strong>源码在哪：</strong>core 的字符上限 <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT</span> 在 <span class="mono">letta/constants.py</span>；recall / archival 的容量由数据库决定，分别走 <span class="mono">message_manager.py</span> / <span class="mono">passage_manager.py</span>。</p>
+<p><strong>还有什么替代：</strong>单层全在窗——见上，贵且撞上限；单层全在外——每次都要检索，连"你是谁"都得现搜，慢且不稳。分层让"必须随时在眼前的"留在 core，其余外置。说到底，这和数据库给"热数据"配缓存、给"冷数据"留磁盘是同一个道理。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">&lt;memory_metadata&gt;</span> 到底告诉了模型什么？</summary><div class="acc-body">
+<p><strong>示例：</strong>一段真实的库存单会写"42 previous messages … stored in recall memory"、"156 total memories … in archival memory"、"Available archival memory tags: project_x, research"。</p>
+<p><strong>为什么这样设计：</strong>模型看不见窗外的内容，但需要知道"窗外有多少、有哪些类别"才能决定要不要去翻、用什么 tag 翻。给计数和标签（而非内容）既提供了"导航信息"，又几乎不花 token。</p>
+<p><strong>源码在哪：</strong><span class="mono">PromptGenerator.compile_memory_metadata_block</span> 生成这段，再由 <span class="mono">get_system_message_from_compiled_memory</span> 与编译好的记忆一起拼进 system（都在 <span class="mono">letta/prompts/prompt_generator.py</span>）；在窗记忆的占位符常量 <span class="mono">IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"</span> 在 <span class="mono">letta/constants.py</span>。</p>
+<p><strong>还有什么替代：</strong>什么都不告诉模型——它就会"以为自己只知道窗里这些"，永远想不到去检索；或把内容也塞进去——直接把窗口撑爆，违背初衷。给"目录"而非"全文"，是这里的关键折中。</p>
+</div></details>
+
+<details class="accordion"><summary>core 的字符上限与取舍</summary><div class="acc-body">
+<p><strong>示例：</strong>你想把整份产品文档塞进 persona 块好让 agent"随时记得"。一写就可能撞上每块的字符上限，或把窗口占掉一大块。</p>
+<p><strong>为什么这样设计：</strong>core 始终在窗，是稀缺资源。默认上限 <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT = 100000</span>（<span class="mono">letta/constants.py</span>）给每个块封顶，逼你只放最关键的事实；海量资料应进 archival，用相似度按需捞。</p>
+<p><strong>源码在哪：</strong>常量在 <span class="mono">letta/constants.py::CORE_MEMORY_BLOCK_CHAR_LIMIT</span>；写 core 的 <span class="mono">core_memory_append / replace</span> 在 <span class="mono">LettaCoreToolExecutor</span>（<span class="mono">core_tool_executor.py</span>），其中对 <span class="mono">read_only</span> 块会拒绝写入。</p>
+<p><strong>还有什么替代：</strong>调大上限——治标，窗口还是会被占满、token 还是要付；或把长文放 archival、core 只留摘要与指针——这才是设计意图。</p>
+</div></details>
+
+<h2>第三部分由此展开：下一站</h2>
+<p>这一课是第三部分的地图。把三层的"在窗 / 窗外、怎么读怎么写"记牢，后面五课就是逐层放大。你已经站在了整个记忆系统的入口。</p>
+<p>第 8 课拆 core 的最小单位——记忆块 <span class="mono">Block</span>；第 9 课讲 agent 怎么用工具<strong>自我编辑</strong> core；第 10 课深入 archival 与<strong>向量检索</strong>；第 11 课讲 recall 与<strong>对话历史</strong>；第 12 课回到第 5 课那道墙，讲<strong>上下文压缩</strong>与"记忆压力"。带着这张三层地图往下读，每一课都只是其中一格的特写。</p>
+
+<p>再快速回放一遍这张地图：<strong>core 在窗、可自改、最贵最快</strong>；<strong>recall 在窗外、自动全量、可检索</strong>；<strong>archival 在窗外、刻意长期、按相似度</strong>；而 <span class="mono">&lt;memory_metadata&gt;</span> 这张库存单，让模型随时知道窗外还压着什么、该去哪层翻。三层加一张单，就是 Letta 记忆系统的骨架。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>三层只看两件事</strong>：在不在上下文窗口里、怎么读怎么写。core 在窗、可自改；recall / archival 在窗外、靠工具检索。</li>
+    <li><strong>core ≈ RAM</strong>：始终在窗、agent 用 <span class="mono">core_memory_append / replace</span> 自己改；有字符上限 <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT</span>，是稀缺资源。</li>
+    <li><strong>recall ≈ 磁盘日志</strong>：全部对话历史，最近一段在窗，用 <span class="mono">conversation_search</span> 按文本 + 语义捞回。</li>
+    <li><strong>archival ≈ 长期向量库</strong>：容量近乎无限，<span class="mono">archival_memory_insert</span> 写、<span class="mono">archival_memory_search</span> 按相似度搜。</li>
+    <li><strong>库存清单</strong>：<span class="mono">compile_memory_metadata_block</span> 产出的 <span class="mono">&lt;memory_metadata&gt;</span> 告诉模型 recall / archival 各有多少、有哪些 tag——它由此知道自己忘了什么、该去哪层翻。</li>
+    <li><strong>"换页"由 agent 自己发起</strong>：窗口快满 → 旧消息换出到 recall（不丢）→ 需要时按需捞回，正是 MemGPT 给 LLM 装的"虚拟内存"。</li>
+    <li><strong>源码</strong>：<span class="mono">Memory</span>（schemas/memory.py）、三组工具（core_tool_executor.py + function_sets/base.py）、<span class="mono">compile_memory_metadata_block</span>（prompt_generator.py）。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. core / recall / archival 三层里，哪一层始终在上下文窗口里？</div>
+  <ol class="opts">
+    <li>archival memory——长期向量库，所以一直在窗</li>
+    <li>core memory（核心记忆）——始终在窗，且 agent 还能用工具自己改写</li>
+    <li>三层都不在上下文里，每次都得现检索</li>
+    <li>recall memory——它存全部对话历史，所以一直在窗</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。只有 core 始终在上下文窗口里（对应 MemGPT 的 working context）；recall 与 archival 都在窗外，靠工具按需取回——recall 只有最近一段在窗，archival 全在窗外。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 模型怎么知道“窗外还压着它看不见的内容”、又该去哪一层翻？</div>
+  <ol class="opts">
+    <li>系统每轮把一段 &lt;memory_metadata&gt; 库存清单拼进 system，告诉它 recall/archival 各有多少、有哪些 tag</li>
+    <li>模型随机猜测，再看工具报错来判断</li>
+    <li>框架在每次回答前自动检索并把结果塞进提示，模型无需自己知道</li>
+    <li>模型靠微调记住了所有历史，不需要任何提示</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。compile_memory_metadata_block 产出的 &lt;memory_metadata&gt; 给的是计数与标签（不是内容本身），写进 system 让模型每轮都读到——于是它知道自己忘了什么、该去哪层翻。注意是 agent 自己发起检索，这和“框架自动 RAG”相反。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. archival memory 靠什么把相关内容找回来？</div>
+  <ol class="opts">
+    <li>直接把全部内容塞进上下文窗口，不需要检索</li>
+    <li>向量相似度（语义检索），用 archival_memory_search，措辞不同也能命中</li>
+    <li>精确关键词匹配，必须和原文一字不差</li>
+    <li>按写入时间顺序遍历，从最新到最旧</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。archival 是长期向量库，archival_memory_search 按语义相似度检索——你问“API 重构的那个决定”，也能捞回当初用别的措辞记下的那条；这正是它和“精确关键词”的区别。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>随手挑三条信息：用户的名字、三个月前的一次闲聊、整份产品 FAQ 文档。分别该放进 core / recall / archival 哪一层？说出你的理由；再想想：如果故意放错层（比如把 FAQ 灌进 core），会触发本课提到的哪些代价（token 预算、字符上限、检索延迟）？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Lesson 5 raised a wall you can't go around: the context window is finite and can't hold an agent's entire history and knowledge. Lesson 6 showed that an agent's state is externalized into persistable data. This lesson joins the two threads — how Letta uses one <strong>layered memory</strong> to turn "won't fit" into "retrievable on demand." This mechanism is exactly what sets Letta apart from "an LLM that only chats."</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+The answer is three tiers: <strong>core / recall / archival</strong>. They really differ on only two things — <strong>whether they sit in the context window</strong>, and <strong>how you read and write them</strong>. By the end you'll hold the whole map of Part 3 and know which tier each of Lessons 08–12 drills into.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture the memory system as an office.</strong> core is the <strong>desktop in front of you</strong> — glance up and it's there, edit it by hand, but it's small and holds only the few sheets you need right now. recall is the <strong>desk drawer</strong> — recently used things are tucked inside; close the drawer and they're still there, pull it open to find them. archival is the <strong>basement archive</strong> — near-infinite capacity, long-term records, but you must "search by topic" to find anything. The tiers get bigger and farther out, yet all are retrievable on demand; and you (the agent) always know roughly how much each one holds.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>Grab this lesson in one line: Letta splits memory into three tiers (core / recall / archival), differing on just two things — whether they're in the context window, and how you read and write them.</strong> core is always in-window and the agent can edit it; recall and archival sit out of context and are pulled back by tools. The window can't hold the whole world, so Letta sidesteps Lesson 5's hard limit with "tiering + paging on demand." This lesson is the map of Part 3, with 08–12 each drilling one tier. Keep this map and you'll never agonize over "where did that fact go" — it lands in one of these three, differing only by distance from the window. There's no fourth option, and that exhaustiveness keeps the mental model simple.
+</div>
+
+<h2>Overview: in-window vs out-of-window</h2>
+<p>Build the big picture first. The three tiers split into two groups by "are they in the context window": <strong>core is always in-window</strong>, while <strong>recall and archival sit out of window</strong>. The in-window part the model sees directly; the out-of-window part must be "fished" back with tools.</p>
+
+<p>That "in vs out of window" line is the master switch for every conclusion here. <strong>In-window</strong> means the model reads it directly but keeps paying tokens; <strong>out-of-window</strong> means it costs no tokens but takes a tool call to retrieve. Every difference between the tiers derives from this one boundary.</p>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">in-window · self-editable</span><span class="name">core memory</span></div>
+    <div class="ld">blocks like persona / human, always in context; the agent edits them with <span class="mono">core_memory_append / replace</span>. Small capacity — a scarce resource.</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">out-of-window · searchable</span><span class="name">recall memory</span></div>
+    <div class="ld">the archive of all conversation history; only the latest slice is in-window. Pull it back with <span class="mono">conversation_search</span> by text + meaning.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">out-of-window · vector search</span><span class="name">archival memory</span></div>
+    <div class="ld">a long-term knowledge base, near-infinite capacity; <span class="mono">archival_memory_insert</span> writes, <span class="mono">archival_memory_search</span> retrieves by similarity.</div></div>
+</div>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">One line is enough: <strong>only core is in-window</strong>; recall and archival are both out of window, retrieved by tools on demand.</span></div>
+
+<h2>At a glance: the three-tier table</h2>
+<p>Put the key properties side by side and the differences pop — in context or not, how big, how to write, how to read, and which MemGPT-paper tier it maps to.</p>
+
+<table class="t">
+  <tr><th>Tier</th><th>In context?</th><th>Capacity</th><th>How to write</th><th>How to read</th><th>MemGPT term</th></tr>
+  <tr><td>core</td><td>✅ always in-window</td><td>small (~100k chars per block)</td><td class="mono">core_memory_append / replace</td><td>read directly (already in system)</td><td>working context</td></tr>
+  <tr><td>recall</td><td>⛔ out (only latest in-window)</td><td>all conversation history</td><td>auto-logged (every message)</td><td class="mono">conversation_search</td><td>recall storage</td></tr>
+  <tr><td>archival</td><td>⛔ out of window</td><td>near-infinite</td><td class="mono">archival_memory_insert</td><td class="mono">archival_memory_search (vector)</td><td>archival storage</td></tr>
+</table>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">🧠</span><span class="lab">core · now</span>
+    <span class="arrow">·</span>
+    <span class="emoji">🗄️</span><span class="lab">recall · recent</span>
+    <span class="arrow">·</span>
+    <span class="emoji">📦</span><span class="lab">archival · long-term</span>
+  </div>
+  <div class="cap">Three tiers = desk / drawer / archive room: bigger and farther out, but all retrievable on demand</div>
+</div>
+
+<h2>The three tiers up close: each one's temperament</h2>
+<p>With the big picture set, three short paragraphs nail each tier's "temperament" — what it should and shouldn't hold. Choosing the wrong tier is the classic beginner trap: a long doc that belongs in archival gets stuffed into core, or recall is expected to store a fact that should be remembered long-term.</p>
+
+<p><strong>core: precise, not plentiful.</strong> It's the only tier always in-window, so every character keeps spending your token budget (Lesson 5's bill keeps running). Put only must-be-visible facts here: who the user is, where the current task stands, key preferences and constraints. It also has a power the others lack — the agent can <strong>rewrite it itself</strong> (<span class="mono">core_memory_append / replace</span>), the subject of Lesson 9. Think of core as a sticky note on your monitor: visible and easy to edit, but cover it and you can't read anything.</p>
+
+<p><strong>recall: automatic, complete, searchable.</strong> You never write to recall by hand — every message is <strong>logged automatically</strong>, held by <span class="mono">MessageManager</span>. It stores the <strong>raw conversation history</strong> itself; only the latest slice stays in-window, the rest waits outside. Pull old messages back with <span class="mono">conversation_search</span> by text or meaning — say "that error we discussed last time" — even hundreds of messages back. recall is "say it and it's there," with no effort from the agent.</p>
+
+<p><strong>archival: deliberate, long-term, retrieved by meaning.</strong> Unlike recall's automatic logging, archival requires the agent to <strong>write on purpose</strong> (<span class="mono">archival_memory_insert</span>), held by <span class="mono">PassageManager</span>. It suits long-term facts and knowledge you "might need later." Reads use <strong>vector similarity</strong>, not exact keywords: ask about "that API-redesign decision" and you'll recover the note even if it was worded completely differently. Capacity is effectively unlimited — the agent's long-term library.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">A rule of thumb: <strong>"needs to be visible now" goes in core, "things you talked about" land in recall automatically, "things you'll want to look up later" you write into archival on purpose.</strong></span></div>
+
+<h2>How the agent knows "what's out there"</h2>
+<p>Here's the most easily overlooked yet most crucial point. The model can't see out-of-window content, so how does it know "there's more it hasn't paged in" and which tier to look in? Letta <strong>hands it a live "inventory list" every turn</strong>. This list isn't debug info for humans — it's text <strong>written into the system prompt that the model actually reads</strong> each turn.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx"><strong>The model peeks at the "inventory" every turn.</strong> <span class="mono">&lt;memory_metadata&gt;</span> tells it: N messages still sit in recall, M memories in archival, and which tags exist — so it <strong>knows what it forgot and which tier to page</strong>.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/prompts/prompt_generator.py</span><span class="ln">compile_memory_metadata_block output (example)</span></div>
+<pre><span class="cm"># The "inventory" stitched into system each turn: counts and tags only, never the content itself</span>
+&lt;memory_metadata&gt;
+- AGENT_ID: agent-123
+- CONVERSATION_ID: default
+- System prompt last recompiled: 2024-01-15 09:00 AM PST
+- 42 previous messages between you and the user are stored in recall memory
+- 156 total memories you created are stored in archival memory (use tools to access them)
+- Available archival memory tags: project_x, meeting_notes, research
+&lt;/memory_metadata&gt;
+</pre></div>
+
+<p>This text is produced by <span class="mono">compile_memory_metadata_block</span> (<span class="mono">letta/prompts/prompt_generator.py</span>) and stitched into the system prompt. Note it gives only <strong>metadata</strong> — counts and tags — never the content itself, so the model is informed without wasting precious tokens. That one-line difference is one of MemGPT's key token-saving moves.</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Metadata isn't the content: the inventory only says "42 in recall." To see the <strong>actual content</strong> the model still has to call <span class="mono">conversation_search</span> and pull it back into the window.</span></div>
+
+<p>By analogy, this is much like an OS "page fault": the page a program accesses isn't in RAM, so rather than pretend it doesn't exist, the hardware signals to fetch it from disk. The inventory is that "signal source" for the model — seeing "156 archival items still outside," it gets the impulse to call <span class="mono">archival_memory_search</span>. Without the list, the model would assume it knows only what's in the window.</p>
+
+<p>So the inventory's design philosophy is restrained: <strong>give navigation, not cargo</strong>. It tells the model "where, how much, what category," but never hauls the content into the window. Navigation info costs almost no tokens yet is enough for the model to decide "whether to page, and which tier" — the smallest cost for the biggest "self-awareness."</p>
+
+<h2>Three tool families: edit core, search recall, write/search archival</h2>
+<p>Each tier gets a tool family whose name states its job. Edit core with <span class="mono">core_memory_append / replace</span>; search recall with <span class="mono">conversation_search</span>; write/search archival with <span class="mono">archival_memory_insert / search</span>. The names are practically the manual — verb + tier — so a glance tells you which tier it touches.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/base.py</span><span class="ln">the three memory tool families (simplified)</span></div>
+<pre><span class="cm"># core: the agent edits its own "in front of me" memory (implemented in core_tool_executor.py)</span>
+<span class="fn">core_memory_append</span>(label, content)                  <span class="cm"># append a line to a block</span>
+<span class="fn">core_memory_replace</span>(label, old_content, new_content) <span class="cm"># replace an exact span</span>
+
+<span class="cm"># recall: search the out-of-window conversation history (hybrid text + semantic)</span>
+<span class="fn">conversation_search</span>(query, roles=<span class="kw">None</span>, limit=<span class="kw">None</span>)
+
+<span class="cm"># archival: write / search the long-term vector store (by similarity)</span>
+<span class="fn">archival_memory_insert</span>(content, tags=<span class="kw">None</span>)
+<span class="fn">archival_memory_search</span>(query, tags=<span class="kw">None</span>, top_k=<span class="kw">None</span>)
+</pre></div>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>The OS storage hierarchy, moved into the agent</b>: bigger and slower farther out, but all schedulable on demand</div>
+  <div class="cells">
+    <span class="cell hl">RAM · editable, in front → core</span>
+    <span class="sep">·</span>
+    <span class="cell q">disk log · searchable → recall</span>
+    <span class="sep">·</span>
+    <span class="cell scale">long-term vector store · by similarity → archival</span>
+  </div>
+</div>
+
+<p>Line it up against an operating system and the three tiers are exactly a <strong>storage hierarchy</strong>: core≈RAM, recall≈disk log, archival≈long-term vector store. Bigger and slower farther out, but all schedulable on demand.</p>
+
+<p>This tiering isn't decoration — it's a <strong>cost-vs-speed trade-off</strong>: the closer to the window, the faster the read but the more every token burns; the farther out, the fewer tokens used but the more each retrieval costs in latency. Letta lets the agent schedule between "fast and pricey" and "slow and cheap" on demand — that's the whole art of memory management.</p>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Each tier has a home.</strong> core memory is a set of <span class="mono">Block</span>s in <span class="mono">Memory</span> (<span class="mono">letta/schemas/memory.py</span>), rendered into the system prompt by <span class="mono">Memory.compile()</span>; the three tool families are implemented in <span class="mono">LettaCoreToolExecutor</span> (<span class="mono">letta/services/tool_executor/core_tool_executor.py</span>), declared in <span class="mono">letta/functions/function_sets/base.py</span>. recall is the full message history, managed by <span class="mono">MessageManager</span> (<span class="mono">message_manager.py</span>); archival is long-term passages, managed by <span class="mono">PassageManager</span> (<span class="mono">passage_manager.py</span>). That "inventory" is produced by <span class="mono">PromptGenerator.compile_memory_metadata_block</span> (<span class="mono">prompt_generator.py</span>). This lesson only covers "what each is and who manages it"; each manager's details are saved for 08–12. For now, remember one thing: <strong>each tier is a separate service object, each minding its own storage and retrieval</strong>.
+</div>
+
+<h2>How core becomes text in the system prompt</h2>
+<p>core stays "in-window" through one rendering step each turn: <span class="mono">Memory.compile()</span> stitches the <span class="mono">Block</span>s into a tagged block of text and, together with that inventory, places it at the very front of the system prompt.</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">the Blocks</div><div class="nd">persona / human …</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Memory.compile()</div><div class="nd">render to tagged text</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">+ inventory</div><div class="nd">&lt;memory_metadata&gt;</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">into system</div><div class="nd">re-assembled each turn (Lesson 3)</div></div>
+</div>
+
+<p>This connects Lesson 3's "re-assemble context every step" to this lesson: core isn't some resident variable but a span of text <strong>freshly rendered into system by <span class="mono">Memory.compile()</span> each turn</strong>. So the moment you edit core, the next turn's system changes too — the very foundation that lets an agent "self-edit memory," which Lesson 9 unpacks.</p>
+
+<h2>One full "page-in": what to do when the window is almost full</h2>
+<p>Put it together for one real flow. When the window is nearly full (Lesson 5's token budget), old messages must yield — but "yield" does <strong>not</strong> mean "discard." Letta's move isn't to delete, but to "relocate."</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>window almost full</h4><p>new messages keep arriving, the token budget bottoms out (Lesson 5) — old messages must yield.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>page out to recall</h4><p>yield ≠ discard: old messages stay in recall storage, still searchable.</p><span class="mono">message_manager.py</span></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>check the inventory</h4><p><span class="mono">&lt;memory_metadata&gt;</span> tells the model how much recall / archival still holds and which tags exist.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>page back on demand</h4><p>when old info is needed, use <span class="mono">conversation_search</span> / <span class="mono">archival_memory_search</span> to pull it back in.</p></div></div>
+</div>
+
+<p>The crux of the whole chain: what's paged out <strong>never truly disappears</strong> — it just moves from "in-window" to "out-of-window." The model knows it's still there from the inventory, then pulls it back with the matching tool on demand. This is the "virtual memory" MemGPT bolts onto an LLM.</p>
+
+<h2>Who pages it in: the agent itself, not the framework</h2>
+<p>One more thing people take for granted: who decides to search recall or archival? Not the Letta framework retrieving behind the scenes, but the <strong>model itself</strong> — it reads the inventory, judges "I need earlier info," and <strong>initiates a tool call</strong>. The framework only lays out the tools and the inventory.</p>
+
+<p>The weight of this: memory scheduling becomes a <strong>learnable, reasoned</strong> behavior of the agent, not a hard-coded rule. Whether to page, which tier, what query — the model decides on the spot. That's why "self-editing memory" works at all — reading and writing are both the agent's own actions.</p>
+
+<p>While we're here, clear up a common confusion: this isn't the "automatic RAG" many products ship. Automatic RAG has the <strong>framework</strong> retrieve before every question and stuff results into the prompt; Letta has the <strong>agent</strong> decide whether and what to query. The former is passive injection, the latter active scheduling — the difference is "who decides." Once the agent treats "search memory" as an ordinary tool, it can interleave retrieval with reasoning instead of taking one passive bite up front.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">And if paging can't save you — the window simply won't fit it all? Then <strong>context compaction</strong> steps in, summarizing old messages into something shorter. That's the topic of Lesson 12, "memory pressure."</span></div>
+
+<div class="card spark">
+  <div class="tag">💡 Design spark</div>
+  <strong>This is really the operating-system storage hierarchy moved into the agent.</strong> core is like <strong>RAM</strong> — always in front, and the agent can rewrite it with <span class="mono">core_memory_append / replace</span>; recall is like a <strong>conversation log on disk</strong> — written once, never lost, searchable by text + meaning; archival is like a <strong>long-term vector store</strong> — near-infinite, fetched by similarity. Better still: the model doesn't grope in the dark. Letta stuffs it a live <strong>"inventory list"</strong> every turn — the <span class="mono">&lt;memory_metadata&gt;</span> from <span class="mono">compile_memory_metadata_block</span>: N items still in recall, M in archival, and which tags. So the model <strong>knows what it forgot and which tier to page</strong> — "paging" is initiated by the agent, not decided for it by the framework. That's the essence of MemGPT porting virtual-memory "paging" to LLMs: the finite window as RAM, the infinite store as disk, plus a directory it schedules itself. Internalize this and Letta's "memory" stops being magic and becomes a <strong>tiered cache</strong> you already know: hot stuff near, cold stuff far, plus a directory to fetch on demand.
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfall</div>
+  <strong>core is the priciest tier — don't dump everything into it.</strong> Core memory always occupies the context window — the bigger it is, the fewer tokens are left for the conversation and tool results (Lesson 5's budget math). Each block also has a character cap: by default <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT = 100000</span> (<span class="mono">letta/constants.py</span>), and writes over it are rejected. The right posture: keep in core only the distilled facts that "must be visible at all times" (who the user is, the current task, key preferences); hand everything else to recall and archival, paging it back when needed. <strong>Treat core as a sticky note, not a warehouse.</strong> A classic anti-pattern: pouring a whole FAQ into the persona block — it eats the window and may hit the char cap, when that bulk is archival's job.
+</div>
+
+<h2>Go a little deeper</h2>
+
+<details class="accordion"><summary>How do the MemGPT paper's three tiers map over?</summary><div class="acc-body">
+<p><strong>Example:</strong> reading the MemGPT paper you'll see <span class="mono">main context</span> and <span class="mono">external context</span>, plus FIFO queue, recall storage, archival storage. They map one-to-one onto Letta's three tiers — in other words, Letta is a fairly faithful engineering implementation of that paper.</p>
+<p><strong>Why this design:</strong> MemGPT likens the LLM's finite window to an OS's RAM and external storage to disk, paging between them. main context (in-window) = system + core memory + recent messages; external context (out-of-window) = recall storage + archival storage.</p>
+<p><strong>Where in the source:</strong> core maps to <span class="mono">Block</span>s of <span class="mono">Memory</span> (<span class="mono">letta/schemas/memory.py</span>); recall is managed by <span class="mono">MessageManager</span> (<span class="mono">letta/services/message_manager.py</span>); archival by <span class="mono">PassageManager</span> (<span class="mono">letta/services/passage_manager.py</span>).</p>
+<p><strong>Alternatives:</strong> no tiering, just one huge window — cost and latency rise linearly with history, and a hard cap remains; or full retrieval every time — slow and expensive. Tiering + paging on demand is the engineering compromise.</p>
+</div></details>
+
+<details class="accordion"><summary>Why three tiers instead of one big store?</summary><div class="acc-body">
+<p><strong>Example:</strong> suppose you stuff all memory into core (in-window). The window fills in a few moves, and every turn you keep paying for those tokens — even when this turn doesn't use them. Conversely, if everything relies on retrieval, even "what's the user's name" must be fetched live — slow and unstable.</p>
+<p><strong>Why this design:</strong> the tiers split by "access frequency vs cost." core is priciest (occupies the window) but fastest (directly visible), so keep only high-frequency essentials; recall / archival are cheap (out of window, no tokens) but need a tool call to fetch, so they hold the low-frequency masses. Best of both.</p>
+<p><strong>Where in the source:</strong> core's char cap <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT</span> is in <span class="mono">letta/constants.py</span>; recall / archival capacity is database-bound, via <span class="mono">message_manager.py</span> / <span class="mono">passage_manager.py</span>.</p>
+<p><strong>Alternatives:</strong> all-in-window — see above, pricey and cap-bound; all-out-of-window — retrieve every time, even "who you are" must be searched live, slow and shaky. Tiering keeps "must always be in front" in core and externalizes the rest. At bottom it's the same idea as a database caching "hot data" and leaving "cold data" on disk.</p>
+</div></details>
+
+<details class="accordion"><summary>What exactly does <span class="mono">&lt;memory_metadata&gt;</span> tell the model?</summary><div class="acc-body">
+<p><strong>Example:</strong> a real inventory reads "42 previous messages … stored in recall memory," "156 total memories … in archival memory," "Available archival memory tags: project_x, research."</p>
+<p><strong>Why this design:</strong> the model can't see out-of-window content but needs to know "how much is out there and what categories" to decide whether to look and which tags to use. Giving counts and tags (not content) provides "navigation info" at almost no token cost.</p>
+<p><strong>Where in the source:</strong> <span class="mono">PromptGenerator.compile_memory_metadata_block</span> produces it, and <span class="mono">get_system_message_from_compiled_memory</span> stitches it into system alongside the compiled memory (both in <span class="mono">letta/prompts/prompt_generator.py</span>); the in-context memory placeholder constant <span class="mono">IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"</span> is in <span class="mono">letta/constants.py</span>.</p>
+<p><strong>Alternatives:</strong> tell the model nothing — it "thinks it knows only what's in the window" and never thinks to retrieve; or stuff the content in too — blowing up the window, defeating the purpose. Giving a "directory" not the "full text" is the key compromise here.</p>
+</div></details>
+
+<details class="accordion"><summary>core's character cap and its trade-offs</summary><div class="acc-body">
+<p><strong>Example:</strong> you want to pour a whole product doc into the persona block so the agent "always remembers." Write it and you may hit each block's character cap, or eat a big chunk of the window.</p>
+<p><strong>Why this design:</strong> core is always in-window, a scarce resource. The default cap <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT = 100000</span> (<span class="mono">letta/constants.py</span>) caps each block, forcing you to keep only the most critical facts; bulk material belongs in archival, fetched by similarity on demand.</p>
+<p><strong>Where in the source:</strong> the constant is <span class="mono">letta/constants.py::CORE_MEMORY_BLOCK_CHAR_LIMIT</span>; the core writers <span class="mono">core_memory_append / replace</span> live in <span class="mono">LettaCoreToolExecutor</span> (<span class="mono">core_tool_executor.py</span>), which rejects writes to a <span class="mono">read_only</span> block.</p>
+<p><strong>Alternatives:</strong> raise the cap — a band-aid, the window still fills and tokens still cost; or put long text in archival and keep only a summary and pointer in core — that's the intended design.</p>
+</div></details>
+
+<h2>Part 3 begins here: next stop</h2>
+<p>This lesson is the map of Part 3. Lock in each tier's "in vs out of window, how to read and write," and the next five lessons just zoom into each. You're now standing at the entrance of the whole memory system.</p>
+<p>Lesson 8 dissects core's smallest unit — the memory <span class="mono">Block</span>; Lesson 9 shows how the agent <strong>self-edits</strong> core with tools; Lesson 10 goes deep on archival and <strong>vector search</strong>; Lesson 11 covers recall and <strong>conversation history</strong>; Lesson 12 returns to Lesson 5's wall with <strong>context compaction</strong> and "memory pressure." Read on with this three-tier map and each lesson is just a close-up of one cell.</p>
+
+<p>Quick replay of the map: <strong>core is in-context, self-editable, priciest and fastest</strong>; <strong>recall is out-of-context, automatic and complete, searchable</strong>; <strong>archival is out-of-context, deliberate and long-term, by similarity</strong>; and the <span class="mono">&lt;memory_metadata&gt;</span> inventory keeps the model aware of what's still outside and which tier to page. Three tiers plus one inventory — that's the skeleton of Letta's memory system.</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>Tiers differ on just two things</strong>: whether they're in the context window, and how you read/write them. core is in-window and self-editable; recall / archival are out-of-window, retrieved by tools.</li>
+    <li><strong>core ≈ RAM</strong>: always in-window, the agent edits it with <span class="mono">core_memory_append / replace</span>; has a char cap <span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT</span> — a scarce resource.</li>
+    <li><strong>recall ≈ disk log</strong>: all conversation history, latest slice in-window, pulled back by <span class="mono">conversation_search</span> via text + meaning.</li>
+    <li><strong>archival ≈ long-term vector store</strong>: near-infinite, <span class="mono">archival_memory_insert</span> writes, <span class="mono">archival_memory_search</span> retrieves by similarity.</li>
+    <li><strong>The inventory list</strong>: the <span class="mono">&lt;memory_metadata&gt;</span> from <span class="mono">compile_memory_metadata_block</span> tells the model how much recall / archival hold and which tags — so it knows what it forgot and which tier to page.</li>
+    <li><strong>"Paging" is agent-initiated</strong>: window almost full → old messages page out to recall (not lost) → paged back on demand — exactly the "virtual memory" MemGPT bolts onto an LLM.</li>
+    <li><strong>Source:</strong> <span class="mono">Memory</span> (schemas/memory.py), the three tool families (core_tool_executor.py + function_sets/base.py), <span class="mono">compile_memory_metadata_block</span> (prompt_generator.py).</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. Of the three tiers core / recall / archival, which one is always in the context window?</div>
+  <ol class="opts">
+    <li>archival memory — it's the long-term vector store, so it's always in-window</li>
+    <li>core memory — always in-window, and the agent can even rewrite it with tools</li>
+    <li>None of the three are in context; everything is retrieved fresh each time</li>
+    <li>recall memory — it stores all conversation history, so it's always in-window</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Only core is always in the context window (MemGPT's working context); recall and archival sit out of window and are pulled back by tools — recall keeps only its latest slice in-window, and archival is entirely out of window.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. How does the model know "there's out-of-window content it can't see" and which tier to page?</div>
+  <ol class="opts">
+    <li>Each turn the system stitches a &lt;memory_metadata&gt; inventory into the prompt, telling it how much recall/archival hold and which tags exist</li>
+    <li>The model guesses at random and infers from tool errors</li>
+    <li>The framework auto-retrieves before every answer and stuffs results in, so the model needn't know itself</li>
+    <li>The model memorized all history via fine-tuning and needs no hint</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The &lt;memory_metadata&gt; from compile_memory_metadata_block provides counts and tags (not the content itself), written into system so the model reads it every turn — so it knows what it forgot and which tier to page. Crucially the agent initiates the search itself, the opposite of "framework auto-RAG."</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. How does archival memory find relevant content?</div>
+  <ol class="opts">
+    <li>Dumping all content into the context window, no retrieval needed</li>
+    <li>Vector similarity (semantic search) via archival_memory_search, hitting even when worded differently</li>
+    <li>Exact keyword matching, requiring a word-for-word match with the original</li>
+    <li>Walking write-time order, newest to oldest</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. archival is a long-term vector store, and archival_memory_search retrieves by semantic similarity — ask about "that API-redesign decision" and you recover the note even if it was worded differently; that's the difference from exact keyword matching.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Pick three pieces of info: the user's name, a casual chat from three months ago, and a whole product FAQ doc. Which tier — core / recall / archival — should each go in, and why? Then consider: if you deliberately put one in the wrong tier (e.g., pour the FAQ into core), which costs from this lesson does it trigger (token budget, char cap, retrieval latency)?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="06-stateful-vs-stateless.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">有状态 vs 无状态</span><span class="lang-en">Stateful vs stateless</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

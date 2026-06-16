@@ -474,6 +474,79 @@ QUIZZES = {
             },
         ],
     },
+    "07-memory-tiers.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "core / recall / archival 三层里，哪一层始终在上下文窗口里？",
+                    "en": "Of the three tiers core / recall / archival, which one is always in the context window?",
+                },
+                "opts": [
+                    {"zh": "core memory（核心记忆）——始终在窗，且 agent 还能用工具自己改写",
+                     "en": "core memory — always in-window, and the agent can even rewrite it with tools"},
+                    {"zh": "recall memory——它存全部对话历史，所以一直在窗",
+                     "en": "recall memory — it stores all conversation history, so it's always in-window"},
+                    {"zh": "archival memory——长期向量库，所以一直在窗",
+                     "en": "archival memory — it's the long-term vector store, so it's always in-window"},
+                    {"zh": "三层都不在上下文里，每次都得现检索",
+                     "en": "None of the three are in context; everything is retrieved fresh each time"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "只有 core 始终在上下文窗口里（对应 MemGPT 的 working context）；recall 与 archival 都在窗外，靠工具按需取回——recall 只有最近一段在窗，archival 全在窗外。",
+                    "en": "Only core is always in the context window (MemGPT's working context); recall and archival sit out of window and are pulled back by tools — recall keeps only its latest slice in-window, and archival is entirely out of window.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "模型怎么知道“窗外还压着它看不见的内容”、又该去哪一层翻？",
+                    "en": "How does the model know \"there's out-of-window content it can't see\" and which tier to page?",
+                },
+                "opts": [
+                    {"zh": "系统每轮把一段 &lt;memory_metadata&gt; 库存清单拼进 system，告诉它 recall/archival 各有多少、有哪些 tag",
+                     "en": "Each turn the system stitches a &lt;memory_metadata&gt; inventory into the prompt, telling it how much recall/archival hold and which tags exist"},
+                    {"zh": "框架在每次回答前自动检索并把结果塞进提示，模型无需自己知道",
+                     "en": "The framework auto-retrieves before every answer and stuffs results in, so the model needn't know itself"},
+                    {"zh": "模型靠微调记住了所有历史，不需要任何提示",
+                     "en": "The model memorized all history via fine-tuning and needs no hint"},
+                    {"zh": "模型随机猜测，再看工具报错来判断",
+                     "en": "The model guesses at random and infers from tool errors"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "compile_memory_metadata_block 产出的 &lt;memory_metadata&gt; 给的是计数与标签（不是内容本身），写进 system 让模型每轮都读到——于是它知道自己忘了什么、该去哪层翻。注意是 agent 自己发起检索，这和“框架自动 RAG”相反。",
+                    "en": "The &lt;memory_metadata&gt; from compile_memory_metadata_block provides counts and tags (not the content itself), written into system so the model reads it every turn — so it knows what it forgot and which tier to page. Crucially the agent initiates the search itself, the opposite of \"framework auto-RAG.\"",
+                },
+            },
+            {
+                "q": {
+                    "zh": "archival memory 靠什么把相关内容找回来？",
+                    "en": "How does archival memory find relevant content?",
+                },
+                "opts": [
+                    {"zh": "向量相似度（语义检索），用 archival_memory_search，措辞不同也能命中",
+                     "en": "Vector similarity (semantic search) via archival_memory_search, hitting even when worded differently"},
+                    {"zh": "精确关键词匹配，必须和原文一字不差",
+                     "en": "Exact keyword matching, requiring a word-for-word match with the original"},
+                    {"zh": "按写入时间顺序遍历，从最新到最旧",
+                     "en": "Walking write-time order, newest to oldest"},
+                    {"zh": "直接把全部内容塞进上下文窗口，不需要检索",
+                     "en": "Dumping all content into the context window, no retrieval needed"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "archival 是长期向量库，archival_memory_search 按语义相似度检索——你问“API 重构的那个决定”，也能捞回当初用别的措辞记下的那条；这正是它和“精确关键词”的区别。",
+                    "en": "archival is a long-term vector store, and archival_memory_search retrieves by semantic similarity — ask about \"that API-redesign decision\" and you recover the note even if it was worded differently; that's the difference from exact keyword matching.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "随手挑三条信息：用户的名字、三个月前的一次闲聊、整份产品 FAQ 文档。分别该放进 core / recall / archival 哪一层？说出你的理由；再想想：如果故意放错层（比如把 FAQ 灌进 core），会触发本课提到的哪些代价（token 预算、字符上限、检索延迟）？",
+                "en": "Pick three pieces of info: the user's name, a casual chat from three months ago, and a whole product FAQ doc. Which tier — core / recall / archival — should each go in, and why? Then consider: if you deliberately put one in the wrong tier (e.g., pour the FAQ into core), which costs from this lesson does it trigger (token budget, char cap, retrieval latency)?",
+            },
+        ],
+    },
 }
 
 

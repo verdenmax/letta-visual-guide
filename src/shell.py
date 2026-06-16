@@ -58,6 +58,8 @@ PAGES = [
      "第二部分 · 前置基础", "Part 2 · Foundations"),
     ("06-stateful-vs-stateless.html", "有状态 vs 无状态", "Stateful vs stateless",
      "第二部分 · 前置基础", "Part 2 · Foundations"),
+    ("07-memory-tiers.html", "记忆三层总览", "The three memory tiers",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
 ]
 
 
@@ -508,6 +510,8 @@ SUBTITLES = {
                                "token budget; prefill/decode; prefix cache; why a memory system"),
     "06-stateful-vs-stateless.html": ("AgentState 存档 · prefixed id · schema 与 orm · 对比 OpenAI Assistants",
                                       "The AgentState save; prefixed ids; schema vs orm; vs OpenAI Assistants"),
+    "07-memory-tiers.html": ("core / recall / archival · 在窗与窗外 · 模型怎么知道自己忘了什么",
+                             "core / recall / archival; in vs out of context; how the agent knows what it forgot"),
 }
 
 
