@@ -766,6 +766,79 @@ QUIZZES = {
             },
         ],
     },
+    "11-recall-memory.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "recall 和 archival 都在窗外、都能搜，它们最根本的区别是什么？",
+                    "en": "recall and archival are both out-of-window and both searchable — what is their most fundamental difference?",
+                },
+                "opts": [
+                    {"zh": "区别在“存什么 / 谁来写”：recall 是系统自动记的全量对话，archival 是 agent 主动挑着写的精选笔记",
+                     "en": "It's “what's stored / who writes”: recall is the system's auto-logged full conversation, archival is the agent's actively-curated notes"},
+                    {"zh": "recall 按字面关键词搜、archival 按语义搜——一个纯文本、一个纯向量",
+                     "en": "recall searches by literal keyword and archival by semantics — one pure text, one pure vector"},
+                    {"zh": "recall 在上下文窗口里、archival 在窗外",
+                     "en": "recall is inside the context window, archival is outside it"},
+                    {"zh": "recall 容量有限、会装满，archival 容量无限",
+                     "en": "recall has limited capacity and fills up, archival is unlimited"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "两层都在窗外、都能搜，所以“在不在窗”不是区别。检索方式也都带语义：recall 的 conversation_search 是 hybrid（字面+语义），archival 是纯语义——所以“字面 vs 语义”是常见的记反。真正分野在“存什么 / 谁来写”：recall 由系统自动记下每一条原始消息（你不调任何工具），archival 由 agent 判断“值得长期留”才主动 insert 一条提炼后的笔记。一个被动全收，一个主动精选。",
+                    "en": "Both are out-of-window and both searchable, so “in or out of context” isn't the difference. Both retrieve with semantics too: recall's conversation_search is hybrid (text+meaning), archival is pure semantic — so “literal vs semantic” is the common mix-up. The real split is “what's stored / who writes”: recall auto-logs every raw message (you call no tool), while archival is written only when the agent judges something worth keeping long-term and actively inserts a distilled note. One passively records all, one actively curates.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "用户三周前说“财年从 7 月开始”，今天 agent 用 conversation_search 查“季度起点”——一个原词都没对上，为什么还能把那条消息找回来？",
+                    "en": "Three weeks ago the user said “fiscal year starts in July”; today the agent runs conversation_search for “quarter start” — not one original word matches, so why does the old message still come back?",
+                },
+                "opts": [
+                    {"zh": "conversation_search 是 hybrid 检索（字面 + 语义），语义那一路能匹配意思相近、措辞不同的旧消息",
+                     "en": "conversation_search is hybrid (text + semantic); the semantic path matches old messages that mean the same thing but are worded differently"},
+                    {"zh": "它做的是精确字符串匹配，“季度”和“财年”被当作同义词写死在代码里",
+                     "en": "It does exact string matching, with “quarter” and “fiscal year” hard-coded as synonyms"},
+                    {"zh": "因为那条消息一直在上下文窗口里，根本不用搜",
+                     "en": "Because that message has stayed in the context window all along, so no search is needed"},
+                    {"zh": "因为 archival 早就自动存了一份，search 其实是从 archival 捞的",
+                     "en": "Because archival auto-stored a copy long ago, and search actually pulls it from archival"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "conversation_search 的工具说明原话是“hybrid search (text + semantic similarity)”：它同时算字面和语义，所以措辞全变、意思相近的旧消息也能命中——这正是纯关键词匹配做不到的。那条消息其实早已滑出窗口（不在 message_ids 里），所以不是“一直在窗”；它也从没被 insert 进 archival（那是 recall 的活）。它依旧是库里的一行 Message，被 hybrid 按语义捞了回来。",
+                    "en": "conversation_search's tool description literally says “hybrid search (text + semantic similarity)”: it computes text and meaning together, so a reworded-but-related old message still hits — exactly what pure keyword matching can't do. That message had already slid out of the window (not in message_ids), so it wasn't “still in-window”; nor was it ever inserted into archival (that's recall's job). It's still a Message row in the store, pulled back by hybrid on meaning.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于 message_ids 和“在窗 vs 全部历史”，下面哪句是对的？",
+                    "en": "About message_ids and “in-window vs all history,” which statement is correct?",
+                },
+                "opts": [
+                    {"zh": "message_ids 是一串指针，只圈出最近一段在窗消息；[0] 永远是系统消息，被移出 ≠ 被删除，旧消息可搜不可见",
+                     "en": "message_ids is a list of pointers marking only the recent in-window slice; [0] is always the system message; dropped ≠ deleted, and old messages are searchable-not-visible"},
+                    {"zh": "message_ids 直接存消息正文，trim 掉就等于把那几条 Message 从库里删了",
+                     "en": "message_ids stores message bodies directly, so trimming deletes those Message rows from the store"},
+                    {"zh": "message_ids 里第 0 条是最新的用户消息",
+                     "en": "Index 0 of message_ids is the most recent user message"},
+                    {"zh": "只要不在 message_ids 里，消息就永久丢失、再也找不回",
+                     "en": "Any message not in message_ids is permanently lost and unrecoverable"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "message_ids（AgentState）是一串 id 指针，不是消息本身；第 0 条恒为系统消息（第 9 课“重建第 0 条”靠的就是它）。窗口瘦身用 trim_older_in_context_messages，只是从指针里去掉较旧的几条，真正的 Message 行由 MessageManager 一直留在库里——被移出窗口 ≠ 被删除。所以旧消息“可搜不可见”：看不见，但 conversation_search 一下就回来。",
+                    "en": "message_ids (AgentState) is a list of id pointers, not the messages themselves; index 0 is always the system message (the basis for Lesson 9's “rebuild message #0”). Slimming uses trim_older_in_context_messages, which only drops older entries from the pointer list; the real Message rows stay in the store via MessageManager — dropped from the window ≠ deleted. So old messages are “searchable but not visible”: out of sight, but conversation_search brings them right back.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "你在做一个长期陪伴 agent。结合本课想三件事：(1) 用户两个月前随口说的一句话今天突然有用——你指望 recall 还是 archival 把它找回来，为什么？(2) 如果消息只是裸文本、而不是带 type/time 的 JSON 事件，agent 在“分清谁说的、什么时候说的”上会丢掉什么？(3) 让 agent 频繁 conversation_search 翻历史，代价在哪（想想搜回来的消息要占回 token、hybrid 检索本身也有成本）？",
+                "en": "You're building a long-term companion agent. Using this lesson, think through three things: (1) a line the user mentioned offhand two months ago suddenly matters today — do you count on recall or archival to retrieve it, and why? (2) If messages were raw text instead of JSON events with type/time, what would the agent lose in “telling who said it and when”? (3) If the agent runs conversation_search constantly to flip through history, where's the cost (think: fetched messages cost context tokens again, and hybrid search itself isn't free)?",
+            },
+        ],
+    },
 }
 
 

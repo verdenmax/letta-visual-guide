@@ -19,4 +19,5 @@ CONTENT = {
     "08-memory-blocks.html": part3.LESSON_08,
     "09-self-editing-memory.html": part3.LESSON_09,
     "10-archival-memory.html": part3.LESSON_10,
+    "11-recall-memory.html": part3.LESSON_11,
 }

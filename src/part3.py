@@ -1927,3 +1927,505 @@ Just four keywords: <strong>Passage</strong> (one archival memory = text + vecto
 </div>
 """,
 }
+
+
+LESSON_11 = {
+    "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第 7 课那张三层地图里，recall（回忆）是中间那一层：它在上下文窗口<strong>之外</strong>，却收着<strong>每一句说过的话</strong>。第 10 课的 archival 是 agent <strong>精选</strong>的长期笔记，这一课的 recall 则是系统<strong>自动记下</strong>的完整对话历史——一句都不漏。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+关键词只有三个：<strong>Message</strong>（一条消息 = 一行可持久、可检索的记录）、<strong>message_ids</strong>（决定哪几条"在窗内"）、<strong>conversation_search</strong>（把窗外的旧消息按 hybrid 检索捞回）。读完你会明白：对话<strong>从不丢失</strong>，只是没都摆在眼前。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把 recall 想成一卷从不停录的完整录像，把"在窗消息"想成屏幕上正在回放的最近几分钟。</strong>摄像机从第一句话起就一直在录，每个画面都存进了硬盘——这就是 recall：<strong>全部对话历史</strong>，系统自动记、一帧不丢。但你的屏幕装不下整卷录像，只能显示<strong>最近一小段</strong>，这一小段就是"在窗"的消息。更早的画面没有消失，它们好端端躺在硬盘里；你想看，只要<strong>去检索那一段</strong>，就能把它调回屏幕。所以"看不见"绝不等于"没了"——录像一直都在，区别只是<strong>当前在播哪一段</strong>。记住这卷录像，你就能分清两件最常被搞混的事：<strong>哪些在眼前</strong>，和<strong>一共录了多少</strong>。前者由屏幕（窗口）决定，后者由硬盘（recall 全量）决定，两者从来不是一回事。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：recall = 一份系统自动记的 <span class="mono">Message</span> 全量日志，agent 只在 <span class="mono">message_ids</span> 指着的"最近一段"上推理，需要更早的就用 <span class="mono">conversation_search</span> 捞。</strong>每说一句话，Letta 都把它存成一行 <span class="mono">Message</span>（带 role、时间、内容），永久落库；<span class="mono">AgentState.message_ids</span> 是一串指针，圈出当前在窗的那几条，第 0 条永远是系统消息。窗口装不下整部历史，于是较旧的消息被移出 <span class="mono">message_ids</span>，但<strong>仍留在库里可搜</strong>。要回忆，agent 调 <span class="mono">conversation_search</span>，按 hybrid（字面 + 语义）把旧消息捞回。看懂这条主线，recall 就不神秘：它不过是"全都记下来、只让最近一段在窗、其余按需搜回"。这也是它和 archival 最大的不同——archival 由 agent 挑着记，recall 替你无差别地全记下。
+</div>
+
+<h2>先把 recall 摆回三层地图</h2>
+<p>第 7 课分过三层的工：<strong>core</strong> 在窗、最稀缺、agent 自改；<strong>archival</strong>（第 10 课）是 agent 精选的长期向量库；<strong>recall</strong> 则是系统<strong>自动记</strong>的完整对话历史。这一课只聚焦 recall 这一层。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>一句话定位：</strong>recall 是<strong>系统替你记的流水账</strong>——你不用调任何工具，每条消息都被自动存成 <span class="mono">Message</span>；要用时再 <span class="mono">conversation_search</span> 捞回。<strong>写是自动的，读才靠工具。</strong></span></div>
+
+<p>recall 和 archival 最容易被搞混。它们<strong>都在窗外、都能搜</strong>，但区别不在"怎么搜"，而在<strong>存什么、谁来写</strong>：recall 是系统自动记的<strong>全量对话</strong>，archival 是 agent 主动写的<strong>精选笔记</strong>。下面这张表并排对清楚。</p>
+
+<table class="t">
+  <thead><tr><th>对照项</th><th>recall 回忆</th><th>archival 归档</th></tr></thead>
+  <tbody>
+    <tr><td>存什么</td><td>全部对话消息（原样）</td><td>agent 提炼的事实 / 摘要</td></tr>
+    <tr><td>谁来写</td><td><strong>系统自动</strong>记每一条</td><td><strong>agent 主动</strong> insert</td></tr>
+    <tr><td>在上下文?</td><td>仅 <span class="mono">message_ids</span> 指的最近一段</td><td>全在窗外</td></tr>
+    <tr><td>怎么检索</td><td><span class="mono">conversation_search</span> · <strong>hybrid（字面+语义）</strong></td><td><span class="mono">archival_memory_search</span> · 按语义</td></tr>
+    <tr><td>容量</td><td>全量历史</td><td>近乎无限</td></tr>
+  </tbody>
+</table>
+
+<p>记住这条铁律：<strong>区别在"存什么 / 谁写"，不在"字面 vs 语义"</strong>。两层其实都带语义检索——recall 的 <span class="mono">conversation_search</span> 是 hybrid（字面 + 语义），archival 是纯语义。真正分野是：recall 替你<strong>无差别记下一切</strong>，archival 由 agent <strong>挑着记</strong>。</p>
+
+<p>为什么这两层要分开？因为它们答的是两个不同的问题。recall 答<strong>"我们到底说过什么"</strong>——要的是原话、要完整、要可追溯；archival 答<strong>"关于这件事我总结过什么"</strong>——要的是提炼后的结论。把"原始流水"和"提炼笔记"拆成两层，找原话不会被结论淹没，找结论也不必在海量原话里大海捞针。</p>
+
+<div class="cute"><div class="row"><span class="emoji">🎞️</span><span class="bubble">完整录像 = 全量 Message</span><span class="arrow">→</span><span class="emoji">🪟</span><span class="lab">在窗最近一段</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">搜回更早的</span></div>
+<div class="cap">回忆记忆 = 一直在录的对话录像；屏幕只放最近一段，旧片段搜一下就回来</div></div>
+
+<p>这张对照表里最该背下的一行是<strong>"谁来写"</strong>：recall 是<strong>系统</strong>在你背后自动记的，agent 连手都不用抬；archival 是 agent <strong>自己</strong>动手挑着写的。一个被动全收，一个主动精选——记住这一条，胜过记十个细节。</p>
+
+<h2>一条消息 = 一行 Message</h2>
+<p>recall 的最小单位是 <span class="mono">Message</span>（<span class="mono">letta/schemas/message.py</span>）。你、agent、工具说的每一句，都是一行 <span class="mono">Message</span>：它有角色、有内容、有时间戳，存进库就<strong>永久在那</strong>。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/message.py · schemas/agent.py</span><span class="ln">Message 关键字段 + message_ids（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">Message</span>(BaseMessage):
+    id: str                          <span class="cm"># 一条消息的唯一 id</span>
+    role: MessageRole                <span class="cm"># system / user / assistant / tool / summary</span>
+    content: Optional[List[...]]     <span class="cm"># 这条消息的正文</span>
+    tool_calls: Optional[List[...]]  <span class="cm"># assistant 发起的工具调用</span>
+    tool_call_id: Optional[str]      <span class="cm"># role=tool 时，对应哪一次调用</span>
+    created_at: datetime             <span class="cm"># 时间戳：什么时候说的</span>
+    agent_id: Optional[str]          <span class="cm"># 属于哪个 agent</span>
+
+<span class="cm"># letta/schemas/agent.py —— 哪些 Message 当前在窗</span>
+<span class="kw">class</span> <span class="fn">AgentState</span>(...):
+    message_ids: Optional[List[str]]  <span class="cm"># 在窗消息的 id；[0] 永远是系统消息</span>
+</pre></div>
+
+<p>几件事串起整课：<strong>role</strong> 标明谁说的（注意还有 <span class="mono">summary</span> 这个角色，第 12 课会用到）；<strong>content</strong> 是正文；<strong>tool_calls / tool_call_id</strong> 让"调用工具"和"工具返回"也都成为<strong>结构化的消息</strong>，而不是夹在文本里；<strong>created_at</strong> 让"按时间检索"成为可能。</p>
+
+<p>换句话说，recall 里的 role 是一份"<strong>角色表</strong>"：<span class="mono">user</span>（人）、<span class="mono">assistant</span>（agent 本体）、<span class="mono">tool</span>（工具返回）、<span class="mono">system</span>（系统提示）、<span class="mono">summary</span>（压缩摘要）。同一段历史里，谁说的、是话还是工具结果，靠 role 一眼分清——这是"结构化事件"能成立的地基。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx"><strong>Message 是持久的，不是临时的。</strong>它由 <span class="mono">MessageManager</span>（<span class="mono">letta/services/message_manager.py</span>）负责落库与取回。一旦写下，就算被移出窗口，行还在表里——这正是"对话从不丢失"的物理保证。</span></div>
+
+<p>谁来写这些 Message？<strong>不是 agent，是系统</strong>。每走一步（第 3 课的 step 循环），新产生的消息都由 <span class="mono">MessageManager</span> 自动落库、并追加进 <span class="mono">message_ids</span>。agent <strong>无需调用任何"保存"工具</strong>——这正是 recall 与 archival 的根本区别：archival 要 agent 主动 <span class="mono">insert</span>，recall 是后台默默全记。</p>
+
+<h2>message_ids：在窗的那一小段</h2>
+<p>全量 Message 躺在库里，但模型每轮只读得到 <span class="mono">message_ids</span> 圈出的那几条。<span class="mono">message_ids</span> 是一串<strong>指针</strong>（id 列表），不是消息本身——它指向"现在该把哪几行摆进上下文"。</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>message_ids ⊂ 全部 Message</b>：在窗的只是全量日志的一个尾巴</div>
+  <div class="cells">
+    <span class="cell hl">[0] 系统消息 · 永远在窗</span>
+    <span class="sep">·</span>
+    <span class="cell q">更早的消息 · 在库里、不在 message_ids</span>
+    <span class="sep">·</span>
+    <span class="cell">最近一段 · message_ids 指着、在窗可见</span>
+  </div>
+</div>
+
+<p>窗口快满时，较旧的消息会被<strong>移出</strong> <span class="mono">message_ids</span>——但只是从"在窗指针"里去掉，<span class="mono">Message</span> 行<strong>原封不动留在库里</strong>。增删都只动这串指针，不搬真正的消息行：</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>窗口快满</h4><p>在窗 token 逼近预算（第 5 课），旧消息必须让位。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>trim 掉较旧的</h4><p>从 <span class="mono">message_ids</span> 去掉前面几条，<strong>保留第 0 条系统消息</strong>。</p><span class="mono">trim_older_in_context_messages</span></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>原话仍留库</h4><p>被移出 ≠ 被删除，<span class="mono">Message</span> 行还在表里。</p><span class="mono">message_manager.py</span></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>需要时搜回</h4><p>用 <span class="mono">conversation_search</span> 把旧消息按 hybrid 捞回窗内。</p></div></div>
+</div>
+
+<p>新消息进来则相反：<span class="mono">append_to_in_context_messages</span> 把它追加到 <span class="mono">message_ids</span> 末尾。整体替换用 <span class="mono">set_in_context_messages</span>。三个动作都只改指针，<strong>极轻</strong>——这也是把"在窗消息"做成 id 列表而非整列对象的好处。</p>
+
+<p>一个好记的画面：<span class="mono">message_ids</span> 像录像机的<strong>播放头</strong>——它在整卷录像（全量 Message）上滑动，决定"此刻屏幕上放哪一段"。播放头往后移，前面的画面退出屏幕，但<strong>胶片一格没少</strong>，随时能倒回去看。</p>
+
+<h2>消息不是裸文本：带类型的 JSON 事件</h2>
+<p>这里有个容易被忽略的关键：进入上下文的消息<strong>不是裸文本</strong>。每条在被模型读到之前，都被 <span class="mono">letta/system.py</span> 包成一个<strong>带类型的 JSON 事件</strong>，标明"这是什么、什么时候发生的"。</p>
+
+<p>这些信封长得很像：都是一个小 JSON 对象，至少有 <span class="mono">type</span>（或 <span class="mono">status</span>）和 <span class="mono">time</span> 两个字段，再加一个装正文的 <span class="mono">message</span>。统一的形状让"打包 / 拆包 / 按类型分流"都有章可循。</p>
+
+<div class="cols">
+  <div class="col"><h4>❌ 如果是裸文本</h4><p>"你好" / "天气晴" / "OK"——模型得自己猜：谁说的？是用户、工具返回、还是系统提醒？信息全糊在一起。</p></div>
+  <div class="col"><h4>✅ Letta 的 JSON 信封</h4><p>每条带 <span class="mono">type</span> 和 <span class="mono">time</span>：<span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span>——一眼分清来路与时间。</p></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/system.py</span><span class="ln">每条消息都包成带类型的 JSON 事件（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">package_user_message</span>(user_message, timezone, ...):
+    <span class="kw">return</span> json_dumps({
+        <span class="st">"type"</span>: <span class="st">"user_message"</span>,   <span class="cm"># 事件类型</span>
+        <span class="st">"message"</span>: user_message,     <span class="cm"># 用户说的话</span>
+        <span class="st">"time"</span>: formatted_time,       <span class="cm"># 本地时间</span>
+    })
+
+<span class="kw">def</span> <span class="fn">package_function_response</span>(was_success, response_string, timezone):
+    <span class="kw">return</span> json_dumps({
+        <span class="st">"status"</span>: <span class="st">"OK"</span> <span class="kw">if</span> was_success <span class="kw">else</span> <span class="st">"Failed"</span>,
+        <span class="st">"message"</span>: response_string,   <span class="cm"># 工具执行的返回</span>
+        <span class="st">"time"</span>: formatted_time,
+    })
+
+<span class="kw">def</span> <span class="fn">get_heartbeat</span>(timezone, reason=<span class="st">"Automated timer"</span>, ...):
+    <span class="kw">return</span> json_dumps({<span class="st">"type"</span>: <span class="st">"heartbeat"</span>, <span class="st">"reason"</span>: reason, <span class="st">"time"</span>: ...})
+</pre></div>
+
+<p>三类最常见的事件：<strong>user_message</strong>（用户说的话）、<strong>function_response</strong>（工具执行的返回，带 <span class="mono">status</span>）、<strong>heartbeat</strong>（系统定时唤醒 agent 的"心跳"）。它们都带 <span class="mono">time</span>，于是"按时间检索"和"知道多久以前"都成了可能。</p>
+
+<p>三类里 <span class="mono">heartbeat</span> 最特别：它不是谁说的话，而是系统<strong>定时唤醒</strong> agent 的一次"心跳"，让它在没有用户输入时也有机会主动接着做事。心跳同样是一条带 <span class="mono">type</span> 的 JSON 事件，照样进 recall、照样可搜——连"系统什么时候戳了它一下"都留了痕。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">取回时还有一步<strong>拆包</strong>：<span class="mono">unpack_message</span>（<span class="mono">letta/system.py</span>）把信封拆开、取出内层文本——但它<strong>只对 <span class="mono">user_message</span></strong> 这么做，其余类型原样保留，好让结构信息不丢。</span></div>
+
+<h2>conversation_search：把旧消息按 hybrid 捞回</h2>
+<p>窗外的旧消息怎么找回来？靠 <span class="mono">conversation_search</span>（<span class="mono">core_tool_executor.py</span>）。agent 给一个查询，它就去<strong>整部对话史</strong>里捞最相关的几条，端回窗内。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx"><strong>conversation_search 是 hybrid 检索。</strong>它的工具说明（<span class="mono">letta/functions/function_sets/base.py</span>）原话就是 "hybrid search (text + semantic similarity)"——<strong>字面 + 语义一起上</strong>，所以换了措辞也能命中，<strong>不是</strong>纯关键词匹配。</span></div>
+
+<div class="flow">
+  <div class="node"><div class="nt">query</div><div class="nd">"上次聊的续约"</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">hybrid 检索</div><div class="nd">字面 + 语义</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">滤掉 tool 消息</div><div class="nd">避免递归嵌套</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Top-K 旧消息</div><div class="nd">带时间戳 + "Xd ago"</div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">conversation_search（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">conversation_search</span>(self, agent_state, actor, query=<span class="kw">None</span>,
+                              roles=<span class="kw">None</span>, limit=<span class="kw">None</span>,
+                              start_date=<span class="kw">None</span>, end_date=<span class="kw">None</span>):
+    <span class="cm"># 委托给 message_manager，默认 search_mode="hybrid"（字面 + 语义）</span>
+    message_results = <span class="kw">await</span> self.message_manager.<span class="fn">search_messages_async</span>(
+        agent_id=agent_state.id, actor=actor,
+        query_text=query, roles=..., limit=search_limit,
+        start_date=..., end_date=...)
+    <span class="cm"># 滤掉 tool 消息 + "调用 conversation_search 本身"的那条，避免递归</span>
+    <span class="cm"># 给每条标上时间戳与 "Xd ago"，再返回</span>
+    <span class="kw">return</span> formatted_results
+</pre></div>
+
+<p>两个细节值得记。其一：它默认走 <strong>hybrid</strong>——委托 <span class="mono">search_messages_async(search_mode="hybrid")</span>，字面与语义一起算，所以换了措辞也搜得到。其二：它会<strong>滤掉 tool 消息</strong>、以及"调用 conversation_search 本身"的那条 assistant 消息，避免把搜索结果层层嵌套、越转义越乱。</p>
+
+<p>还能按<strong>角色和时间</strong>过滤：<span class="mono">roles=["user"]</span> 只搜用户说的，<span class="mono">start_date</span> / <span class="mono">end_date</span> 圈定时间窗。返回的每条都带<strong>时间戳和 "Xd ago"</strong>，让 agent 知道这话是"多久以前"说的。</p>
+
+<p>取几条由 <span class="mono">limit</span> 决定；不传时回退到系统默认页大小 <span class="mono">RETRIEVAL_QUERY_DEFAULT_PAGE_SIZE</span>。和 archival 一样，<strong>搜回来的每条都要占回上下文 token</strong>——所以它是"按需捞回一小撮"，不是"把历史整卷摊开"。</p>
+
+<h2>一个真实场景：三周后还能想起那句话</h2>
+<p>把机制串成一个故事。三周前，用户随口说过一句"我们公司财年从 7 月开始"。当时这只是一条普通的 <span class="mono">user_message</span>，被存成一行 <span class="mono">Message</span>，随对话推进慢慢滑出了窗口。</p>
+
+<p>今天用户说："帮我把季度复盘排进日历。"agent 要排日历，得先知道财年起点——可那句话早不在窗内了。于是它调 <span class="mono">conversation_search</span>，查询写"公司财年 / 季度起点"。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">注意查询里<strong>一个原词都没对上</strong>："财年从 7 月开始" 对 查询"季度起点"。纯关键词会扑空——但 <span class="mono">conversation_search</span> 是 <strong>hybrid</strong>，语义那一路把它稳稳捞了回来。</span></div>
+
+<p>那条三周前的 <span class="mono">Message</span> 被端回窗内，还带着 "21d ago" 的时间标注。agent 读到"财年 7 月起"，于是把季度复盘排进了正确的月份。<strong>对话从没丢，它只是一直等着被搜回来。</strong></p>
+
+<p>有人会问：这种"想起旧事"，为什么不交给 archival？因为那句话 agent <strong>当时并没判断它值得长期记</strong>，自然没 insert 进 archival。但 recall <strong>无差别地全记了</strong>——正是这种"先全记下、用时再搜"的兜底，让 agent 不会因为"当时没多想"而彻底丢掉信息。</p>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>对话从不丢失——而且它不是一堆裸文本，是一串带类型的 JSON 事件。</strong>两件事叠在一起，才是 recall 的真正威力。第一：每条消息都是一行可持久、可检索的 <span class="mono">Message</span>，写下就永远在库里；窗口里只留 <span class="mono">message_ids</span> 指着的最近一段，其余<strong>看不见但搜得到</strong>。第二：消息进入上下文前，都被 <span class="mono">letta/system.py</span> 包成<strong>带类型的事件</strong>——<span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span> 各有 <span class="mono">type</span> 和 <span class="mono">time</span>。于是 agent 不是在读一段流水文字，而是在<strong>一连串结构化事件</strong>上推理：它分得清"这是用户说的""这是工具返回的""这是定时心跳"。把这两点合起来：一部<strong>永不丢失、可按 hybrid 搜回、且每条都自带语义类型</strong>的对话史——agent 既不会"忘了说过什么"，也不会"分不清谁说的"。这正是 MemGPT 把"对话历史"也当成一等记忆来管的关键：历史不是日志垃圾堆，而是<strong>可推理、可检索的结构化记忆</strong>——也正因如此，agent 才能在三周后、十几轮对话之后，依然精准引用你随口说过的一句话。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>"在窗" ≠ "全部历史"——别把眼前这几条当成对话的全部。</strong>模型每轮直接读到的，只有 <span class="mono">message_ids</span> 圈出的最近一段；更早的消息<strong>可搜，但不可见</strong>。这带来两个要命的误判。其一：以为"模型没提到 = 它忘了"。不一定——它可能只是没去搜；那条消息还在库里躺着，<span class="mono">conversation_search</span> 一下就回来了。其二：以为"反正都记着，可以无脑翻历史"。也不对——搜回来的消息要<strong>占回上下文 token</strong>，而且 hybrid 搜是有成本的检索，不是免费的全文摊开。正确姿势是：把"在窗的最近一段"当工作台面，把"窗外全量历史"当随时可查的档案——<strong>需要时才搜，搜了才可见</strong>。还有一个细节别忘：被移出窗口<strong>不等于</strong>被删除，<span class="mono">Message</span> 行一直都在，所以"看不见"从来不是"没了"，只是"暂时没摆上台面"。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>整条链路的源码坐标。</strong>数据模型 <span class="mono">Message</span>（role / content / tool_calls / created_at）在 <span class="mono">letta/schemas/message.py</span>；落库与取回由 <span class="mono">MessageManager</span>（<span class="mono">letta/services/message_manager.py</span>）负责。在窗指针 <span class="mono">message_ids</span> 在 <span class="mono">letta/schemas/agent.py::AgentState</span>，<span class="mono">[0]</span> 永远是系统消息；增删在 <span class="mono">agent_manager.py</span> 的 <span class="mono">append_to_in_context_messages</span> / <span class="mono">trim_older_in_context_messages</span> / <span class="mono">set_in_context_messages</span>。JSON 信封在 <span class="mono">letta/system.py</span>：<span class="mono">package_user_message</span> / <span class="mono">package_function_response</span> / <span class="mono">get_heartbeat</span> / <span class="mono">package_summarize_message</span>，取回时 <span class="mono">unpack_message</span> 拆出内层文本。检索工具 <span class="mono">conversation_search</span> 在 <span class="mono">core_tool_executor.py</span>，委托 <span class="mono">MessageManager.search_messages_async</span>（默认 <span class="mono">search_mode="hybrid"</span>），docstring 声明在 <span class="mono">functions/function_sets/base.py</span>，原话 "hybrid search (text + semantic similarity)"。顺着这几个符号读，你能把"一句话怎么从输入变成可搜的历史"完整走通。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>为什么用 JSON 信封，而不是直接塞裸文本</summary><div class="acc-body">
+<p><strong>示例：</strong>用户说"你好"，进上下文的不是 <span class="mono">你好</span> 三个字，而是 <span class="mono">{"type":"user_message","message":"你好","time":"..."}</span>。</p>
+<p><strong>为什么这样设计：</strong>裸文本会把"谁说的、什么时候、是不是工具结果"全糊在一起，模型只能猜。包成带 <span class="mono">type</span> 的事件后，它一眼分清 <span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span>，推理更稳。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta/system.py</span> 的 <span class="mono">package_*</span> 系列负责"打包"，<span class="mono">unpack_message</span> 负责取回时"拆包"（只对 <span class="mono">user_message</span> 拆出内层文本）。</p>
+<p><strong>还有什么替代：</strong>也可用特殊前缀（如 <span class="mono">User:</span> / <span class="mono">Tool:</span>），但 JSON 更结构化、好扩展——加 <span class="mono">location</span>、<span class="mono">name</span> 等字段不破坏旧格式。</p>
+</div></details>
+
+<details class="accordion"><summary>窗内消息怎么管理：append、trim、set</summary><div class="acc-body">
+<p><strong>示例：</strong>新消息进来 → 追加到 <span class="mono">message_ids</span> 末尾；窗口要瘦身 → 砍掉较旧的几条，但保留第 0 条系统消息。</p>
+<p><strong>为什么这样设计：</strong>把"在窗有哪些"做成一串可改的 id 指针，增删极轻——不用搬动真正的 <span class="mono">Message</span> 行，只动指针。</p>
+<p><strong>源码在哪：</strong><span class="mono">agent_manager.py</span> 的 <span class="mono">append_to_in_context_messages</span>（追加）、<span class="mono">trim_older_in_context_messages(num)</span>（保留 <span class="mono">[0]</span>、丢前面较旧的）、<span class="mono">set_in_context_messages</span>（整体替换）。</p>
+<p><strong>还有什么替代：</strong>直接存整列消息对象也行，但存 id 指针更省、且让"同一条消息被多处引用"成为可能。第 0 条恒为系统消息，是第 9 课"重建第 0 条"的前提。</p>
+</div></details>
+
+<details class="accordion"><summary>recall vs archival：都能搜，差别到底在哪</summary><div class="acc-body">
+<p><strong>示例：</strong>"用户三周前抱怨过发货慢"是说过的原话，属 recall，用 <span class="mono">conversation_search</span> 搜；"用户对花生过敏"被 agent 提炼成长期事实写进 archival，用 <span class="mono">archival_memory_search</span> 搜。</p>
+<p><strong>为什么这样设计：</strong>一个是<strong>系统自动记的原始流水</strong>，一个是<strong>agent 主动挑的提炼笔记</strong>。分开后，"找原话"和"找结论"各走各的层，互不污染。</p>
+<p><strong>源码在哪：</strong>recall 搜 <span class="mono">conversation_search</span> → <span class="mono">search_messages_async</span>（<span class="mono">message_manager.py</span>）；archival 搜 <span class="mono">archival_memory_search</span> → <span class="mono">cosine_distance</span> 最近邻（第 10 课）。</p>
+<p><strong>别记反了：</strong>区别<strong>不是</strong>"recall 按字面、archival 按语义"。两者都带语义：recall 是 hybrid（字面+语义），archival 是纯语义。真正分野是<strong>存什么 / 谁来写</strong>。</p>
+</div></details>
+
+<details class="accordion"><summary>summary 消息：被压缩的历史也还在 recall 里</summary><div class="acc-body">
+<p><strong>示例：</strong>窗口压力大时，较旧的一批消息被<strong>压成一段摘要</strong>塞回上下文，原话则退到窗外——但它们仍是库里的 <span class="mono">Message</span>，仍可搜。</p>
+<p><strong>为什么这样设计：</strong>压缩是为了省 token，不是为了删历史。摘要让"要点"留在眼前，原始消息留在 recall 备查，两不耽误。</p>
+<p><strong>源码在哪：</strong>摘要由 <span class="mono">letta/system.py::package_summarize_message</span> 打包成 <span class="mono">system_alert</span> 事件；<span class="mono">Message</span> 的 role 取值里本就有 <span class="mono">summary</span> 一项。</p>
+<p><strong>预告第 12 课：</strong>"什么时候压、压哪些、摘要怎么生成"是下一课的主题（<span class="mono">letta/services/summarizer/</span>）。这里只需记住：<strong>压缩 ≠ 丢失</strong>，被换出的原话依旧躺在 recall 里。</p>
+</div></details>
+
+<h2>下一站：从"记得住"到"装得下"</h2>
+<p>这一课你拿下了三层里最"全"的一层：recall 是系统自动记的<strong>完整对话史</strong>，每条都是可持久、可检索的 <span class="mono">Message</span>；<span class="mono">message_ids</span> 圈出在窗的一段，其余用 <span class="mono">conversation_search</span> 按 hybrid 捞回。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>预告第 12 课：</strong>recall 保证"不丢"，但窗口仍然有限。当在窗消息逼近 token 预算，Letta 会把较旧的一批<strong>压缩成摘要</strong>换出去——也就是第 9 课结尾说的"压缩后强制重建第 0 条"。下一课讲<strong>上下文压缩与"记忆压力"</strong>。</span></div>
+
+<p>把第三部分串起来：core 让 agent <strong>改写自己是谁</strong>（07–09），archival 让它<strong>积累长期知识</strong>（10），recall 让它<strong>记得说过的每句话</strong>（11），而压缩（12）让这一切在有限窗口里<strong>转得动</strong>。四块拼齐，记忆系统就闭环了。</p>
+
+<p>回头看第 3 课那条"消息的生命周期"：一条消息从 POST 进来，被 agent 处理、持久化、再响应——它<strong>落库的那一刻</strong>就成了 recall 的一员。所以 recall 不是某个独立模块，而是<strong>每条消息生命周期的自然归宿</strong>：说过的就记下了，记下的就能搜回。</p>
+
+<p>临走默背一条链：<strong>说一句话 → 包成 JSON 事件 → 存为 Message 行 → message_ids 圈出在窗的一段 → 旧的换出但留库 → 要回忆就 conversation_search（hybrid）捞回</strong>。把这条链记牢，再记住"<strong>看不见 ≠ 没了</strong>"这一句，recall 这层你就真正握住了。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>recall = 系统自动记的全量对话史</strong>：每条消息都是可持久、可检索的 <span class="mono">Message</span>（<span class="mono">letta/schemas/message.py</span>），由 <span class="mono">MessageManager</span> 落库；写是自动的。</li>
+    <li><strong>message_ids = 在窗指针</strong>（<span class="mono">AgentState</span>）：只圈出最近一段，<span class="mono">[0]</span> 永远是系统消息；增删走 <span class="mono">append</span> / <span class="mono">trim_older</span> / <span class="mono">set_in_context</span>。</li>
+    <li><strong>消息是带类型的 JSON 事件</strong>：<span class="mono">letta/system.py</span> 把每条包成 <span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span>（带 <span class="mono">type</span> + <span class="mono">time</span>），agent 在结构化事件上推理。</li>
+    <li><strong>conversation_search 是 hybrid（字面 + 语义）</strong>：在 <span class="mono">core_tool_executor.py</span>，委托 <span class="mono">search_messages_async</span>；docstring 原话 "hybrid search (text + semantic similarity)"。</li>
+    <li><strong>"在窗" ≠ "全部历史"</strong>：旧消息<strong>可搜不可见</strong>，被换出 ≠ 被删除；搜回来要占回 token。</li>
+    <li><strong>recall vs archival 的真分野</strong>：在"<strong>存什么 / 谁来写</strong>"（recall 系统记全量、archival agent 挑着记），不在"字面 vs 语义"。</li>
+  </ul>
+</div>
+""",
+    "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+In Lesson 7's three-tier map, recall sits in the middle: it lives <strong>outside</strong> the context window, yet it keeps <strong>every single thing ever said</strong>. Lesson 10's archival is the agent's <strong>curated</strong> long-term notes; this lesson's recall is the system's <strong>auto-logged</strong> full conversation history — not one line dropped.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+Just three keywords: <strong>Message</strong> (one message = one durable, searchable row), <strong>message_ids</strong> (which few are "in-window"), and <strong>conversation_search</strong> (pulls old out-of-window messages back by hybrid search). By the end you'll see: the conversation is <strong>never lost</strong> — it just isn't all laid out in front of you.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture recall as a never-stopping full recording, and "in-window messages" as the last few minutes currently replaying on screen.</strong> The camera has been rolling since the first word, every frame saved to disk — that's recall: <strong>the entire conversation history</strong>, auto-logged by the system, not a frame missing. But your screen can't hold the whole reel; it shows only <strong>the most recent slice</strong>, and that slice is the "in-window" messages. The earlier frames didn't vanish — they sit safely on disk; to see them you just <strong>search that segment</strong> and it's back on screen. So "not visible" is never "gone" — the recording is always there; the only question is <strong>which segment is playing now</strong>. Remember this reel and you'll separate the two things people most often confuse: <strong>what's in front of you</strong>, and <strong>how much was recorded in total</strong>. The former is set by the screen (the window), the latter by the disk (recall's full log) — never the same thing.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>Grab this lesson in one line: recall = a system-auto-logged full <span class="mono">Message</span> log; the agent reasons only over the "recent slice" that <span class="mono">message_ids</span> points to, and uses <span class="mono">conversation_search</span> to fetch anything older.</strong> Every utterance, Letta stores as one <span class="mono">Message</span> row (with role, time, content), persisted forever; <span class="mono">AgentState.message_ids</span> is a list of pointers marking what's currently in-window, and index 0 is always the system message. The window can't hold the whole history, so older messages drop out of <span class="mono">message_ids</span> but <strong>stay in the store, searchable</strong>. To recall, the agent calls <span class="mono">conversation_search</span>, fetching old messages by hybrid (text + meaning). See this main line and recall loses its mystery: it's just "log everything, keep only the recent slice in-window, fetch the rest on demand." That's also its biggest difference from archival — archival is curated by the agent; recall logs everything for you, indiscriminately.
+</div>
+
+<h2>First, put recall back on the three-tier map</h2>
+<p>Lesson 7 split the labor: <strong>core</strong> is in-window, scarcest, self-edited; <strong>archival</strong> (Lesson 10) is the agent's curated long-term vector store; <strong>recall</strong> is the system's <strong>auto-logged</strong> full conversation history. This lesson focuses on recall alone.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>One-line placement:</strong> recall is <strong>the ledger the system keeps for you</strong> — you call no tool; every message is auto-stored as a <span class="mono">Message</span>; you reach for <span class="mono">conversation_search</span> only to read it back. <strong>Writing is automatic; only reading needs a tool.</strong></span></div>
+
+<p>recall and archival are the easiest pair to confuse. They're <strong>both out-of-window and both searchable</strong>, but the difference isn't "how you search" — it's <strong>what's stored and who writes it</strong>: recall is the system's auto-logged <strong>full conversation</strong>, archival is the agent's actively-written <strong>curated notes</strong>. The table lines them up.</p>
+
+<table class="t">
+  <thead><tr><th>Aspect</th><th>recall</th><th>archival</th></tr></thead>
+  <tbody>
+    <tr><td>Stores what</td><td>all conversation messages (verbatim)</td><td>agent-distilled facts / summaries</td></tr>
+    <tr><td>Who writes</td><td><strong>system, automatically</strong>, every message</td><td><strong>agent, actively</strong> inserts</td></tr>
+    <tr><td>In context?</td><td>only the recent slice <span class="mono">message_ids</span> points to</td><td>all out-of-window</td></tr>
+    <tr><td>How retrieved</td><td><span class="mono">conversation_search</span> · <strong>hybrid (text+meaning)</strong></td><td><span class="mono">archival_memory_search</span> · by meaning</td></tr>
+    <tr><td>Capacity</td><td>full history</td><td>near-infinite</td></tr>
+  </tbody>
+</table>
+
+<p>Memorize this rule: <strong>the difference is "what's stored / who writes," not "literal vs semantic."</strong> Both tiers carry semantic retrieval — recall's <span class="mono">conversation_search</span> is hybrid (text + meaning), archival is pure semantic. The real split: recall logs <strong>everything indiscriminately</strong>, archival is <strong>curated by the agent</strong>.</p>
+
+<p>Why split these two tiers? Because they answer different questions. recall answers <strong>"what did we actually say"</strong> — it wants verbatim, complete, traceable; archival answers <strong>"what have I concluded about this"</strong> — it wants the distilled takeaway. Keep "raw log" and "curated notes" apart, and finding the original words isn't drowned by conclusions, nor is finding a conclusion a needle-in-a-haystack over raw chatter.</p>
+
+<div class="cute"><div class="row"><span class="emoji">🎞️</span><span class="bubble">full recording = all Messages</span><span class="arrow">→</span><span class="emoji">🪟</span><span class="lab">recent slice in-window</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">search older back</span></div>
+<div class="cap">Recall memory = an always-on recording of the conversation; the screen shows only the recent slice, older clips come back with a search</div></div>
+
+<p>The row to memorize in that table is <strong>"who writes"</strong>: recall is logged by the <strong>system</strong> behind your back, the agent never lifts a finger; archival is written by the agent <strong>itself</strong>, deliberately. One passively records all, one actively curates — that one row beats ten details.</p>
+
+<h2>One message = one Message row</h2>
+<p>recall's smallest unit is the <span class="mono">Message</span> (<span class="mono">letta/schemas/message.py</span>). Every line you, the agent, or a tool says is one <span class="mono">Message</span> row: it has a role, content, and a timestamp, and once stored it's <strong>there forever</strong>.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/message.py · schemas/agent.py</span><span class="ln">Message key fields + message_ids (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">Message</span>(BaseMessage):
+    id: str                          <span class="cm"># unique id of one message</span>
+    role: MessageRole                <span class="cm"># system / user / assistant / tool / summary</span>
+    content: Optional[List[...]]     <span class="cm"># the body of this message</span>
+    tool_calls: Optional[List[...]]  <span class="cm"># tool calls the assistant made</span>
+    tool_call_id: Optional[str]      <span class="cm"># for role=tool, which call it answers</span>
+    created_at: datetime             <span class="cm"># timestamp: when it was said</span>
+    agent_id: Optional[str]          <span class="cm"># which agent it belongs to</span>
+
+<span class="cm"># letta/schemas/agent.py — which Messages are currently in-window</span>
+<span class="kw">class</span> <span class="fn">AgentState</span>(...):
+    message_ids: Optional[List[str]]  <span class="cm"># ids of in-window messages; [0] is always the system message</span>
+</pre></div>
+
+<p>A few things tie the lesson together: <strong>role</strong> marks who spoke (note the <span class="mono">summary</span> role too, used in Lesson 12); <strong>content</strong> is the body; <strong>tool_calls / tool_call_id</strong> make "calling a tool" and "the tool's return" <strong>structured messages</strong> rather than text buried inline; <strong>created_at</strong> makes time-based retrieval possible.</p>
+
+<p>Put differently, role in recall is a <strong>cast list</strong>: <span class="mono">user</span> (the human), <span class="mono">assistant</span> (the agent itself), <span class="mono">tool</span> (a tool return), <span class="mono">system</span> (the system prompt), <span class="mono">summary</span> (a compaction summary). Across one history, who spoke and whether it's speech or a tool result is clear from role — the bedrock that makes "structured events" possible.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx"><strong>A Message is durable, not transient.</strong> <span class="mono">MessageManager</span> (<span class="mono">letta/services/message_manager.py</span>) persists and retrieves it. Once written, even after it drops out of the window, the row stays in the table — the physical guarantee behind "the conversation is never lost."</span></div>
+
+<p>Who writes these Messages? <strong>Not the agent — the system.</strong> Each step (Lesson 3's step loop), newly produced messages are auto-persisted by <span class="mono">MessageManager</span> and appended to <span class="mono">message_ids</span>. The agent <strong>calls no "save" tool</strong> — exactly the core difference from archival: archival needs the agent to actively <span class="mono">insert</span>, recall quietly logs all in the background.</p>
+
+<h2>message_ids: the small in-window slice</h2>
+<p>The full set of Messages sits in the store, but each turn the model only reads the few that <span class="mono">message_ids</span> marks. <span class="mono">message_ids</span> is a list of <strong>pointers</strong> (ids), not the messages themselves — it points at "which rows go into context right now."</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>message_ids ⊂ all Messages</b>: what's in-window is just the tail of the full log</div>
+  <div class="cells">
+    <span class="cell hl">[0] system message · always in-window</span>
+    <span class="sep">·</span>
+    <span class="cell q">older messages · in the store, not in message_ids</span>
+    <span class="sep">·</span>
+    <span class="cell">recent slice · pointed at by message_ids, visible in-window</span>
+  </div>
+</div>
+
+<p>When the window fills, older messages are <strong>dropped</strong> from <span class="mono">message_ids</span> — but only removed from the "in-window pointers"; the <span class="mono">Message</span> rows <strong>stay untouched in the store</strong>. Adds and drops only touch this pointer list, never the real rows:</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Window nearly full</h4><p>In-window tokens approach the budget (Lesson 5); old messages must yield.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Trim the older</h4><p>Drop the front entries from <span class="mono">message_ids</span>, <strong>keeping system message #0</strong>.</p><span class="mono">trim_older_in_context_messages</span></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Originals stay stored</h4><p>Dropped ≠ deleted; the <span class="mono">Message</span> rows are still in the table.</p><span class="mono">message_manager.py</span></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Search back when needed</h4><p>Use <span class="mono">conversation_search</span> to fetch old messages back by hybrid.</p></div></div>
+</div>
+
+<p>New messages go the other way: <span class="mono">append_to_in_context_messages</span> tacks them onto the end of <span class="mono">message_ids</span>. A wholesale swap uses <span class="mono">set_in_context_messages</span>. All three only edit pointers, <strong>very cheaply</strong> — the payoff of making "in-window" an id list rather than a column of objects.</p>
+
+<p>A handy image: <span class="mono">message_ids</span> is like a tape player's <strong>playhead</strong> — it slides over the whole reel (all Messages), deciding "which segment is on screen now." Move the playhead forward and earlier frames leave the screen, but <strong>not a frame of film is lost</strong>; you can always rewind.</p>
+
+<h2>Messages aren't raw text: typed JSON events</h2>
+<p>Here's an easily-missed key point: messages entering the context are <strong>not raw text</strong>. Before the model reads each one, <span class="mono">letta/system.py</span> wraps it into a <strong>typed JSON event</strong> stating "what this is and when it happened."</p>
+
+<p>These envelopes look alike: each is a small JSON object with at least <span class="mono">type</span> (or <span class="mono">status</span>) and <span class="mono">time</span>, plus a <span class="mono">message</span> holding the body. The uniform shape gives "pack / unpack / route by type" a predictable structure.</p>
+
+<div class="cols">
+  <div class="col"><h4>❌ If it were raw text</h4><p>"hi" / "sunny" / "OK" — the model must guess: who said it? a user, a tool return, a system alert? It's all mushed together.</p></div>
+  <div class="col"><h4>✅ Letta's JSON envelope</h4><p>Each carries <span class="mono">type</span> and <span class="mono">time</span>: <span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span> — origin and timing clear at a glance.</p></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/system.py</span><span class="ln">every message is packed into a typed JSON event (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">package_user_message</span>(user_message, timezone, ...):
+    <span class="kw">return</span> json_dumps({
+        <span class="st">"type"</span>: <span class="st">"user_message"</span>,   <span class="cm"># event type</span>
+        <span class="st">"message"</span>: user_message,     <span class="cm"># what the user said</span>
+        <span class="st">"time"</span>: formatted_time,       <span class="cm"># local time</span>
+    })
+
+<span class="kw">def</span> <span class="fn">package_function_response</span>(was_success, response_string, timezone):
+    <span class="kw">return</span> json_dumps({
+        <span class="st">"status"</span>: <span class="st">"OK"</span> <span class="kw">if</span> was_success <span class="kw">else</span> <span class="st">"Failed"</span>,
+        <span class="st">"message"</span>: response_string,   <span class="cm"># the tool's return</span>
+        <span class="st">"time"</span>: formatted_time,
+    })
+
+<span class="kw">def</span> <span class="fn">get_heartbeat</span>(timezone, reason=<span class="st">"Automated timer"</span>, ...):
+    <span class="kw">return</span> json_dumps({<span class="st">"type"</span>: <span class="st">"heartbeat"</span>, <span class="st">"reason"</span>: reason, <span class="st">"time"</span>: ...})
+</pre></div>
+
+<p>The three most common events: <strong>user_message</strong> (what the user said), <strong>function_response</strong> (a tool's return, with <span class="mono">status</span>), <strong>heartbeat</strong> (a system timer waking the agent). All carry <span class="mono">time</span>, so "retrieve by time" and "know how long ago" both become possible.</p>
+
+<p>Of the three, <span class="mono">heartbeat</span> is the odd one: it isn't anyone's speech but a system <strong>timed wake-up</strong>, giving the agent a chance to act even with no user input. A heartbeat is still a typed JSON event — it enters recall and is searchable too, leaving a trace of "when the system nudged it."</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">Reading back adds an <strong>unpack</strong> step: <span class="mono">unpack_message</span> (<span class="mono">letta/system.py</span>) opens the envelope and pulls the inner text — but <strong>only for <span class="mono">user_message</span></strong>; other types are kept as-is so structure isn't lost.</span></div>
+
+<h2>conversation_search: fetch old messages back by hybrid</h2>
+<p>How do out-of-window messages come back? Via <span class="mono">conversation_search</span> (<span class="mono">core_tool_executor.py</span>). The agent gives a query, and it fishes the most relevant few from the <strong>entire conversation history</strong> back into the window.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx"><strong>conversation_search is hybrid retrieval.</strong> Its tool description (<span class="mono">letta/functions/function_sets/base.py</span>) literally says "hybrid search (text + semantic similarity)" — <strong>text + meaning together</strong>, so it hits even when wording changes. It's <strong>not</strong> pure keyword matching.</span></div>
+
+<div class="flow">
+  <div class="node"><div class="nt">query</div><div class="nd">"the renewal we discussed"</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">hybrid search</div><div class="nd">text + meaning</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">filter tool msgs</div><div class="nd">avoid recursive nesting</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Top-K old msgs</div><div class="nd">with timestamp + "Xd ago"</div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">conversation_search (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">conversation_search</span>(self, agent_state, actor, query=<span class="kw">None</span>,
+                              roles=<span class="kw">None</span>, limit=<span class="kw">None</span>,
+                              start_date=<span class="kw">None</span>, end_date=<span class="kw">None</span>):
+    <span class="cm"># delegates to message_manager, default search_mode="hybrid" (text + meaning)</span>
+    message_results = <span class="kw">await</span> self.message_manager.<span class="fn">search_messages_async</span>(
+        agent_id=agent_state.id, actor=actor,
+        query_text=query, roles=..., limit=search_limit,
+        start_date=..., end_date=...)
+    <span class="cm"># filter out tool msgs + the "called conversation_search" message, to avoid recursion</span>
+    <span class="cm"># tag each with a timestamp and "Xd ago", then return</span>
+    <span class="kw">return</span> formatted_results
+</pre></div>
+
+<p>Two details worth remembering. One: it defaults to <strong>hybrid</strong> — delegating to <span class="mono">search_messages_async(search_mode="hybrid")</span>, computing text and meaning together, so rephrasing still hits. Two: it <strong>filters out tool messages</strong>, plus the assistant message that "called conversation_search itself," to avoid nesting search results layer upon layer with runaway escaping.</p>
+
+<p>You can also filter by <strong>role and time</strong>: <span class="mono">roles=["user"]</span> searches only user lines, <span class="mono">start_date</span> / <span class="mono">end_date</span> bound a time window. Each result carries a <strong>timestamp and "Xd ago,"</strong> so the agent knows how long ago it was said.</p>
+
+<p>How many come back is set by <span class="mono">limit</span>; unset, it falls back to the system default page size <span class="mono">RETRIEVAL_QUERY_DEFAULT_PAGE_SIZE</span>. Like archival, <strong>each fetched message costs context tokens again</strong> — so it's "fetch a small handful on demand," not "unroll the whole reel."</p>
+
+<h2>A real scenario: still recalling that one line three weeks later</h2>
+<p>Let's string the mechanism into a story. Three weeks ago the user mentioned offhand, "our fiscal year starts in July." At the time it was just an ordinary <span class="mono">user_message</span>, stored as one <span class="mono">Message</span>, slowly sliding out of the window as the conversation moved on.</p>
+
+<p>Today the user says, "put the quarterly review on my calendar." To schedule it the agent needs the fiscal-year start — but that line is long gone from the window. So it calls <span class="mono">conversation_search</span> with the query "company fiscal year / quarter start."</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Note <strong>not a single original word matches</strong>: "fiscal year starts in July" vs the query "quarter start." Pure keywords would whiff — but <span class="mono">conversation_search</span> is <strong>hybrid</strong>, and the semantic path pulls it back reliably.</span></div>
+
+<p>That three-week-old <span class="mono">Message</span> comes back into the window, tagged "21d ago." The agent reads "fiscal year starts July" and schedules the quarterly review in the right month. <strong>The conversation was never lost — it just waited to be searched back.</strong></p>
+
+<p>One might ask: why not hand this "remembering" to archival? Because the agent <strong>never judged that line worth keeping long-term</strong>, so it never inserted it into archival. But recall <strong>logged it indiscriminately</strong> — and that "log it all first, search later" safety net is exactly what keeps the agent from losing information just because it "didn't think much of it at the time."</p>
+
+<div class="card spark">
+  <div class="tag">💡 Design highlight</div>
+  <strong>The conversation is never lost — and it isn't a pile of raw text, it's a stream of typed JSON events.</strong> Two things stacked together are recall's real power. First: every message is one durable, searchable <span class="mono">Message</span>; once written it lives in the store forever, while only the recent slice <span class="mono">message_ids</span> points to stays in the window — the rest is <strong>invisible but searchable</strong>. Second: before entering context, each message is wrapped by <span class="mono">letta/system.py</span> into a <strong>typed event</strong> — <span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span>, each with <span class="mono">type</span> and <span class="mono">time</span>. So the agent isn't reading a flat stream of prose, it reasons over <strong>a sequence of structured events</strong>: it can tell "this is the user," "this is a tool return," "this is a timed heartbeat." Put them together: a conversation history that is <strong>never lost, hybrid-searchable, and self-typed per message</strong> — the agent neither "forgets what was said" nor "confuses who said it." That's the key to MemGPT treating "conversation history" as first-class memory: history isn't a junk log, it's <strong>reasoning-ready, searchable structured memory</strong> — which is exactly why the agent can, three weeks and a dozen turns later, precisely cite a line you mentioned offhand.
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfall</div>
+  <strong>"In-window" ≠ "all history" — don't mistake the few in front of you for the whole conversation.</strong> What the model reads directly each turn is only the recent slice <span class="mono">message_ids</span> marks; earlier messages are <strong>searchable but not visible</strong>. This breeds two deadly misjudgments. One: thinking "the model didn't mention it = it forgot." Not necessarily — it may simply not have searched; that message still sits in the store, and <span class="mono">conversation_search</span> brings it right back. Two: thinking "since it's all kept, I can flip through history freely." Also wrong — fetched messages <strong>cost context tokens again</strong>, and hybrid search is a retrieval with real cost, not a free full-text dump. The right stance: treat "the recent in-window slice" as the workbench, and "the full out-of-window history" as an archive you can query anytime — <strong>search only when needed, visible only once searched</strong>. And don't forget: being dropped from the window <strong>does not</strong> mean deleted; the <span class="mono">Message</span> rows are always there, so "not visible" is never "gone," just "not on the table right now."
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Source coordinates for the whole chain.</strong> The data model <span class="mono">Message</span> (role / content / tool_calls / created_at) is in <span class="mono">letta/schemas/message.py</span>; persistence and retrieval go through <span class="mono">MessageManager</span> (<span class="mono">letta/services/message_manager.py</span>). The in-window pointer <span class="mono">message_ids</span> is on <span class="mono">letta/schemas/agent.py::AgentState</span>, with <span class="mono">[0]</span> always the system message; adds/drops live in <span class="mono">agent_manager.py</span>'s <span class="mono">append_to_in_context_messages</span> / <span class="mono">trim_older_in_context_messages</span> / <span class="mono">set_in_context_messages</span>. The JSON envelopes are in <span class="mono">letta/system.py</span>: <span class="mono">package_user_message</span> / <span class="mono">package_function_response</span> / <span class="mono">get_heartbeat</span> / <span class="mono">package_summarize_message</span>, with <span class="mono">unpack_message</span> pulling the inner text on read-back. The retrieval tool <span class="mono">conversation_search</span> is in <span class="mono">core_tool_executor.py</span>, delegating to <span class="mono">MessageManager.search_messages_async</span> (default <span class="mono">search_mode="hybrid"</span>); its docstring is declared in <span class="mono">functions/function_sets/base.py</span>, literally "hybrid search (text + semantic similarity)." Follow these symbols and you can trace "how one utterance becomes searchable history" end to end.
+</div>
+
+<h2>Dig a little deeper</h2>
+
+<details class="accordion"><summary>Why JSON envelopes instead of raw text</summary><div class="acc-body">
+<p><strong>Example:</strong> the user says "hi"; what enters context isn't the two letters <span class="mono">hi</span> but <span class="mono">{"type":"user_message","message":"hi","time":"..."}</span>.</p>
+<p><strong>Why designed this way:</strong> raw text mushes "who said it, when, is it a tool result" together, leaving the model to guess. Wrapped as a <span class="mono">type</span>-tagged event, it tells <span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span> apart at a glance, reasoning more steadily.</p>
+<p><strong>Where in the source:</strong> the <span class="mono">package_*</span> family in <span class="mono">letta/system.py</span> does the "packing," <span class="mono">unpack_message</span> does the "unpacking" on read-back (pulling inner text only for <span class="mono">user_message</span>).</p>
+<p><strong>Alternatives:</strong> special prefixes (like <span class="mono">User:</span> / <span class="mono">Tool:</span>) work too, but JSON is more structured and extensible — adding <span class="mono">location</span>, <span class="mono">name</span>, etc. doesn't break the old format.</p>
+</div></details>
+
+<details class="accordion"><summary>Managing in-window messages: append, trim, set</summary><div class="acc-body">
+<p><strong>Example:</strong> a new message arrives → appended to the end of <span class="mono">message_ids</span>; the window needs slimming → drop the older few, but keep system message #0.</p>
+<p><strong>Why designed this way:</strong> making "what's in-window" a mutable list of id pointers keeps adds/drops featherlight — no moving the real <span class="mono">Message</span> rows, just the pointers.</p>
+<p><strong>Where in the source:</strong> <span class="mono">agent_manager.py</span>'s <span class="mono">append_to_in_context_messages</span> (append), <span class="mono">trim_older_in_context_messages(num)</span> (keep <span class="mono">[0]</span>, drop older fronts), <span class="mono">set_in_context_messages</span> (wholesale swap).</p>
+<p><strong>Alternatives:</strong> storing the full column of message objects works, but id pointers are leaner and let "one message be referenced from several places." Index 0 always being the system message is the premise for Lesson 9's "rebuild message #0."</p>
+</div></details>
+
+<details class="accordion"><summary>recall vs archival: both searchable — where's the difference</summary><div class="acc-body">
+<p><strong>Example:</strong> "the user complained about slow shipping three weeks ago" is a verbatim line, so it's recall, searched by <span class="mono">conversation_search</span>; "the user is allergic to peanuts," distilled by the agent into a long-term fact in archival, is searched by <span class="mono">archival_memory_search</span>.</p>
+<p><strong>Why designed this way:</strong> one is the <strong>system's auto-logged raw stream</strong>, the other the <strong>agent's actively curated distilled notes</strong>. Kept apart, "find the original words" and "find the conclusion" each travel their own tier, uncontaminated.</p>
+<p><strong>Where in the source:</strong> recall searches <span class="mono">conversation_search</span> → <span class="mono">search_messages_async</span> (<span class="mono">message_manager.py</span>); archival searches <span class="mono">archival_memory_search</span> → <span class="mono">cosine_distance</span> nearest neighbors (Lesson 10).</p>
+<p><strong>Don't flip it:</strong> the difference is <strong>not</strong> "recall by literal, archival by semantic." Both carry semantics: recall is hybrid (text+meaning), archival is pure semantic. The real split is <strong>what's stored / who writes</strong>.</p>
+</div></details>
+
+<details class="accordion"><summary>summary messages: compacted history still lives in recall</summary><div class="acc-body">
+<p><strong>Example:</strong> under window pressure, an older batch of messages is <strong>squeezed into one summary</strong> placed back in context, while the originals retreat out-of-window — but they're still <span class="mono">Message</span> rows in the store, still searchable.</p>
+<p><strong>Why designed this way:</strong> compaction is to save tokens, not to delete history. The summary keeps the "gist" in front of you, the original messages stay in recall for reference — no conflict.</p>
+<p><strong>Where in the source:</strong> the summary is packed by <span class="mono">letta/system.py::package_summarize_message</span> into a <span class="mono">system_alert</span> event; <span class="mono">summary</span> is already one of <span class="mono">Message</span>'s role values.</p>
+<p><strong>Lesson 12 preview:</strong> "when to compact, what to compact, how the summary is generated" is next lesson's topic (<span class="mono">letta/services/summarizer/</span>). Here just remember: <strong>compaction ≠ loss</strong>; the swapped-out originals still sit in recall.</p>
+</div></details>
+
+<h2>Next stop: from "able to remember" to "able to fit"</h2>
+<p>This lesson nailed the most "complete" of the three tiers: recall is the system's auto-logged <strong>full conversation history</strong>, each entry a durable, searchable <span class="mono">Message</span>; <span class="mono">message_ids</span> marks the in-window slice, the rest fetched by <span class="mono">conversation_search</span> via hybrid.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>Lesson 12 preview:</strong> recall guarantees "nothing lost," but the window is still finite. When in-window messages approach the token budget, Letta <strong>compacts the older batch into a summary</strong> and swaps it out — Lesson 9's closing "rebuild message #0 after compaction." Next: <strong>context compaction and "memory pressure."</strong></span></div>
+
+<p>Tie Part 3 together: core lets the agent <strong>rewrite who it is</strong> (07–09), archival lets it <strong>accumulate long-term knowledge</strong> (10), recall lets it <strong>remember every line said</strong> (11), and compaction (12) keeps it all <strong>turning</strong> inside a finite window. Four pieces in place, the memory system closes the loop.</p>
+
+<p>Look back at Lesson 3's "lifecycle of one message": a message comes in via POST, is processed, persisted, and answered — the moment it <strong>hits the store</strong> it joins recall. So recall isn't a separate module but the <strong>natural destination of every message's lifecycle</strong>: said is logged, logged is searchable.</p>
+
+<p>One chain to memorize on your way out: <strong>say a line → pack into a JSON event → store as a Message row → message_ids marks the in-window slice → old ones swap out but stay stored → to recall, conversation_search (hybrid) fetches it back</strong>. Hold this chain, plus "invisible ≠ gone," and recall is truly in your hands.</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>recall = the system's auto-logged full conversation history</strong>: every message is a durable, searchable <span class="mono">Message</span> (<span class="mono">letta/schemas/message.py</span>), persisted by <span class="mono">MessageManager</span>; writing is automatic.</li>
+    <li><strong>message_ids = in-window pointers</strong> (<span class="mono">AgentState</span>): marks only the recent slice, <span class="mono">[0]</span> is always the system message; adds/drops via <span class="mono">append</span> / <span class="mono">trim_older</span> / <span class="mono">set_in_context</span>.</li>
+    <li><strong>messages are typed JSON events</strong>: <span class="mono">letta/system.py</span> packs each into <span class="mono">user_message</span> / <span class="mono">function_response</span> / <span class="mono">heartbeat</span> (with <span class="mono">type</span> + <span class="mono">time</span>); the agent reasons over structured events.</li>
+    <li><strong>conversation_search is hybrid (text + meaning)</strong>: in <span class="mono">core_tool_executor.py</span>, delegating to <span class="mono">search_messages_async</span>; docstring literally "hybrid search (text + semantic similarity)."</li>
+    <li><strong>"in-window" ≠ "all history"</strong>: old messages are <strong>searchable but not visible</strong>, dropped ≠ deleted; fetching them back costs tokens.</li>
+    <li><strong>recall vs archival's true split</strong>: it's "<strong>what's stored / who writes</strong>" (recall logs all automatically, archival is agent-curated), not "literal vs semantic."</li>
+  </ul>
+</div>
+""",
+}

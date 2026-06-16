@@ -66,6 +66,8 @@ PAGES = [
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
     ("10-archival-memory.html", "归档记忆与向量检索", "Archival memory & vector search",
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("11-recall-memory.html", "回忆记忆与对话历史", "Recall memory & conversation history",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
 ]
 
 
@@ -524,6 +526,8 @@ SUBTITLES = {
                                     "core_memory_append/replace; the {CORE_MEMORY} slot; rebuilding message #0; prefix cache"),
     "10-archival-memory.html": ("Passage · 嵌入 · insert/search · pgvector / sqlite-vec · tags",
                                 "Passage; embeddings; insert/search; pgvector / sqlite-vec; tags"),
+    "11-recall-memory.html": ("Message · message_ids 在窗 · conversation_search · JSON 信封",
+                              "Message; in-window message_ids; conversation_search; JSON envelopes"),
 }
 
 
