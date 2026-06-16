@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>02 · 项目全景地图 / The project map - Letta 图解教程</title>
+<meta name="description" content="第一部分 · 宏观全景｜项目全景地图 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="02 · 项目全景地图 / The project map - Letta 图解教程">
+<meta property="og:description" content="第一部分 · 宏观全景｜项目全景地图 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="02 · 项目全景地图 / The project map - Letta 图解教程">
+<meta name="twitter:description" content="第一部分 · 宏观全景｜项目全景地图 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第一部分 · 宏观全景</span><span class="lang-en">Part 1 · The Big Picture</span></span>
+    <span class="pill">02 / 03</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:66%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第一部分 · 宏观全景</span><span class="lang-en">Part 1 · The Big Picture</span></div>
+    <h1><span class="lang-zh">项目全景地图</span><span class="lang-en">The project map</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+还记得上一课的结论吗——<strong>一个 agent 就是数据库里的一条 <span class="mono">AgentState</span></strong>。这一课要回答的是：这条状态住在一座什么样的"房子"里？我们会摊开 <span class="mono">letta/</span> 的目录地图，并把整个后端看成清清楚楚的<strong>三层</strong>：REST 路由 → 服务层（managers）→ ORM / 数据库。这是全书的"<strong>整体结构图</strong>"——记住它，后面每一课讲的细节，你都能在这张图上找到自己的位置。
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  把 Letta 的后端想象成一家<strong>运转良好的餐厅</strong>。<strong>前台服务员</strong>（REST 路由）只负责接待：听你点单、把菜端上桌，自己从不下厨；<strong>后厨大师傅</strong>（services 里的各种 <span class="mono">*Manager</span>）才是真正干活的人——所有业务逻辑、火候与配方都压在这里；而<strong>中央仓库</strong>（ORM / 数据库）统一管理食材进出，谁能取哪批货、怎么记账，都按一套铁打的规矩来。前台越薄、后厨越厚、仓库越通用，这家店就越好扩张、越不容易出乱子。Letta 的代码恰恰就是这么分工的。
+</div>
+
+<h2>三层架构：把后端拆成清清楚楚的三层</h2>
+<p>很多人第一次打开 <span class="mono">letta/</span> 会被几十个目录吓到。其实只要抓住一条主线，复杂度立刻坍缩成<strong>三层</strong>：从上到下，每一层只跟相邻的层说话、各司其职。这就是本课的整体结构图——先把它刻在脑子里：</p>
+
+<div class="layers">
+  <div class="layer l-app"><div class="lh"><span class="badge">REST 路由</span><span class="name">server/rest_api/routers/v1/*</span></div>
+    <div class="ld">很薄：解析 actor、收发 HTTP，把活立刻交给 services。</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">服务层</span><span class="name">services/*Manager</span></div>
+    <div class="ld">业务逻辑都在这里：开 DB 会话、调 ORM、做 schema &lt;-&gt; orm 转换。</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">ORM 模型</span><span class="name">orm/* · SqlalchemyBase</span></div>
+    <div class="ld">通用 CRUD + <span class="mono">apply_access_predicate</span> 多租户行级隔离。</div></div>
+  <div class="layer l-core"><div class="lh"><span class="badge">数据库</span><span class="name">SQLite（开发）/ Postgres+pgvector（生产）</span></div>
+    <div class="ld"><span class="mono">settings.database_engine</span> 选型；同一套代码，两种库。</div></div>
+</div>
+
+<p><strong>从上往下读</strong>：最上面的 <span class="mono">REST 路由</span>层薄得几乎没有逻辑，它只做"翻译"——把一个 HTTP 请求解析成"谁（actor）要对哪个 agent 做什么"，然后立刻把活交给下一层。中间的<strong>服务层</strong>才是真正的主角：所有业务规则、数据库会话、模型与数据库之间的来回转换，统统压在这一层。再往下，<span class="mono">orm/</span> 把每张表抽象成 Python 对象，并由一个共同的基类 <span class="mono">SqlalchemyBase</span> 提供"<strong>通用的增删改查</strong>"。最底层才是真正的数据库——开发时是一个文件式的 SQLite，上了生产换成 Postgres（配 <span class="mono">pgvector</span> 做向量检索），而上面三层的代码<strong>几乎一行都不用改</strong>。</p>
+
+<p><strong>为什么非要这么严格地分层？</strong>因为"每层只跟相邻层说话"换来了三种自由：其一，<strong>底层可替换</strong>——把 SQLite 换成 Postgres，只要 ORM 那层适配好，上面的服务与路由毫不知情；其二，<strong>中层可单测</strong>——直接调 <span class="mono">*Manager</span> 的方法就能测业务，不必费劲假装发一个 HTTP 请求；其三，<strong>上层可多样</strong>——同一套业务既能被 REST 调，也能被 CLI、后台任务调。分层不是为了好看，而是让每一块都能<strong>独立演进、独立替换、独立测试</strong>。</p>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  整张后端的"中枢"只有一个，叫 <span class="mono">SyncServer</span>（在 <span class="mono">letta/server/server.py</span>）。它像餐厅的<strong>总调度</strong>：一上电就把所有 <span class="mono">*Manager</span> 都创建好、挂在自己身上——<span class="mono">agent_manager</span>、<span class="mono">message_manager</span>、<span class="mono">block_manager</span>、<span class="mono">passage_manager</span>、<span class="mono">user_manager</span>…… 几十个"经理"各管一摊。<span class="mono">app.py</span> 里只有<strong>一个</strong>全局 <span class="mono">SyncServer</span> 实例，REST 路由想干活，就向它要对应的经理。把"谁持有谁"理顺，整个项目的脉络就清楚了。
+</div>
+
+<h2>跟着一次请求穿过三层</h2>
+<p>光看分层还不够，得看它<strong>动起来</strong>。拿你最熟悉的动作——给 agent 发一条消息——走一遍，看请求怎么自上而下穿过三层、再把结果带回来：</p>
+
+<div class="flow">
+  <div class="node hl"><div class="nt">REST 路由</div><div class="nd">send_message</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">SyncServer / Manager</div><div class="nd">业务 + DB 会话</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">ORM CRUD</div><div class="nd">apply_access_predicate</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">数据库</div><div class="nd">SQLite / Postgres</div></div>
+</div>
+
+<p>这条链路最值得玩味的是它的<strong>第一站</strong>。你可能以为"发消息"这种核心动作，路由里一定写满了逻辑；恰恰相反，真实的 <span class="mono">send_message</span> 短得惊人。把它简化出来看：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, server, headers):
+    actor = <span class="kw">await</span> server.user_manager.<span class="fn">get_actor_or_default_async</span>(headers.actor_id)
+    agent = <span class="kw">await</span> server.agent_manager.<span class="fn">get_agent_by_id_async</span>(agent_id, actor)
+    loop  = AgentLoop.<span class="fn">load</span>(agent_state=agent, actor=actor)
+    <span class="kw">return await</span> loop.<span class="fn">step</span>(request.messages)   <span class="cm"># 路由只做这些；业务都在下层</span>
+</pre></div>
+
+<p>看见了吗？路由只做三件事：<strong>解析出 actor</strong>（哪个用户/组织在操作）、<strong>按 id 把 agent 取出来</strong>、<strong>交给 agent 循环跑一步</strong>。它不开数据库会话、不拼上下文、不调模型——这些全在下层。这就是"薄路由"的含义：<strong>路由是入口，不是车间</strong>。</p>
+
+<p>这里还藏着一个贯穿全局的细节：第一行解析出来的 <span class="mono">actor</span>。它代表"<strong>此刻是哪个用户、属于哪个组织在操作</strong>"，并会被一路往下传——传到 manager、再传到 ORM 的 <span class="mono">apply_access_predicate</span>，最终变成数据库查询里那道"只看自己组织"的过滤。换句话说，<strong>多租户隔离从路由的第一行就开始了</strong>，之后每一层都在接力，而不是等到最后才补一刀。记住 <span class="mono">actor</span> 这个词，它会在后面的课里反复出现。</p>
+
+<h3><span class="mono">letta/</span> 目录全景</h3>
+<p>建立了三层骨架，再把血肉填上——下面这张表是 <span class="mono">letta/</span> 里最该先认识的几个目录。读代码时先问"我关心的是哪一层、哪一块"，再按图索骥，比一头扎进去高效得多：</p>
+
+<table class="t">
+  <tr><th>目录</th><th>作用</th></tr>
+  <tr><td class="mono">agents/</td><td>agent 运行时与执行循环（<span class="mono">letta_agent_v3.py</span>、<span class="mono">agent_loop.py</span>）</td></tr>
+  <tr><td class="mono">schemas/</td><td>Pydantic 数据契约：<span class="mono">AgentState</span> · <span class="mono">Memory</span> · <span class="mono">Block</span> · <span class="mono">Message</span> · <span class="mono">LLMConfig</span></td></tr>
+  <tr><td class="mono">services/</td><td>业务逻辑层：各 <span class="mono">*Manager</span>（agent / message / block / passage …）</td></tr>
+  <tr><td class="mono">orm/</td><td>SQLAlchemy 持久化模型 + <span class="mono">SqlalchemyBase</span> 通用 CRUD</td></tr>
+  <tr><td class="mono">server/</td><td>FastAPI REST 服务、<span class="mono">SyncServer</span>、路由 <span class="mono">rest_api/routers/v1/*</span></td></tr>
+  <tr><td class="mono">functions/</td><td>工具：从函数 + docstring 生成 schema、内置工具集</td></tr>
+  <tr><td class="mono">llm_api/</td><td>多家 LLM provider 的统一客户端抽象</td></tr>
+  <tr><td class="mono">prompts/</td><td>系统提示文本 + <span class="mono">PromptGenerator</span>（把记忆编译进 system message）</td></tr>
+</table>
+
+<p>这八个目录里，<span class="mono">schemas/</span> 和 <span class="mono">orm/</span> 最容易被搞混——一个是"对外的数据契约"，一个是"对内的存储模型"，我们待会儿在折叠里专门拆。先记住一条对应关系：<strong>路由在 <span class="mono">server/</span>、业务在 <span class="mono">services/</span>、存储在 <span class="mono">orm/</span></strong>，而穿过这三层、始终被传来传去的核心对象，就是上一课那条 <span class="mono">AgentState</span>。</p>
+
+<p>顺带认一下另外三个"能力面"的目录：<span class="mono">functions/</span> 负责把一个普通 Python 函数 + 它的 docstring 自动变成模型看得懂的工具 schema；<span class="mono">llm_api/</span> 把 OpenAI、Anthropic、Google 等各家厂商的差异抹平成统一的客户端接口，于是"换模型"基本不动业务；<span class="mono">prompts/</span> 则由 <span class="mono">PromptGenerator</span> 把记忆与人设编译进系统提示。它们不在"三层主干"上，却是让 agent 真正<strong>能调工具、能跨厂商、会说话</strong>的三块拼图。</p>
+
+<div class="card detail">
+  <div class="tag">🔬 源码对应</div>
+  落到真实符号：三层分别对应 <span class="mono">letta/server/rest_api/routers/v1/*</span>（路由）、<span class="mono">letta/services/*_manager.py</span>（服务）、<span class="mono">letta/orm/*</span>（ORM）。中枢是 <span class="mono">letta/server/server.py::SyncServer</span>；最常打交道的经理是 <span class="mono">services/agent_manager.py::AgentManager</span>；所有 ORM 模型的共同基类是 <span class="mono">letta/orm/sqlalchemy_base.py::SqlalchemyBase</span>；数据库会话由 <span class="mono">letta/server/db.py</span> 的 <span class="mono">db_registry.async_session()</span> 提供；用哪种数据库由 <span class="mono">letta/settings.py::database_engine</span> 决定（设了 Postgres 连接串就用 Postgres，否则回落到 SQLite）。
+</div>
+
+<h2>厚服务：业务逻辑都压在 managers</h2>
+<p>既然路由那么薄，活儿到底谁干？答案是<strong>服务层</strong>。每个 <span class="mono">*Manager</span> 都是一组方法的集合，套路高度统一：<strong>开一个数据库会话 → 用 ORM 查/改 → 把结果转回 pydantic 模型返回</strong>。拿路由里调用过的 <span class="mono">get_agent_by_id_async</span> 当样板（已简化）：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/agent_manager.py</span><span class="ln">AgentManager.get_agent_by_id_async（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentManager</span>:
+    <span class="kw">async def</span> <span class="fn">get_agent_by_id_async</span>(self, agent_id, actor):
+        <span class="kw">async with</span> db_registry.<span class="fn">async_session</span>() <span class="kw">as</span> session:
+            query = <span class="fn">select</span>(AgentModel)
+            query = AgentModel.<span class="fn">apply_access_predicate</span>(query, actor, [<span class="st">"read"</span>])
+            query = query.<span class="fn">where</span>(AgentModel.id == agent_id)
+            row   = (<span class="kw">await</span> session.<span class="fn">execute</span>(query)).<span class="fn">scalar_one_or_none</span>()
+            <span class="kw">return await</span> row.<span class="fn">to_pydantic_async</span>()   <span class="cm"># ORM 行 -&gt; pydantic schema</span>
+</pre></div>
+
+<p>三步骨架一目了然：<span class="mono">async with db_registry.async_session()</span> 借来一个异步会话，<span class="mono">apply_access_predicate</span> 给查询自动加上"只看自己组织"的过滤，最后 <span class="mono">to_pydantic_async()</span> 把数据库行<strong>翻译成对外的 pydantic 模型</strong>。注意那行 <span class="mono">apply_access_predicate</span>——它不是这个方法特有的，而是<strong>几乎每个 manager 查询都会用</strong>的同一道护栏。</p>
+
+<p>正因为每个 manager 方法都长这一个样子——开会话、加隔离、查改、再转 pydantic——你读懂一个，就读懂了一整类。想找"创建 agent"的逻辑？去 <span class="mono">agent_manager.py</span> 找 <span class="mono">create</span> 系列方法；想"取回某段对话"？去 <span class="mono">message_manager.py</span>。<strong>目录 + 命名 + 统一套路</strong>三者一合，就是一张比任何文档都可靠的代码地图。</p>
+
+<p>为什么能这么统一？秘密在最底层。</p>
+
+<h2>通用 ORM：一处实现，处处受益</h2>
+<p>Letta 的 ORM 有个让人会心一笑的设计：所有数据库模型都继承同一个基类 <span class="mono">SqlalchemyBase</span>，于是<strong>增删改查、分页、软删除、多租户隔离</strong>这些活儿，只在这一个地方写一遍，每张表就都自动拥有了。其中最关键的是多租户隔离那一道——看它有多简单：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">apply_access_predicate（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">SqlalchemyBase</span>(Base):          <span class="cm"># 每个 ORM 模型都继承它</span>
+    <span class="nb">@classmethod</span>
+    <span class="kw">def</span> <span class="fn">apply_access_predicate</span>(cls, query, actor, access):
+        <span class="cm"># 给任意查询自动加一道 WHERE：只看本组织的数据</span>
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.organization_id == actor.organization_id)
+</pre></div>
+
+<p>就这么一行 <span class="mono">WHERE organization_id = 当前用户的组织</span>，却是 Letta 能安全托管成千上万租户的地基：任何查询只要走 <span class="mono">apply_access_predicate</span>，就<strong>不可能</strong>看到别人组织的数据——而且这是<strong>默认行为</strong>，写新功能的人想绕都得特意绕。再加上软删除（删除只是把 <span class="mono">is_deleted</span> 置真）和统一分页，<strong>安全与一致性被"焊死"在了最底层</strong>，而不是指望每个写业务的人都记得加。</p>
+
+<h3>schemas 与 orm：同一个对象的两副面孔</h3>
+<p>上面反复出现两个词——<span class="mono">schemas</span> 和 <span class="mono">orm</span>。它们描述的常常是"同一个东西"（比如一个 Agent），却活在两个不同的世界：</p>
+
+<div class="cols">
+  <div class="col"><h4>Pydantic 数据契约 · schemas/</h4><p>面向<strong>外部</strong>：API 的请求/响应长什么样、字段如何校验、如何序列化成 JSON。<span class="mono">AgentState</span>、<span class="mono">Memory</span>、<span class="mono">Block</span>、<span class="mono">Message</span> 都住在这里，通常一套"三件"：<span class="mono">Create</span> / <span class="mono">Update</span> / 读取模型。</p></div>
+  <div class="col"><h4>SQLAlchemy ORM 模型 · orm/</h4><p>面向<strong>内部</strong>：数据怎么落到数据库的表与列、关系如何连。<span class="mono">orm/agent.py::Agent</span> 等都继承 <span class="mono">SqlalchemyBase</span>。manager 取出 ORM 行后，用 <span class="mono">to_pydantic</span> 翻成 schema 再返回给上层。</p></div>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>薄路由、厚服务、通用 ORM</strong>——这三句话是看懂整个 Letta 后端的钥匙；而真正的"啊哈"，在于它们各自<strong>换来一个大好处</strong>：<br><br>
+  ① <strong>通用 ORM = 安全与一致性默认免费。</strong><span class="mono">SqlalchemyBase</span> 一处实现泛型 CRUD，<span class="mono">apply_access_predicate</span> 给每张表自动加上多租户行级隔离——分页、软删除、隔离都是"<strong>secure by default</strong>"，新建一张表就白捡这些能力。<br>
+  ② <strong>厚服务 + 薄路由 = 一套业务、多种入口。</strong>逻辑全在 <span class="mono">*Manager</span>，于是 REST 接口、CLI、后台任务、测试可以<strong>复用同一套</strong>方法，路由只是众多入口里的一个。<br>
+  ③ <strong>无状态运行时 = 水平扩展。</strong>整个服务端是<strong>一个</strong> <span class="mono">SyncServer</span> 持有全部经理；而 agent 本身"不黏进程"——它只是把序列化的 <span class="mono">AgentState</span> 取出来、跑一步、再写回。任何一台机器都能接手任何一个 agent，于是加机器就能扛更多负载。<br><br>
+  一句话：<strong>把"难做对的事"（隔离、扩展、复用）下沉到框架底层做一次，让上层无论怎么写都不容易出错。</strong>
+</div>
+
+<h2>无状态运行时：同一个 agent，哪台机器都能接手</h2>
+<p>前面反复说 agent"不黏进程"，这里把它说透。一个正在"思考"的 agent，本质上<strong>没有任何东西常驻在某台机器的内存里</strong>——它要用的一切，都来自数据库里那条 <span class="mono">AgentState</span>。所以处理一条消息的真实节奏，永远是干净利落的三拍：</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>取出 load</h4><p>按 <span class="mono">agent_id</span> 从库里读出 <span class="mono">AgentState</span>：记忆块、在窗消息、可用工具、模型配置一并取齐。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>跑一步 step</h4><p><span class="mono">AgentLoop.load</span> 据此造出运行时 agent；<span class="mono">step</span> 里读消息、组装上下文、调模型、按需执行工具。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>写回 persist</h4><p>新产生的消息、记忆改动、状态更新统统落库；这一拍一结束，内存里那个运行时 agent 就可以<strong>彻底丢弃</strong>。</p></div></div>
+</div>
+
+<p>这三拍带来一个极其实用的性质：<strong>处理同一个 agent 的两条消息，完全可以落在两台不同的机器上</strong>——因为"上一步"的所有结果都已经在数据库里，"下一步"无非是再 <span class="mono">load</span> 一次。于是 Letta 服务端可以像普通的无状态 Web 服务那样<strong>水平扩展</strong>：流量大了就加机器，请求随便路由到哪一台都行，背后共享同一个数据库。这正是把"状态"从"进程"里彻底剥离、塞进 <span class="mono">AgentState</span> 的回报。</p>
+
+<p>回看上一课那句"<strong>取出 → 跑一步 → 写回</strong>"，现在你知道它分别落在哪一层了：<strong>取出</strong>与<strong>写回</strong>是 <span class="mono">services/</span> 里各 <span class="mono">*Manager</span> 的活，<strong>跑一步</strong>是 <span class="mono">agents/</span> 的活，而把它们串起来、对外发令的，是 <span class="mono">server/</span> 路由那薄薄的一层。三层架构与"有状态 agent"，在这里严丝合缝地合上了。</p>
+
+<div class="card warn">
+  <div class="tag">⚠️ 容易误解</div>
+  "无状态运行时"不是说 Letta <strong>整个系统</strong>无状态——状态稳稳地存在数据库里。无状态的只是<strong>处理请求的那段运行时</strong>：它不在内存里攒东西，每次都从 <span class="mono">AgentState</span> 重建、用完即弃。把"<strong>有状态的数据</strong>"和"<strong>无状态的运行时</strong>"分开来看，才不会把这句话理解反。
+</div>
+
+<h3>按学习路线读代码</h3>
+<p>最后给你一张"读码路线图"。不必从头到尾啃完整个仓库——按你当下的目标，挑对应的一层切进去就好：</p>
+
+<div class="layers">
+  <div class="layer l-app"><div class="lh"><span class="badge">想跑起来</span><span class="name">server/ · cli/</span></div>
+    <div class="ld">先看 <span class="mono">server/rest_api/app.py</span> 的 <span class="mono">create_application</span> 与全局 <span class="mono">SyncServer</span>；命令行入口在 <span class="mono">cli/cli.py</span>。</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">懂记忆</span><span class="name">schemas/memory.py · services/*</span></div>
+    <div class="ld"><span class="mono">Memory</span> / <span class="mono">Block</span> 的数据契约，加上 <span class="mono">block_manager</span> / <span class="mono">passage_manager</span> 怎么存取。</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">懂循环</span><span class="name">agents/letta_agent_v3.py</span></div>
+    <div class="ld"><span class="mono">LettaAgentV3.step</span>：读消息 → 组装上下文 → 调模型 → 执行工具 → 写回。</div></div>
+  <div class="layer l-core"><div class="lh"><span class="badge">懂存储</span><span class="name">orm/ · server/db.py</span></div>
+    <div class="ld"><span class="mono">SqlalchemyBase</span> 通用 CRUD、<span class="mono">db_registry.async_session</span> 开会话。</div></div>
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>为什么路由要写得这么"薄"？</summary><div class="acc-body">
+<p><strong>示例：</strong>真实的 <span class="mono">send_message</span> 几乎把活全转给了下层，路由里看不到什么 if/else 业务判断。</p>
+<p><strong>为什么这样设计：</strong>因为业务一旦写进路由，就只能从 HTTP 入口用；放进 manager，则 CLI、后台任务、测试都能直接调<strong>同一个方法</strong>。薄路由还让"换协议"（比如把普通响应换成 SSE 流式）只动入口、不动业务——稳定的核心被入口层的变化保护着。</p>
+<p><strong>源码在哪：</strong>路由 <span class="mono">letta/server/rest_api/routers/v1/agents.py::send_message</span>；业务在 <span class="mono">services/agent_manager.py</span> 等 <span class="mono">*Manager</span>。</p>
+<p><strong>还有什么替代：</strong>"胖控制器"把业务直接写在路由里——上手快，但 CLI 与 REST 会各写一份、难测、容易漂移。Letta 选了薄路由，换取复用与可测。</p>
+</div></details>
+
+<details class="accordion"><summary>有了 schemas，为什么还要单独一套 orm？</summary><div class="acc-body">
+<p><strong>示例：</strong>一个 Agent 既有 <span class="mono">schemas/agent.py::AgentState</span>（API 模型），又有 <span class="mono">orm/agent.py::Agent</span>（数据库模型），看起来"重复"。</p>
+<p><strong>为什么这样设计：</strong>两者关心的事根本不同。pydantic schema 关心"<strong>对外契约</strong>"——字段校验、序列化、<span class="mono">Create</span>/<span class="mono">Update</span>/读取三件套；ORM 关心"<strong>对内存储</strong>"——表、列、外键、索引。分开之后，API 可以演进而不被数据库结构绑死，数据库也能重构而不惊动 API。manager 站在中间做转换。</p>
+<p><strong>源码在哪：</strong><span class="mono">schemas/</span> 下的 pydantic 模型；<span class="mono">orm/</span> 下继承 <span class="mono">SqlalchemyBase</span> 的模型；转换方法如 <span class="mono">orm/agent.py::Agent.to_pydantic_async</span>。</p>
+<p><strong>还有什么替代：</strong>只用一套模型（ORM 直接当 API 返回）——少写代码，但数据库结构会泄露到 API、校验与序列化也难做干净。两套模型是成熟后端的常见取舍。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">SyncServer</span> 到底是什么？</summary><div class="acc-body">
+<p><strong>示例：</strong><span class="mono">app.py</span> 启动时只 new 了一个 <span class="mono">server = SyncServer(...)</span>，整个进程共用它。</p>
+<p><strong>为什么这样设计：</strong>把所有 <span class="mono">*Manager</span> 的创建与持有集中到一个对象，依赖关系一目了然（例如 <span class="mono">agent_manager</span> 需要 <span class="mono">block_manager</span>，就在构造时注入）。路由通过依赖注入拿到这个全局 <span class="mono">server</span>，再用 <span class="mono">server.xxx_manager</span> 取经理——干净、可追踪。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta/server/server.py::SyncServer</span>（构造里逐个创建各 manager）；全局实例在 <span class="mono">letta/server/rest_api/app.py</span>（<span class="mono">server = SyncServer(...)</span>）。</p>
+<p><strong>还有什么替代：</strong>每个请求各自 new 一堆 manager——重复又浪费；或把单例散落在全局各处——难追踪。集中到一个中枢，是"组合优于散落"的体现。</p>
+</div></details>
+
+<h2>这一课在整张大图的哪里</h2>
+<p>你现在手里有了全书的<strong>整体结构图</strong>：<span class="mono">letta/</span> 的目录地图、REST → services → ORM/DB 三层、以及把它们串起来的中枢 <span class="mono">SyncServer</span>。把它和上一课接上——那条会自我编辑的 <span class="mono">AgentState</span>，正是被这三层<strong>取出、加工、写回</strong>的核心对象。<strong>下一课（第 3 课）一条消息的生命周期</strong>会把本课的 <span class="mono">send_message</span> 这一站放大成慢镜头：从路由进来、经 <span class="mono">AgentLoop.load</span> 载入 agent、再到 <span class="mono">step</span> 里"读消息 → 组装上下文 → 调模型 → 执行工具 → 写回"，一帧一帧看完。再往后第二、三部分讲工具与记忆时，你都能立刻定位到"它落在这张三层图的哪一层"。</p>
+
+<p>把这张三层图当成你随身的导航：读到任何一个新模块，先问它属于<strong>路由、服务还是存储</strong>，再看它跟 <span class="mono">AgentState</span> 怎么打交道——只要这两个问题答得上来，再大的代码库也不会让你失去方向。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li>Letta 后端是清清楚楚的<strong>三层</strong>：REST 路由（薄）→ <span class="mono">services/*Manager</span>（厚）→ <span class="mono">orm/SqlalchemyBase</span> + 数据库。</li>
+    <li>业务逻辑都在 <strong>services 层</strong>的 <span class="mono">*Manager</span>；路由只解析 actor、收发 HTTP。</li>
+    <li>中枢是<strong>一个</strong> <span class="mono">SyncServer</span>，持有全部 <span class="mono">*Manager</span>；<span class="mono">app.py</span> 里只有一个全局实例。</li>
+    <li>通用 ORM：<span class="mono">SqlalchemyBase</span> 一处实现 CRUD，<span class="mono">apply_access_predicate</span> 让每张表<strong>默认</strong>获得多租户行级隔离（secure by default），并自带软删除与分页。</li>
+    <li><span class="mono">schemas</span>（对外 pydantic 契约）与 <span class="mono">orm</span>（对内存储模型）是<strong>两套模型</strong>，manager 负责转换。</li>
+    <li><span class="mono">AgentState</span> 是穿过三层的核心对象；agent 是<strong>无状态运行时</strong>，因此可以水平扩展。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. Letta 后端的三层架构，从上到下（离请求最近到最底层）的顺序是？</div>
+  <ol class="opts">
+    <li>services -> REST 路由 -> ORM/数据库</li>
+    <li>ORM/数据库 -> services -> REST 路由</li>
+    <li>REST 路由 -> services/managers -> ORM/数据库</li>
+    <li>REST 路由 -> ORM/数据库 -> services</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。路由（server/rest_api/routers/v1/*）很薄，只解析 actor、收发 HTTP；它把活交给 services 的各 *Manager；manager 再经 ORM（SqlalchemyBase）落到数据库。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 业务逻辑（开 DB 会话、查改数据、schema&lt;-&gt;orm 转换）主要落在哪一层？</div>
+  <ol class="opts">
+    <li>services 层的各 *Manager（如 AgentManager）</li>
+    <li>前端调用方</li>
+    <li>数据库本身（SQLite / Postgres）</li>
+    <li>REST 路由层</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。路由薄、ORM 通用，真正的业务规则都压在 services 层的 *Manager 里——所以 REST、CLI、测试可以复用同一套方法。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. SqlalchemyBase.apply_access_predicate 的作用是什么？</div>
+  <ol class="opts">
+    <li>在记忆变化时重新编译系统提示</li>
+    <li>给任意查询自动加一道 WHERE，按组织（actor.organization_id）做行级隔离，只看本组织数据</li>
+    <li>决定用 SQLite 还是 Postgres</li>
+    <li>把 pydantic 模型转换成 ORM 模型</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。它是多租户隔离的入口：默认按 actor 的 organization_id 加过滤，让每张表的查询都'只看自己组织'，而且是 secure by default——想绕都得特意绕。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>假设给 Letta 加一张新表（比如“笔记 notes”）。让它继承 SqlalchemyBase 后，它大致自动获得了哪些能力？为什么把这些做进一个基类、而不是每张表各写一遍，对多租户安全特别重要？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Remember last lesson's punchline — <strong>an agent is just one <span class="mono">AgentState</span> row in a database</strong>. This lesson answers: what kind of "house" does that row live in? We'll unroll the <span class="mono">letta/</span> directory map and view the whole backend as three crisp layers: REST routes → service layer (managers) → ORM / database. This is the guide's "<strong>overall structure diagram</strong>" — memorize it, and every detail in later lessons will have a place to sit.
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  Picture Letta's backend as a <strong>well-run restaurant</strong>. The <strong>front-of-house waiter</strong> (REST routes) only greets you: takes the order, brings the dishes out, never cooks. The <strong>head chef</strong> (the various <span class="mono">*Manager</span>s in services) is who actually works — all business logic, timing and recipes sit here. And the <strong>central warehouse</strong> (ORM / database) governs every ingredient in and out: who may take which stock, and how it's accounted for, all follow one ironclad set of rules. The thinner the front, the thicker the kitchen, the more generic the warehouse — the easier the place scales and the less it breaks. Letta's code is split exactly this way.
+</div>
+
+<h2>The 3-layer architecture: a backend in three crisp layers</h2>
+<p>Open <span class="mono">letta/</span> for the first time and a few dozen directories may scare you. But grab one through-line and the complexity collapses into <strong>three layers</strong>: top to bottom, each talks only to its neighbor, each with one job. This is the lesson's overall structure diagram — carve it into your mind first:</p>
+
+<div class="layers">
+  <div class="layer l-app"><div class="lh"><span class="badge">REST routes</span><span class="name">server/rest_api/routers/v1/*</span></div>
+    <div class="ld">Very thin: parse the actor, send/receive HTTP, hand the work straight to services.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">Service layer</span><span class="name">services/*Manager</span></div>
+    <div class="ld">All business logic lives here: open a DB session, call the ORM, convert schema &lt;-&gt; orm.</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">ORM models</span><span class="name">orm/* · SqlalchemyBase</span></div>
+    <div class="ld">Generic CRUD + <span class="mono">apply_access_predicate</span> row-level multi-tenant isolation.</div></div>
+  <div class="layer l-core"><div class="lh"><span class="badge">Database</span><span class="name">SQLite (dev) / Postgres+pgvector (prod)</span></div>
+    <div class="ld"><span class="mono">settings.database_engine</span> picks; one codebase, two databases.</div></div>
+</div>
+
+<p><strong>Read it top-down</strong>: the top <span class="mono">REST routes</span> layer is so thin it's almost logic-free — it just "translates" an HTTP request into "who (the actor) wants to do what to which agent", then immediately hands off downward. The middle <strong>service layer</strong> is the real protagonist: all business rules, database sessions, and the back-and-forth between models and tables sit here. Below that, <span class="mono">orm/</span> abstracts every table into a Python object, with a shared base class <span class="mono">SqlalchemyBase</span> providing <strong>generic create/read/update/delete</strong>. Only the bottom is the real database — a file-based SQLite in dev, swapped for Postgres (with <span class="mono">pgvector</span> for vector search) in prod — and the three layers above need <strong>almost no changes</strong>.</p>
+
+<p><strong>Why insist on such strict layering?</strong> Because "each layer talks only to its neighbor" buys three freedoms: one, <strong>the bottom is swappable</strong> — swap SQLite for Postgres and, as long as the ORM layer adapts, the services and routes above are none the wiser; two, <strong>the middle is unit-testable</strong> — call a <span class="mono">*Manager</span> method directly to test business logic, no need to fake an HTTP request; three, <strong>the top is pluralizable</strong> — the same business is callable from REST, the CLI, or background jobs. Layering isn't for looks; it lets every piece <strong>evolve, swap, and test independently</strong>.</p>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  The whole backend has exactly one "hub", called <span class="mono">SyncServer</span> (in <span class="mono">letta/server/server.py</span>). It's the restaurant's <strong>head dispatcher</strong>: at startup it creates all the <span class="mono">*Manager</span>s and hangs them on itself — <span class="mono">agent_manager</span>, <span class="mono">message_manager</span>, <span class="mono">block_manager</span>, <span class="mono">passage_manager</span>, <span class="mono">user_manager</span>… dozens of "managers", each owning one slice. <span class="mono">app.py</span> holds <strong>one</strong> global <span class="mono">SyncServer</span> instance; whenever a route needs work done, it asks the hub for the right manager. Get "who holds whom" straight and the whole project's wiring becomes clear.
+</div>
+
+<h2>Follow one request through all three layers</h2>
+<p>Looking at the layers isn't enough — watch them <strong>move</strong>. Take the action you know best — sending a message to an agent — and trace how the request crosses the three layers downward, then carries the result back:</p>
+
+<div class="flow">
+  <div class="node hl"><div class="nt">REST route</div><div class="nd">send_message</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">SyncServer / Manager</div><div class="nd">business + DB session</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">ORM CRUD</div><div class="nd">apply_access_predicate</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Database</div><div class="nd">SQLite / Postgres</div></div>
+</div>
+
+<p>The most telling part of this chain is its <strong>first stop</strong>. You'd assume a core action like "send a message" has a route stuffed with logic; on the contrary, the real <span class="mono">send_message</span> is startlingly short. Here it is, simplified:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, server, headers):
+    actor = <span class="kw">await</span> server.user_manager.<span class="fn">get_actor_or_default_async</span>(headers.actor_id)
+    agent = <span class="kw">await</span> server.agent_manager.<span class="fn">get_agent_by_id_async</span>(agent_id, actor)
+    loop  = AgentLoop.<span class="fn">load</span>(agent_state=agent, actor=actor)
+    <span class="kw">return await</span> loop.<span class="fn">step</span>(request.messages)   <span class="cm"># the route does only this; business lives below</span>
+</pre></div>
+
+<p>See it? The route does three things: <strong>resolve the actor</strong> (which user/org is acting), <strong>load the agent by id</strong>, and <strong>hand it to the agent loop for one step</strong>. It opens no DB session, assembles no context, calls no model — all of that is downstairs. That's what "thin route" means: <strong>a route is an entrance, not a workshop</strong>.</p>
+
+<p>There's also a detail here that runs through everything: the <span class="mono">actor</span> resolved on the first line. It represents "<strong>which user, in which organization, is acting right now</strong>", and it's passed all the way down — to the manager, then to the ORM's <span class="mono">apply_access_predicate</span>, finally becoming that "only my own org" filter in the database query. In other words, <strong>multi-tenant isolation begins on the route's very first line</strong>, and every layer after relays it — rather than bolting it on at the end. Remember the word <span class="mono">actor</span>; it recurs in later lessons.</p>
+
+<h3>The <span class="mono">letta/</span> directory map</h3>
+<p>With the three-layer skeleton in place, add the flesh — the table below lists the <span class="mono">letta/</span> directories worth meeting first. When reading code, ask "which layer, which piece do I care about" and navigate by the map, far more efficient than diving in headfirst:</p>
+
+<table class="t">
+  <tr><th>Directory</th><th>Role</th></tr>
+  <tr><td class="mono">agents/</td><td>Agent runtime and execution loop (<span class="mono">letta_agent_v3.py</span>, <span class="mono">agent_loop.py</span>)</td></tr>
+  <tr><td class="mono">schemas/</td><td>Pydantic data contracts: <span class="mono">AgentState</span> · <span class="mono">Memory</span> · <span class="mono">Block</span> · <span class="mono">Message</span> · <span class="mono">LLMConfig</span></td></tr>
+  <tr><td class="mono">services/</td><td>Business-logic layer: the <span class="mono">*Manager</span>s (agent / message / block / passage …)</td></tr>
+  <tr><td class="mono">orm/</td><td>SQLAlchemy persistence models + <span class="mono">SqlalchemyBase</span> generic CRUD</td></tr>
+  <tr><td class="mono">server/</td><td>FastAPI REST service, <span class="mono">SyncServer</span>, routes <span class="mono">rest_api/routers/v1/*</span></td></tr>
+  <tr><td class="mono">functions/</td><td>Tools: generate a schema from a function + docstring; built-in tool set</td></tr>
+  <tr><td class="mono">llm_api/</td><td>A unified client abstraction over many LLM providers</td></tr>
+  <tr><td class="mono">prompts/</td><td>System-prompt text + <span class="mono">PromptGenerator</span> (compiles memory into the system message)</td></tr>
+</table>
+
+<p>Of these eight, <span class="mono">schemas/</span> and <span class="mono">orm/</span> are the easiest to confuse — one is the "outward data contract", the other the "inward storage model"; we'll pull them apart in an accordion shortly. For now hold one mapping: <strong>routes in <span class="mono">server/</span>, business in <span class="mono">services/</span>, storage in <span class="mono">orm/</span></strong> — and the core object passed across all three layers is last lesson's <span class="mono">AgentState</span>.</p>
+
+<p>While we're here, meet three more "capability-side" directories: <span class="mono">functions/</span> turns a plain Python function plus its docstring into a tool schema the model understands; <span class="mono">llm_api/</span> smooths over the differences among OpenAI, Anthropic, Google and others into one client interface, so "swapping models" barely touches business code; and <span class="mono">prompts/</span> uses <span class="mono">PromptGenerator</span> to compile memory and persona into the system prompt. They aren't on the "three-layer trunk", yet they're the three puzzle pieces that let an agent actually <strong>call tools, cross providers, and speak</strong>.</p>
+
+<div class="card detail">
+  <div class="tag">🔬 Source mapping</div>
+  Pinned to real symbols: the three layers map to <span class="mono">letta/server/rest_api/routers/v1/*</span> (routes), <span class="mono">letta/services/*_manager.py</span> (services), and <span class="mono">letta/orm/*</span> (ORM). The hub is <span class="mono">letta/server/server.py::SyncServer</span>; the manager you'll meet most is <span class="mono">services/agent_manager.py::AgentManager</span>; the shared base of every ORM model is <span class="mono">letta/orm/sqlalchemy_base.py::SqlalchemyBase</span>; DB sessions come from <span class="mono">letta/server/db.py</span>'s <span class="mono">db_registry.async_session()</span>; and which database is used is decided by <span class="mono">letta/settings.py::database_engine</span> (set a Postgres URI and it uses Postgres, otherwise it falls back to SQLite).
+</div>
+
+<h2>Thick services: business logic sits in the managers</h2>
+<p>If the route is that thin, who does the work? The <strong>service layer</strong>. Each <span class="mono">*Manager</span> is a set of methods following a highly uniform pattern: <strong>open a DB session → query/modify via the ORM → convert the result back to a pydantic model and return it</strong>. Take the <span class="mono">get_agent_by_id_async</span> the route called, as a template (simplified):</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/agent_manager.py</span><span class="ln">AgentManager.get_agent_by_id_async (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentManager</span>:
+    <span class="kw">async def</span> <span class="fn">get_agent_by_id_async</span>(self, agent_id, actor):
+        <span class="kw">async with</span> db_registry.<span class="fn">async_session</span>() <span class="kw">as</span> session:
+            query = <span class="fn">select</span>(AgentModel)
+            query = AgentModel.<span class="fn">apply_access_predicate</span>(query, actor, [<span class="st">"read"</span>])
+            query = query.<span class="fn">where</span>(AgentModel.id == agent_id)
+            row   = (<span class="kw">await</span> session.<span class="fn">execute</span>(query)).<span class="fn">scalar_one_or_none</span>()
+            <span class="kw">return await</span> row.<span class="fn">to_pydantic_async</span>()   <span class="cm"># ORM row -&gt; pydantic schema</span>
+</pre></div>
+
+<p>The three-step skeleton is plain: <span class="mono">async with db_registry.async_session()</span> borrows an async session, <span class="mono">apply_access_predicate</span> auto-adds the "only my own org" filter, and finally <span class="mono">to_pydantic_async()</span> <strong>translates the database row into the outward pydantic model</strong>. Note that <span class="mono">apply_access_predicate</span> line — it isn't special to this method; it's the same guardrail used by <strong>nearly every manager query</strong>.</p>
+
+<p>Precisely because every manager method looks like this one — open a session, add isolation, query/modify, then convert to pydantic — read one and you've read a whole class of them. Looking for the "create agent" logic? Go to <span class="mono">agent_manager.py</span> and find the <span class="mono">create</span> family; want to "fetch a chunk of conversation"? Go to <span class="mono">message_manager.py</span>. <strong>Directory + naming + a uniform pattern</strong> together form a code map more reliable than any document.</p>
+
+<p>Why can it be this uniform? The secret is at the very bottom.</p>
+
+<h2>Generic ORM: write it once, benefit everywhere</h2>
+<p>Letta's ORM has a design that makes you smile: every database model inherits the same base, <span class="mono">SqlalchemyBase</span>, so the chores of <strong>CRUD, pagination, soft delete, and multi-tenant isolation</strong> are written once, in this one place, and every table gets them automatically. The most important is the isolation guardrail — see how simple it is:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">apply_access_predicate (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">SqlalchemyBase</span>(Base):          <span class="cm"># every ORM model inherits this</span>
+    <span class="nb">@classmethod</span>
+    <span class="kw">def</span> <span class="fn">apply_access_predicate</span>(cls, query, actor, access):
+        <span class="cm"># auto-adds a WHERE to any query: only this org's rows</span>
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.organization_id == actor.organization_id)
+</pre></div>
+
+<p>Just that one line — <span class="mono">WHERE organization_id = the current user's org</span> — yet it's the bedrock that lets Letta safely host thousands of tenants: any query that goes through <span class="mono">apply_access_predicate</span> <strong>cannot</strong> see another org's data — and that's the <strong>default behavior</strong>; a developer would have to go out of their way to bypass it. Add soft delete (deletion just sets <span class="mono">is_deleted</span> true) and uniform pagination, and <strong>safety and consistency are welded into the lowest layer</strong> — instead of hoping every business author remembers to add them.</p>
+
+<h3>schemas vs orm: two faces of the same object</h3>
+<p>Two words keep recurring above — <span class="mono">schemas</span> and <span class="mono">orm</span>. They often describe "the same thing" (say, an Agent), yet live in two different worlds:</p>
+
+<div class="cols">
+  <div class="col"><h4>Pydantic data contracts · schemas/</h4><p>Facing <strong>outward</strong>: what the API request/response looks like, how fields validate, how they serialize to JSON. <span class="mono">AgentState</span>, <span class="mono">Memory</span>, <span class="mono">Block</span>, <span class="mono">Message</span> live here — usually a "set of three": <span class="mono">Create</span> / <span class="mono">Update</span> / read models.</p></div>
+  <div class="col"><h4>SQLAlchemy ORM models · orm/</h4><p>Facing <strong>inward</strong>: how data lands in tables and columns, how relations connect. <span class="mono">orm/agent.py::Agent</span> and friends inherit <span class="mono">SqlalchemyBase</span>. After a manager loads an ORM row, it uses <span class="mono">to_pydantic</span> to turn it into a schema before returning it upward.</p></div>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 Spark</div>
+  <strong>Thin routes, thick services, generic ORM</strong> — these three phrases are the key to the whole Letta backend; the real "aha" is how each <strong>buys a big payoff</strong>:<br><br>
+  ① <strong>Generic ORM = safety and consistency for free, by default.</strong> <span class="mono">SqlalchemyBase</span> implements generic CRUD in one place, and <span class="mono">apply_access_predicate</span> auto-adds row-level multi-tenant isolation to every table — pagination, soft delete, isolation are all "<strong>secure by default</strong>", picked up free by any new table.<br>
+  ② <strong>Thick services + thin routes = one business, many entrances.</strong> Logic lives entirely in the <span class="mono">*Manager</span>s, so REST endpoints, the CLI, background jobs, and tests can <strong>reuse the same</strong> methods; a route is just one entrance among many.<br>
+  ③ <strong>Stateless runtime = horizontal scale.</strong> The whole server is <strong>one</strong> <span class="mono">SyncServer</span> holding all managers; and the agent itself "doesn't stick to a process" — it just loads the serialized <span class="mono">AgentState</span>, runs a step, and saves it back. Any machine can take over any agent, so adding machines adds capacity.<br><br>
+  In one line: <strong>push "the things hard to get right" (isolation, scale, reuse) down into the framework's floor and do them once, so the upper layers are hard to get wrong no matter how they're written.</strong>
+</div>
+
+<h2>Stateless runtime: any machine can take over the same agent</h2>
+<p>We keep saying the agent "doesn't stick to a process" — here's the full story. An agent that's "thinking" has, in essence, <strong>nothing resident in any one machine's memory</strong> — everything it needs comes from that <span class="mono">AgentState</span> row in the database. So the real rhythm of handling a message is always a clean three-beat:</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>load</h4><p>Read the <span class="mono">AgentState</span> from the DB by <span class="mono">agent_id</span>: memory blocks, in-window messages, available tools, and model config all together.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>step</h4><p><span class="mono">AgentLoop.load</span> builds the runtime agent from it; <span class="mono">step</span> reads messages, assembles context, calls the model, and runs tools as needed.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>persist</h4><p>New messages, memory edits, and state updates all land in the DB; the moment this beat ends, the in-memory runtime agent can be <strong>thrown away</strong>.</p></div></div>
+</div>
+
+<p>Those three beats grant an intensely practical property: <strong>two messages for the same agent can land on two different machines</strong> — because all of the previous step's results are already in the database, and the next step is just another <span class="mono">load</span>. So the Letta server can <strong>scale horizontally</strong> like an ordinary stateless web service: more traffic, more machines, route a request to any of them, all sharing one database behind. That's the payoff of prying "state" out of "process" and stuffing it into <span class="mono">AgentState</span>.</p>
+
+<p>Look back at last lesson's "<strong>load → run a step → save</strong>", and now you know which layer each lands in: <strong>load</strong> and <strong>save</strong> are the job of the <span class="mono">*Manager</span>s in <span class="mono">services/</span>, <strong>run a step</strong> is the job of <span class="mono">agents/</span>, and stringing them together and issuing orders outward is that thin <span class="mono">server/</span> route layer. The three-layer architecture and the "stateful agent" snap together right here.</p>
+
+<div class="card warn">
+  <div class="tag">⚠️ Easy to misread</div>
+  "Stateless runtime" does not mean the <strong>whole Letta system</strong> is stateless — state sits firmly in the database. What's stateless is only <strong>the runtime that handles a request</strong>: it hoards nothing in memory, rebuilding from <span class="mono">AgentState</span> each time and discarding after. Keep "<strong>stateful data</strong>" and "<strong>stateless runtime</strong>" separate and you won't read the phrase backwards.
+</div>
+
+<h3>Read the code along a learning route</h3>
+<p>Finally, a "reading route" map. You needn't chew through the whole repo end to end — pick the layer that matches your current goal and cut in there:</p>
+
+<div class="layers">
+  <div class="layer l-app"><div class="lh"><span class="badge">Want it running</span><span class="name">server/ · cli/</span></div>
+    <div class="ld">Start with <span class="mono">server/rest_api/app.py</span>'s <span class="mono">create_application</span> and the global <span class="mono">SyncServer</span>; the command-line entry is <span class="mono">cli/cli.py</span>.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">Understand memory</span><span class="name">schemas/memory.py · services/*</span></div>
+    <div class="ld">The <span class="mono">Memory</span> / <span class="mono">Block</span> data contracts, plus how <span class="mono">block_manager</span> / <span class="mono">passage_manager</span> store and fetch.</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">Understand the loop</span><span class="name">agents/letta_agent_v3.py</span></div>
+    <div class="ld"><span class="mono">LettaAgentV3.step</span>: read messages → assemble context → call model → run tools → write back.</div></div>
+  <div class="layer l-core"><div class="lh"><span class="badge">Understand storage</span><span class="name">orm/ · server/db.py</span></div>
+    <div class="ld"><span class="mono">SqlalchemyBase</span> generic CRUD, and <span class="mono">db_registry.async_session</span> to open a session.</div></div>
+</div>
+
+<h2>Dig a little deeper</h2>
+
+<details class="accordion"><summary>Why are routes written so "thin"?</summary><div class="acc-body">
+<p><strong>Example:</strong> the real <span class="mono">send_message</span> hands almost everything downstream; you barely see any if/else business logic in the route.</p>
+<p><strong>Why this design:</strong> once business is written into a route, it's only usable from the HTTP entrance; put it in a manager and the CLI, background jobs, and tests can all call <strong>the same method</strong>. A thin route also lets "swapping protocols" (say, from a plain response to SSE streaming) touch only the entrance, not the business — the stable core is shielded from entry-layer churn.</p>
+<p><strong>Where in source:</strong> route <span class="mono">letta/server/rest_api/routers/v1/agents.py::send_message</span>; business in <span class="mono">services/agent_manager.py</span> and other <span class="mono">*Manager</span>s.</p>
+<p><strong>Alternatives:</strong> a "fat controller" writing business straight into the route — fast to start, but the CLI and REST end up with two copies, hard to test and prone to drift. Letta chose thin routes to buy reuse and testability.</p>
+</div></details>
+
+<details class="accordion"><summary>Given schemas, why a separate orm too?</summary><div class="acc-body">
+<p><strong>Example:</strong> an Agent has both <span class="mono">schemas/agent.py::AgentState</span> (the API model) and <span class="mono">orm/agent.py::Agent</span> (the database model) — looks "redundant".</p>
+<p><strong>Why this design:</strong> they care about fundamentally different things. A pydantic schema cares about the "<strong>outward contract</strong>" — field validation, serialization, the <span class="mono">Create</span>/<span class="mono">Update</span>/read trio; the ORM cares about "<strong>inward storage</strong>" — tables, columns, foreign keys, indexes. Separating them lets the API evolve without being chained to the schema, and the database refactor without disturbing the API. The manager converts in between.</p>
+<p><strong>Where in source:</strong> pydantic models under <span class="mono">schemas/</span>; models inheriting <span class="mono">SqlalchemyBase</span> under <span class="mono">orm/</span>; conversion methods such as <span class="mono">orm/agent.py::Agent.to_pydantic_async</span>.</p>
+<p><strong>Alternatives:</strong> one model only (return the ORM straight as the API) — less code, but the database schema leaks into the API and validation/serialization gets messy. Two models is a common mature-backend trade-off.</p>
+</div></details>
+
+<details class="accordion"><summary>What exactly is <span class="mono">SyncServer</span>?</summary><div class="acc-body">
+<p><strong>Example:</strong> at startup <span class="mono">app.py</span> news up a single <span class="mono">server = SyncServer(...)</span>, shared by the whole process.</p>
+<p><strong>Why this design:</strong> centralizing the creation and ownership of all <span class="mono">*Manager</span>s into one object makes dependencies obvious (e.g. <span class="mono">agent_manager</span> needs <span class="mono">block_manager</span>, injected at construction). Routes get this global <span class="mono">server</span> via dependency injection, then reach a manager via <span class="mono">server.xxx_manager</span> — clean and traceable.</p>
+<p><strong>Where in source:</strong> <span class="mono">letta/server/server.py::SyncServer</span> (creates each manager in its constructor); the global instance in <span class="mono">letta/server/rest_api/app.py</span> (<span class="mono">server = SyncServer(...)</span>).</p>
+<p><strong>Alternatives:</strong> new up a pile of managers per request — repetitive and wasteful; or scatter singletons across globals — hard to trace. Centralizing into one hub embodies "composition over scattering".</p>
+</div></details>
+
+<h2>Where this lesson sits in the big map</h2>
+<p>You now hold the guide's <strong>overall structure diagram</strong>: the <span class="mono">letta/</span> directory map, the REST → services → ORM/DB three layers, and the <span class="mono">SyncServer</span> hub stringing them together. Connect it to last lesson — that self-editing <span class="mono">AgentState</span> is exactly the core object these three layers <strong>load, process, and save</strong>. <strong>Next lesson (lesson 3), the lifecycle of a message</strong>, zooms this lesson's <span class="mono">send_message</span> stop into slow motion: in through the route, <span class="mono">AgentLoop.load</span> to load the agent, then inside <span class="mono">step</span> — "read messages → assemble context → call model → run tools → write back" — frame by frame. And later, when Parts 2 and 3 cover tools and memory, you'll instantly locate "which of these three layers it lands in".</p>
+
+<p>Treat this three-layer diagram as your pocket compass: hitting any new module, first ask whether it's <strong>route, service, or storage</strong>, then see how it deals with <span class="mono">AgentState</span> — answer those two and no codebase, however large, will leave you lost.</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li>Letta's backend is three crisp layers: REST routes (thin) → <span class="mono">services/*Manager</span> (thick) → <span class="mono">orm/SqlalchemyBase</span> + database.</li>
+    <li>Business logic lives in the <strong>service layer</strong>'s <span class="mono">*Manager</span>s; routes only resolve the actor and send/receive HTTP.</li>
+    <li>The hub is <strong>one</strong> <span class="mono">SyncServer</span> holding all <span class="mono">*Manager</span>s; <span class="mono">app.py</span> has a single global instance.</li>
+    <li>Generic ORM: <span class="mono">SqlalchemyBase</span> implements CRUD in one place, and <span class="mono">apply_access_predicate</span> gives every table row-level multi-tenant isolation <strong>by default</strong> (secure by default), with soft delete and pagination built in.</li>
+    <li><span class="mono">schemas</span> (outward pydantic contracts) and <span class="mono">orm</span> (inward storage models) are <strong>two models</strong>; the manager converts between them.</li>
+    <li><span class="mono">AgentState</span> is the core object crossing all three layers; the agent is a <strong>stateless runtime</strong>, hence it scales horizontally.</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. In Letta's 3-layer backend, what is the order from top (closest to the request) to bottom?</div>
+  <ol class="opts">
+    <li>services -> REST routes -> ORM/database</li>
+    <li>ORM/database -> services -> REST routes</li>
+    <li>REST routes -> services/managers -> ORM/database</li>
+    <li>REST routes -> ORM/database -> services</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. Routes (server/rest_api/routers/v1/*) are thin: resolve the actor, send/receive HTTP. They hand work to the services' *Managers, which reach the database via the ORM (SqlalchemyBase).</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. Which layer holds the business logic (open a DB session, query/modify, schema&lt;-&gt;orm conversion)?</div>
+  <ol class="opts">
+    <li>The *Managers in the services layer (e.g. AgentManager)</li>
+    <li>The front-end caller</li>
+    <li>The database itself (SQLite / Postgres)</li>
+    <li>The REST routes layer</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Routes are thin and the ORM is generic; the real business rules sit in the services layer's *Managers - so REST, CLI, and tests reuse the same methods.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. What does SqlalchemyBase.apply_access_predicate do?</div>
+  <ol class="opts">
+    <li>Recompiles the system prompt when memory changes</li>
+    <li>Auto-adds a WHERE to any query for row-level isolation by organization (actor.organization_id), so it only sees that org's rows</li>
+    <li>Decides whether to use SQLite or Postgres</li>
+    <li>Converts a pydantic model into an ORM model</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. It's the entry point of multi-tenant isolation: by default it filters on the actor's organization_id so every table's query only sees its own org - secure by default, hard to bypass by accident.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Suppose you add a new table to Letta (say 'notes'). Once it inherits SqlalchemyBase, what does it roughly get for free? Why does putting these into one base class - instead of re-writing them per table - matter so much for multi-tenant safety?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="01-what-is-letta.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">Letta / MemGPT 是什么</span><span class="lang-en">What is Letta / MemGPT</span></div></a><a class="next" href="03-message-lifecycle.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">一条消息的生命周期</span><span class="lang-en">Lifecycle of one message</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

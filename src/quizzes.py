@@ -35,7 +35,227 @@ def _shuffle(opts, answer, seed):
 
 
 # Filename -> quiz dict. Empty in M0; lessons render without a self-test block.
-QUIZZES = {}
+QUIZZES = {
+    "01-what-is-letta.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "Letta 存在的根本理由是什么？",
+                    "en": "What is the fundamental reason Letta exists?",
+                },
+                "opts": [
+                    {"zh": "LLM 本身无状态，且上下文窗口有限",
+                     "en": "LLMs are stateless and the context window is finite"},
+                    {"zh": "LLM 太慢，需要缓存来加速",
+                     "en": "LLMs are too slow and need a cache to speed up"},
+                    {"zh": "LLM 不会调用任何工具",
+                     "en": "LLMs cannot call any tools"},
+                    {"zh": "LLM 只能理解英文",
+                     "en": "LLMs only understand English"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "模型每次调用都是一张白纸（无状态），且能塞进的 token 有限，所以必须在模型之外补一层会自我管理的记忆——这正是 Letta 的使命。",
+                    "en": "Each call is a blank slate (stateless) and only a finite number of tokens fit, so a self-managing memory layer must be added around the model - exactly Letta's mission.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "在 Letta 里，“一个 agent 的状态”具体是什么？",
+                    "en": "In Letta, what exactly is 'an agent's state'?",
+                },
+                "opts": [
+                    {"zh": "数据库里的一条 AgentState 记录",
+                     "en": "One AgentState row in the database"},
+                    {"zh": "一个一直驻留在内存里的进程",
+                     "en": "A process that stays resident in memory forever"},
+                    {"zh": "磁盘上的一个 JSON 配置文件",
+                     "en": "A JSON config file on disk"},
+                    {"zh": "模型权重里的一部分参数",
+                     "en": "Part of the model weights"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "agent 的记忆块、消息、工具、模型配置都打包成一条 AgentState（letta/schemas/agent.py）。运行时取出→跑一步→写回，因此可水平扩展、关机也不丢记忆。",
+                    "en": "Memory blocks, messages, tools and model config are packed into one AgentState (letta/schemas/agent.py). The runtime loads it, runs a step, saves it back - hence horizontal scaling and durable memory.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "“自我编辑记忆”在机制上意味着什么？",
+                    "en": "Mechanically, what does 'self-editing memory' mean?",
+                },
+                "opts": [
+                    {"zh": "agent 改写自己的系统提示（核心记忆被重新编译进第 0 条 system 消息）",
+                     "en": "The agent rewrites its own system prompt (core memory is recompiled into message #0)"},
+                    {"zh": "重新训练（微调）底层模型",
+                     "en": "Re-training (fine-tuning) the underlying model"},
+                    {"zh": "把整段对话写进一个日志文件",
+                     "en": "Writing the whole conversation to a log file"},
+                    {"zh": "直接清空上下文窗口",
+                     "en": "Simply clearing the context window"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "core_memory_replace 改了记忆块后，Memory.compile() 会把它重新拼进系统提示，rebuild_system_prompt_async 重写第 0 条消息——等于 agent 在改写“自己是谁”。",
+                    "en": "After core_memory_replace edits a block, Memory.compile() splices it back into the system prompt and rebuild_system_prompt_async rewrites message #0 - the agent literally rewrites 'who it is'.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用 MemGPT 的操作系统类比想一想：如果上下文是 RAM、外部记忆是磁盘，那么“换页”在 Letta 里对应哪些具体动作？什么时候该把内容从 RAM 换出到磁盘？",
+                "en": "Using MemGPT's OS analogy: if context is RAM and external memory is disk, which concrete actions are the 'paging' in Letta, and when should content be paged out from RAM to disk?",
+            },
+        ],
+    },
+    "02-project-map.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "Letta 后端的三层架构，从上到下（离请求最近到最底层）的顺序是？",
+                    "en": "In Letta's 3-layer backend, what is the order from top (closest to the request) to bottom?",
+                },
+                "opts": [
+                    {"zh": "REST 路由 -> services/managers -> ORM/数据库",
+                     "en": "REST routes -> services/managers -> ORM/database"},
+                    {"zh": "ORM/数据库 -> services -> REST 路由",
+                     "en": "ORM/database -> services -> REST routes"},
+                    {"zh": "services -> REST 路由 -> ORM/数据库",
+                     "en": "services -> REST routes -> ORM/database"},
+                    {"zh": "REST 路由 -> ORM/数据库 -> services",
+                     "en": "REST routes -> ORM/database -> services"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "路由（server/rest_api/routers/v1/*）很薄，只解析 actor、收发 HTTP；它把活交给 services 的各 *Manager；manager 再经 ORM（SqlalchemyBase）落到数据库。",
+                    "en": "Routes (server/rest_api/routers/v1/*) are thin: resolve the actor, send/receive HTTP. They hand work to the services' *Managers, which reach the database via the ORM (SqlalchemyBase).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "业务逻辑（开 DB 会话、查改数据、schema&lt;-&gt;orm 转换）主要落在哪一层？",
+                    "en": "Which layer holds the business logic (open a DB session, query/modify, schema&lt;-&gt;orm conversion)?",
+                },
+                "opts": [
+                    {"zh": "services 层的各 *Manager（如 AgentManager）",
+                     "en": "The *Managers in the services layer (e.g. AgentManager)"},
+                    {"zh": "REST 路由层",
+                     "en": "The REST routes layer"},
+                    {"zh": "数据库本身（SQLite / Postgres）",
+                     "en": "The database itself (SQLite / Postgres)"},
+                    {"zh": "前端调用方",
+                     "en": "The front-end caller"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "路由薄、ORM 通用，真正的业务规则都压在 services 层的 *Manager 里——所以 REST、CLI、测试可以复用同一套方法。",
+                    "en": "Routes are thin and the ORM is generic; the real business rules sit in the services layer's *Managers - so REST, CLI, and tests reuse the same methods.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "SqlalchemyBase.apply_access_predicate 的作用是什么？",
+                    "en": "What does SqlalchemyBase.apply_access_predicate do?",
+                },
+                "opts": [
+                    {"zh": "给任意查询自动加一道 WHERE，按组织（actor.organization_id）做行级隔离，只看本组织数据",
+                     "en": "Auto-adds a WHERE to any query for row-level isolation by organization (actor.organization_id), so it only sees that org's rows"},
+                    {"zh": "把 pydantic 模型转换成 ORM 模型",
+                     "en": "Converts a pydantic model into an ORM model"},
+                    {"zh": "在记忆变化时重新编译系统提示",
+                     "en": "Recompiles the system prompt when memory changes"},
+                    {"zh": "决定用 SQLite 还是 Postgres",
+                     "en": "Decides whether to use SQLite or Postgres"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "它是多租户隔离的入口：默认按 actor 的 organization_id 加过滤，让每张表的查询都'只看自己组织'，而且是 secure by default——想绕都得特意绕。",
+                    "en": "It's the entry point of multi-tenant isolation: by default it filters on the actor's organization_id so every table's query only sees its own org - secure by default, hard to bypass by accident.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设给 Letta 加一张新表（比如“笔记 notes”）。让它继承 SqlalchemyBase 后，它大致自动获得了哪些能力？为什么把这些做进一个基类、而不是每张表各写一遍，对多租户安全特别重要？",
+                "en": "Suppose you add a new table to Letta (say 'notes'). Once it inherits SqlalchemyBase, what does it roughly get for free? Why does putting these into one base class - instead of re-writing them per table - matter so much for multi-tenant safety?",
+            },
+        ],
+    },
+    "03-message-lifecycle.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "路由 send_message 收到一条消息后，第一步做的是什么？",
+                    "en": "When the send_message route receives a message, what's the first thing it does?",
+                },
+                "opts": [
+                    {"zh": "解析 actor —— 确认是谁、属于哪个组织在操作",
+                     "en": "Resolve the actor - figure out who, and which organization, is acting"},
+                    {"zh": "立刻调用 LLM 生成回复",
+                     "en": "Immediately call the LLM to generate a reply"},
+                    {"zh": "把整段对话历史压缩成一条 summary",
+                     "en": "Compress the entire history into one summary"},
+                    {"zh": "训练（微调）底层模型",
+                     "en": "Train (fine-tune) the underlying model"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "send_message 很薄：先 get_actor_or_default_async 解析 actor（决定多租户隔离），再按 id 载入 AgentState，然后交给 AgentLoop.load → step。调模型发生在更下层的 _step 里。",
+                    "en": "send_message is thin: first get_actor_or_default_async resolves the actor (which drives multi-tenant isolation), then it loads the AgentState by id and hands off to AgentLoop.load → step. The model call happens lower down, inside _step.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "step 循环靠什么决定“要不要再来一轮”？",
+                    "en": "What does the step loop use to decide 'run another round or not'?",
+                },
+                "opts": [
+                    {"zh": "看这一步有没有调用工具：调了就继续，只产出普通消息就停",
+                     "en": "Whether this step called a tool: called one -> continue; only a plain message -> stop"},
+                    {"zh": "看用户有没有再发一条新消息",
+                     "en": "Whether the user sent another message"},
+                    {"zh": "看回复的字数有没有超过阈值",
+                     "en": "Whether the reply length exceeded a threshold"},
+                    {"zh": "随机决定，掷一次硬币",
+                     "en": "Randomly, by a coin flip"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "_decide_continuation 的核心规则就一句：调了工具就继续、没调就停（源码注释：Did not call a tool? Loop ends. Called a tool? Loop continues.）。这比 MemGPT 靠模型输出 heartbeat 简单得多，且受 max_steps 上限保护。",
+                    "en": "_decide_continuation's core rule is one line: called a tool -> continue, didn't -> stop (source comment: Did not call a tool? Loop ends. Called a tool? Loop continues.). Much simpler than MemGPT's heartbeat, and bounded by max_steps.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "两次 _step 之间，agent 的状态存在哪里？",
+                    "en": "Between two _step rounds, where does the agent's state live?",
+                },
+                "opts": [
+                    {"zh": "数据库里的 AgentState（运行时无状态：每次重建、用完即弃）",
+                     "en": "The AgentState in the database (the runtime is stateless: rebuilt each time, discarded after use)"},
+                    {"zh": "一直驻留在某台机器内存里的对象",
+                     "en": "An object kept resident in one machine's memory"},
+                    {"zh": "模型权重里",
+                     "en": "Inside the model weights"},
+                    {"zh": "前端浏览器的 localStorage 里",
+                     "en": "In the browser's localStorage"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "运行时 agent 由 AgentLoop.load 从 AgentState 现造、跑完即弃；新消息与记忆改动都写回库。正因状态在数据不在进程，一条消息的多轮才能跨机器接力，服务端也才能水平扩展。",
+                    "en": "The runtime agent is built fresh from AgentState by AgentLoop.load and discarded after the run; new messages and memory edits are written back. Because state lives in the data, not the process, a message's many rounds can hop across machines and the server can scale horizontally.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设一条消息触发了 3 轮 _step（改记忆 → 查资料 → 回话）。请按七步主轴把这 3 轮“摊开”：哪些步骤只发生一次、哪些重复了 3 次？如果第 2 轮所在的机器突然宕机，为什么换一台机器仍能接着把第 3 轮跑完？",
+                "en": "Suppose one message triggers 3 _step rounds (edit memory → look up → reply). Lay these 3 rounds onto the seven-stop spine: which steps happen once, which repeat 3 times? If the machine running round 2 suddenly crashes, why can a different machine still finish round 3?",
+            },
+        ],
+    },
+}
 
 
 def render(fname, lang):

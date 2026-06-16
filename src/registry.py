@@ -8,4 +8,6 @@ import part1
 # Filename -> {"zh": ..., "en": ...}. Keep keys in sync with shell.PAGES.
 CONTENT = {
     "01-what-is-letta.html": part1.LESSON_01,
+    "02-project-map.html": part1.LESSON_02,
+    "03-message-lifecycle.html": part1.LESSON_03,
 }
