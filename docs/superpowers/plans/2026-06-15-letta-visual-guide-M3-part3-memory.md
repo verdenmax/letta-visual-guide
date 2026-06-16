@@ -122,4 +122,136 @@
 
 ---
 
-> Task 2–6（08 记忆块 / 09 自我编辑记忆 / 10 归档与向量 / 11 回忆与对话历史 / 12 上下文压缩）与 Task 7（收尾+合并）将在计划第二段补充（按用户偏好分步写）。
+---
+
+## Task 2: 新增第 08 课「记忆块 Memory Blocks」
+
+**Files:** `src/shell.py` · `src/part3.py`(`LESSON_08`) · `src/registry.py` · (可选)`src/quizzes.py`
+**filename:** `08-memory-blocks.html`；zh「记忆块 Memory Blocks」/ en「Memory blocks」；副标题 zh「label/value/limit · Memory.compile · 共享块 · 版本历史」/ en「label/value/limit; Memory.compile; shared blocks; versioning」。
+
+**学习目标：** 深入 core memory 的**最小单位——Block**：字段 `label / value / limit / read_only`，`Human` / `Persona` 两个常用子类，`Memory` 是 Block 的集合，`Memory.compile()` 怎么把这些块渲染成 system 里的 `<memory_blocks>` 文本；以及块的两个高级性质——**可共享**与**可版本化**。
+
+**亮点（`card spark`）：** 块是**一等、可寻址、可共享**的实体（`block-…` id）——两个 agent 可以挂同一个 block，于是"共享记忆"自然成立；块还有 **git 式历史**（`BlockHistory` / `GitEnabledBlockManager`，可 undo/redo）。记忆不是一团 blob，而是一组**有标签、有上限、有版本**的卡片。
+
+**必需卡片：** `lead`/`macro`（块=带标签的卡片）/`analogy`（白板上的分区便利贴）/`detail`（`Block`/`Human`/`Persona`、`Memory.compile`、`block_manager`）/`spark`（共享+版本）/`key`/`card warn`（`limit` 超限会被拒/截断；`read_only` 块 agent 不能改）。**+≥3 `.note`、+≥1 `.cute`。**
+
+**必需图（≥4/语言）：** ① Block 解剖 `cellgroup`（label/value/limit/read_only）；② `.cute` 📝 一张带标签的便利贴；③ `Memory.compile()` `flow`（blocks → `<memory_blocks>` 文本 → 进 system）；④ 共享块 `layers`/`cols`（同一 block ← agent A / agent B）；⑤ `table.t` 三件套 `CreateBlock`/`BlockUpdate`/`Block` 字段。
+**必需代码（2–3 `codefile`）：** `Block` schema（来源 `letta/schemas/block.py`）；`Memory.compile()` 产出的 `<memory_blocks>` 简化样例（来源 `letta/schemas/memory.py::Memory.compile`）；`ChatMemory(persona, human)` 构造。
+**必需折叠（3–4）：** 共享块怎么实现（`blocks_agents` 多对多）；块的版本历史/undo；`limit` 与 `read_only` 的取舍；`Human`/`Persona` 与自定义块。
+**草图（`.cute`）：**
+```html
+<div class="cute"><div class="row"><span class="emoji">📝</span><span class="bubble">label: human · "名字叫 Timber"</span></div>
+<div class="cap">一个 Block 就是一张贴在 agent 眼前的便利贴：有标签、有内容、有字数上限</div></div>
+```
+**Steps（同 Task 1 六步）：** PAGES/SUBTITLES/CONTENT 用 08 值（part_zh="第三部分 · 记忆系统"）；锚点核对 `grep -rn "class Block\b\|class BlockUpdate\|class CreateBlock" letta/schemas/block.py`、`grep -rn "def compile" letta/schemas/memory.py`；提交 `feat(m3): add lesson 08 (memory blocks)`。
+
+---
+
+## Task 3: 新增第 09 课「自我编辑记忆 = 改写系统提示」
+
+**Files:** `src/shell.py` · `src/part3.py`(`LESSON_09`) · `src/registry.py` · (可选)`src/quizzes.py`
+**filename:** `09-self-editing-memory.html`；zh「自我编辑记忆 = 改写系统提示」/ en「Self-editing memory = rewriting the system prompt」；副标题 zh「core_memory_append/replace · {CORE_MEMORY} 占位符 · 重建第 0 条 · prefix cache」/ en「core_memory_append/replace; the {CORE_MEMORY} slot; rebuilding message #0; prefix cache」。
+
+**学习目标（全书灵魂课）：** 把第 1 课点过的那句"自我编辑记忆 = 改写系统提示"**讲到机制底**：`core_memory_append/replace` 怎么改 `block.value` → 持久化 → 触发 `rebuild_system_prompt_async` **原地重写第 0 条 system 消息**；`{CORE_MEMORY}` 占位符（`IN_CONTEXT_MEMORY_KEYWORD = "CORE_MEMORY"`）怎么被编译后的块替换；以及为什么"正常步骤不重建、只在记忆变化/压缩时重建"（prefix cache）。
+
+**亮点（`card spark`）：** agent "记住一件事"= **改写自己的出厂设定**。`Memory.compile()` 的产物被拼进**持久化的 system 消息**，块一变，`rebuild_system_prompt_async` 就**原地**重写第 0 条（同一个 id）。agent 在运行时**给自己重新编程**——这是 MemGPT 区别于"外挂记忆"的根本一手。
+
+**必需卡片：** `lead`/`macro`（自编辑闭环）/`analogy`（改写自己的人设卡）/`detail`（`core_memory_*`、`{CORE_MEMORY}`、`rebuild_system_prompt_async`、prefix cache）/`spark`/`key`/`card warn`（正常步骤**故意不**重建 system 以保 prefix cache；只在记忆变化或压缩后重建）。**+≥3 `.note`、+≥1 `.cute`。**
+
+**必需图（≥4/语言）：** ① 自编辑闭环 `vflow`（用户消息 → agent 调 `core_memory_replace` → block.value 改 → 持久化 → 重编译 system#0 → 下一轮即生效）；② `.cute` 🤖✏️📋（机器人在改自己的卡）；③ `{CORE_MEMORY}` 替换示意 `flow`（模板 + 编译后的块 → 完整 system）；④ prefix-cache `timeline`（稳定前缀命中缓存）。
+**必需代码（2–3 `codefile`）：** `core_memory_replace` 实现简化（来源 `core_tool_executor.py`）；`get_system_message_from_compiled_memory` 的 `{CORE_MEMORY}` 替换（来源 `prompt_generator.py`）；`rebuild_system_prompt_async` 伪代码（来源 `agent_manager.py`）。
+**必需折叠（3–4）：** 为什么改 prompt 而不是另存一张表；prefix cache 与第 0 条何时重建；`append` vs `replace`；多 agent 共享块时一处改、处处变。
+**草图（`.note tip`）：**
+```html
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>关键一句：</strong>core memory 不是"存在别处的记忆"，它<strong>就是 system 提示的一部分</strong>。agent 改记忆 = 改自己每轮都会读到的"出厂设定"。</span></div>
+```
+**Steps（同 Task 1 六步）：** 09 值；锚点 `grep -rn "def core_memory_replace" letta/services/tool_executor/core_tool_executor.py`、`grep -rn "def rebuild_system_prompt_async" letta/services/agent_manager.py`、`grep -rn "def get_system_message_from_compiled_memory" letta/prompts/prompt_generator.py`；提交 `feat(m3): add lesson 09 (self-editing memory)`。
+
+---
+
+## Task 4: 新增第 10 课「归档记忆与向量检索」
+
+**Files:** `src/shell.py` · `src/part3.py`(`LESSON_10`) · `src/registry.py` · (可选)`src/quizzes.py`
+**filename:** `10-archival-memory.html`；zh「归档记忆与向量检索」/ en「Archival memory & vector search」；副标题 zh「Passage · 嵌入 · insert/search · pgvector / sqlite-vec · tags」/ en「Passage; embeddings; insert/search; pgvector / sqlite-vec; tags」。
+
+**学习目标：** archival = **长期向量库**：`Passage`（文本 + 向量），`archival_memory_insert`（嵌入并存），`archival_memory_search`（按相似度搜），**pgvector（生产）vs sqlite-vec（开发）**双方言，archive 与 `tags`（`PassageTag`），嵌入模型来自 `embedding_config`。
+
+**亮点（`card spark`）：** archival 就是**内建进 agent 的 RAG**——agent 自己写长期笔记（insert）、再**按意思**取回（search）；而且和第 7 课同款"**双数据库**"魔法（pgvector/sqlite-vec）让它从笔记本到生产**同一套代码**。tags 让 agent 给自己的知识**分类过滤**。
+
+**必需卡片：** `lead`/`macro`（向量库 + 两个工具）/`analogy`（会自己记笔记、按意思查的资料库）/`detail`（`Passage`、`PassageManager`、`ArchivalPassage`、嵌入）/`spark`/`key`/`card warn`（search 是**相似**不是精确；每次 insert/search 都要一次嵌入调用，有成本）。**+≥3 `.note`、+≥1 `.cute`。**
+
+**必需图（≥4/语言）：** ① insert `flow`（文本 → 嵌入 → `Passage(vector)` → 存）；② search `flow`（query → 嵌入 → 最近邻 passages）；③ `.cute` 📦🔍（按意思翻档案）；④ `table.t`（archival / recall / core：容量·检索方式·谁来写）；⑤ 双方言 `cols`（SQLite+sqlite-vec / Postgres+pgvector）。
+**必需代码（2–3 `codefile`）：** `Passage` schema（来源 `letta/schemas/passage.py`）；`archival_memory_insert/search` 简化（来源 `core_tool_executor.py`）；嵌入 → 向量列（来源 `letta/orm/passage.py` / `custom_columns.py`）。
+**必需折叠（3–4）：** 向量检索一分钟（余弦相似度）；pgvector vs sqlite-vec；archive 与 tags；archival passage vs source passage。
+**草图（`.cute`）：**
+```html
+<div class="cute"><div class="row"><span class="emoji">📦</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="lab">嵌入向量</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">"按意思找最像的"</span></div>
+<div class="cap">归档记忆 = 会按语义检索的长期笔记本，容量近乎无限</div></div>
+```
+**Steps（同 Task 1 六步）：** 10 值；锚点 `grep -rn "class Passage" letta/schemas/passage.py`、`grep -rn "def archival_memory_insert\|def archival_memory_search" letta/services/tool_executor/core_tool_executor.py`、`ls letta/orm/sqlite_functions.py`；提交 `feat(m3): add lesson 10 (archival memory & vector search)`。
+
+---
+
+## Task 5: 新增第 11 课「回忆记忆与对话历史」
+
+**Files:** `src/shell.py` · `src/part3.py`(`LESSON_11`) · `src/registry.py` · (可选)`src/quizzes.py`
+**filename:** `11-recall-memory.html`；zh「回忆记忆与对话历史」/ en「Recall memory & conversation history」；副标题 zh「Message · message_ids 在窗 · conversation_search · JSON 信封」/ en「Message; in-window message_ids; conversation_search; JSON envelopes」。
+
+**学习目标：** recall = **全部对话历史**：`Message`（一条就是一行），`message_ids` 决定哪些在窗内，`conversation_search` 搜回旧消息；消息不是裸文本而是**带类型的 JSON 事件信封**（`letta/system.py` 的 `package_user_message` / `package_function_response` / `get_heartbeat`）；分清"在窗"与"已存档"。
+
+**亮点（`card spark`）：** 对话**从不丢失**——每条消息都是可持久、可检索的 `Message` 行，只有 `message_ids` 留在窗内；而且消息是**带类型的 JSON 事件**（user_message / function_response / heartbeat），所以 agent 是在**结构化事件**上推理，`conversation_search` 也能精确捞回旧事件。
+
+**必需卡片：** `lead`/`macro`（recall=全量日志、窗口=最近一段）/`analogy`（完整聊天记录 vs 屏幕上能看到的最近几条）/`detail`（`Message`、`message_ids`、`conversation_search`、`system.py` 信封）/`spark`/`key`/`card warn`（"在窗" ≠ 全部历史；更早的是**可搜不可见**）。**+≥3 `.note`、+≥1 `.cute`。**
+
+**必需图（≥4/语言）：** ① 窗内 vs 全量 `cellgroup`/`layers`（`message_ids` ⊂ 全部 Message）；② `.cute` 🗄️🔍（翻聊天记录）；③ 一条 Message 的 JSON 信封 `codefile`/示意；④ `conversation_search` `flow`。
+**必需代码（2–3 `codefile`）：** `Message` 关键字段 / `message_ids`（来源 `letta/schemas/message.py` / `schemas/agent.py`）；`package_user_message` 信封（来源 `letta/system.py`）；`conversation_search` 简化（来源 `core_tool_executor.py`）。
+**必需折叠（3–4）：** 为什么用 JSON 信封而非裸文本；窗内消息怎么管理；recall vs archival（都能搜，差别在哪）；summary 消息也算 recall 的一部分。
+**草图（`.note info`）：**
+```html
+<div class="note info"><span class="ni">👉</span><span class="nx">把 recall 想成<strong>完整录像</strong>，把"在窗消息"想成<strong>正在播放的最近几分钟</strong>——录像一直都在，只是没都摆在眼前。</span></div>
+```
+**Steps（同 Task 1 六步）：** 11 值；锚点 `grep -rn "class Message" letta/schemas/message.py`、`grep -rn "def conversation_search" letta/services/tool_executor/core_tool_executor.py`、`grep -rn "def package_user_message" letta/system.py`；提交 `feat(m3): add lesson 11 (recall memory)`。
+
+---
+
+## Task 6: 新增第 12 课「上下文压缩与"记忆压力"」
+
+**Files:** `src/shell.py` · `src/part3.py`(`LESSON_12`) · `src/registry.py` · (可选)`src/quizzes.py`
+**filename:** `12-context-compaction.html`；zh「上下文压缩与记忆压力」/ en「Context compaction & memory pressure」；副标题 zh「90% 阈值 · compact_messages · 滑窗摘要 · summary 消息 · 系统提示溢出」/ en「the 90% threshold; compact_messages; sliding-window summary; the summary message; system-prompt overflow」。
+
+**学习目标（本部分收尾，呼应第 5 课）：** 窗口快满时怎么办——**压缩/摘要**把较旧的消息**换出并总结**：`get_compaction_trigger_threshold`（×0.9）、`compact_messages`、`Summarizer`（滑动窗口）、`role=summary` 的**摘要消息**、可见的 **compaction 事件**、以及"**核心记忆压不动**"的特殊溢出路径。
+
+**亮点（`card spark`）：** "记忆压力"被当作**操作系统问题**处理：到 90% 就把较旧对话**递归摘要**成一段 summary，并把"我做了摘要"作为**可见事件**抛给客户端；但**核心记忆不能被压缩**（它就是 system 的一部分），所以有一条专门的**溢出处理**路径。这正是 MemGPT 论文里"队列管理器"的落地。
+
+**必需卡片：** `lead`/`macro`（压力 → 压缩）/`analogy`（桌子满了先做一份会议纪要再收走旧纸）/`detail`（`thresholds`、`compact_messages`、`Summarizer`、`_step` 触发）/`spark`/`key`/`card warn`（摘要是**有损**的；核心记忆块若自己撑爆预算，要走溢出特判）。**+≥3 `.note`、+≥1 `.cute`。**
+
+**必需图（≥4/语言）：** ① 压缩 `timeline`（tokens → 0.9 阈值 → compact → summary）；② `.cute` 📚→📝（把一摞旧消息压成一张纪要）；③ 滑窗摘要 `vflow`；④ 能压/不能压 `cols`（recall 可压 / core 不可压 → 溢出特判）。
+**必需代码（2–3 `codefile`）：** `get_compaction_trigger_threshold`（来源 `summarizer/thresholds.py`，可与第 5 课呼应但聚焦"动手"）；`compact_messages` 伪代码（来源 `summarizer/compact.py`）；`role=summary` 的 summary 消息（来源 `letta/system.py` / `summarizer`）。
+**必需折叠（3–4）：** 递归摘要怎么做；为什么核心记忆压不动（溢出特判）；可见的 compaction 事件；和第 5 课"度量"如何接上"动手"。
+**草图（`.cute`）：**
+```html
+<div class="cute"><div class="row"><span class="emoji">📚</span><span class="arrow">→</span><span class="emoji">🗜️</span><span class="arrow">→</span><span class="emoji">📝</span><span class="bubble">一段摘要</span></div>
+<div class="cap">窗口快满（~90%）：把较旧的一摞消息压成一张"会议纪要"，腾出空间继续聊</div></div>
+```
+**Steps（同 Task 1 六步）：** 12 值；锚点 `grep -rn "def get_compaction_trigger_threshold" letta/services/summarizer/thresholds.py`、`grep -rn "def compact_messages" letta/services/summarizer/compact.py`、`grep -rn "class Summarizer" letta/services/summarizer/summarizer.py`；提交 `feat(m3): add lesson 12 (context compaction)`。
+
+---
+
+## Task 7: M3 收尾 — 全量校验 + 导航链 + roadmap + 合并
+
+- [ ] **Step 1: 全量校验**：`cd src && python build.py && python check_links.py && python check_html.py && echo ALL_OK` → `ALL_OK`，`0 error(s)`，**07–12 均无任何 WARN**（含 wall-of-text）；`index.html` 显示"共 12 课 · 3 个部分"。
+- [ ] **Step 2: 导航链自检**：06→07、07→08、…、11→12（`grep -c` 各为 1）。
+- [ ] **Step 3: 每课组件量自检**：07–12 每课 `.note` ≥3、`.cute` ≥1、图 ≥8（双语合计）、无 `<p>` 超长。
+- [ ] **Step 4: 浏览器人工自检（手动）**：12 课可点进、记忆三层/自编辑/向量/压缩的图与萌图与 note 显示正常、深色模式正常、中英切换跨课保持。
+- [ ] **Step 5: roadmap 标记 M3 完成并提交**。
+- [ ] **Step 6: 合并**：`git checkout master && git merge --no-ff feat/m3-memory`（验证 merged 结果校验绿）→ `git branch -d feat/m3-memory` → `git push origin master`。
+
+---
+
+## Self-Review（对照 spec 第 4 节第三部分 + 强化准则）
+- **覆盖**：spec 第三部分 6 课（07 总览 / 08 块 / 09 自编辑 / 10 归档 / 11 回忆 / 12 压缩）各有 Task。✔
+- **强化准则**：每课 brief 都要求 ≥3 `.note`、≥1 `.cute`、≥4 图/语言、CJK 目标 4500+、反长文（已上 check_html 双语闸门），且"更详细=更多小块"。✔
+- **去重/承接**：12 与第 5 课呼应（度量 → 动手），09 把第 1 课的"自编辑"讲到底，互不重复、层层加深。✔
+- **源码准确**：每课 Step 5 grep 核对；全局锚点已对照 v0.16.8 核实。✔
+- **占位符扫描**：无 TODO/TBD；每课给了真实-类名草图 + `.note`/`.cute` 演示 + 接线值。
+- **命名一致**：`07-memory-tiers` / `08-memory-blocks` / `09-self-editing-memory` / `10-archival-memory` / `11-recall-memory` / `12-context-compaction`；内容在新文件 `src/part3.py`，`registry.py` 需 `import part3`。
