@@ -813,7 +813,7 @@ LESSON_06 = {
 </div>
 
 <h2>比第 1、3 课更深：这次翻开"存档"本身</h2>
-<p>第 1 课给了结论——"agent 是库里一条记录"；第 3 课给了节奏——"每步现拼上下文再发给无状态的模型"。但两课都把"存档"当成黑盒一笔带过。这一课<strong>明确在它们的基础上加深</strong>，只钻一个问题：<strong>这份存档具体长什么样、怎么生成身份、怎么读回来变成能跑的东西</strong>。我们会依次回答五个递进的问题：①一个 agent <strong>物理上</strong>是什么？②它的<strong>身份</strong>凭什么稳定？③同一份数据为什么要存<strong>两套模型</strong>？④它怎么在数据库与运行时之间<strong>往返</strong>？⑤这套"agent 即数据"的设计，比 <strong>OpenAI Assistants</strong> 那种"托管在云端"的做法强在哪？把这五问串起来，你就拿到了读懂第三部分（记忆系统）的钥匙。</p>
+<p>第 1 课给了结论——"agent 是库里一条记录"；第 3 课给了节奏——"每步现拼上下文再发给无状态的模型"。但两课都把"存档"当成黑盒一笔带过。这一课<strong>明确在它们的基础上加深</strong>，只钻一个问题：<strong>这份存档具体长什么样、怎么生成身份、怎么读回来变成能跑的东西</strong>。我们会依次回答五个递进的问题：①一个 agent <strong>物理上</strong>是什么？②它的<strong>身份</strong>凭什么稳定？③它怎么在数据库与运行时之间<strong>往返</strong>？④同一份数据为什么要存<strong>两套模型</strong>？⑤这套"agent 即数据"的设计，比 <strong>OpenAI Assistants</strong> 那种"托管在云端"的做法强在哪？把这五问串起来，你就拿到了读懂第三部分（记忆系统）的钥匙。</p>
 
 <h2>一个 agent 物理上是什么：库里一条 AgentState</h2>
 <p>去神秘化第一步：当你"创建一个 agent"，Letta 并不会启动一个常驻服务，而是<strong>往数据库里写一行</strong>。这一行被读出来时，就是一个 <span class="mono">AgentState</span>（定义在 <span class="mono">letta/schemas/agent.py</span>）——它装着重建这个 agent 所需的<strong>全部状态</strong>：核心记忆、在窗消息的 id 列表、system 提示、工具与工具规则、以及模型与嵌入配置。换句话说，<strong>agent 的"全部"就摊在这几个字段里</strong>：</p>
@@ -936,7 +936,7 @@ LESSON_06 = {
 <span class="kw">class</span> <span class="fn">Block</span>(BaseBlock):
     id: str = <span class="fn">Field</span>(..., description=<span class="st">"block-…"</span>)
     value: str
-    <span class="cm"># …created_at / updated_at / organization_id 等</span>
+    <span class="cm"># 还有 label / limit 等；时间戳、organization_id 等元数据在 orm 行上</span>
 </pre></div>
 
 <p>同样的三件套也适用于 agent：<strong>建</strong>用 <span class="mono">CreateAgent</span>、<strong>改</strong>用 <span class="mono">UpdateAgent</span>、<strong>读</strong>到的是那份完整的 <span class="mono">AgentState</span>（都在 <span class="mono">letta/schemas/agent.py</span>）。记住这个模式，你读 Letta 的任何资源接口都会轻松很多：<em>请求体是 Create/Update，响应体是那个完整 schema</em>。</p>
@@ -1016,7 +1016,7 @@ We've leaned on two words for several lessons — "stateful" and "stateless" —
 </div>
 
 <h2>Deeper than Lessons 1 and 3: opening the "save" itself</h2>
-<p>Lesson 1 gave the conclusion — "an agent is a record in the DB"; Lesson 3 gave the rhythm — "re-assemble context each step and send it to a stateless model." But both treated the "save" as a black box. This lesson <strong>explicitly builds on them</strong> and drills one question: <strong>what does that save actually look like, how is its identity generated, and how is it loaded back into something runnable</strong>. We'll answer five escalating questions: ① what is an agent <strong>physically</strong>? ② what makes its <strong>identity</strong> stable? ③ why store the same data as <strong>two models</strong>? ④ how does it <strong>round-trip</strong> between database and runtime? ⑤ how does this "agent-as-data" design beat the "hosted in the cloud" approach of <strong>OpenAI Assistants</strong>? String these together and you hold the key to Part 3 (the memory system).</p>
+<p>Lesson 1 gave the conclusion — "an agent is a record in the DB"; Lesson 3 gave the rhythm — "re-assemble context each step and send it to a stateless model." But both treated the "save" as a black box. This lesson <strong>explicitly builds on them</strong> and drills one question: <strong>what does that save actually look like, how is its identity generated, and how is it loaded back into something runnable</strong>. We'll answer five escalating questions: ① what is an agent <strong>physically</strong>? ② what makes its <strong>identity</strong> stable? ③ how does it <strong>round-trip</strong> between database and runtime? ④ why store the same data as <strong>two models</strong>? ⑤ how does this "agent-as-data" design beat the "hosted in the cloud" approach of <strong>OpenAI Assistants</strong>? String these together and you hold the key to Part 3 (the memory system).</p>
 
 <h2>What an agent physically is: one AgentState in the DB</h2>
 <p>Demystification step one: when you "create an agent," Letta does not spin up a resident service — it <strong>writes a row to the database</strong>. Read that row back and you get an <span class="mono">AgentState</span> (defined in <span class="mono">letta/schemas/agent.py</span>) — it holds <strong>all the state</strong> needed to rebuild this agent: core memory, the list of in-context message ids, the system prompt, tools and tool rules, and the model and embedding configs. In other words, the agent's "everything" is laid out across these few fields:</p>
@@ -1139,7 +1139,7 @@ We've leaned on two words for several lessons — "stateful" and "stateless" —
 <span class="kw">class</span> <span class="fn">Block</span>(BaseBlock):
     id: str = <span class="fn">Field</span>(..., description=<span class="st">"block-…"</span>)
     value: str
-    <span class="cm"># …created_at / updated_at / organization_id, etc.</span>
+    <span class="cm"># plus label / limit, etc.; timestamps and organization_id live on the orm row</span>
 </pre></div>
 
 <p>The same trio applies to agents: <strong>create</strong> with <span class="mono">CreateAgent</span>, <strong>update</strong> with <span class="mono">UpdateAgent</span>, and you <strong>read</strong> the full <span class="mono">AgentState</span> (all in <span class="mono">letta/schemas/agent.py</span>). Remember this pattern and every Letta resource API gets easier: <em>request bodies are Create/Update, response bodies are the full schema</em>.</p>
