@@ -401,6 +401,79 @@ QUIZZES = {
             },
         ],
     },
+    "06-stateful-vs-stateless.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 Letta 里，一个 agent 物理上到底是什么？",
+                    "en": "In Letta, what is an agent physically?",
+                },
+                "opts": [
+                    {"zh": "数据库里一条可序列化的 AgentState 记录（记忆 / message_ids / system / tools / 配置）",
+                     "en": "One serializable AgentState record in the database (memory / message_ids / system / tools / configs)"},
+                    {"zh": "一个必须一直开着的常驻进程，在内存里记着对话",
+                     "en": "A resident process that must stay running, holding the conversation in memory"},
+                    {"zh": "一份微调过的模型权重",
+                     "en": "A set of fine-tuned model weights"},
+                    {"zh": "一条长期保持的网络连接（session）",
+                     "en": "A long-lived network connection (session)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "创建 agent 就是往库里写一行；读出来是一个 AgentState，装着重建它所需的全部状态。没有活对象、没有常驻进程——状态被完整外化成数据，运行时每个请求由 AgentLoop.load 现搭、跑完即弃。",
+                    "en": "Creating an agent writes a row; read it back and you get an AgentState holding all state needed to rebuild it. There's no live object or resident process — state is fully externalized as data, and the runtime is rebuilt per request by AgentLoop.load and discarded.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "像 agent-1a2b… / block-9f8e… 这样的“带前缀 id”，前缀编码了什么、又为什么有用？",
+                    "en": "In a prefixed id like agent-1a2b… / block-9f8e…, what does the prefix encode and why is it useful?",
+                },
+                "opts": [
+                    {"zh": "前缀即实体类型：自证类型、好调试，配上 uuid4 不撞车且与机器无关（可移植）",
+                     "en": "The prefix is the entity type: self-describing, easy to debug, plus a uuid4 means no collisions and machine-independence (portable)"},
+                    {"zh": "前缀是创建时间戳，用来排序",
+                     "en": "The prefix is the creation timestamp, used for sorting"},
+                    {"zh": "前缀是分片所在的服务器编号",
+                     "en": "The prefix is the shard's server number"},
+                    {"zh": "前缀是自增主键，越小越早创建",
+                     "en": "The prefix is an auto-increment key; smaller means created earlier"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "generate_id = f\"{__id_prefix__}-{uuid4()}\"，前缀由各 schema 的 __id_prefix__ 指定（如 AgentState→agent）。前缀让你一眼看出实体类型、便于排错；uuid4 几乎不撞车，且 id 不依赖自增主键或机器，导出别处仍有效，这是“agent 可搬运”的前提。",
+                    "en": "generate_id = f\"{__id_prefix__}-{uuid4()}\", with the prefix set by each schema's __id_prefix__ (e.g. AgentState→agent). The prefix makes the entity type obvious and aids debugging; uuid4 avoids collisions, and the id depends on no auto-increment key or machine, so it stays valid when exported — the premise of portable agents.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么同一个 Block / Agent 既有 letta/schemas/ 里的 pydantic 类，又有 letta/orm/ 里的 SQLAlchemy 类？",
+                    "en": "Why does the same Block / Agent have both a pydantic class in letta/schemas/ and a SQLAlchemy class in letta/orm/?",
+                },
+                "opts": [
+                    {"zh": "schema 是稳定的对外 API 契约，orm 是可为性能演进的存储；解耦后 DB 重构不惊动 API，manager 负责转换",
+                     "en": "The schema is the stable external API contract, the orm is evolvable storage; decoupling lets DB refactors not disturb the API, with the manager converting between them"},
+                    {"zh": "纯粹是历史遗留的重复代码，应该删掉一套",
+                     "en": "It's just leftover duplicate code that should be deleted"},
+                    {"zh": "一套给 Python 用、一套给 JavaScript 用",
+                     "en": "One is for Python, the other for JavaScript"},
+                    {"zh": "pydantic 用于训练，SQLAlchemy 用于推理",
+                     "en": "pydantic is for training, SQLAlchemy is for inference"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "pydantic schema 定义对外承诺的形状（要稳定），SQLAlchemy orm 定义数据怎么落表（可为性能调整）。两者解耦：DB 怎么改都不漏到 API，API 加校验也不动表结构；manager 层用 to_pydantic_async 之类做转换，有的 pydantic 配置还以 JSON 整块存进一列（custom_columns.py）。",
+                    "en": "The pydantic schema defines the externally promised shape (must stay stable); the SQLAlchemy orm defines how data lands in tables (tunable for performance). Decoupled, DB changes don't leak into the API and API validation doesn't touch tables; the manager converts (e.g. to_pydantic_async), and some pydantic configs are stored whole as JSON columns (custom_columns.py).",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "本课说“状态在数据里，算力在运行时里”。如果让你把一个调好的 Letta agent 复制一份、换掉底层模型再版本化入库，你会具体改 AgentState 的哪个字段、保留哪些字段不动？再想想：为什么同样的事在“把 agent 当常驻进程”的方案里很难做到？",
+                "en": "This lesson says \"state lives in the data, compute in the runtime.\" To clone a tuned Letta agent, swap its underlying model, and version it into a repo, which AgentState field would you edit and which would you keep untouched? Then consider: why is the same thing hard when an agent is treated as a resident process?",
+            },
+        ],
+    },
 }
 
 

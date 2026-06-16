@@ -13,4 +13,5 @@ CONTENT = {
     "03-message-lifecycle.html": part1.LESSON_03,
     "04-agent-and-tools.html": part2.LESSON_04,
     "05-context-window.html": part2.LESSON_05,
+    "06-stateful-vs-stateless.html": part2.LESSON_06,
 }

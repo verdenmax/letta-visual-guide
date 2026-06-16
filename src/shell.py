@@ -56,6 +56,8 @@ PAGES = [
      "第二部分 · 前置基础", "Part 2 · Foundations"),
     ("05-context-window.html", "上下文窗口的根本问题", "The context-window problem",
      "第二部分 · 前置基础", "Part 2 · Foundations"),
+    ("06-stateful-vs-stateless.html", "有状态 vs 无状态", "Stateful vs stateless",
+     "第二部分 · 前置基础", "Part 2 · Foundations"),
 ]
 
 
@@ -479,6 +481,8 @@ SUBTITLES = {
                                 "How function calling works; ReAct loop; inner monologue"),
     "05-context-window.html": ("token 预算 · prefill/decode · prefix cache · 为什么需要记忆系统",
                                "token budget; prefill/decode; prefix cache; why a memory system"),
+    "06-stateful-vs-stateless.html": ("AgentState 存档 · prefixed id · schema 与 orm · 对比 OpenAI Assistants",
+                                      "The AgentState save; prefixed ids; schema vs orm; vs OpenAI Assistants"),
 }
 
 

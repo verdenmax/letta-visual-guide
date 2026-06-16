@@ -795,3 +795,412 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 </div>
 """,
 }
+
+LESSON_06 = {
+    "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+前面几课我们一直在用两个词——"有状态"和"无状态"——却从没把它们拆到机制层面。第 1 课说"LLM 是无状态的，所以 Letta 替它把状态存进数据库"；第 3 课说"每处理一条消息，都要从存档里把上下文现拼一份再发给模型"。这一课就把那句"存档"本身翻开看个究竟——它<strong>比第 1、3 课更深一层</strong>，专攻五件具体的事：Letta 到底怎么把一个 agent <strong>序列化</strong>成一条 <span class="mono">AgentState</span>；身份为什么放在一个<strong>带前缀的 id</strong>（<span class="mono">agent-…</span>、<span class="mono">block-…</span>）里、而不是某个活对象里；为什么同一份数据要分 <strong>schema（pydantic API 契约）</strong>和 <strong>orm（SQLAlchemy 数据库行）</strong>两套模型；存档怎么在"数据库行 ↔ pydantic ↔ 活的运行时"之间<strong>往返</strong>；以及把这套设计和 <strong>OpenAI Assistants</strong> 正面对比，差距到底落在哪。读完你会真正握住那句口号——<strong>agent 是数据，不是进程</strong>。
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  把一个 Letta agent 想象成一张<strong>游戏存档</strong>，外加一张<strong>角色卡</strong>。角色卡上写满了"这个角色是谁"：记忆（persona / human）、走到剧情哪一步（在窗消息）、学会了哪些技能（工具）、配的是哪套引擎（模型）。这里有三条关键事实：① <strong>角色不是"那台一直开着的主机"</strong>——主机关了角色不会消失，因为它整个被写进了存档文件；② <strong>换台机器读同一份档，还是同一个角色</strong>——身份写在<strong>存档编号</strong>里，而不在某个正在运行的进程里；③ <strong>存档是普通数据</strong>——你能复制它、给它打版本号、塞回云端、甚至把底层引擎换成另一款（换显卡照样读档）。Letta 干的就是这件事：它不让 agent 当一个"必须常驻的进程"，而是把它做成一份<strong>随时能存、能读、能搬、能改的存档</strong>。这一课，我们就拆开这张角色卡，看清楚里面到底存了什么、身份编号怎么来、读档时又怎么把角色"现搭"回来。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  一句话抓住本课：<strong>在 Letta 里，一个 agent 不是"正在运行的进程"，而是数据库里一条带稳定身份、可序列化的记录（<span class="mono">AgentState</span>）。</strong>所谓"有状态"，指的是<strong>这份数据被持久化、有归属、可往返</strong>；而"无状态"指的是<strong>跑它的那段运行时是临时的、用完即弃</strong>——每来一个请求，Letta 都按这份数据<strong>现搭</strong>一个运行时、跑完就丢。把两者分清楚，本课所有结论都顺理成章：状态在数据里（持久、可移植），算力在运行时里（短命、可重建）。这正是 Letta 能"像文件一样对待 agent"的根基。
+</div>
+
+<h2>比第 1、3 课更深：这次翻开"存档"本身</h2>
+<p>第 1 课给了结论——"agent 是库里一条记录"；第 3 课给了节奏——"每步现拼上下文再发给无状态的模型"。但两课都把"存档"当成黑盒一笔带过。这一课<strong>明确在它们的基础上加深</strong>，只钻一个问题：<strong>这份存档具体长什么样、怎么生成身份、怎么读回来变成能跑的东西</strong>。我们会依次回答五个递进的问题：①一个 agent <strong>物理上</strong>是什么？②它的<strong>身份</strong>凭什么稳定？③同一份数据为什么要存<strong>两套模型</strong>？④它怎么在数据库与运行时之间<strong>往返</strong>？⑤这套"agent 即数据"的设计，比 <strong>OpenAI Assistants</strong> 那种"托管在云端"的做法强在哪？把这五问串起来，你就拿到了读懂第三部分（记忆系统）的钥匙。</p>
+
+<h2>一个 agent 物理上是什么：库里一条 AgentState</h2>
+<p>去神秘化第一步：当你"创建一个 agent"，Letta 并不会启动一个常驻服务，而是<strong>往数据库里写一行</strong>。这一行被读出来时，就是一个 <span class="mono">AgentState</span>（定义在 <span class="mono">letta/schemas/agent.py</span>）——它装着重建这个 agent 所需的<strong>全部状态</strong>：核心记忆、在窗消息的 id 列表、system 提示、工具与工具规则、以及模型与嵌入配置。换句话说，<strong>agent 的"全部"就摊在这几个字段里</strong>：</p>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">记忆</span><span class="name">memory（blocks）</span></div>
+    <div class="ld">persona / human 等核心记忆块，序列化时一并存下，读档即恢复——agent 自己也能改它。</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">历史指针</span><span class="name">message_ids · system</span></div>
+    <div class="ld">在窗消息的 id 列表（第 0 条永远是 system 消息）+ system 提示模板，运行时按它现拼上下文。</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">能力 / 规则</span><span class="name">tools · tool_rules</span></div>
+    <div class="ld">这个 agent 能调用哪些工具、以及调用顺序的约束（tool_rules）。</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">模型配置</span><span class="name">llm_config · embedding_config</span></div>
+    <div class="ld">用哪个模型、上下文多大、用哪个嵌入模型做向量检索——换模型，只是改这里一行。</div></div>
+</div>
+
+<p>盯着这张图想一件事：<strong>这里没有任何"活的对象"</strong>。没有打开的网络连接、没有常驻线程、没有内存里的会话。全是<strong>能写进数据库、能读回来的纯数据</strong>。这正是"有状态"的确切含义——状态被完整地<strong>外化</strong>成了一份记录。第 3 课说"每步要把上下文重拼"，原因到这里就闭环了：因为模型无状态、运行时也无状态，<strong>唯一长期可靠的真相只有这份 <span class="mono">AgentState</span></strong>，每次都得拿它当唯一信源重新组装。</p>
+
+<h2>身份在 id 里：prefixed id 方案</h2>
+<p>既然 agent 是数据，那"这是哪一个 agent"就不能靠"哪个进程在跑"来回答，只能靠一个<strong>稳定的标识符</strong>。Letta 的所有核心实体都用同一种身份方案——<strong>带类型前缀的 id</strong>：前缀就是这个实体的类型，后面跟一个 <span class="mono">uuid4</span>。于是光看 id 的开头，你就知道它是什么：</p>
+
+<table class="t">
+  <tr><th>实体</th><th>id 形如</th><th>__id_prefix__</th><th>前缀编码了什么</th></tr>
+  <tr><td>Agent</td><td class="mono">agent-1a2b…</td><td class="mono">agent</td><td>一眼是个 agent；按此 id 取出整份存档</td></tr>
+  <tr><td>Block（记忆块）</td><td class="mono">block-9f8e…</td><td class="mono">block</td><td>可被多个 agent 共享引用的记忆单元</td></tr>
+  <tr><td>Message</td><td class="mono">message-7c6d…</td><td class="mono">message</td><td>recall / 历史里按 id 精确定位一条消息</td></tr>
+  <tr><td>Tool</td><td class="mono">tool-3e4f…</td><td class="mono">tool</td><td>一个可被多个 agent 装配的工具</td></tr>
+  <tr><td>User / Org</td><td class="mono">user-… / organization-…</td><td class="mono">user / organization</td><td>多租户作用域：谁拥有、谁可见</td></tr>
+</table>
+
+<p>这套 id 怎么来的？答案简单得令人安心：每个 schema 声明一个 <span class="mono">__id_prefix__</span>，<span class="mono">generate_id</span> 就把"前缀 + 一个 uuid4"拼起来。比如 <span class="mono">AgentState</span> 的前缀解析为 <span class="mono">agent</span>，于是它的 id 永远长成 <span class="mono">agent-&lt;uuid&gt;</span>：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/letta_base.py</span><span class="ln">LettaBase.generate_id / __id_prefix__（简化）</span></div>
+<pre><span class="cm"># 每个 schema 声明自己的前缀；id = 前缀 + 一个 uuid4</span>
+<span class="kw">class</span> <span class="fn">LettaBase</span>(BaseModel):
+    __id_prefix__: str                      <span class="cm"># 子类各自指定，如 "agent" / "block"</span>
+
+    <span class="nb">@classmethod</span>
+    <span class="kw">def</span> <span class="fn">generate_id</span>(cls, prefix=<span class="kw">None</span>):
+        prefix = prefix <span class="kw">or</span> cls.__id_prefix__
+        <span class="kw">return</span> <span class="st">f"{prefix}-{uuid.uuid4()}"</span>   <span class="cm"># 例: agent-1a2b… / block-9f8e…</span>
+</pre></div>
+
+<p>别小看这一点点字符串约定，它带来三个实打实的好处。<strong>其一，类型自证</strong>：拿到 <span class="mono">block-9f8e…</span> 你立刻知道这是个记忆块，不会误当成 agent——前缀就是廉价的类型标签。<strong>其二，好调试</strong>：日志里满屏 id，前缀让你一眼分辨实体种类，定位问题快得多。<strong>其三，不撞车且可移植</strong>：uuid4 几乎不可能重复，且 id 不依赖任何自增主键或机器，<strong>导出到别处仍然有效</strong>——这正是"agent 可搬运"的前提。身份在 id 里，不在某个活对象里。</p>
+
+<h2>存档怎么往返：DB 行 ↔ pydantic ↔ 活的运行时</h2>
+<p>有了"数据"和"身份"，还差最后一环：这份存档怎么变成"能跑一步"的东西，跑完又怎么写回去。这是一条<strong>往返路径</strong>——数据库行被读成 pydantic 的 <span class="mono">AgentState</span>，运行时拿它现搭一个 agent 跑一步，产生的新状态再写回数据库行：</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">DB 行</div><div class="nd">orm 模型（一行）</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">load</div><div class="nd">to_pydantic_async</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">AgentState</div><div class="nd">pydantic · 可移植数据</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">现搭运行时</div><div class="nd">AgentLoop.load 跑一步</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">save</div><div class="nd">写回 DB 行</div></div>
+</div>
+
+<p>最值得玩味的是"现搭运行时"那一格。运行时<strong>不是常驻进程</strong>——每来一个请求，<span class="mono">AgentLoop.load</span> 就读这份 <span class="mono">AgentState</span>，按里面的 <span class="mono">agent_type</span>、模型、工具、记忆，<strong>当场构造</strong>一个运行时对象（如 <span class="mono">LettaAgentV3</span>），跑完这一步就丢掉。换句话说，<strong>运行时是数据的一个"短命投影"</strong>，真相永远在那行数据里：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/agent_loop.py</span><span class="ln">AgentLoop.load（简化）</span></div>
+<pre><span class="cm"># 运行时不是常驻进程：每次都用 AgentState 这份数据"现搭"一个出来</span>
+<span class="kw">class</span> <span class="fn">AgentLoop</span>:
+    <span class="nb">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">load</span>(agent_state: AgentState, actor):
+        <span class="cm"># 按存档里的 agent_type 选一个运行时实现，把状态喂进去</span>
+        <span class="kw">if</span> agent_state.agent_type <span class="kw">in</span> (letta_v1_agent, sleeptime_agent):
+            <span class="kw">return</span> <span class="fn">LettaAgentV3</span>(agent_state=agent_state, actor=actor)
+        <span class="kw">return</span> <span class="fn">LettaAgentV2</span>(agent_state=agent_state, actor=actor)
+</pre></div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>"有状态的数据"不等于"有状态的运行时"——别把这两件事混成一件。</strong>说 Letta agent"有状态"，指的是它的状态被<strong>持久化成一份数据</strong>（<span class="mono">AgentState</span>）；这恰恰是<strong>为了配合一个无状态的运行时</strong>而存在的（精确重申第 3 课）。模型本身无状态——它不记得上一轮；运行时也无状态——它每个请求现搭现拆、不常驻内存。<strong>真正"记得住"的，只有那份被存下来的数据。</strong>所以正确的心智模型是：<em>状态在数据里（持久、有归属、可移植），算力在运行时里（短命、可重建）</em>。如果你以为"有状态"意味着"有个一直开着的 agent 进程在内存里记着东西"，就会彻底误解 Letta：它偏偏不这么干，正是因为不这么干，才换来了可复制、可版本化、可搬运的好处。
+</div>
+
+<h2>一份数据，两套模型：schema（pydantic）vs orm（SQLAlchemy）</h2>
+<p>这里有个初学者常被绊住的点：同一个"Block"或"Agent"，代码里居然有<strong>两套</strong>类定义。一套在 <span class="mono">letta/schemas/</span>（pydantic），一套在 <span class="mono">letta/orm/</span>（SQLAlchemy）。这不是冗余，而是<strong>故意的分层</strong>——它们各管一件事：</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>schema：pydantic（API 契约）</h4>
+    <p>住在 <span class="mono">letta/schemas/</span>。它定义<strong>对外承诺的形状</strong>：请求/响应长什么样、字段类型、校验规则。它是<strong>稳定的 API 契约</strong>，前端、SDK、文档都依赖它，不能随数据库实现乱动。</p>
+  </div>
+  <div class="col">
+    <h4>orm：SQLAlchemy（数据库行）</h4>
+    <p>住在 <span class="mono">letta/orm/</span>。它定义<strong>数据怎么落到表里</strong>：列、索引、外键、关系。它服务于存储与查询，可以为了性能调整，而<strong>不惊动对外契约</strong>。</p>
+  </div>
+</div>
+
+<p>两套之间靠 <strong>manager 层转换</strong>：从数据库读出 orm 行，调 <span class="mono">to_pydantic_async</span> 之类的方法变成 pydantic schema 发给客户端；写入时反向。有意思的是，有些 pydantic 配置（如 <span class="mono">llm_config</span>）本身就是结构化对象，Letta 干脆把它们<strong>以 JSON 形式整块存进一列</strong>——这套"pydantic 存进 DB"的胶水在 <span class="mono">letta/orm/custom_columns.py</span> 里。于是同一份配置，<strong>对外是带类型的 pydantic、对内是一段 JSON 列</strong>，两边都舒服。</p>
+
+<p>顺带厘清一个最容易记错的命名：每种资源其实有<strong>三个动词</strong>对应三个不同形状的对象——"建"用什么、"改"用什么、"读"到什么，别混为一谈：</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>每种资源的"三个动词"</b>：建、改、读是三个不同形状的对象（注意是 <span class="mono">BlockUpdate</span> 不是 UpdateBlock）</div>
+  <div class="cells">
+    <span class="cell hl">建 · Create*<br>CreateBlock / CreateAgent</span>
+    <span class="cell">改 · *Update<br>BlockUpdate / UpdateAgent</span>
+    <span class="cell scale">读 · 完整对象<br>Block / AgentState</span>
+  </div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/block.py</span><span class="ln">create / update / read 三件套（简化）</span></div>
+<pre><span class="cm"># 建：客户端要新建一个记忆块时给的字段（没有 id，服务端生成）</span>
+<span class="kw">class</span> <span class="fn">CreateBlock</span>(BaseBlock):
+    label: str                       <span class="cm"># 如 "human" / "persona"</span>
+    value: str                       <span class="cm"># 记忆内容</span>
+
+<span class="cm"># 改：只带要修改的字段，其余可省（名字是 BlockUpdate，不是 UpdateBlock）</span>
+<span class="kw">class</span> <span class="fn">BlockUpdate</span>(BaseBlock):
+    value: Optional[str] = <span class="kw">None</span>
+    limit: Optional[int] = <span class="kw">None</span>
+
+<span class="cm"># 读：服务端发回的完整对象，带稳定的 prefixed id 与时间戳</span>
+<span class="kw">class</span> <span class="fn">Block</span>(BaseBlock):
+    id: str = <span class="fn">Field</span>(..., description=<span class="st">"block-…"</span>)
+    value: str
+    <span class="cm"># …created_at / updated_at / organization_id 等</span>
+</pre></div>
+
+<p>同样的三件套也适用于 agent：<strong>建</strong>用 <span class="mono">CreateAgent</span>、<strong>改</strong>用 <span class="mono">UpdateAgent</span>、<strong>读</strong>到的是那份完整的 <span class="mono">AgentState</span>（都在 <span class="mono">letta/schemas/agent.py</span>）。记住这个模式，你读 Letta 的任何资源接口都会轻松很多：<em>请求体是 Create/Update，响应体是那个完整 schema</em>。</p>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>因为整个 agent 就是数据（一份带稳定 prefixed id 的序列化 <span class="mono">AgentState</span>），Letta 拿到了"进程常驻型 agent"永远拿不到的一组性质。</strong>你可以像对待一个文件那样对待一个 agent：<strong>复制</strong>它（拷一份数据就是一个孪生 agent）、<strong>共享</strong>它（把 block 的 id 给另一个 agent 就共用同一块记忆）、<strong>版本化</strong>它（对状态做 diff、回滚、入库）、<strong>检视</strong>它（直接读字段，而不是猜一个黑盒进程在想什么）。你还能<strong>换掉底层模型</strong>——改一行 <span class="mono">llm_config</span>，同一个 agent 就从一款模型平滑迁到另一款，记忆与身份分毫不动；你更能<strong>到处运行</strong>它——读档即恢复，换台机器还是同一个 agent。这一切的根都在一句话上：<strong>身份在 id 里，不在某个活对象里。</strong>把 agent 从"必须一直开着的进程"降格为"随时能存读搬改的数据"，看似只是工程选择，实则解锁了 OpenAI Assistants 那种托管方案给不了的全部自由。
+</div>
+
+<h2>和 OpenAI Assistants 正面对比</h2>
+<p>把上面这些性质放到一张对比表里，和"把 agent 托管在云端"的 OpenAI Assistants 摆在一起，差距就一目了然。核心分歧只有一句：<strong>状态归谁、能否当数据自由处置</strong>。</p>
+
+<table class="t">
+  <tr><th>维度</th><th>Letta（agent 即有状态数据）</th><th>OpenAI Assistants（托管在云端）</th></tr>
+  <tr><td>状态归谁</td><td>你库里一条 <span class="mono">AgentState</span>，你拥有、你能读</td><td>在服务端，你只拿到一个 id 引用</td></tr>
+  <tr><td>能否导出 / 版本化</td><td>能：它就是数据，可复制 / diff / 入库 / 回滚</td><td>难：拿不到底层状态整份导出</td></tr>
+  <tr><td>是否模型无关</td><td>是：改 <span class="mono">llm_config</span> 即换模型，身份不变</td><td>基本绑定其自家模型</td></tr>
+  <tr><td>记忆可否编辑</td><td>能：核心记忆是可改的 <span class="mono">block</span>，agent 自己也能改</td><td>受限：记忆机制不透明、难自由编辑</td></tr>
+  <tr><td>能否到处运行</td><td>能：读档即恢复，换机器仍是同一个 agent</td><td>必须经其托管 API</td></tr>
+</table>
+
+<p>不是说托管方案一无是处——它省心、免运维。但只要你的诉求里出现"我要拥有、要导出、要换模型、要编辑记忆、要在自己的环境里跑"，<strong>"agent 是数据"这条路线就有结构性优势</strong>：数据可以被你完全掌控，进程不行。这也呼应了第 1 课那句"Letta 让 agent 像数据库记录一样持久而可移植"——到这一课，你终于看清了它<strong>具体凭什么</strong>做到。</p>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>schema 与 orm 为什么要分两套？</summary><div class="acc-body">
+<p><strong>示例：</strong>你想给 Block 表加一个索引、或把某列拆成两列以提速。如果对外接口和数据库表是同一套类，这种内部优化就会<strong>改变 API 形状</strong>，所有客户端都得跟着改。</p>
+<p><strong>为什么这样设计：</strong>pydantic schema 是<strong>对外契约</strong>（要稳定），SQLAlchemy orm 是<strong>存储细节</strong>（要能为性能演进）。两者解耦，DB 怎么调都不惊动 API；API 想加校验也不必动表结构。manager 层负责在两者间转换（如 <span class="mono">to_pydantic_async</span>）。</p>
+<p><strong>源码在哪：</strong>schema 在 <span class="mono">letta/schemas/</span>（如 <span class="mono">block.py</span> / <span class="mono">agent.py</span>），orm 在 <span class="mono">letta/orm/</span>；把 pydantic 配置整块以 JSON 存进一列的胶水在 <span class="mono">letta/orm/custom_columns.py</span>。</p>
+<p><strong>还有什么替代：</strong>只用一套（ORM 直接当 API 模型）——小项目省事，但 API 与表强耦合，任何 DB 重构都漏到接口上；大型、长期演进的系统几乎都会像 Letta 这样分层。</p>
+</div></details>
+
+<details class="accordion"><summary>prefixed id 到底有什么好处？</summary><div class="acc-body">
+<p><strong>示例：</strong>日志里出现 <span class="mono">block-9f8e…</span> 和 <span class="mono">agent-1a2b…</span>。不用查表，你一眼就知道前者是记忆块、后者是 agent，排错速度立刻不同。</p>
+<p><strong>为什么这样设计：</strong>前缀=类型，等于把"这是什么"<strong>编码进 id 本身</strong>：① 类型自证、防止把一种 id 误用成另一种；② 调试可读；③ uuid4 部分保证不撞车，且 id 不依赖自增主键或机器，<strong>导出别处仍有效</strong>，是"可移植"的前提。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta/schemas/letta_base.py::LettaBase.generate_id</span>（= <span class="mono">f"{prefix}-{uuid4()}"</span>），前缀由各 schema 的 <span class="mono">__id_prefix__</span> 指定（如 <span class="mono">AgentState</span> 解析为 <span class="mono">agent</span>）。</p>
+<p><strong>还有什么替代：</strong>纯自增整数主键——紧凑但<strong>泄露规模、跨库会撞、看不出类型</strong>；裸 uuid（无前缀）——不撞车但丢了类型可读性。带前缀的 uuid 同时拿到"不撞 + 自证类型"。</p>
+</div></details>
+
+<details class="accordion"><summary>和 OpenAI Assistants 到底差在哪？</summary><div class="acc-body">
+<p><strong>示例：</strong>你想把一个调好的 agent <strong>复制三份</strong>、各换一个模型做 A/B，再把表现最好的那份<strong>存进 git 版本库</strong>。在 Letta 里，这就是"复制数据 + 改 <span class="mono">llm_config</span> + 入库"；在纯托管方案里，你拿不到底层状态，做不了这套。</p>
+<p><strong>为什么这样设计：</strong>归属与形态不同——Letta 把状态放在<strong>你的数据库</strong>里、做成<strong>可读可改的数据</strong>，于是导出、版本化、换模型、编辑记忆、异地运行都成立；托管方案把状态留在服务端，你只持有一个引用。</p>
+<p><strong>源码在哪：</strong>状态实体 <span class="mono">letta/schemas/agent.py::AgentState</span>；模型配置 <span class="mono">llm_config</span> 即其一个字段，换模型就是改它；可编辑记忆是 <span class="mono">letta/schemas/block.py::Block</span>（配 <span class="mono">BlockUpdate</span>）。</p>
+<p><strong>还有什么替代：</strong>托管 Assistants——省运维、但牺牲掌控与可移植；自建但仍把 agent 当常驻进程——一旦进程没了状态也没了，且难复制/版本化。Letta 选"agent 即数据"，正是为换取这些自由。</p>
+</div></details>
+
+<h2>第二部分到此结束：下一站是记忆系统</h2>
+<p>第二部分（前置基础）三课走到这里收尾。回头看这条线：第 4 课讲清了"agent = LLM + 工具 + 循环"以及 tool calling 在消息层怎么工作；第 5 课讲清了"上下文是一笔有限且按 token 计费的预算"，记忆管理是被经济规律逼出来的刚需；这一课则把"状态"本身翻开——<strong>agent 是一条可序列化、有稳定 prefixed 身份、靠 schema/orm 两套模型落库、在数据与短命运行时之间往返的数据</strong>。三课合起来，你已经握牢了三把钥匙：<strong>工具（agent 怎么动手）、上下文（为什么必须管理记忆）、状态（agent 物理上是什么）</strong>。</p>
+<p>这三把钥匙，恰好同时指向同一扇门——<strong>记忆系统</strong>，也就是第三部分的主题。第 5 课留下的问题是"换出去的东西放哪、怎么取回、agent 怎么自己管"；这一课则告诉你"那些被管理的记忆，本身就是带 id 的、可编辑的数据（<span class="mono">block</span> 等）"。把两者接上，第三部分就要正式展开 Letta 的分层记忆：始终在窗的<strong>核心记忆</strong>、可检索的<strong>recall</strong>历史、可检索的<strong>archival</strong>长期事实，以及 agent 用记忆工具<strong>自我编辑</strong>的闭环。带着"agent 是数据"这个心智模型往下读，你会发现记忆系统的每一处设计，都是本课这条原则的自然延伸。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>agent 物理上是数据</strong>：一个 agent = 数据库里一条可序列化的 <span class="mono">AgentState</span>（记忆 / message_ids / system / tools / tool_rules / llm_config / embedding_config），没有"活对象"。</li>
+    <li><strong>身份在 prefixed id 里</strong>：<span class="mono">generate_id</span> = <span class="mono">f"{__id_prefix__}-{uuid4()}"</span>，前缀即类型（<span class="mono">agent-…</span> / <span class="mono">block-…</span>），带来类型自证、好调试、不撞车且可移植。</li>
+    <li><strong>schema vs orm 两套模型</strong>：pydantic（<span class="mono">letta/schemas/</span>）是稳定 API 契约，SQLAlchemy（<span class="mono">letta/orm/</span>）是可演进的存储；manager 转换，配置以 JSON 存列（<span class="mono">custom_columns.py</span>）。</li>
+    <li><strong>create/update/read 三件套</strong>：建用 <span class="mono">CreateBlock</span>/<span class="mono">CreateAgent</span>，改用 <span class="mono">BlockUpdate</span>/<span class="mono">UpdateAgent</span>，读到 <span class="mono">Block</span>/<span class="mono">AgentState</span>（注意是 BlockUpdate，不是 UpdateBlock）。</li>
+    <li><strong>往返而非常驻</strong>：DB 行 → <span class="mono">AgentState</span> → <span class="mono">AgentLoop.load</span> 现搭运行时跑一步 → 写回；运行时是数据的短命投影。</li>
+    <li><strong>"有状态数据" ≠ "有状态运行时"</strong>：状态在数据里（持久、有归属、可移植），算力在运行时里（短命、可重建）——精确重申第 3 课。</li>
+    <li><strong>对比 OpenAI Assistants</strong>：因为 agent 是数据，才能复制 / 共享 / 版本化 / 检视 / 换模型 / 异地运行——身份在 id 里，不在活对象里。</li>
+  </ul>
+</div>
+""",
+    "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+We've leaned on two words for several lessons — "stateful" and "stateless" — without ever cracking them open at the mechanism level. Lesson 1 said "the LLM is stateless, so Letta saves its state in the database"; Lesson 3 said "to handle each message, re-assemble the context from the save and send it to the model." This lesson opens that "save" itself and looks inside — going <strong>one layer deeper than Lessons 1 and 3</strong>, focused on five concrete things: how Letta <strong>serializes</strong> an agent into one <span class="mono">AgentState</span>; why identity lives in a <strong>prefixed id</strong> (<span class="mono">agent-…</span>, <span class="mono">block-…</span>) rather than in some live object; why one piece of data is modeled <strong>twice</strong> — as a <strong>schema (pydantic API contract)</strong> and an <strong>orm (SQLAlchemy DB row)</strong>; how the save <strong>round-trips</strong> between "DB row ↔ pydantic ↔ live runtime"; and how this design compares head-to-head with <strong>OpenAI Assistants</strong>. By the end you'll truly grasp the slogan — <strong>an agent is data, not a process</strong>.
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  Picture a Letta agent as a <strong>game save file</strong> plus a <strong>character sheet</strong>. The sheet spells out "who this character is": memory (persona / human), how far the story has progressed (in-context messages), which skills were learned (tools), and which engine it's tuned for (the model). Three facts matter: ① <strong>the character is not "the console that happens to be on"</strong> — turn the console off and the character survives, because it's been written entirely into the save file; ② <strong>load the same save on another machine and it's the same character</strong> — identity lives in the <strong>save's id</strong>, not in some running process; ③ <strong>a save is ordinary data</strong> — you can copy it, version it, push it to the cloud, even swap the underlying engine (load the save on a new GPU just fine). That's exactly what Letta does: it refuses to make an agent a "must-stay-running process" and instead makes it a <strong>save you can store, load, move, and edit at will</strong>. This lesson opens that character sheet — what's stored inside, where the id comes from, and how loading "rebuilds" the character on the fly.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  Grab this lesson in one line: <strong>in Letta an agent is not a "running process" but a database record with a stable identity and a serializable shape (<span class="mono">AgentState</span>).</strong> "Stateful" means <strong>this data is persisted, owned, and round-trippable</strong>; "stateless" means <strong>the runtime that executes it is temporary, used and discarded</strong> — for every request Letta <strong>rebuilds</strong> a runtime from that data and throws it away when the step is done. Keep the two apart and every conclusion here follows: state lives in the data (durable, portable), compute lives in the runtime (short-lived, rebuildable). That's the foundation that lets Letta "treat an agent like a file."
+</div>
+
+<h2>Deeper than Lessons 1 and 3: opening the "save" itself</h2>
+<p>Lesson 1 gave the conclusion — "an agent is a record in the DB"; Lesson 3 gave the rhythm — "re-assemble context each step and send it to a stateless model." But both treated the "save" as a black box. This lesson <strong>explicitly builds on them</strong> and drills one question: <strong>what does that save actually look like, how is its identity generated, and how is it loaded back into something runnable</strong>. We'll answer five escalating questions: ① what is an agent <strong>physically</strong>? ② what makes its <strong>identity</strong> stable? ③ why store the same data as <strong>two models</strong>? ④ how does it <strong>round-trip</strong> between database and runtime? ⑤ how does this "agent-as-data" design beat the "hosted in the cloud" approach of <strong>OpenAI Assistants</strong>? String these together and you hold the key to Part 3 (the memory system).</p>
+
+<h2>What an agent physically is: one AgentState in the DB</h2>
+<p>Demystification step one: when you "create an agent," Letta does not spin up a resident service — it <strong>writes a row to the database</strong>. Read that row back and you get an <span class="mono">AgentState</span> (defined in <span class="mono">letta/schemas/agent.py</span>) — it holds <strong>all the state</strong> needed to rebuild this agent: core memory, the list of in-context message ids, the system prompt, tools and tool rules, and the model and embedding configs. In other words, the agent's "everything" is laid out across these few fields:</p>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">memory</span><span class="name">memory (blocks)</span></div>
+    <div class="ld">core blocks like persona / human, serialized along with the rest, restored on load — the agent itself can edit them.</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">history pointer</span><span class="name">message_ids · system</span></div>
+    <div class="ld">the list of in-context message ids (index 0 is always the system message) plus the system prompt; the runtime re-assembles context from it.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">abilities / rules</span><span class="name">tools · tool_rules</span></div>
+    <div class="ld">which tools this agent may call, and the ordering constraints on those calls (tool_rules).</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">model config</span><span class="name">llm_config · embedding_config</span></div>
+    <div class="ld">which model, how big the window, which embedding model for vector search — swapping models is just editing one line here.</div></div>
+</div>
+
+<p>Stare at this and notice one thing: <strong>there is no "live object" here</strong>. No open network connection, no resident thread, no in-memory session. It's all <strong>pure data that can be written to and read from the database</strong>. That's the precise meaning of "stateful" — the state is fully <strong>externalized</strong> into a record. Lesson 3's "re-assemble context every step" closes the loop here: because the model is stateless and the runtime is stateless too, <strong>the only durable source of truth is this <span class="mono">AgentState</span></strong>, and every step must rebuild from it as the single source.</p>
+
+<h2>Identity lives in the id: the prefixed-id scheme</h2>
+<p>If an agent is data, then "which agent is this" can't be answered by "which process is running" — only by a <strong>stable identifier</strong>. Every core entity in Letta uses the same identity scheme: a <strong>type-prefixed id</strong> — the prefix is the entity's type, followed by a <span class="mono">uuid4</span>. So just by the start of an id you know what it is:</p>
+
+<table class="t">
+  <tr><th>Entity</th><th>id looks like</th><th>__id_prefix__</th><th>what the prefix encodes</th></tr>
+  <tr><td>Agent</td><td class="mono">agent-1a2b…</td><td class="mono">agent</td><td>obviously an agent; fetch the whole save by this id</td></tr>
+  <tr><td>Block (memory block)</td><td class="mono">block-9f8e…</td><td class="mono">block</td><td>a memory unit shareable across many agents</td></tr>
+  <tr><td>Message</td><td class="mono">message-7c6d…</td><td class="mono">message</td><td>pinpoint one message by id in recall / history</td></tr>
+  <tr><td>Tool</td><td class="mono">tool-3e4f…</td><td class="mono">tool</td><td>a tool that many agents can be equipped with</td></tr>
+  <tr><td>User / Org</td><td class="mono">user-… / organization-…</td><td class="mono">user / organization</td><td>multi-tenant scope: who owns it, who can see it</td></tr>
+</table>
+
+<p>Where do these ids come from? Reassuringly simple: each schema declares an <span class="mono">__id_prefix__</span>, and <span class="mono">generate_id</span> stitches together "prefix + a uuid4." For example <span class="mono">AgentState</span>'s prefix resolves to <span class="mono">agent</span>, so its id always looks like <span class="mono">agent-&lt;uuid&gt;</span>:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/letta_base.py</span><span class="ln">LettaBase.generate_id / __id_prefix__ (simplified)</span></div>
+<pre><span class="cm"># each schema declares its prefix; id = prefix + a uuid4</span>
+<span class="kw">class</span> <span class="fn">LettaBase</span>(BaseModel):
+    __id_prefix__: str                      <span class="cm"># set by each subclass, e.g. "agent" / "block"</span>
+
+    <span class="nb">@classmethod</span>
+    <span class="kw">def</span> <span class="fn">generate_id</span>(cls, prefix=<span class="kw">None</span>):
+        prefix = prefix <span class="kw">or</span> cls.__id_prefix__
+        <span class="kw">return</span> <span class="st">f"{prefix}-{uuid.uuid4()}"</span>   <span class="cm"># e.g. agent-1a2b… / block-9f8e…</span>
+</pre></div>
+
+<p>Don't underestimate this tiny string convention — it buys three real benefits. <strong>One, self-describing types</strong>: see <span class="mono">block-9f8e…</span> and you instantly know it's a memory block, never mistaking it for an agent — the prefix is a cheap type tag. <strong>Two, easy debugging</strong>: logs full of ids become readable at a glance, so you locate problems faster. <strong>Three, no collisions and portable</strong>: uuid4 is practically never duplicated, and the id depends on no auto-increment key or machine, so <strong>it stays valid when exported elsewhere</strong> — the very premise of "agents are movable." Identity lives in the id, not in a live object.</p>
+
+<h2>How the save round-trips: DB row ↔ pydantic ↔ live runtime</h2>
+<p>With "data" and "identity" in hand, one link remains: how this save becomes something that "runs a step," and how the result gets written back. It's a <strong>round-trip</strong> — the DB row is read into a pydantic <span class="mono">AgentState</span>, the runtime rebuilds an agent from it and runs a step, and the new state is written back to the DB row:</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">DB row</div><div class="nd">orm model (one row)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">load</div><div class="nd">to_pydantic_async</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">AgentState</div><div class="nd">pydantic · portable data</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">rebuild runtime</div><div class="nd">AgentLoop.load runs a step</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">save</div><div class="nd">write back to DB row</div></div>
+</div>
+
+<p>The most telling box is "rebuild runtime." The runtime is <strong>not a resident process</strong> — for each request, <span class="mono">AgentLoop.load</span> reads this <span class="mono">AgentState</span> and, based on its <span class="mono">agent_type</span>, model, tools, and memory, <strong>constructs a runtime object on the spot</strong> (e.g. <span class="mono">LettaAgentV3</span>), runs the step, and discards it. In other words, <strong>the runtime is a short-lived projection of the data</strong>; the truth always lives in that row:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/agent_loop.py</span><span class="ln">AgentLoop.load (simplified)</span></div>
+<pre><span class="cm"># the runtime is not resident: each call rebuilds one from the AgentState data</span>
+<span class="kw">class</span> <span class="fn">AgentLoop</span>:
+    <span class="nb">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">load</span>(agent_state: AgentState, actor):
+        <span class="cm"># pick a runtime implementation from the saved agent_type, feed state in</span>
+        <span class="kw">if</span> agent_state.agent_type <span class="kw">in</span> (letta_v1_agent, sleeptime_agent):
+            <span class="kw">return</span> <span class="fn">LettaAgentV3</span>(agent_state=agent_state, actor=actor)
+        <span class="kw">return</span> <span class="fn">LettaAgentV2</span>(agent_state=agent_state, actor=actor)
+</pre></div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfall</div>
+  <strong>"Stateful data" is not "a stateful runtime" — don't conflate the two.</strong> Calling a Letta agent "stateful" means its state is <strong>persisted as data</strong> (<span class="mono">AgentState</span>); that exists <strong>precisely to serve a stateless runtime</strong> (a precise recap of Lesson 3). The model itself is stateless — it doesn't remember the previous turn; the runtime is stateless too — it's rebuilt and torn down per request, never resident in memory. <strong>The only thing that actually "remembers" is the saved data.</strong> So the correct mental model is: <em>state lives in the data (durable, owned, portable), compute lives in the runtime (short-lived, rebuildable)</em>. If you imagine "stateful" means "a permanently running agent process holding things in memory," you'll badly misread Letta: it deliberately does not do that — and precisely because it doesn't, it earns the payoffs of being copyable, versionable, and movable.
+</div>
+
+<h2>One piece of data, two models: schema (pydantic) vs orm (SQLAlchemy)</h2>
+<p>Here's a spot beginners trip on: the same "Block" or "Agent" has <strong>two</strong> class definitions in the code. One in <span class="mono">letta/schemas/</span> (pydantic), one in <span class="mono">letta/orm/</span> (SQLAlchemy). This isn't redundancy — it's <strong>deliberate layering</strong>, each owning one job:</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>schema: pydantic (API contract)</h4>
+    <p>Lives in <span class="mono">letta/schemas/</span>. It defines <strong>the shape promised to the outside</strong>: what requests/responses look like, field types, validation rules. It's a <strong>stable API contract</strong> that frontends, SDKs, and docs depend on — it must not wobble with DB internals.</p>
+  </div>
+  <div class="col">
+    <h4>orm: SQLAlchemy (DB row)</h4>
+    <p>Lives in <span class="mono">letta/orm/</span>. It defines <strong>how data lands in tables</strong>: columns, indexes, foreign keys, relations. It serves storage and queries and can be tuned for performance <strong>without disturbing the external contract</strong>.</p>
+  </div>
+</div>
+
+<p>The two are bridged by <strong>conversion in the manager layer</strong>: read an orm row from the DB, call something like <span class="mono">to_pydantic_async</span> to turn it into a pydantic schema for the client; reverse on write. Tellingly, some pydantic configs (like <span class="mono">llm_config</span>) are themselves structured objects, so Letta just <strong>stores them whole as JSON in a column</strong> — the "pydantic-in-DB" glue lives in <span class="mono">letta/orm/custom_columns.py</span>. So the same config is <strong>a typed pydantic object outside and a JSON column inside</strong> — both sides happy.</p>
+
+<p>While we're here, clear up the most commonly misremembered naming: each resource actually has <strong>three verbs</strong> mapping to three differently-shaped objects — what you use to "create," to "update," and what you "read" — don't conflate them:</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>Each resource's "three verbs"</b>: create, update, read are three differently-shaped objects (note it's <span class="mono">BlockUpdate</span>, not UpdateBlock)</div>
+  <div class="cells">
+    <span class="cell hl">create · Create*<br>CreateBlock / CreateAgent</span>
+    <span class="cell">update · *Update<br>BlockUpdate / UpdateAgent</span>
+    <span class="cell scale">read · full object<br>Block / AgentState</span>
+  </div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/block.py</span><span class="ln">create / update / read trio (simplified)</span></div>
+<pre><span class="cm"># create: fields the client gives to make a new memory block (no id, server generates it)</span>
+<span class="kw">class</span> <span class="fn">CreateBlock</span>(BaseBlock):
+    label: str                       <span class="cm"># e.g. "human" / "persona"</span>
+    value: str                       <span class="cm"># the memory content</span>
+
+<span class="cm"># update: only the fields to change, rest optional (it's BlockUpdate, not UpdateBlock)</span>
+<span class="kw">class</span> <span class="fn">BlockUpdate</span>(BaseBlock):
+    value: Optional[str] = <span class="kw">None</span>
+    limit: Optional[int] = <span class="kw">None</span>
+
+<span class="cm"># read: the full object the server returns, with a stable prefixed id and timestamps</span>
+<span class="kw">class</span> <span class="fn">Block</span>(BaseBlock):
+    id: str = <span class="fn">Field</span>(..., description=<span class="st">"block-…"</span>)
+    value: str
+    <span class="cm"># …created_at / updated_at / organization_id, etc.</span>
+</pre></div>
+
+<p>The same trio applies to agents: <strong>create</strong> with <span class="mono">CreateAgent</span>, <strong>update</strong> with <span class="mono">UpdateAgent</span>, and you <strong>read</strong> the full <span class="mono">AgentState</span> (all in <span class="mono">letta/schemas/agent.py</span>). Remember this pattern and every Letta resource API gets easier: <em>request bodies are Create/Update, response bodies are the full schema</em>.</p>
+
+<div class="card spark">
+  <div class="tag">💡 Design insight</div>
+  <strong>Because the whole agent is just data (a serialized <span class="mono">AgentState</span> with a stable prefixed id), Letta gains a set of properties a "resident-process agent" can never have.</strong> You can treat an agent like a file: <strong>copy</strong> it (clone the data and you have a twin agent), <strong>share</strong> it (hand a block's id to another agent and they share the same memory), <strong>version</strong> it (diff, roll back, commit the state), <strong>inspect</strong> it (read the fields directly instead of guessing what a black-box process is "thinking"). You can also <strong>swap the underlying model</strong> — change one line of <span class="mono">llm_config</span> and the same agent migrates smoothly from one model to another, identity and memory untouched; and you can <strong>run it anywhere</strong> — load the save and it's restored, same agent on a different machine. The root of all this is one sentence: <strong>identity lives in the id, not in a live object.</strong> Demoting an agent from "a process that must stay running" to "data you can store, load, move, and edit at will" looks like a mere engineering choice, but it unlocks every freedom a hosted scheme like OpenAI Assistants cannot give.
+</div>
+
+<h2>Head-to-head with OpenAI Assistants</h2>
+<p>Put these properties in a comparison table next to OpenAI Assistants — which "hosts the agent in the cloud" — and the gap is obvious. The core split is one sentence: <strong>who owns the state, and can it be handled freely as data</strong>.</p>
+
+<table class="t">
+  <tr><th>Dimension</th><th>Letta (agent as stateful data)</th><th>OpenAI Assistants (hosted in cloud)</th></tr>
+  <tr><td>Who owns state</td><td>one <span class="mono">AgentState</span> in your DB — you own it, you can read it</td><td>on the server; you only hold an id reference</td></tr>
+  <tr><td>Export / version?</td><td>Yes: it's data — copy / diff / commit / roll back</td><td>Hard: no full export of the underlying state</td></tr>
+  <tr><td>Model-agnostic?</td><td>Yes: edit <span class="mono">llm_config</span> to swap models, identity intact</td><td>Largely bound to its own models</td></tr>
+  <tr><td>Editable memory?</td><td>Yes: core memory is an editable <span class="mono">block</span>; the agent can edit it too</td><td>Limited: opaque memory, hard to edit freely</td></tr>
+  <tr><td>Run anywhere?</td><td>Yes: load the save and it's restored — same agent on another machine</td><td>Must go through its hosted API</td></tr>
+</table>
+
+<p>None of this says hosting is worthless — it's low-maintenance and ops-free. But the moment your needs include "I want to own it, export it, swap models, edit memory, run it in my own environment," the <strong>"agent-as-data" route has a structural edge</strong>: data can be fully under your control, a process cannot. This echoes Lesson 1's line that "Letta makes an agent as durable and portable as a database record" — and by this lesson you finally see <strong>exactly how</strong> it pulls that off.</p>
+
+<h2>A little deeper</h2>
+
+<details class="accordion"><summary>Why split schema and orm into two models?</summary><div class="acc-body">
+<p><strong>Example:</strong> you want to add an index to the Block table, or split a column in two for speed. If the external API and the DB table are the same class, that internal optimization <strong>changes the API shape</strong>, and every client must follow.</p>
+<p><strong>Why it's designed this way:</strong> the pydantic schema is the <strong>external contract</strong> (must stay stable), the SQLAlchemy orm is a <strong>storage detail</strong> (must be free to evolve for performance). Decoupling them means the DB can be tuned without disturbing the API, and the API can add validation without touching table structure. The manager layer converts between them (e.g. <span class="mono">to_pydantic_async</span>).</p>
+<p><strong>Where in the source:</strong> schemas in <span class="mono">letta/schemas/</span> (e.g. <span class="mono">block.py</span> / <span class="mono">agent.py</span>), orm in <span class="mono">letta/orm/</span>; the glue that stores a pydantic config whole as JSON in a column is <span class="mono">letta/orm/custom_columns.py</span>.</p>
+<p><strong>Alternatives:</strong> use one model (the ORM directly as the API model) — easy for small projects, but API and tables become tightly coupled, so any DB refactor leaks into the interface; large, long-evolving systems almost always layer like Letta does.</p>
+</div></details>
+
+<details class="accordion"><summary>What's so good about prefixed ids?</summary><div class="acc-body">
+<p><strong>Example:</strong> a log shows <span class="mono">block-9f8e…</span> and <span class="mono">agent-1a2b…</span>. Without a lookup you instantly know the first is a memory block and the second an agent — debugging speed changes immediately.</p>
+<p><strong>Why it's designed this way:</strong> prefix = type, i.e. "what this is" is <strong>encoded into the id itself</strong>: ① self-describing types, preventing one kind of id from being misused as another; ② readable debugging; ③ the uuid4 part avoids collisions, and the id depends on no auto-increment key or machine, so <strong>it stays valid when exported elsewhere</strong> — the premise of portability.</p>
+<p><strong>Where in the source:</strong> <span class="mono">letta/schemas/letta_base.py::LettaBase.generate_id</span> (= <span class="mono">f"{prefix}-{uuid4()}"</span>), with the prefix set by each schema's <span class="mono">__id_prefix__</span> (e.g. <span class="mono">AgentState</span> resolves to <span class="mono">agent</span>).</p>
+<p><strong>Alternatives:</strong> plain auto-increment integer keys — compact but <strong>leak scale, collide across DBs, hide the type</strong>; bare uuids (no prefix) — collision-free but lose type readability. A prefixed uuid gets both "no collisions" and "self-describing type."</p>
+</div></details>
+
+<details class="accordion"><summary>Where exactly does it differ from OpenAI Assistants?</summary><div class="acc-body">
+<p><strong>Example:</strong> you want to <strong>clone a tuned agent three times</strong>, swap a different model into each for A/B, then <strong>commit the best one to a git repo</strong>. In Letta that's "copy the data + edit <span class="mono">llm_config</span> + commit"; in a pure hosted scheme you can't get the underlying state, so you can't do it.</p>
+<p><strong>Why it's designed this way:</strong> ownership and form differ — Letta keeps state in <strong>your database</strong> as <strong>readable, editable data</strong>, so export, versioning, model swaps, memory edits, and remote runs all become possible; a hosted scheme keeps state on the server and you hold only a reference.</p>
+<p><strong>Where in the source:</strong> the state entity is <span class="mono">letta/schemas/agent.py::AgentState</span>; the model config <span class="mono">llm_config</span> is one of its fields, so swapping models is just editing it; editable memory is <span class="mono">letta/schemas/block.py::Block</span> (with <span class="mono">BlockUpdate</span>).</p>
+<p><strong>Alternatives:</strong> hosted Assistants — ops-free, but sacrifices control and portability; self-hosted but still treating the agent as a resident process — lose the process and you lose the state, and copy/version is hard. Letta chooses "agent as data" precisely to win back these freedoms.</p>
+</div></details>
+
+<h2>Part 2 ends here: next stop, the memory system</h2>
+<p>Part 2 (Foundations), three lessons, wraps up here. Looking back over the arc: Lesson 4 made clear that "agent = LLM + tools + loop" and how tool calling works at the message layer; Lesson 5 made clear that "context is a finite, per-token-billed budget," so memory management is a necessity forced by economics; and this lesson opened "state" itself — <strong>an agent is data that is serializable, has a stable prefixed identity, persists via two models (schema/orm), and round-trips between data and a short-lived runtime</strong>. Together, the three lessons hand you three keys: <strong>tools (how an agent acts), context (why memory must be managed), and state (what an agent physically is)</strong>.</p>
+<p>These three keys all point to the same door — <strong>the memory system</strong>, the subject of Part 3. Lesson 5 left the question "where does swapped-out content go, how is it fetched back, how does the agent manage it itself"; this lesson tells you "those managed memories are themselves id-bearing, editable data (<span class="mono">block</span> and friends)." Join them and Part 3 will formally unfold Letta's tiered memory: always-in-window <strong>core memory</strong>, searchable <strong>recall</strong> history, searchable <strong>archival</strong> long-term facts, and the loop where an agent <strong>self-edits</strong> via memory tools. Read on with "an agent is data" as your mental model, and you'll find every design choice in the memory system is a natural extension of this lesson's principle.</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>An agent is physically data</strong>: one agent = one serializable <span class="mono">AgentState</span> in the DB (memory / message_ids / system / tools / tool_rules / llm_config / embedding_config), no "live object."</li>
+    <li><strong>Identity lives in the prefixed id</strong>: <span class="mono">generate_id</span> = <span class="mono">f"{__id_prefix__}-{uuid4()}"</span>, prefix = type (<span class="mono">agent-…</span> / <span class="mono">block-…</span>), giving self-describing types, easy debugging, no collisions, portability.</li>
+    <li><strong>schema vs orm, two models</strong>: pydantic (<span class="mono">letta/schemas/</span>) is the stable API contract, SQLAlchemy (<span class="mono">letta/orm/</span>) is evolvable storage; the manager converts, configs stored as JSON columns (<span class="mono">custom_columns.py</span>).</li>
+    <li><strong>create/update/read trio</strong>: create with <span class="mono">CreateBlock</span>/<span class="mono">CreateAgent</span>, update with <span class="mono">BlockUpdate</span>/<span class="mono">UpdateAgent</span>, read <span class="mono">Block</span>/<span class="mono">AgentState</span> (note it's BlockUpdate, not UpdateBlock).</li>
+    <li><strong>Round-trip, not resident</strong>: DB row → <span class="mono">AgentState</span> → <span class="mono">AgentLoop.load</span> rebuilds a runtime, runs a step → write back; the runtime is a short-lived projection of the data.</li>
+    <li><strong>"Stateful data" ≠ "stateful runtime"</strong>: state lives in the data (durable, owned, portable), compute lives in the runtime (short-lived, rebuildable) — a precise recap of Lesson 3.</li>
+    <li><strong>vs OpenAI Assistants</strong>: because the agent is data, you can copy / share / version / inspect / swap models / run anywhere — identity lives in the id, not a live object.</li>
+  </ul>
+</div>
+""",
+}
