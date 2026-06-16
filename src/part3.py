@@ -561,7 +561,7 @@ LESSON_08 = {
 &lt;human&gt;
 &lt;description&gt; 关于用户的事实 &lt;/description&gt;
 &lt;metadata&gt;
-- chars_current=14
+- chars_current=17
 - chars_limit=5000
 &lt;/metadata&gt;
 &lt;value&gt;
@@ -600,8 +600,6 @@ memory = <span class="fn">ChatMemory</span>(
   <div class="tag">🔬 落到代码</div>
   <strong>每个角色都有归宿。</strong>一个 Block 是 <span class="mono">letta/schemas/block.py</span> 的 <span class="mono">Block</span>（基类 <span class="mono">BaseBlock</span>，子类 <span class="mono">Human</span> / <span class="mono">Persona</span>）。<span class="mono">Memory</span>（<span class="mono">letta/schemas/memory.py</span>）持有一组 Block，<span class="mono">Memory.compile()</span> 把它们渲染成 <span class="mono">&lt;memory_blocks&gt;</span>；写入改的是 <span class="mono">block.value</span>，走 <span class="mono">Memory.update_block_value</span>。增删改查由 <span class="mono">BlockManager</span>（<span class="mono">letta/services/block_manager.py</span>）负责；多 agent 共享靠 <span class="mono">blocks_agents</span> 关联表；版本历史由 <span class="mono">BlockHistory</span>（<span class="mono">letta/orm/block_history.py</span>）记录。三个常用 schema：<span class="mono">CreateBlock</span>（建）、<span class="mono">BlockUpdate</span>（改，注意是 <span class="mono">BlockUpdate</span> 不是 UpdateBlock）、<span class="mono">Block</span>（读）。这一课只看"它们各是什么、谁来管"；增删改查与共享、版本的完整调用，第 9 课与后续会逐一动手。
 </div>
-
-<div class="note info"><span class="ni">👉</span><span class="nx">别被名字骗了：改块用的 schema 叫 <span class="mono">BlockUpdate</span>，不是 UpdateBlock。建块是 <span class="mono">CreateBlock</span>，读出来是 <span class="mono">Block</span>。三件套配齐才好写代码。</span></div>
 
 <h2>三件套：建 / 改 / 读</h2>
 <p>日后用 SDK 或 REST 操作块时，你会反复打交道的就是这三个 schema。把它们并排放一张表，"哪个干哪件事"立刻清楚。</p>
@@ -660,7 +658,7 @@ memory = <span class="fn">ChatMemory</span>(
 
 <div class="card spark">
   <div class="tag">💡 设计亮点</div>
-  <strong>块是一等、可寻址、可共享、可回滚的实体。</strong>每张卡片有自己的 <span class="mono">block-</span> id（第 6 课的 prefixed id），于是两件以前需要"额外架构"的事变得理所当然。其一，两个 agent 挂同一张 block（靠 <span class="mono">blocks_agents</span> 关联表）= <strong>共享记忆</strong>，一处改、处处变；想象一支客服团队共用一张"公司政策"卡，改一次全员同步。其二，每次改动留一份 <span class="mono">BlockHistory</span> 快照（<span class="mono">sequence_number</span> 单调递增），于是记忆能像 git 一样 <strong>undo / redo</strong>，甚至接进真正的 git 仓库（<span class="mono">GitEnabledBlockManager</span>）。换句话说，记忆<strong>不是一团 blob</strong>，而是一组有标签、有上限、有版本、能被多方引用的卡片。把"卡片"这个心智模型立起来，你会发现 Letta 的记忆系统更像一个小型数据库：行有主键、能被引用、还自带审计日志——而不是一段随手 append 的纯文本。把它和第 6 课接上：状态被外化成数据之后，"记忆"这件事就能享受数据库的一切好处——主键、引用、历史。Block 正是这套思路落在 core memory 上的产物。
+  <strong>块是一等、可寻址、可共享、可回滚的实体。</strong>每张卡片有自己的 <span class="mono">block-</span> id（第 6 课的 prefixed id），于是两件以前需要"额外架构"的事变得理所当然。其一，两个 agent 挂同一张 block（靠 <span class="mono">blocks_agents</span> 关联表）= <strong>共享记忆</strong>，一处改、处处变；想象一支客服团队共用一张"公司政策"卡，改一次全员同步。其二，每次改动留一份 <span class="mono">BlockHistory</span> 快照（<span class="mono">sequence_number</span> 单调递增），于是记忆能像 git 一样 <strong>undo / redo</strong>，甚至接进真正的 git 仓库（<span class="mono">GitEnabledBlockManager</span>）。换句话说，记忆<strong>不是一团 blob</strong>，而是一组有标签、有上限、有版本、能被多方引用的卡片。把"卡片"这个心智模型立起来，你会发现 Letta 的记忆系统更像一个小型数据库：行有主键、能被引用、还自带审计日志——而不是一段随手 append 的纯文本。把它和第 6 课接上：状态被外化成数据之后，"记忆"这件事就能享受数据库的一切好处——主键、引用、历史。Block 正是这套思路落在 core memory 上的产物。看清这一层，Letta 的"记忆"就不再是黑盒，而是一组你能数得清、叫得出名、还能回放的卡片。
 </div>
 
 <div class="card warn">
@@ -838,7 +836,7 @@ A Block has just four core fields: <span class="mono">label / value / limit / re
 &lt;human&gt;
 &lt;description&gt; facts about the user &lt;/description&gt;
 &lt;metadata&gt;
-- chars_current=22
+- chars_current=33
 - chars_limit=5000
 &lt;/metadata&gt;
 &lt;value&gt;
@@ -877,8 +875,6 @@ memory = <span class="fn">ChatMemory</span>(
   <div class="tag">🔬 Down to the code</div>
   <strong>Every role has a home.</strong> A Block is the <span class="mono">Block</span> in <span class="mono">letta/schemas/block.py</span> (base <span class="mono">BaseBlock</span>, subclasses <span class="mono">Human</span> / <span class="mono">Persona</span>). <span class="mono">Memory</span> (<span class="mono">letta/schemas/memory.py</span>) holds a set of Blocks, and <span class="mono">Memory.compile()</span> renders them into <span class="mono">&lt;memory_blocks&gt;</span>; a write changes <span class="mono">block.value</span> via <span class="mono">Memory.update_block_value</span>. CRUD goes through <span class="mono">BlockManager</span> (<span class="mono">letta/services/block_manager.py</span>); multi-agent sharing uses the <span class="mono">blocks_agents</span> join table; version history is recorded by <span class="mono">BlockHistory</span> (<span class="mono">letta/orm/block_history.py</span>). Three common schemas: <span class="mono">CreateBlock</span> (create), <span class="mono">BlockUpdate</span> (update — note it's <span class="mono">BlockUpdate</span>, not UpdateBlock), <span class="mono">Block</span> (read). This lesson only covers "what they are and who manages them"; the full CRUD, sharing, and versioning calls are exercised in Lesson 9 onward.
 </div>
-
-<div class="note info"><span class="ni">👉</span><span class="nx">Don't be fooled by the name: the schema to update a block is <span class="mono">BlockUpdate</span>, not UpdateBlock. To create it's <span class="mono">CreateBlock</span>; to read it's <span class="mono">Block</span>. Get all three straight and the code writes itself.</span></div>
 
 <h2>The trio: create / update / read</h2>
 <p>When you later operate on blocks via SDK or REST, these three schemas are what you keep dealing with. Put them side by side and "which does what" is instantly clear.</p>
