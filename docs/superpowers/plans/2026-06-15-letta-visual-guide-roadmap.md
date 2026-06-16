@@ -10,7 +10,7 @@
 | **M0** | 脚手架：生成器（shell/registry/build）+ 主题换皮 + 双语切换 + 校验脚本 + 1 课基线 + index | 1（基线） | `2026-06-15-letta-visual-guide-M0-scaffold.md` ✅ 已完成并合并 |
 | **M1** | 第一部分 · 宏观全景 | 3 | `2026-06-15-letta-visual-guide-M1-part1-overview.md` ✅ 已完成并合并 |
 | **M2** | 第二部分 · 前置基础 | 3 | `2026-06-15-letta-visual-guide-M2-part2-foundations.md` ✅ 已完成并合并 |
-| **M3** | 第三部分 · 记忆系统（**全书核心**） | 6 | 待写 |
+| **M3** | 第三部分 · 记忆系统（**全书核心**） | 6 | `2026-06-15-letta-visual-guide-M3-part3-memory.md` ✅ 已完成并合并 |
 | **M4** | 第四部分 · Agent 执行循环 | 4 | 待写 |
 | **M5** | 第五部分 · 工具系统 | 4 | 待写 |
 | **M6** | 第六部分 · LLM Provider 抽象 | 3 | 待写 |
