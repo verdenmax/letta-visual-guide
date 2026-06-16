@@ -3,7 +3,9 @@
 LESSON_04 = {
     "zh": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-第一部分我们把 Letta 的骨架看完了：一个 agent 是数据库里的一条 <span class="mono">AgentState</span>（第 1 课），住在 REST → services → ORM 三层架构里（第 2 课），处理一条消息就是让它进入一个<strong>最多 <span class="mono">max_steps</span> 轮的 step 循环</strong>（第 3 课）。但那张主轴图里有两个词，我们一直没拆开：<strong>"调 LLM"</strong>和<strong>"执行工具"</strong>。这一课就把这两下放到显微镜下，回答三个最基础、却最容易想当然的问题：模型到底怎么"调用"一个工具？谁真正去执行它？为什么 Letta 要逼着模型"先写一段内心独白、再动手"？把这三点搞透，你就拿到了读懂第四、五部分（agent 循环与工具系统）的钥匙。
+第一部分我们把 Letta 的骨架看完了：一个 agent 是数据库里的一条 <span class="mono">AgentState</span>（第 1 课），住在 REST → services → ORM 三层架构里（第 2 课），处理一条消息就是让它进入一个<strong>最多 <span class="mono">max_steps</span> 轮的 step 循环</strong>（第 3 课）。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">但那张主轴图里有两个词，我们一直没拆开：<strong>"调 LLM"</strong>和<strong>"执行工具"</strong>。这一课就把这两下放到显微镜下，回答三个最基础、却最容易想当然的问题：模型到底怎么"调用"一个工具？谁真正去执行它？为什么 Letta 要逼着模型"先写一段内心独白、再动手"？把这三点搞透，你就拿到了读懂第四、五部分（agent 循环与工具系统）的钥匙。
 </p>
 
 <div class="card analogy">
@@ -34,9 +36,15 @@ LESSON_04 = {
   <div class="node"><div class="nt">模型继续</div><div class="nd">再想 / 回话</div></div>
 </div>
 
-<p>逐格拆开：<strong>第一格</strong>，你发给模型的请求里，除了对话消息，还附上一份<strong>工具清单</strong>——每个工具是一段 JSON schema，写清"函数叫什么、是干嘛的、要哪些参数"。<strong>第二格</strong>，模型读完后，如果决定用某个工具，它<strong>不会执行</strong>，只会在回复里产出一个结构化的 <span class="mono">tool_call</span>：工具名 + 一串 JSON 参数。<strong>第三格</strong>，你的运行时（Letta）接住这个请求，<strong>在你的机器上真正调用那个函数</strong>。<strong>第四格</strong>，把函数返回值包成一条 <span class="mono">tool</span>（工具结果）消息。<strong>第五格</strong>，连同之前的对话一起再发给模型，它这才"看到"结果，决定继续调下一个工具还是直接回话。</p>
+<p>逐格拆开：<strong>第一格</strong>，你发给模型的请求里，除了对话消息，还附上一份<strong>工具清单</strong>——每个工具是一段 JSON schema，写清"函数叫什么、是干嘛的、要哪些参数"。<strong>第二格</strong>，模型读完后，如果决定用某个工具，它<strong>不会执行</strong>，只会在回复里产出一个结构化的 <span class="mono">tool_call</span>：工具名 + 一串 JSON 参数。<strong>第三格</strong>，你的运行时（Letta）接住这个请求，<strong>在你的机器上真正调用那个函数</strong>。</p>
 
-<p>这里有两个容易忽略、却很关键的事实。其一，<strong>模型是无状态的</strong>（这正是第 1 课的根本约束）：第五格"再发给模型"时，并不是接着上次的对话继续，而是把 <strong>system + 历史消息 + 刚才的 tool_call + 工具结果</strong>整段<strong>重新拼好、整包发过去</strong>——模型每一轮都是"读一遍完整剧本，再决定下一句台词"。其二，请求里的工具结果靠一个 <span class="mono">tool_call_id</span> 和发起它的那次调用<strong>配对</strong>，所以即便一轮里发了好几个工具调用，模型也能把"哪个结果对应哪次调用"对上号。把这两点和第 3 课连起来：<strong>step 循环每转一圈，都要把上下文从 <span class="mono">AgentState</span> 现拼一份</strong>——这也是为什么"稳定前缀 + 变化尾巴"对省钱那么重要。</p>
+<p><strong>第四格</strong>，把函数返回值包成一条 <span class="mono">tool</span>（工具结果）消息。<strong>第五格</strong>，连同之前的对话一起再发给模型，它这才"看到"结果，决定继续调下一个工具还是直接回话。</p>
+
+<p>这里有两个容易忽略、却很关键的事实。其一，<strong>模型是无状态的</strong>（这正是第 1 课的根本约束）：第五格"再发给模型"时，并不是接着上次的对话继续，而是把 <strong>system + 历史消息 + 刚才的 tool_call + 工具结果</strong>整段<strong>重新拼好、整包发过去</strong>——模型每一轮都是"读一遍完整剧本，再决定下一句台词"。</p>
+
+<p>其二，请求里的工具结果靠一个 <span class="mono">tool_call_id</span> 和发起它的那次调用<strong>配对</strong>，所以即便一轮里发了好几个工具调用，模型也能把"哪个结果对应哪次调用"对上号。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">把这两点和第 3 课连起来：<strong>step 循环每转一圈，都要把上下文从 <span class="mono">AgentState</span> 现拼一份</strong>——这也是为什么"稳定前缀 + 变化尾巴"对省钱那么重要。</span></div>
 
 <p>关键就在第一格那份"工具 schema"。它不是你手写的散文，而是<strong>从一个普通 Python 函数自动生成的 JSON</strong>。Letta 用 <span class="mono">generate_schema</span> 读函数的<strong>签名 + Google 风格 docstring</strong>，吐出下面这种模型能读懂的结构。以"往核心记忆追加内容"的工具 <span class="mono">core_memory_append</span> 为例，模型眼里看到的是：</p>
 
@@ -197,7 +205,9 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
 """,
     "en": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-Part 1 gave us Letta's skeleton: an agent is one <span class="mono">AgentState</span> row in a database (Lesson 1), it lives in a three-layer house — REST → services → ORM (Lesson 2), and handling a message means dropping it into a <strong>step loop of up to <span class="mono">max_steps</span> rounds</strong> (Lesson 3). But two words in that spine were never opened up: <strong>"call the LLM"</strong> and <strong>"execute a tool."</strong> This lesson puts both under a microscope and answers the three most basic — yet most easily mis-assumed — questions: how does a model actually "call" a tool? Who really executes it? And why does Letta force the model to "write a line of inner monologue before it acts"? Nail these three and you hold the key to Parts 4 and 5 (the agent loop &amp; the tool system).
+Part 1 gave us Letta's skeleton: an agent is one <span class="mono">AgentState</span> row in a database (Lesson 1), it lives in a three-layer house — REST → services → ORM (Lesson 2), and handling a message means dropping it into a <strong>step loop of up to <span class="mono">max_steps</span> rounds</strong> (Lesson 3).</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">But two words in that spine were never opened up: <strong>"call the LLM"</strong> and <strong>"execute a tool."</strong> This lesson puts both under a microscope and answers the three most basic — yet most easily mis-assumed — questions: how does a model actually "call" a tool? Who really executes it? And why does Letta force the model to "write a line of inner monologue before it acts"? Nail these three and you hold the key to Parts 4 and 5 (the agent loop &amp; the tool system).
 </p>
 
 <div class="card analogy">
@@ -228,9 +238,15 @@ Part 1 gave us Letta's skeleton: an agent is one <span class="mono">AgentState</
   <div class="node"><div class="nt">Model continues</div><div class="nd">think / reply</div></div>
 </div>
 
-<p>Cell by cell: <strong>cell 1</strong>, the request you send the model carries — besides the conversation messages — a <strong>tool list</strong>, where each tool is a JSON schema stating "what the function is called, what it does, which arguments it takes." <strong>Cell 2</strong>, having read them, if the model decides to use a tool it <strong>does not execute</strong> it; it only emits a structured <span class="mono">tool_call</span>: a tool name + a JSON blob of arguments. <strong>Cell 3</strong>, your runtime (Letta) catches that request and <strong>actually calls the function on your machine</strong>. <strong>Cell 4</strong>, the return value is wrapped into a <span class="mono">tool</span> (tool-result) message. <strong>Cell 5</strong>, it's sent back to the model together with the prior conversation, and only now does the model "see" the result and decide whether to call another tool or just reply.</p>
+<p>Cell by cell: <strong>cell 1</strong>, the request you send the model carries — besides the conversation messages — a <strong>tool list</strong>, where each tool is a JSON schema stating "what the function is called, what it does, which arguments it takes." <strong>Cell 2</strong>, having read them, if the model decides to use a tool it <strong>does not execute</strong> it; it only emits a structured <span class="mono">tool_call</span>: a tool name + a JSON blob of arguments. <strong>Cell 3</strong>, your runtime (Letta) catches that request and <strong>actually calls the function on your machine</strong>.</p>
 
-<p>Two easily-missed but crucial facts hide here. First, <strong>the model is stateless</strong> (exactly Lesson 1's core constraint): "sending it back" in cell 5 doesn't resume a session — it <strong>re-assembles and re-sends the entire packet</strong> of <strong>system + history + that tool_call + the tool result</strong>. The model re-reads the whole script every round before deciding its next line. Second, the tool result is <strong>paired</strong> with the call that produced it via a <span class="mono">tool_call_id</span>, so even if a round emits several tool calls, the model can match "which result belongs to which call." Tie both back to Lesson 3: <strong>every turn of the step loop re-assembles the context fresh from <span class="mono">AgentState</span></strong> — which is why "stable prefix + changing tail" matters so much for cost.</p>
+<p><strong>Cell 4</strong>, the return value is wrapped into a <span class="mono">tool</span> (tool-result) message. <strong>Cell 5</strong>, it's sent back to the model together with the prior conversation, and only now does the model "see" the result and decide whether to call another tool or just reply.</p>
+
+<p>Two easily-missed but crucial facts hide here. First, <strong>the model is stateless</strong> (exactly Lesson 1's core constraint): "sending it back" in cell 5 doesn't resume a session — it <strong>re-assembles and re-sends the entire packet</strong> of <strong>system + history + that tool_call + the tool result</strong>. The model re-reads the whole script every round before deciding its next line.</p>
+
+<p>Second, the tool result is <strong>paired</strong> with the call that produced it via a <span class="mono">tool_call_id</span>, so even if a round emits several tool calls, the model can match "which result belongs to which call." </p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Tie both back to Lesson 3: <strong>every turn of the step loop re-assembles the context fresh from <span class="mono">AgentState</span></strong> — which is why "stable prefix + changing tail" matters so much for cost.</span></div>
 
 <p>The crux is that "tool schema" in cell 1. It isn't prose you hand-write — it's <strong>JSON auto-generated from an ordinary Python function</strong>. Letta uses <span class="mono">generate_schema</span> to read a function's <strong>signature + Google-style docstring</strong> and emit a structure the model can read. Take <span class="mono">core_memory_append</span>, the tool that appends to core memory; here's what the model sees:</p>
 
@@ -394,7 +410,9 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
 LESSON_05 = {
     "zh": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-前四课我们一直在用一个词——"上下文窗口"——却从没真正拆开它：第 1 课说"上下文有限"是 Letta 存在的根本理由，第 3 课说要"稳定前缀 + 变化尾巴"，第 4 课说每一步都要"把整段剧本重新拼好再发给模型"。这三句话背后，是同一条被反复绕开的硬约束：<strong>上下文窗口是一笔固定大小、还按 token 计费的预算</strong>。这一课就把这笔账摊开算清楚——模型怎么读这段 prompt（prefill 与 decode）、为什么稳定前缀能省真金白银（prefix cache）、为什么"把历史全塞进去"必然失败，以及 Letta 如何把这笔账<strong>量出来</strong>（<span class="mono">ContextWindowOverview</span>）并据此<strong>动手</strong>（逼近阈值就压缩）。读完你会明白：记忆系统不是锦上添花，而是被这条约束<strong>逼出来</strong>的刚需。
+前四课我们一直在用一个词——"上下文窗口"——却从没真正拆开它：第 1 课说"上下文有限"是 Letta 存在的根本理由，第 3 课说要"稳定前缀 + 变化尾巴"，第 4 课说每一步都要"把整段剧本重新拼好再发给模型"。这三句话背后，是同一条被反复绕开的硬约束：<strong>上下文窗口是一笔固定大小、还按 token 计费的预算</strong>。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就把这笔账摊开算清楚——模型怎么读这段 prompt（prefill 与 decode）、为什么稳定前缀能省真金白银（prefix cache）、为什么"把历史全塞进去"必然失败，以及 Letta 如何把这笔账<strong>量出来</strong>（<span class="mono">ContextWindowOverview</span>）并据此<strong>动手</strong>（逼近阈值就压缩）。读完你会明白：记忆系统不是锦上添花，而是被这条约束<strong>逼出来</strong>的刚需。
 </p>
 
 <div class="card analogy">
@@ -439,7 +457,9 @@ LESSON_05 = {
   <div class="node"><div class="nt">② decode 解码</div><div class="nd">一个一个往外吐 token<br>每吐一个都要回看缓存</div></div>
 </div>
 
-<p><strong>prefill</strong> 是"读题"：模型把你给的整段 prompt 一口吃下，<strong>所有输入 token 可以并行处理</strong>，算得快；这一步会顺手把每个 token 的中间结果（注意力的 key/value）存成 <strong>KV cache</strong>。<strong>decode</strong> 是"答题"：模型<strong>一次只生成一个 token</strong>，每生成一个都要回看前面所有 token 的 KV cache 再决定下一个——这一步天生串行，<strong>输出越长越慢</strong>。两个关键结论：其一，<strong>输入越长，prefill 越贵</strong>（要读的 token 多）；其二，既然 prefill 会把前缀的 KV 都算出来缓存，那么<strong>如果这次请求的前缀和上次逐 token 一模一样，这部分缓存就能直接复用、不必重算</strong>——这就引出了 prefix cache。</p>
+<p><strong>prefill</strong> 是"读题"：模型把你给的整段 prompt 一口吃下，<strong>所有输入 token 可以并行处理</strong>，算得快；这一步会顺手把每个 token 的中间结果（注意力的 key/value）存成 <strong>KV cache</strong>。<strong>decode</strong> 是"答题"：模型<strong>一次只生成一个 token</strong>，每生成一个都要回看前面所有 token 的 KV cache 再决定下一个——这一步天生串行，<strong>输出越长越慢</strong>。</p>
+
+<p>两个关键结论：其一，<strong>输入越长，prefill 越贵</strong>（要读的 token 多）；其二，既然 prefill 会把前缀的 KV 都算出来缓存，那么<strong>如果这次请求的前缀和上次逐 token 一模一样，这部分缓存就能直接复用、不必重算</strong>——这就引出了 prefix cache。</p>
 
 <h2>稳定前缀为什么省钱：prefix cache</h2>
 <p>现代推理服务（以及一些本地引擎）都会做一件事：<strong>缓存"前缀"的计算结果</strong>。如果两次请求开头的一长串 token 完全相同，第二次就能<strong>跳过这段的 prefill</strong>，直接拿上次缓存好的 KV——又快又便宜（很多厂商对命中缓存的输入 token 直接打折计费）。关键词是<strong>"前缀必须逐 token 完全一致"</strong>：只要前面有一个 token 变了，从那之后的缓存全部作废、得重算。</p>
@@ -459,7 +479,9 @@ LESSON_05 = {
   </div>
 </div>
 
-<p>现在第 3 课那条设计原则就有了经济学解释：<strong>为什么要把 system + 核心记忆放在最前面、且每轮尽量不改？</strong>因为它们是<strong>最长、最稳定的那段前缀</strong>——保持它逐 token 不变，就能让每一轮都吃到 prefix cache，把这段昂贵的 prefill 省掉。反过来，如果你每轮都去改系统提示的开头（哪怕只改一个字），就等于<strong>亲手把缓存作废</strong>，每轮都全量重算。<strong>"稳定前缀 + 变化尾巴"不是审美，是 prefill / prefix-cache 经济学逼出来的结构。</strong>这也是为什么 Letta 在第 3 课里宁可"只往尾巴追加消息、记忆变了才重建系统提示"，也不肯每轮乱动前缀。</p>
+<p>现在第 3 课那条设计原则就有了经济学解释：<strong>为什么要把 system + 核心记忆放在最前面、且每轮尽量不改？</strong>因为它们是<strong>最长、最稳定的那段前缀</strong>——保持它逐 token 不变，就能让每一轮都吃到 prefix cache，把这段昂贵的 prefill 省掉。反过来，如果你每轮都去改系统提示的开头（哪怕只改一个字），就等于<strong>亲手把缓存作废</strong>，每轮都全量重算。</p>
+
+<div class="note tip"><span class="ni">📌</span><span class="nx"><strong>"稳定前缀 + 变化尾巴"不是审美，是 prefill / prefix-cache 经济学逼出来的结构。</strong>这也是为什么 Letta 在第 3 课里宁可"只往尾巴追加消息、记忆变了才重建系统提示"，也不肯每轮乱动前缀。</span></div>
 <h2>Letta 把这笔账量出来，也据此动手</h2>
 <p>到这里，约束和经济学都讲清楚了。Letta 的高明之处，是<strong>不把上下文窗口当黑盒</strong>：它能把"窗口里到底装了啥"<strong>逐块拆开计数</strong>，再据此在<strong>逼近上限时压缩</strong>。先看"计数"——它有一个专门的数据结构 <span class="mono">ContextWindowOverview</span>，是整个上下文窗口的一本<strong>token 账本</strong>（主要在检视 / 接口侧按需算出）：</p>
 
@@ -579,7 +601,9 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 <h2>这一课在整张大图的哪里</h2>
 <p>把前五课串起来：第 1 课说 Letta 的根本理由是"LLM 无状态 + 上下文有限"，第 3 课给了"稳定前缀 + 变化尾巴"的结构，第 4 课展示了每一步都要把整段上下文重拼再发。<strong>这一课补上了那块缺失的"为什么"</strong>：因为上下文是一笔<strong>有限且按 token 计费的预算</strong>，prefill / prefix-cache 的经济学让"稳定前缀"成为省钱的硬道理，而"尾巴只会增长"让"换出旧内容"成为迟早要做的事。Letta 没有回避，而是把它量化成 <span class="mono">ContextWindowOverview</span>、把动作触发在 <span class="mono">context_window × 0.9</span>。</p>
 
-<p>顺着这条逻辑，下一站就水到渠成：<strong>既然预算有限、尾巴必须换出，那"换出去的东西放哪、怎么取回、agent 怎么自己管"——这就是"记忆系统"要回答的问题，也正是第三部分的主题。</strong>核心记忆（始终在窗的 persona / human）、recall（可检索的历史消息）、archival（可检索的长期事实）这三层，本质上就是"桌面 + 抽屉 + 档案室"的工程实现——是对本课这条约束的<strong>正面回答</strong>。读完第三部分，你会看到 <span class="mono">compact</span> 压出来的摘要、归档进去的消息、agent 用记忆工具自我编辑的闭环，如何共同把"有限窗口"变成"看起来无限的记忆"。</p>
+<div class="note info"><span class="ni">👉</span><span class="nx">顺着这条逻辑，下一站就水到渠成：<strong>既然预算有限、尾巴必须换出，那"换出去的东西放哪、怎么取回、agent 怎么自己管"——这就是"记忆系统"要回答的问题，也正是第三部分的主题。</strong></span></div>
+
+<p>核心记忆（始终在窗的 persona / human）、recall（可检索的历史消息）、archival（可检索的长期事实）这三层，本质上就是"桌面 + 抽屉 + 档案室"的工程实现——是对本课这条约束的<strong>正面回答</strong>。读完第三部分，你会看到 <span class="mono">compact</span> 压出来的摘要、归档进去的消息、agent 用记忆工具自我编辑的闭环，如何共同把"有限窗口"变成"看起来无限的记忆"。</p>
 
 <div class="card key">
   <div class="tag">✅ 本课要点</div>
@@ -595,7 +619,9 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 """,
     "en": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-We've leaned on one phrase for four lessons — "the context window" — without ever cracking it open: Lesson 1 said "context is finite" is the root reason Letta exists, Lesson 3 said keep a "stable prefix + a changing tail," Lesson 4 said every step has to "re-assemble the whole script and send it to the model." Behind all three sits the same hard constraint we kept dodging: <strong>the context window is a fixed-size budget that is also billed per token</strong>. This lesson lays that bill out in full — how the model reads the prompt (prefill and decode), why a stable prefix saves real money (prefix cache), why "just stuff all the history in" is doomed, and how Letta <strong>measures</strong> the bill (<span class="mono">ContextWindowOverview</span>) and <strong>acts</strong> on it (compact as it nears a threshold). By the end you'll see: a memory system isn't a nice-to-have, it's a necessity <strong>forced</strong> by this constraint.
+We've leaned on one phrase for four lessons — "the context window" — without ever cracking it open: Lesson 1 said "context is finite" is the root reason Letta exists, Lesson 3 said keep a "stable prefix + a changing tail," Lesson 4 said every step has to "re-assemble the whole script and send it to the model." Behind all three sits the same hard constraint we kept dodging: <strong>the context window is a fixed-size budget that is also billed per token</strong>.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson lays that bill out in full — how the model reads the prompt (prefill and decode), why a stable prefix saves real money (prefix cache), why "just stuff all the history in" is doomed, and how Letta <strong>measures</strong> the bill (<span class="mono">ContextWindowOverview</span>) and <strong>acts</strong> on it (compact as it nears a threshold). By the end you'll see: a memory system isn't a nice-to-have, it's a necessity <strong>forced</strong> by this constraint.
 </p>
 
 <div class="card analogy">
@@ -640,7 +666,9 @@ We've leaned on one phrase for four lessons — "the context window" — without
   <div class="node"><div class="nt">② decode</div><div class="nd">emits tokens one by one<br>each one re-reads the cache</div></div>
 </div>
 
-<p><strong>prefill</strong> is "reading the question": the model swallows your whole prompt in one bite, <strong>all input tokens processed in parallel</strong>, so it's fast; along the way it stores each token's intermediate results (the attention key/value) as a <strong>KV cache</strong>. <strong>decode</strong> is "answering": the model <strong>generates one token at a time</strong>, each time re-reading the KV cache of all prior tokens before deciding the next — inherently serial, so <strong>the longer the output, the slower</strong>. Two key takeaways: first, <strong>longer input means costlier prefill</strong> (more tokens to read); second, since prefill computes and caches the prefix's KV, then <strong>if this request's prefix is token-for-token identical to last time, that cache can be reused, no recompute</strong> — which brings us to prefix cache.</p>
+<p><strong>prefill</strong> is "reading the question": the model swallows your whole prompt in one bite, <strong>all input tokens processed in parallel</strong>, so it's fast; along the way it stores each token's intermediate results (the attention key/value) as a <strong>KV cache</strong>. <strong>decode</strong> is "answering": the model <strong>generates one token at a time</strong>, each time re-reading the KV cache of all prior tokens before deciding the next — inherently serial, so <strong>the longer the output, the slower</strong>.</p>
+
+<p>Two key takeaways: first, <strong>longer input means costlier prefill</strong> (more tokens to read); second, since prefill computes and caches the prefix's KV, then <strong>if this request's prefix is token-for-token identical to last time, that cache can be reused, no recompute</strong> — which brings us to prefix cache.</p>
 
 <h2>Why a stable prefix saves money: prefix cache</h2>
 <p>Modern inference services (and some local engines) all do one thing: <strong>cache the computed result of the "prefix."</strong> If the long opening run of tokens is identical across two requests, the second can <strong>skip that prefill</strong> and grab last time's cached KV directly — faster and cheaper (many providers bill cache-hit input tokens at a discount). The keyword is <strong>"the prefix must be token-for-token identical"</strong>: change a single earlier token and every cache entry after it is invalidated and must be recomputed.</p>
@@ -660,7 +688,9 @@ We've leaned on one phrase for four lessons — "the context window" — without
   </div>
 </div>
 
-<p>Now Lesson 3's design principle has an economic explanation: <strong>why put system + core memory at the very front and barely touch it each turn?</strong> Because they're the <strong>longest, most stable prefix</strong> — keep it token-for-token unchanged and every turn hits the prefix cache, sparing that expensive prefill. Conversely, edit the opening of the system prompt each turn (even by one character) and you've <strong>invalidated the cache by hand</strong>, forcing a full recompute every turn. <strong>"Stable prefix + changing tail" is not aesthetics, it's a structure forced by prefill / prefix-cache economics.</strong> That's also why, back in Lesson 3, Letta would rather "only append messages to the tail and rebuild the system prompt only when memory changes" than fiddle with the prefix every turn.</p>
+<p>Now Lesson 3's design principle has an economic explanation: <strong>why put system + core memory at the very front and barely touch it each turn?</strong> Because they're the <strong>longest, most stable prefix</strong> — keep it token-for-token unchanged and every turn hits the prefix cache, sparing that expensive prefill. Conversely, edit the opening of the system prompt each turn (even by one character) and you've <strong>invalidated the cache by hand</strong>, forcing a full recompute every turn.</p>
+
+<div class="note tip"><span class="ni">📌</span><span class="nx"><strong>"Stable prefix + changing tail" is not aesthetics, it's a structure forced by prefill / prefix-cache economics.</strong> That's also why, back in Lesson 3, Letta would rather "only append messages to the tail and rebuild the system prompt only when memory changes" than fiddle with the prefix every turn.</span></div>
 <h2>Letta measures the bill, and acts on it</h2>
 <p>By here, both the constraint and the economics are clear. Letta's cleverness is that it <strong>doesn't treat the context window as a black box</strong>: it can count, <strong>block by block</strong>, exactly "what's in the window," and compress as it <strong>approaches the ceiling</strong>. Take "counting" first — it has a dedicated data structure, <span class="mono">ContextWindowOverview</span>, a <strong>token ledger</strong> for the whole window (computed on demand, mainly on the inspection / API side):</p>
 
@@ -780,7 +810,9 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 <h2>Where this lesson sits on the big map</h2>
 <p>Stringing the five lessons together: Lesson 1 said Letta's root reason is "stateless LLM + finite context," Lesson 3 gave the "stable prefix + changing tail" structure, Lesson 4 showed that every step re-assembles and re-sends the whole context. <strong>This lesson supplies the missing "why"</strong>: because context is a <strong>finite, per-token-billed budget</strong>, prefill / prefix-cache economics make a "stable prefix" a hard money-saving rule, and "the tail only grows" makes "swapping out old content" something you'll do sooner or later. Letta doesn't dodge it — it quantifies it as <span class="mono">ContextWindowOverview</span> and triggers action at <span class="mono">context_window × 0.9</span>.</p>
 
-<p>Follow that logic and the next stop comes naturally: <strong>since the budget is finite and the tail must be swapped out, "where does the swapped-out stuff go, how is it fetched back, how does the agent manage it itself" — that's the question the "memory system" answers, and it's exactly Part 3's subject.</strong> The three tiers — core memory (the always-in-window persona / human), recall (searchable past messages), archival (searchable long-term facts) — are essentially the engineering of "desk + drawer + archive room," a <strong>direct answer</strong> to this lesson's constraint. After Part 3, you'll see how the summaries squeezed out by <span class="mono">compact</span>, the messages pushed into archive, and the agent's self-editing loop via memory tools together turn a "finite window" into "seemingly unlimited memory."</p>
+<div class="note info"><span class="ni">👉</span><span class="nx">Follow that logic and the next stop comes naturally: <strong>since the budget is finite and the tail must be swapped out, "where does the swapped-out stuff go, how is it fetched back, how does the agent manage it itself" — that's the question the "memory system" answers, and it's exactly Part 3's subject.</strong></span></div>
+
+<p>The three tiers — core memory (the always-in-window persona / human), recall (searchable past messages), archival (searchable long-term facts) — are essentially the engineering of "desk + drawer + archive room," a <strong>direct answer</strong> to this lesson's constraint. After Part 3, you'll see how the summaries squeezed out by <span class="mono">compact</span>, the messages pushed into archive, and the agent's self-editing loop via memory tools together turn a "finite window" into "seemingly unlimited memory."</p>
 
 <div class="card key">
   <div class="tag">✅ Key points</div>
@@ -799,7 +831,9 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 LESSON_06 = {
     "zh": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-前面几课我们一直在用两个词——"有状态"和"无状态"——却从没把它们拆到机制层面。第 1 课说"LLM 是无状态的，所以 Letta 替它把状态存进数据库"；第 3 课说"每处理一条消息，都要从存档里把上下文现拼一份再发给模型"。这一课就把那句"存档"本身翻开看个究竟——它<strong>比第 1、3 课更深一层</strong>，专攻五件具体的事：Letta 到底怎么把一个 agent <strong>序列化</strong>成一条 <span class="mono">AgentState</span>；身份为什么放在一个<strong>带前缀的 id</strong>（<span class="mono">agent-…</span>、<span class="mono">block-…</span>）里、而不是某个活对象里；为什么同一份数据要分 <strong>schema（pydantic API 契约）</strong>和 <strong>orm（SQLAlchemy 数据库行）</strong>两套模型；存档怎么在"数据库行 ↔ pydantic ↔ 活的运行时"之间<strong>往返</strong>；以及把这套设计和 <strong>OpenAI Assistants</strong> 正面对比，差距到底落在哪。读完你会真正握住那句口号——<strong>agent 是数据，不是进程</strong>。
+前面几课我们一直在用两个词——"有状态"和"无状态"——却从没把它们拆到机制层面。第 1 课说"LLM 是无状态的，所以 Letta 替它把状态存进数据库"；第 3 课说"每处理一条消息，都要从存档里把上下文现拼一份再发给模型"。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就把那句"存档"本身翻开看个究竟——它<strong>比第 1、3 课更深一层</strong>，专攻五件具体的事：Letta 到底怎么把一个 agent <strong>序列化</strong>成一条 <span class="mono">AgentState</span>；身份为什么放在一个<strong>带前缀的 id</strong>（<span class="mono">agent-…</span>、<span class="mono">block-…</span>）里、而不是某个活对象里；为什么同一份数据要分 <strong>schema（pydantic API 契约）</strong>和 <strong>orm（SQLAlchemy 数据库行）</strong>两套模型；存档怎么在"数据库行 ↔ pydantic ↔ 活的运行时"之间<strong>往返</strong>；以及把这套设计和 <strong>OpenAI Assistants</strong> 正面对比，差距到底落在哪。读完你会真正握住那句口号——<strong>agent 是数据，不是进程</strong>。
 </p>
 
 <div class="card analogy">
@@ -813,7 +847,11 @@ LESSON_06 = {
 </div>
 
 <h2>比第 1、3 课更深：这次翻开"存档"本身</h2>
-<p>第 1 课给了结论——"agent 是库里一条记录"；第 3 课给了节奏——"每步现拼上下文再发给无状态的模型"。但两课都把"存档"当成黑盒一笔带过。这一课<strong>明确在它们的基础上加深</strong>，只钻一个问题：<strong>这份存档具体长什么样、怎么生成身份、怎么读回来变成能跑的东西</strong>。我们会依次回答五个递进的问题：①一个 agent <strong>物理上</strong>是什么？②它的<strong>身份</strong>凭什么稳定？③它怎么在数据库与运行时之间<strong>往返</strong>？④同一份数据为什么要存<strong>两套模型</strong>？⑤这套"agent 即数据"的设计，比 <strong>OpenAI Assistants</strong> 那种"托管在云端"的做法强在哪？把这五问串起来，你就拿到了读懂第三部分（记忆系统）的钥匙。</p>
+<p>第 1 课给了结论——"agent 是库里一条记录"；第 3 课给了节奏——"每步现拼上下文再发给无状态的模型"。但两课都把"存档"当成黑盒一笔带过。这一课<strong>明确在它们的基础上加深</strong>，只钻一个问题：<strong>这份存档具体长什么样、怎么生成身份、怎么读回来变成能跑的东西</strong>。</p>
+
+<p>我们会依次回答五个递进的问题：①一个 agent <strong>物理上</strong>是什么？②它的<strong>身份</strong>凭什么稳定？③它怎么在数据库与运行时之间<strong>往返</strong>？④同一份数据为什么要存<strong>两套模型</strong>？⑤这套"agent 即数据"的设计，比 <strong>OpenAI Assistants</strong> 那种"托管在云端"的做法强在哪？把这五问串起来，你就拿到了读懂第三部分（记忆系统）的钥匙。</p>
+
+<div class="cute"><div class="row"><span class="emoji">💾</span><span class="lab">AgentState（数据）</span><span class="arrow">→</span><span class="emoji">⚙️</span><span class="lab">运行时（现搭即弃）</span></div><div class="cap">agent 是数据，不是进程：数据持久、可复制、可迁移；运行时每次现搭、用完即弃</div></div>
 
 <h2>一个 agent 物理上是什么：库里一条 AgentState</h2>
 <p>去神秘化第一步：当你"创建一个 agent"，Letta 并不会启动一个常驻服务，而是<strong>往数据库里写一行</strong>。这一行被读出来时，就是一个 <span class="mono">AgentState</span>（定义在 <span class="mono">letta/schemas/agent.py</span>）——它装着重建这个 agent 所需的<strong>全部状态</strong>：核心记忆、在窗消息的 id 列表、system 提示、工具与工具规则、以及模型与嵌入配置。换句话说，<strong>agent 的"全部"就摊在这几个字段里</strong>：</p>
@@ -1002,7 +1040,9 @@ LESSON_06 = {
 """,
     "en": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-We've leaned on two words for several lessons — "stateful" and "stateless" — without ever cracking them open at the mechanism level. Lesson 1 said "the LLM is stateless, so Letta saves its state in the database"; Lesson 3 said "to handle each message, re-assemble the context from the save and send it to the model." This lesson opens that "save" itself and looks inside — going <strong>one layer deeper than Lessons 1 and 3</strong>, focused on five concrete things: how Letta <strong>serializes</strong> an agent into one <span class="mono">AgentState</span>; why identity lives in a <strong>prefixed id</strong> (<span class="mono">agent-…</span>, <span class="mono">block-…</span>) rather than in some live object; why one piece of data is modeled <strong>twice</strong> — as a <strong>schema (pydantic API contract)</strong> and an <strong>orm (SQLAlchemy DB row)</strong>; how the save <strong>round-trips</strong> between "DB row ↔ pydantic ↔ live runtime"; and how this design compares head-to-head with <strong>OpenAI Assistants</strong>. By the end you'll truly grasp the slogan — <strong>an agent is data, not a process</strong>.
+We've leaned on two words for several lessons — "stateful" and "stateless" — without ever cracking them open at the mechanism level. Lesson 1 said "the LLM is stateless, so Letta saves its state in the database"; Lesson 3 said "to handle each message, re-assemble the context from the save and send it to the model."</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson opens that "save" itself and looks inside — going <strong>one layer deeper than Lessons 1 and 3</strong>, focused on five concrete things: how Letta <strong>serializes</strong> an agent into one <span class="mono">AgentState</span>; why identity lives in a <strong>prefixed id</strong> (<span class="mono">agent-…</span>, <span class="mono">block-…</span>) rather than in some live object; why one piece of data is modeled <strong>twice</strong> — as a <strong>schema (pydantic API contract)</strong> and an <strong>orm (SQLAlchemy DB row)</strong>; how the save <strong>round-trips</strong> between "DB row ↔ pydantic ↔ live runtime"; and how this design compares head-to-head with <strong>OpenAI Assistants</strong>. By the end you'll truly grasp the slogan — <strong>an agent is data, not a process</strong>.
 </p>
 
 <div class="card analogy">
@@ -1016,7 +1056,11 @@ We've leaned on two words for several lessons — "stateful" and "stateless" —
 </div>
 
 <h2>Deeper than Lessons 1 and 3: opening the "save" itself</h2>
-<p>Lesson 1 gave the conclusion — "an agent is a record in the DB"; Lesson 3 gave the rhythm — "re-assemble context each step and send it to a stateless model." But both treated the "save" as a black box. This lesson <strong>explicitly builds on them</strong> and drills one question: <strong>what does that save actually look like, how is its identity generated, and how is it loaded back into something runnable</strong>. We'll answer five escalating questions: ① what is an agent <strong>physically</strong>? ② what makes its <strong>identity</strong> stable? ③ how does it <strong>round-trip</strong> between database and runtime? ④ why store the same data as <strong>two models</strong>? ⑤ how does this "agent-as-data" design beat the "hosted in the cloud" approach of <strong>OpenAI Assistants</strong>? String these together and you hold the key to Part 3 (the memory system).</p>
+<p>Lesson 1 gave the conclusion — "an agent is a record in the DB"; Lesson 3 gave the rhythm — "re-assemble context each step and send it to a stateless model." But both treated the "save" as a black box. This lesson <strong>explicitly builds on them</strong> and drills one question: <strong>what does that save actually look like, how is its identity generated, and how is it loaded back into something runnable</strong>.</p>
+
+<p>We'll answer five escalating questions: ① what is an agent <strong>physically</strong>? ② what makes its <strong>identity</strong> stable? ③ how does it <strong>round-trip</strong> between database and runtime? ④ why store the same data as <strong>two models</strong>? ⑤ how does this "agent-as-data" design beat the "hosted in the cloud" approach of <strong>OpenAI Assistants</strong>? String these together and you hold the key to Part 3 (the memory system).</p>
+
+<div class="cute"><div class="row"><span class="emoji">💾</span><span class="lab">AgentState (data)</span><span class="arrow">→</span><span class="emoji">⚙️</span><span class="lab">runtime (rebuilt, discarded)</span></div><div class="cap">an agent is data, not a process: the data persists, copies, and travels; the runtime is rebuilt per request and thrown away</div></div>
 
 <h2>What an agent physically is: one AgentState in the DB</h2>
 <p>Demystification step one: when you "create an agent," Letta does not spin up a resident service — it <strong>writes a row to the database</strong>. Read that row back and you get an <span class="mono">AgentState</span> (defined in <span class="mono">letta/schemas/agent.py</span>) — it holds <strong>all the state</strong> needed to rebuild this agent: core memory, the list of in-context message ids, the system prompt, tools and tool rules, and the model and embedding configs. In other words, the agent's "everything" is laid out across these few fields:</p>

@@ -103,6 +103,31 @@ strong { color: var(--ink); font-weight: 680; }
 .card.spark .tag { color: #c98a00; }
 @media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
 
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
 /* ---- code file callout ---- */
 .codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
   box-shadow: var(--shadow); }
@@ -309,7 +334,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </div>
   <div class="lang-zh">
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-第一部分我们把 Letta 的骨架看完了：一个 agent 是数据库里的一条 <span class="mono">AgentState</span>（第 1 课），住在 REST → services → ORM 三层架构里（第 2 课），处理一条消息就是让它进入一个<strong>最多 <span class="mono">max_steps</span> 轮的 step 循环</strong>（第 3 课）。但那张主轴图里有两个词，我们一直没拆开：<strong>"调 LLM"</strong>和<strong>"执行工具"</strong>。这一课就把这两下放到显微镜下，回答三个最基础、却最容易想当然的问题：模型到底怎么"调用"一个工具？谁真正去执行它？为什么 Letta 要逼着模型"先写一段内心独白、再动手"？把这三点搞透，你就拿到了读懂第四、五部分（agent 循环与工具系统）的钥匙。
+第一部分我们把 Letta 的骨架看完了：一个 agent 是数据库里的一条 <span class="mono">AgentState</span>（第 1 课），住在 REST → services → ORM 三层架构里（第 2 课），处理一条消息就是让它进入一个<strong>最多 <span class="mono">max_steps</span> 轮的 step 循环</strong>（第 3 课）。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">但那张主轴图里有两个词，我们一直没拆开：<strong>"调 LLM"</strong>和<strong>"执行工具"</strong>。这一课就把这两下放到显微镜下，回答三个最基础、却最容易想当然的问题：模型到底怎么"调用"一个工具？谁真正去执行它？为什么 Letta 要逼着模型"先写一段内心独白、再动手"？把这三点搞透，你就拿到了读懂第四、五部分（agent 循环与工具系统）的钥匙。
 </p>
 
 <div class="card analogy">
@@ -340,9 +367,15 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="node"><div class="nt">模型继续</div><div class="nd">再想 / 回话</div></div>
 </div>
 
-<p>逐格拆开：<strong>第一格</strong>，你发给模型的请求里，除了对话消息，还附上一份<strong>工具清单</strong>——每个工具是一段 JSON schema，写清"函数叫什么、是干嘛的、要哪些参数"。<strong>第二格</strong>，模型读完后，如果决定用某个工具，它<strong>不会执行</strong>，只会在回复里产出一个结构化的 <span class="mono">tool_call</span>：工具名 + 一串 JSON 参数。<strong>第三格</strong>，你的运行时（Letta）接住这个请求，<strong>在你的机器上真正调用那个函数</strong>。<strong>第四格</strong>，把函数返回值包成一条 <span class="mono">tool</span>（工具结果）消息。<strong>第五格</strong>，连同之前的对话一起再发给模型，它这才"看到"结果，决定继续调下一个工具还是直接回话。</p>
+<p>逐格拆开：<strong>第一格</strong>，你发给模型的请求里，除了对话消息，还附上一份<strong>工具清单</strong>——每个工具是一段 JSON schema，写清"函数叫什么、是干嘛的、要哪些参数"。<strong>第二格</strong>，模型读完后，如果决定用某个工具，它<strong>不会执行</strong>，只会在回复里产出一个结构化的 <span class="mono">tool_call</span>：工具名 + 一串 JSON 参数。<strong>第三格</strong>，你的运行时（Letta）接住这个请求，<strong>在你的机器上真正调用那个函数</strong>。</p>
 
-<p>这里有两个容易忽略、却很关键的事实。其一，<strong>模型是无状态的</strong>（这正是第 1 课的根本约束）：第五格"再发给模型"时，并不是接着上次的对话继续，而是把 <strong>system + 历史消息 + 刚才的 tool_call + 工具结果</strong>整段<strong>重新拼好、整包发过去</strong>——模型每一轮都是"读一遍完整剧本，再决定下一句台词"。其二，请求里的工具结果靠一个 <span class="mono">tool_call_id</span> 和发起它的那次调用<strong>配对</strong>，所以即便一轮里发了好几个工具调用，模型也能把"哪个结果对应哪次调用"对上号。把这两点和第 3 课连起来：<strong>step 循环每转一圈，都要把上下文从 <span class="mono">AgentState</span> 现拼一份</strong>——这也是为什么"稳定前缀 + 变化尾巴"对省钱那么重要。</p>
+<p><strong>第四格</strong>，把函数返回值包成一条 <span class="mono">tool</span>（工具结果）消息。<strong>第五格</strong>，连同之前的对话一起再发给模型，它这才"看到"结果，决定继续调下一个工具还是直接回话。</p>
+
+<p>这里有两个容易忽略、却很关键的事实。其一，<strong>模型是无状态的</strong>（这正是第 1 课的根本约束）：第五格"再发给模型"时，并不是接着上次的对话继续，而是把 <strong>system + 历史消息 + 刚才的 tool_call + 工具结果</strong>整段<strong>重新拼好、整包发过去</strong>——模型每一轮都是"读一遍完整剧本，再决定下一句台词"。</p>
+
+<p>其二，请求里的工具结果靠一个 <span class="mono">tool_call_id</span> 和发起它的那次调用<strong>配对</strong>，所以即便一轮里发了好几个工具调用，模型也能把"哪个结果对应哪次调用"对上号。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">把这两点和第 3 课连起来：<strong>step 循环每转一圈，都要把上下文从 <span class="mono">AgentState</span> 现拼一份</strong>——这也是为什么"稳定前缀 + 变化尾巴"对省钱那么重要。</span></div>
 
 <p>关键就在第一格那份"工具 schema"。它不是你手写的散文，而是<strong>从一个普通 Python 函数自动生成的 JSON</strong>。Letta 用 <span class="mono">generate_schema</span> 读函数的<strong>签名 + Google 风格 docstring</strong>，吐出下面这种模型能读懂的结构。以"往核心记忆追加内容"的工具 <span class="mono">core_memory_append</span> 为例，模型眼里看到的是：</p>
 
@@ -550,7 +583,9 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
 </div></div>
   <div class="lang-en">
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-Part 1 gave us Letta's skeleton: an agent is one <span class="mono">AgentState</span> row in a database (Lesson 1), it lives in a three-layer house — REST → services → ORM (Lesson 2), and handling a message means dropping it into a <strong>step loop of up to <span class="mono">max_steps</span> rounds</strong> (Lesson 3). But two words in that spine were never opened up: <strong>"call the LLM"</strong> and <strong>"execute a tool."</strong> This lesson puts both under a microscope and answers the three most basic — yet most easily mis-assumed — questions: how does a model actually "call" a tool? Who really executes it? And why does Letta force the model to "write a line of inner monologue before it acts"? Nail these three and you hold the key to Parts 4 and 5 (the agent loop &amp; the tool system).
+Part 1 gave us Letta's skeleton: an agent is one <span class="mono">AgentState</span> row in a database (Lesson 1), it lives in a three-layer house — REST → services → ORM (Lesson 2), and handling a message means dropping it into a <strong>step loop of up to <span class="mono">max_steps</span> rounds</strong> (Lesson 3).</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">But two words in that spine were never opened up: <strong>"call the LLM"</strong> and <strong>"execute a tool."</strong> This lesson puts both under a microscope and answers the three most basic — yet most easily mis-assumed — questions: how does a model actually "call" a tool? Who really executes it? And why does Letta force the model to "write a line of inner monologue before it acts"? Nail these three and you hold the key to Parts 4 and 5 (the agent loop &amp; the tool system).
 </p>
 
 <div class="card analogy">
@@ -581,9 +616,15 @@ Part 1 gave us Letta's skeleton: an agent is one <span class="mono">AgentState</
   <div class="node"><div class="nt">Model continues</div><div class="nd">think / reply</div></div>
 </div>
 
-<p>Cell by cell: <strong>cell 1</strong>, the request you send the model carries — besides the conversation messages — a <strong>tool list</strong>, where each tool is a JSON schema stating "what the function is called, what it does, which arguments it takes." <strong>Cell 2</strong>, having read them, if the model decides to use a tool it <strong>does not execute</strong> it; it only emits a structured <span class="mono">tool_call</span>: a tool name + a JSON blob of arguments. <strong>Cell 3</strong>, your runtime (Letta) catches that request and <strong>actually calls the function on your machine</strong>. <strong>Cell 4</strong>, the return value is wrapped into a <span class="mono">tool</span> (tool-result) message. <strong>Cell 5</strong>, it's sent back to the model together with the prior conversation, and only now does the model "see" the result and decide whether to call another tool or just reply.</p>
+<p>Cell by cell: <strong>cell 1</strong>, the request you send the model carries — besides the conversation messages — a <strong>tool list</strong>, where each tool is a JSON schema stating "what the function is called, what it does, which arguments it takes." <strong>Cell 2</strong>, having read them, if the model decides to use a tool it <strong>does not execute</strong> it; it only emits a structured <span class="mono">tool_call</span>: a tool name + a JSON blob of arguments. <strong>Cell 3</strong>, your runtime (Letta) catches that request and <strong>actually calls the function on your machine</strong>.</p>
 
-<p>Two easily-missed but crucial facts hide here. First, <strong>the model is stateless</strong> (exactly Lesson 1's core constraint): "sending it back" in cell 5 doesn't resume a session — it <strong>re-assembles and re-sends the entire packet</strong> of <strong>system + history + that tool_call + the tool result</strong>. The model re-reads the whole script every round before deciding its next line. Second, the tool result is <strong>paired</strong> with the call that produced it via a <span class="mono">tool_call_id</span>, so even if a round emits several tool calls, the model can match "which result belongs to which call." Tie both back to Lesson 3: <strong>every turn of the step loop re-assembles the context fresh from <span class="mono">AgentState</span></strong> — which is why "stable prefix + changing tail" matters so much for cost.</p>
+<p><strong>Cell 4</strong>, the return value is wrapped into a <span class="mono">tool</span> (tool-result) message. <strong>Cell 5</strong>, it's sent back to the model together with the prior conversation, and only now does the model "see" the result and decide whether to call another tool or just reply.</p>
+
+<p>Two easily-missed but crucial facts hide here. First, <strong>the model is stateless</strong> (exactly Lesson 1's core constraint): "sending it back" in cell 5 doesn't resume a session — it <strong>re-assembles and re-sends the entire packet</strong> of <strong>system + history + that tool_call + the tool result</strong>. The model re-reads the whole script every round before deciding its next line.</p>
+
+<p>Second, the tool result is <strong>paired</strong> with the call that produced it via a <span class="mono">tool_call_id</span>, so even if a round emits several tool calls, the model can match "which result belongs to which call." </p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Tie both back to Lesson 3: <strong>every turn of the step loop re-assembles the context fresh from <span class="mono">AgentState</span></strong> — which is why "stable prefix + changing tail" matters so much for cost.</span></div>
 
 <p>The crux is that "tool schema" in cell 1. It isn't prose you hand-write — it's <strong>JSON auto-generated from an ordinary Python function</strong>. Letta uses <span class="mono">generate_schema</span> to read a function's <strong>signature + Google-style docstring</strong> and emit a structure the model can read. Take <span class="mono">core_memory_append</span>, the tool that appends to core memory; here's what the model sees:</p>
 

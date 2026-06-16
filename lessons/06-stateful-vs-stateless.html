@@ -103,6 +103,31 @@ strong { color: var(--ink); font-weight: 680; }
 .card.spark .tag { color: #c98a00; }
 @media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
 
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
 /* ---- code file callout ---- */
 .codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
   box-shadow: var(--shadow); }
@@ -309,7 +334,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </div>
   <div class="lang-zh">
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-前面几课我们一直在用两个词——"有状态"和"无状态"——却从没把它们拆到机制层面。第 1 课说"LLM 是无状态的，所以 Letta 替它把状态存进数据库"；第 3 课说"每处理一条消息，都要从存档里把上下文现拼一份再发给模型"。这一课就把那句"存档"本身翻开看个究竟——它<strong>比第 1、3 课更深一层</strong>，专攻五件具体的事：Letta 到底怎么把一个 agent <strong>序列化</strong>成一条 <span class="mono">AgentState</span>；身份为什么放在一个<strong>带前缀的 id</strong>（<span class="mono">agent-…</span>、<span class="mono">block-…</span>）里、而不是某个活对象里；为什么同一份数据要分 <strong>schema（pydantic API 契约）</strong>和 <strong>orm（SQLAlchemy 数据库行）</strong>两套模型；存档怎么在"数据库行 ↔ pydantic ↔ 活的运行时"之间<strong>往返</strong>；以及把这套设计和 <strong>OpenAI Assistants</strong> 正面对比，差距到底落在哪。读完你会真正握住那句口号——<strong>agent 是数据，不是进程</strong>。
+前面几课我们一直在用两个词——"有状态"和"无状态"——却从没把它们拆到机制层面。第 1 课说"LLM 是无状态的，所以 Letta 替它把状态存进数据库"；第 3 课说"每处理一条消息，都要从存档里把上下文现拼一份再发给模型"。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就把那句"存档"本身翻开看个究竟——它<strong>比第 1、3 课更深一层</strong>，专攻五件具体的事：Letta 到底怎么把一个 agent <strong>序列化</strong>成一条 <span class="mono">AgentState</span>；身份为什么放在一个<strong>带前缀的 id</strong>（<span class="mono">agent-…</span>、<span class="mono">block-…</span>）里、而不是某个活对象里；为什么同一份数据要分 <strong>schema（pydantic API 契约）</strong>和 <strong>orm（SQLAlchemy 数据库行）</strong>两套模型；存档怎么在"数据库行 ↔ pydantic ↔ 活的运行时"之间<strong>往返</strong>；以及把这套设计和 <strong>OpenAI Assistants</strong> 正面对比，差距到底落在哪。读完你会真正握住那句口号——<strong>agent 是数据，不是进程</strong>。
 </p>
 
 <div class="card analogy">
@@ -323,7 +350,11 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 </div>
 
 <h2>比第 1、3 课更深：这次翻开"存档"本身</h2>
-<p>第 1 课给了结论——"agent 是库里一条记录"；第 3 课给了节奏——"每步现拼上下文再发给无状态的模型"。但两课都把"存档"当成黑盒一笔带过。这一课<strong>明确在它们的基础上加深</strong>，只钻一个问题：<strong>这份存档具体长什么样、怎么生成身份、怎么读回来变成能跑的东西</strong>。我们会依次回答五个递进的问题：①一个 agent <strong>物理上</strong>是什么？②它的<strong>身份</strong>凭什么稳定？③它怎么在数据库与运行时之间<strong>往返</strong>？④同一份数据为什么要存<strong>两套模型</strong>？⑤这套"agent 即数据"的设计，比 <strong>OpenAI Assistants</strong> 那种"托管在云端"的做法强在哪？把这五问串起来，你就拿到了读懂第三部分（记忆系统）的钥匙。</p>
+<p>第 1 课给了结论——"agent 是库里一条记录"；第 3 课给了节奏——"每步现拼上下文再发给无状态的模型"。但两课都把"存档"当成黑盒一笔带过。这一课<strong>明确在它们的基础上加深</strong>，只钻一个问题：<strong>这份存档具体长什么样、怎么生成身份、怎么读回来变成能跑的东西</strong>。</p>
+
+<p>我们会依次回答五个递进的问题：①一个 agent <strong>物理上</strong>是什么？②它的<strong>身份</strong>凭什么稳定？③它怎么在数据库与运行时之间<strong>往返</strong>？④同一份数据为什么要存<strong>两套模型</strong>？⑤这套"agent 即数据"的设计，比 <strong>OpenAI Assistants</strong> 那种"托管在云端"的做法强在哪？把这五问串起来，你就拿到了读懂第三部分（记忆系统）的钥匙。</p>
+
+<div class="cute"><div class="row"><span class="emoji">💾</span><span class="lab">AgentState（数据）</span><span class="arrow">→</span><span class="emoji">⚙️</span><span class="lab">运行时（现搭即弃）</span></div><div class="cap">agent 是数据，不是进程：数据持久、可复制、可迁移；运行时每次现搭、用完即弃</div></div>
 
 <h2>一个 agent 物理上是什么：库里一条 AgentState</h2>
 <p>去神秘化第一步：当你"创建一个 agent"，Letta 并不会启动一个常驻服务，而是<strong>往数据库里写一行</strong>。这一行被读出来时，就是一个 <span class="mono">AgentState</span>（定义在 <span class="mono">letta/schemas/agent.py</span>）——它装着重建这个 agent 所需的<strong>全部状态</strong>：核心记忆、在窗消息的 id 列表、system 提示、工具与工具规则、以及模型与嵌入配置。换句话说，<strong>agent 的"全部"就摊在这几个字段里</strong>：</p>
@@ -559,7 +590,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 </div></div>
   <div class="lang-en">
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-We've leaned on two words for several lessons — "stateful" and "stateless" — without ever cracking them open at the mechanism level. Lesson 1 said "the LLM is stateless, so Letta saves its state in the database"; Lesson 3 said "to handle each message, re-assemble the context from the save and send it to the model." This lesson opens that "save" itself and looks inside — going <strong>one layer deeper than Lessons 1 and 3</strong>, focused on five concrete things: how Letta <strong>serializes</strong> an agent into one <span class="mono">AgentState</span>; why identity lives in a <strong>prefixed id</strong> (<span class="mono">agent-…</span>, <span class="mono">block-…</span>) rather than in some live object; why one piece of data is modeled <strong>twice</strong> — as a <strong>schema (pydantic API contract)</strong> and an <strong>orm (SQLAlchemy DB row)</strong>; how the save <strong>round-trips</strong> between "DB row ↔ pydantic ↔ live runtime"; and how this design compares head-to-head with <strong>OpenAI Assistants</strong>. By the end you'll truly grasp the slogan — <strong>an agent is data, not a process</strong>.
+We've leaned on two words for several lessons — "stateful" and "stateless" — without ever cracking them open at the mechanism level. Lesson 1 said "the LLM is stateless, so Letta saves its state in the database"; Lesson 3 said "to handle each message, re-assemble the context from the save and send it to the model."</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson opens that "save" itself and looks inside — going <strong>one layer deeper than Lessons 1 and 3</strong>, focused on five concrete things: how Letta <strong>serializes</strong> an agent into one <span class="mono">AgentState</span>; why identity lives in a <strong>prefixed id</strong> (<span class="mono">agent-…</span>, <span class="mono">block-…</span>) rather than in some live object; why one piece of data is modeled <strong>twice</strong> — as a <strong>schema (pydantic API contract)</strong> and an <strong>orm (SQLAlchemy DB row)</strong>; how the save <strong>round-trips</strong> between "DB row ↔ pydantic ↔ live runtime"; and how this design compares head-to-head with <strong>OpenAI Assistants</strong>. By the end you'll truly grasp the slogan — <strong>an agent is data, not a process</strong>.
 </p>
 
 <div class="card analogy">
@@ -573,7 +606,11 @@ We've leaned on two words for several lessons — "stateful" and "stateless" —
 </div>
 
 <h2>Deeper than Lessons 1 and 3: opening the "save" itself</h2>
-<p>Lesson 1 gave the conclusion — "an agent is a record in the DB"; Lesson 3 gave the rhythm — "re-assemble context each step and send it to a stateless model." But both treated the "save" as a black box. This lesson <strong>explicitly builds on them</strong> and drills one question: <strong>what does that save actually look like, how is its identity generated, and how is it loaded back into something runnable</strong>. We'll answer five escalating questions: ① what is an agent <strong>physically</strong>? ② what makes its <strong>identity</strong> stable? ③ how does it <strong>round-trip</strong> between database and runtime? ④ why store the same data as <strong>two models</strong>? ⑤ how does this "agent-as-data" design beat the "hosted in the cloud" approach of <strong>OpenAI Assistants</strong>? String these together and you hold the key to Part 3 (the memory system).</p>
+<p>Lesson 1 gave the conclusion — "an agent is a record in the DB"; Lesson 3 gave the rhythm — "re-assemble context each step and send it to a stateless model." But both treated the "save" as a black box. This lesson <strong>explicitly builds on them</strong> and drills one question: <strong>what does that save actually look like, how is its identity generated, and how is it loaded back into something runnable</strong>.</p>
+
+<p>We'll answer five escalating questions: ① what is an agent <strong>physically</strong>? ② what makes its <strong>identity</strong> stable? ③ how does it <strong>round-trip</strong> between database and runtime? ④ why store the same data as <strong>two models</strong>? ⑤ how does this "agent-as-data" design beat the "hosted in the cloud" approach of <strong>OpenAI Assistants</strong>? String these together and you hold the key to Part 3 (the memory system).</p>
+
+<div class="cute"><div class="row"><span class="emoji">💾</span><span class="lab">AgentState (data)</span><span class="arrow">→</span><span class="emoji">⚙️</span><span class="lab">runtime (rebuilt, discarded)</span></div><div class="cap">an agent is data, not a process: the data persists, copies, and travels; the runtime is rebuilt per request and thrown away</div></div>
 
 <h2>What an agent physically is: one AgentState in the DB</h2>
 <p>Demystification step one: when you "create an agent," Letta does not spin up a resident service — it <strong>writes a row to the database</strong>. Read that row back and you get an <span class="mono">AgentState</span> (defined in <span class="mono">letta/schemas/agent.py</span>) — it holds <strong>all the state</strong> needed to rebuild this agent: core memory, the list of in-context message ids, the system prompt, tools and tool rules, and the model and embedding configs. In other words, the agent's "everything" is laid out across these few fields:</p>
