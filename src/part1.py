@@ -791,3 +791,416 @@ Remember last lesson's punchline — <strong>an agent is just one <span class="m
 </div>
 """,
 }
+
+LESSON_03 = {
+    "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+前两课我们建立了两张地图：<strong>一个 agent 就是数据库里的一条 <span class="mono">AgentState</span></strong>（第 1 课），它住在 <strong>REST → services → ORM/DB 三层</strong>的房子里（第 2 课）。这一课把这两张静态图<strong>动起来</strong>：跟着<strong>一条用户消息</strong>从进门到回信走完全程，看清它依次经过哪些函数、在哪一步组装上下文、在哪一步调模型、又在哪一步落库。这是全书的"<strong>全景数据流</strong>"课——后面第三到第七部分会分别把这条主轴上的某一站放大成特写，而你需要先有这条主轴。
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  把处理一条消息想象成一张<strong>客服工单</strong>的流转。客户来信（你的消息）先到<strong>前台收单</strong>（路由 <span class="mono">send_message</span>）：核对"你是哪位、找哪个客服"（解析 <span class="mono">actor</span>），再按编号把工单派给对应客服（按 <span class="mono">agent_id</span> 载入 <span class="mono">AgentState</span>）。客服开始<strong>处理</strong>：先翻一翻这位客户的档案与最近往来（组装上下文），再动脑子回复；要是发现"得查个资料、改个备注"，就<strong>起身去仓库跑一趟</strong>（调用工具、改写记忆），回来接着想。一封信可能要<strong>来回跑好几趟仓库</strong>才处理得完。最后把回信寄出（返回响应），并把这次往来<strong>归档</strong>（持久化消息）。前台只管收发、客服只管思考、仓库只管存取——分工清楚，工单才不会乱。
+</div>
+
+<h2>端到端：一条消息要走的七步</h2>
+<p>先给你一张<strong>全景主轴</strong>。从 HTTP 请求落地，到一个 <span class="mono">LettaResponse</span> 返回，中间大致就是这七步。把它当作本课的"地铁线路图"——后面每一节都是在放大其中的某一站：</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>收到请求</h4><p><span class="mono">POST /v1/agents/{id}/messages</span> 命中路由 <span class="mono">send_message</span>，拿到你这次发来的消息。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>解析 actor</h4><p><span class="mono">get_actor_or_default_async</span> 按请求头里的身份定位"<strong>谁、属于哪个组织</strong>"，这决定了后面只能看到自己组织的数据。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>载入存档</h4><p><span class="mono">get_agent_by_id_async</span> 按 <span class="mono">agent_id</span> 取出 <span class="mono">AgentState</span>：记忆块、在窗消息、工具、模型配置一并到位。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>进入循环</h4><p><span class="mono">AgentLoop.load(agent_state, actor)</span> 据此造出运行时 agent（默认是 <span class="mono">LettaAgentV3</span>），再调它的 <span class="mono">step</span>。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>组装 + 调模型</h4><p>把核心记忆<strong>编译进 system</strong>，连同在窗消息、工具 schema 一起发给 LLM；这一步发生在每一轮 <span class="mono">_step</span> 里。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>执行工具 / 改记忆</h4><p>解析模型返回的 <span class="mono">tool_call</span> 并执行；工具可能改写记忆块、查档案，结果作为新消息喂回下一轮。</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>持久化 + 判定</h4><p>新消息落库、更新 <span class="mono">message_ids</span>；<span class="mono">_decide_continuation</span> 判断"再来一轮"还是"收工"，收工就返回 <span class="mono">LettaResponse</span>。</p></div></div>
+</div>
+
+<p>这七步里，<strong>第 1–4 步只发生一次</strong>（收单、定身份、取存档、进循环），而 <strong>第 5–7 步是一个会重复的循环体</strong>——这正是本课最容易被误解的地方，我们后面用一整节来讲。先记住主轴的形状：<strong>一次进门，多次内循环，一次出门</strong>。</p>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  整条链路可以浓缩成一句话：<strong>路由把活交给循环，循环在 <span class="mono">max_steps</span> 内反复"调模型 + 执行工具 + 落库"，直到模型不再调工具为止。</strong>路由层（第 2 课的"薄路由"）几乎不含逻辑，它的全部职责就是把请求翻译成"谁、对哪个 agent、说了什么"，然后交给 <span class="mono">AgentLoop</span>。真正的"思考-行动"发生在 <span class="mono">LettaAgentV3.step</span> 里，而每一次"思考-行动"的最小单元是 <span class="mono">_step</span>。读懂"循环 + 单步"这一对关系，你就读懂了 Letta 运行时的心脏。
+</div>
+
+<h2>请求怎么穿过这几层</h2>
+<p>把第 2 课的三层图叠到这条主轴上，看请求如何自上而下穿层、又把结果带回来。注意：真正"重"的活在 <span class="mono">step</span> / <span class="mono">_step</span>，而不在路由：</p>
+
+<div class="flow">
+  <div class="node hl"><div class="nt">路由</div><div class="nd">send_message</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">工厂</div><div class="nd">AgentLoop.load</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">循环</div><div class="nd">step()</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">单步</div><div class="nd">_step()</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">持久化</div><div class="nd">message_manager</div></div>
+</div>
+
+<p>第一站 <span class="mono">send_message</span> 短得惊人——它只解析 actor、按 id 取出 agent、把活交给循环。把它简化出来看：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, server, headers):
+    actor = <span class="kw">await</span> server.user_manager.<span class="fn">get_actor_or_default_async</span>(headers.actor_id)
+    agent = <span class="kw">await</span> server.agent_manager.<span class="fn">get_agent_by_id_async</span>(agent_id, actor)
+    loop  = AgentLoop.<span class="fn">load</span>(agent_state=agent, actor=actor)   <span class="cm"># 据 AgentState 造运行时 agent</span>
+    <span class="kw">return await</span> loop.<span class="fn">step</span>(request.messages, max_steps=request.max_steps)
+</pre></div>
+
+<p>四行就是路由的全部：<strong>定身份 → 取存档 → 造运行时 → 跑循环</strong>。这里藏着一个关键细节——<span class="mono">AgentLoop.load</span> 是个<strong>工厂</strong>：它看 <span class="mono">AgentState</span> 的类型，决定造出哪一种运行时（普通对话是 <span class="mono">LettaAgentV3</span>，开了 sleeptime 的是多 agent 变体）。也就是说，<strong>"用哪套循环"是数据（<span class="mono">AgentState</span>）决定的，不是路由写死的</strong>。</p>
+
+<div class="card detail">
+  <div class="tag">🔬 源码对应</div>
+  七步各自落在哪：① 路由 <span class="mono">letta/server/rest_api/routers/v1/agents.py::send_message</span>；② <span class="mono">services/user_manager.py::get_actor_or_default_async</span>；③ <span class="mono">services/agent_manager.py::get_agent_by_id_async</span>；④ <span class="mono">agents/agent_loop.py::AgentLoop.load</span> → <span class="mono">agents/letta_agent_v3.py::LettaAgentV3.step</span>；⑤⑥ <span class="mono">LettaAgentV3._step</span>（内部经 <span class="mono">PromptGenerator</span> 把 <span class="mono">Memory.compile()</span> 拼进 system，再调 LLM、执行工具）；⑦ 持久化由 <span class="mono">services/message_manager.py</span> 落库，<span class="mono">_decide_continuation</span> 判定收尾，最终返回 <span class="mono">schemas/letta_response.py::LettaResponse</span>。
+</div>
+
+<h2>进了 step：是一个循环，不是一次调用</h2>
+<p>很多人对 agent 的想象是"发一条、答一条"——一次消息对应一次模型调用。Letta 不是这样。<span class="mono">step</span> 内部是一个<strong>最多 <span class="mono">max_steps</span> 轮的循环</strong>，每一轮叫一次 <span class="mono">_step</span>：</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">_step</div><div class="nd">组装上下文</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">调 LLM</div><div class="nd">一次模型调用</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">执行工具</div><div class="nd">改记忆 / 查档</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">持久化</div><div class="nd">写消息</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">判定</div><div class="nd">_decide_continuation</div></div>
+</div>
+
+<p>一次 <span class="mono">_step</span> = <strong>一次 LLM 调用 + 工具执行 + 持久化</strong>。跑完一轮，<span class="mono">_decide_continuation</span> 决定要不要再来一轮。整段循环简化出来是这样：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">step / _step（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">step</span>(self, input_messages, max_steps=<span class="nb">50</span>):
+    msgs = in_context_messages + input_messages
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(max_steps):              <span class="cm"># 一条消息可能要走好几轮</span>
+        <span class="kw">await</span> self.<span class="fn">_step</span>(msgs)              <span class="cm"># 一次 LLM 调用 + 工具执行 + 持久化</span>
+        <span class="cm"># _step 内部用 _decide_continuation 设置 self.should_continue：</span>
+        <span class="cm">#   这一步调了工具 -&gt; True（继续）；只产出普通消息 -&gt; False（停）</span>
+        <span class="kw">if not</span> self.should_continue:
+            <span class="kw">break</span>
+    <span class="kw">return</span> <span class="fn">LettaResponse</span>(messages=..., stop_reason=..., usage=...)
+</pre></div>
+
+<p>看 <span class="mono">for i in range(max_steps)</span> 这一行——它就是"<strong>一条消息≠一次模型调用</strong>"的根源。只要模型在这一轮里<strong>调了工具</strong>（比如 <span class="mono">core_memory_append</span> 改记忆、或 <span class="mono">web_search</span> 查资料），循环就会把工具结果喂回去、<strong>再调一次模型</strong>；直到某一轮模型<strong>只回了一句普通话、没有再调工具</strong>，循环才停。<span class="mono">max_steps</span>（默认 50）是一道安全闸，防止无限打转。</p>
+
+<p>循环停下来时，会带上一个 <span class="mono">stop_reason</span> 说明"为什么停"：模型正常说完话、没再调工具，是 <span class="mono">end_turn</span>；撞到步数上限，是 <span class="mono">max_steps</span>；被工具规则判定调用了某个"终止工具"，是 <span class="mono">tool_rule</span>。另外，每一轮 <span class="mono">_step</span> 在调模型前其实还悄悄做了两件小事：先<strong>刷新一遍消息</strong>（把上一轮的内部思考擦掉，既省 token，又尽量保住 prefix cache），再算出<strong>这一轮有哪些可用工具、要不要强制调用工具</strong>。这些细节你现在不必记牢，但知道"单步里不只有一次裸调用"，会让后面的课好懂很多。</p>
+
+<div class="card warn">
+  <div class="tag">⚠️ 容易误解</div>
+  <strong>一条消息 ≠ 一次模型调用。</strong>一次 <span class="mono">send_message</span> 背后，可能藏着 <strong>2 次、5 次、甚至几十次</strong> LLM 调用——每一次工具调用都会触发"再想一轮"。所以：响应可能比你以为的慢（多轮往返），也更贵（多次计费）；调试时该看的是"<strong>这一轮里模型调了什么工具</strong>"，而不是"这条消息为什么只回了一次"。循环的上限是 <span class="mono">max_steps</span>，到顶就会以 <span class="mono">max_steps</span> 这个 stop reason 收尾。
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  这一课的"啊哈"有两层，都藏在那个简单到反直觉的循环里：<br><br>
+  ① <strong>继续规则简单到家了。</strong>"要不要再想一轮"这种听起来很玄的判断，<span class="mono">_decide_continuation</span> 的核心其实就一句话——<strong>"这一步调了工具就继续，只产出普通消息就停"</strong>。源码注释写得明明白白：<em>Did not call a tool? Loop ends. Called a tool? Loop continues.</em> 相比原始 MemGPT 要靠模型自己输出一个 <span class="mono">heartbeat</span> 标志来"请求续命"，v3 直接用"<strong>这一步有没有工具调用</strong>"这个客观信号来驱动循环——少了一个模型要学会、且可能学错的约定，鲁棒性大增。<br>
+  ② <strong>运行时是无状态的。</strong>每次请求都从 <span class="mono">AgentState</span> <strong>重新造一个</strong>运行时 agent（<span class="mono">AgentLoop.load</span>），跑完即弃；两步之间，agent 的一切都在库里，内存里不留东西。于是"一条消息触发多轮"也好、"换台机器接着跑"也好，都成立——因为<strong>状态在数据，不在进程</strong>。<br><br>
+  一句话：<strong>用"是否调用工具"这个最朴素的信号，驱动一个无状态的循环</strong>——既好懂、又好扩展、还难写错。
+</div>
+
+<p>把这两点合起来看一个场景：你发一条消息，agent 在第 1 轮调了工具、第 2 轮才回话——这两轮<strong>完全可以落在两台不同的机器上</strong>。第 1 轮结束时，新消息与记忆改动都已写回数据库；第 2 轮无非是另一台机器再 <span class="mono">load</span> 一次 <span class="mono">AgentState</span>、接着跑 <span class="mono">_step</span>。正因为"继续与否"只看数据库里的客观事实（这一步有没有工具调用），而"状态"又全在数据库里，整套循环才能既<strong>横跨多轮</strong>、又<strong>横跨多机</strong>。这是第 2 课"无状态运行时可水平扩展"在数据流层面的兑现。</p>
+
+<h2>上下文是怎么拼出来的</h2>
+<p>第 5 步"组装上下文"值得单独拆开。每一轮 <span class="mono">_step</span> 调模型前，都要现拼出一份完整的输入。它由<strong>三种来源</strong>合成：</p>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">system 消息</span><span class="name">Memory.compile() + memory_metadata</span></div>
+    <div class="ld">把<strong>核心记忆块</strong>（persona / human 等）编译成文本，拼进第 0 条 system 消息；再附上一段元信息（recall 里有多少条、archival 多大）。</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">在窗消息</span><span class="name">in-context messages</span></div>
+    <div class="ld">当前留在上下文窗口里的最近对话（来自 recall 记忆）：上一轮的工具结果、你这次的新消息，都在这里。</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">工具 schema</span><span class="name">tools / tool_rules</span></div>
+    <div class="ld">这个 agent 能调的工具签名（名字、参数），让模型知道"我能干什么"，外加调用顺序的约束。</div></div>
+</div>
+
+<p>这里要分清两个词：<strong>recall（召回记忆）</strong>是这个 agent 全部历史消息的存档，可能成千上万条；<strong>在窗消息</strong>只是其中"<strong>当前还留在上下文窗口里</strong>"的最近一小段。模型每一轮看到的，永远只是后者——更早的对话并没有消失，只是被换出了窗口，需要时再靠工具去 recall 里捞回来。这正是"上下文有限"这个根本约束在数据流里的样子：<strong>窗口是会满的，所以必须有进、有出</strong>。</p>
+
+<p>这三块<strong>拼成一次 LLM 请求</strong>，大致是下面这个形状——第 0 条永远是编译好的 system，后面跟着在窗消息，工具 schema 作为单独的字段一并发出：</p>
+
+<div class="cellgroup">
+  <div class="cg-cap">一次 LLM 请求的<b>消息序列</b>（外加工具 schema）：</div>
+  <div class="cells">
+    <span class="cell hl">system<br>(记忆编译)</span>
+    <span class="cell">user</span>
+    <span class="cell">assistant<br>(tool_call)</span>
+    <span class="cell">tool<br>(结果)</span>
+    <span class="cell">user<br>(本次)</span>
+    <span class="cell q">+ tools schema</span>
+  </div>
+</div>
+
+<p>关键在<strong>第 0 条 system</strong>。它不是写死的——而是每次由 <span class="mono">Memory.compile()</span> 把当前记忆块<strong>重新渲染</strong>出来，经 <span class="mono">PromptGenerator</span> 拼进系统提示。这正是第 1 课"自我编辑记忆 = 改写自己的系统提示"在数据流上的落点：agent 用工具改了记忆块，下一轮 <span class="mono">_step</span> 一组装，新的记忆就自动出现在 system 里了。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/prompts/prompt_generator.py</span><span class="ln">compile_system_message_async（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">compile_system_message_async</span>(system_prompt, in_context_memory, ...):
+    <span class="cm"># 把核心记忆块渲染成文本（persona / human 等）</span>
+    memory_text = in_context_memory.<span class="fn">compile</span>(tool_usage_rules=..., sources=...)
+    <span class="cm"># 再把这段记忆 + 元信息塞进 system 提示模板</span>
+    <span class="kw">return</span> PromptGenerator.<span class="fn">get_system_message_from_compiled_memory</span>(
+        system_prompt=system_prompt, memory_with_sources=memory_text, ...)
+</pre></div>
+
+<p>这里还有个性能上的讲究：第 0 条 system 一旦编译好，<strong>只要核心记忆没变就尽量不去动它</strong>。因为大多数 provider 会对"<strong>提示前缀</strong>"做缓存（prefix cache）——system 放在最前面且保持稳定，后续每一轮就能少算一大截，又快又省。只有当记忆真被改写、或发生了压缩，才用 <span class="mono">rebuild_system_prompt_async</span> 把第 0 条重编译一次。<strong>"稳定的前缀 + 变化的尾巴"</strong>，是这套上下文设计里很关键的一条性能直觉。</p>
+
+<h3>上下文快满了怎么办：压缩</h3>
+<p>对话越来越长，在窗消息迟早会把上下文窗口顶满。Letta 的应对是<strong>压缩（compaction）</strong>：当 token 数逼近阈值，就把一段较旧的对话<strong>总结</strong>成一条 summary 消息，替换掉原始的一长串，腾出空间继续。整个过程沿着对话时间线发生：</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">早期</span><span class="tslot span">很久以前的大段对话</span></div>
+  <div class="lane"><span class="lane-label">逼近阈值</span><span class="tslot">msg</span><span class="tslot">msg</span><span class="tslot">msg</span><span class="tslot now">tokens 接近上限</span></div>
+  <div class="lane"><span class="lane-label">压缩后</span><span class="tslot now">summary（总结）</span><span class="tslot">最近 msg</span><span class="tslot">本次新消息</span></div>
+</div>
+
+<p>压缩之后，因为消息序列变了，系统提示也要重新编译一遍（<span class="mono">rebuild_system_prompt_async</span>），保证下一轮上下文一致。这块的细节（什么时候触发、怎么总结、summary 长什么样）留到<strong>第 12 课</strong>专门讲，这里你只需要知道：<strong>主轴的第 5 步里，藏着一个"窗口快满就自动腾地方"的机制</strong>。</p>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>为什么一条消息会触发好几次模型调用？</summary><div class="acc-body">
+<p><strong>示例：</strong>你说"帮我把刚才提到的生日记下来，再查下今天天气"。agent 可能：第 1 轮调 <span class="mono">core_memory_append</span> 记生日 → 第 2 轮调 <span class="mono">web_search</span> 查天气 → 第 3 轮才回你一句汇总。三轮，三次 LLM 调用。</p>
+<p><strong>为什么这样设计：</strong>因为"调工具"和"回话"必须分开。模型发起工具调用的那一刻，它还<strong>没看到工具结果</strong>；只有把结果喂回去、<strong>再调一次</strong>，它才能基于结果继续。于是"想一步、做一步、再想一步"天然就是个循环。<span class="mono">_decide_continuation</span> 用"这一步有没有工具调用"来决定要不要继续——有就继续、没有就停。</p>
+<p><strong>源码在哪：</strong>循环在 <span class="mono">letta/agents/letta_agent_v3.py::LettaAgentV3.step</span>，单步在 <span class="mono">_step</span>，判定在 <span class="mono">_decide_continuation</span>。</p>
+<p><strong>还有什么替代：</strong>原始 MemGPT 靠模型输出一个 <span class="mono">heartbeat</span> 布尔来"请求继续"——多一个模型要学会的约定，也更容易学错。v3 改用"有没有工具调用"这个客观信号，简单且稳。</p>
+</div></details>
+
+<details class="accordion"><summary>上下文窗口满了会怎样？</summary><div class="acc-body">
+<p><strong>示例：</strong>一个聊了几百轮的 agent，在窗消息早超过模型能吃下的 token 了，却还能继续对话。</p>
+<p><strong>为什么这样设计：</strong>因为有压缩。token 逼近阈值时，把旧对话总结成一条 summary 顶上去，既保住"大意"，又把"逐字长文"换出窗口——正是第 1 课那个"上下文=RAM、外部记忆=磁盘、自己换页"的类比在循环里的体现。压缩后系统提示会用 <span class="mono">rebuild_system_prompt_async</span> 重编译一次。</p>
+<p><strong>源码在哪：</strong>触发阈值与压缩逻辑在 <span class="mono">letta/agents/letta_agent_v3.py</span> 的单步流程里（配合 summarizer）；系统提示重建在 <span class="mono">services/agent_manager.py::rebuild_system_prompt_async</span>。完整机制见<strong>第 12 课</strong>。</p>
+<p><strong>还有什么替代：</strong>简单粗暴地"丢掉最早的消息"——省事，但会真的失忆；或无限堆上下文——又慢又贵还可能超限。总结式压缩是质量与成本的折中。</p>
+</div></details>
+
+<details class="accordion"><summary>流式（stream）和阻塞（step）有什么区别？</summary><div class="acc-body">
+<p><strong>示例：</strong>同一条消息，网页里你能看到字一个个蹦出来（流式）；而脚本里 <span class="mono">client.agents.messages.create(...)</span> 往往是等全部算完、一次性拿到结果（阻塞）。</p>
+<p><strong>为什么这样设计：</strong>两种入口服务两种需求。阻塞模式（<span class="mono">step</span>）逻辑最简单、最好测，一次返回完整的 <span class="mono">LettaResponse</span>；流式模式（<span class="mono">stream</span> + SSE）边算边推，体验更跟手。但它们<strong>共用同一套循环</strong>——内部都走 <span class="mono">_step</span>，只是"怎么把中间结果交出去"不同。</p>
+<p><strong>源码在哪：</strong>阻塞 <span class="mono">LettaAgentV3.step</span>；流式 <span class="mono">LettaAgentV3.stream</span>；路由 <span class="mono">send_message</span> 按请求的 <span class="mono">streaming</span> 字段二选一（流式走 SSE）。</p>
+<p><strong>还有什么替代：</strong>只做阻塞——实现简单但长回答体验差；只做流式——所有调用方都得处理事件流，脚本场景反而麻烦。两者都留、共用内核，是常见做法。</p>
+</div></details>
+
+<h2>这一课在整张大图的哪里</h2>
+<p>现在你手里有了全书的<strong>第三张、也是最关键的一张图</strong>：一条消息的端到端数据流。把三张图叠起来——一个 agent 是一条 <span class="mono">AgentState</span>（第 1 课），它住在三层架构里（第 2 课），而处理一条消息，就是让这条 <span class="mono">AgentState</span> 被<strong>取出 → 组装上下文 → 循环"调模型 + 执行工具" → 写回</strong>（本课）。第一部分"宏观全景"到此收尾：你已经能在脑子里完整地"放"一遍一条消息的旅程了。</p>
+
+<p>接下来的每个部分，都是<strong>把这条主轴上的某一站按下慢放</strong>：讲<strong>记忆</strong>的部分会放大第 5 步——核心记忆怎么编译进 system、recall / archival 怎么分层、压缩怎么发生；讲<strong>工具</strong>的部分会放大第 6 步——函数怎么变成 schema、<span class="mono">tool_call</span> 怎么解析与执行、<span class="mono">tool_rules</span> 怎么约束顺序；讲 <strong>provider</strong> 的部分会放大"调 LLM"那一下——各家模型的差异怎么被 <span class="mono">llm_api</span> 抹平；讲<strong>持久化</strong>的部分会放大第 7 步——消息与状态怎么落库。每读到一个新细节，都回到这张主轴上问一句："<strong>它发生在七步里的哪一步？</strong>"——只要答得上来，再深的细节都不会让你迷路。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li>一条消息的主轴：<span class="mono">POST</span> → <span class="mono">send_message</span> → 解析 <span class="mono">actor</span> → 载入 <span class="mono">AgentState</span> → <span class="mono">AgentLoop.load</span> → <span class="mono">step</span> 循环 → 工具/记忆 → 持久化 → <span class="mono">LettaResponse</span>。</li>
+    <li>路由很薄：只做"定身份 → 取存档 → 造运行时 → 跑循环"，业务都在 <span class="mono">step</span> / <span class="mono">_step</span>。</li>
+    <li><strong>一条消息 ≠ 一次模型调用</strong>：<span class="mono">step</span> 是个最多 <span class="mono">max_steps</span>（默认 50）轮的循环，一次 <span class="mono">_step</span> = 一次 LLM 调用 + 工具执行 + 持久化。</li>
+    <li>循环的继续规则极简：<span class="mono">_decide_continuation</span> —— <strong>调了工具就继续，只产出普通消息就停</strong>（比 MemGPT 的 heartbeat 大幅简化）。</li>
+    <li>上下文每轮现拼：<span class="mono">Memory.compile()</span> 把核心记忆编译进第 0 条 system（经 <span class="mono">PromptGenerator</span>），再加在窗消息、加工具 schema。</li>
+    <li>运行时<strong>无状态</strong>：每次从 <span class="mono">AgentState</span> 重建、用完即弃；两步之间的状态都在库里。</li>
+  </ul>
+</div>
+""",
+    "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+The last two lessons drew two maps: <strong>an agent is just one <span class="mono">AgentState</span> row in a database</strong> (Lesson 1), and it lives in a house with <strong>three layers — REST → services → ORM/DB</strong> (Lesson 2). This lesson sets those static maps <strong>in motion</strong>: we follow <strong>one user message</strong> from the front door to the reply, seeing exactly which functions it passes through, where the context is assembled, where the model is called, and where things are written to the database. This is the guide's "<strong>panoramic data-flow</strong>" lesson — Parts 3 through 7 each zoom one stop on this spine into close-up, so you need the spine first.
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  Picture handling one message as a <strong>support ticket</strong> moving through an office. The customer's letter (your message) first hits the <strong>front desk</strong> (the route <span class="mono">send_message</span>): it verifies "who are you, which agent are you talking to" (resolve the <span class="mono">actor</span>), then routes the ticket to the right agent by number (load <span class="mono">AgentState</span> by <span class="mono">agent_id</span>). The agent starts <strong>working</strong>: first it flips through this customer's file and recent exchanges (assemble context), then thinks up a reply; if it realizes "I need to look something up, or update a note," it <strong>walks to the warehouse</strong> (call a tool, edit memory) and comes back to keep thinking. One letter may require <strong>several trips to the warehouse</strong> before it's done. Finally the reply is mailed out (return a response) and the exchange is <strong>filed away</strong> (persist messages). Front desk only sends/receives, the agent only thinks, the warehouse only stores — clear roles keep the ticket from descending into chaos.
+</div>
+
+<h2>End to end: the seven stops a message makes</h2>
+<p>Here's the <strong>panoramic spine</strong> first. From an HTTP request landing to a <span class="mono">LettaResponse</span> coming back, it's roughly these seven stops. Treat it as the lesson's "subway map" — every later section magnifies one of these stops:</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Receive the request</h4><p><span class="mono">POST /v1/agents/{id}/messages</span> hits the route <span class="mono">send_message</span>, which takes the message you just sent.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Resolve the actor</h4><p><span class="mono">get_actor_or_default_async</span> locates "<strong>who, and which organization</strong>" from the request headers — this decides that later it can only see its own org's data.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Load the save file</h4><p><span class="mono">get_agent_by_id_async</span> fetches the <span class="mono">AgentState</span> by <span class="mono">agent_id</span>: memory blocks, in-context messages, tools, and model config all arrive together.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Enter the loop</h4><p><span class="mono">AgentLoop.load(agent_state, actor)</span> builds a runtime agent from it (by default <span class="mono">LettaAgentV3</span>), then calls its <span class="mono">step</span>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Assemble + call the model</h4><p>Compile core memory <strong>into the system message</strong>, and send it together with in-context messages and tool schemas to the LLM — this happens inside every <span class="mono">_step</span>.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>Run tools / edit memory</h4><p>Parse the model's <span class="mono">tool_call</span> and execute it; a tool may rewrite a memory block or look something up, and its result is fed back as a new message for the next round.</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>Persist + decide</h4><p>New messages are written and <span class="mono">message_ids</span> updated; <span class="mono">_decide_continuation</span> judges "another round" vs "wrap up," and on wrap-up returns a <span class="mono">LettaResponse</span>.</p></div></div>
+</div>
+
+<p>Of these seven, <strong>steps 1–4 happen once</strong> (intake, identify, load, enter), while <strong>steps 5–7 are a loop body that repeats</strong> — which is exactly the most misunderstood part of this lesson, covered in its own section below. For now, remember the shape of the spine: <strong>one entry, many inner loops, one exit</strong>.</p>
+
+<div class="card macro">
+  <div class="tag">🌍 The big picture</div>
+  The whole chain boils down to one sentence: <strong>the route hands work to the loop, and the loop repeats "call model + run tools + persist" within <span class="mono">max_steps</span>, until the model stops calling tools.</strong> The route layer (Lesson 2's "thin route") holds almost no logic; its entire job is to translate the request into "who, to which agent, said what," then hand off to <span class="mono">AgentLoop</span>. The real "think-act" happens inside <span class="mono">LettaAgentV3.step</span>, and the smallest unit of each "think-act" is <span class="mono">_step</span>. Understand the pair "loop + single step" and you've understood the heart of Letta's runtime.
+</div>
+
+<h2>How the request crosses the layers</h2>
+<p>Overlay Lesson 2's three-layer map onto this spine and watch the request cross down and bring a result back up. Notice: the truly "heavy" work is in <span class="mono">step</span> / <span class="mono">_step</span>, not in the route:</p>
+
+<div class="flow">
+  <div class="node hl"><div class="nt">Route</div><div class="nd">send_message</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Factory</div><div class="nd">AgentLoop.load</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Loop</div><div class="nd">step()</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Single step</div><div class="nd">_step()</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Persist</div><div class="nd">message_manager</div></div>
+</div>
+
+<p>The first stop, <span class="mono">send_message</span>, is shockingly short — it only resolves the actor, fetches the agent by id, and hands work to the loop. Simplified:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, server, headers):
+    actor = <span class="kw">await</span> server.user_manager.<span class="fn">get_actor_or_default_async</span>(headers.actor_id)
+    agent = <span class="kw">await</span> server.agent_manager.<span class="fn">get_agent_by_id_async</span>(agent_id, actor)
+    loop  = AgentLoop.<span class="fn">load</span>(agent_state=agent, actor=actor)   <span class="cm"># build runtime agent from AgentState</span>
+    <span class="kw">return await</span> loop.<span class="fn">step</span>(request.messages, max_steps=request.max_steps)
+</pre></div>
+
+<p>Four lines are the whole route: <strong>identify → load save → build runtime → run loop</strong>. There's a key detail here — <span class="mono">AgentLoop.load</span> is a <strong>factory</strong>: it looks at the type of <span class="mono">AgentState</span> and decides which runtime to build (a normal conversation is <span class="mono">LettaAgentV3</span>; a sleeptime-enabled one is a multi-agent variant). In other words, <strong>"which loop to use" is decided by the data (<span class="mono">AgentState</span>), not hard-coded in the route</strong>.</p>
+
+<div class="card detail">
+  <div class="tag">🔬 Source mapping</div>
+  Where each of the seven stops lives: ① route <span class="mono">letta/server/rest_api/routers/v1/agents.py::send_message</span>; ② <span class="mono">services/user_manager.py::get_actor_or_default_async</span>; ③ <span class="mono">services/agent_manager.py::get_agent_by_id_async</span>; ④ <span class="mono">agents/agent_loop.py::AgentLoop.load</span> → <span class="mono">agents/letta_agent_v3.py::LettaAgentV3.step</span>; ⑤⑥ <span class="mono">LettaAgentV3._step</span> (internally splices <span class="mono">Memory.compile()</span> into the system via <span class="mono">PromptGenerator</span>, then calls the LLM and runs tools); ⑦ persistence via <span class="mono">services/message_manager.py</span>, <span class="mono">_decide_continuation</span> wraps up, and finally a <span class="mono">schemas/letta_response.py::LettaResponse</span> is returned.
+</div>
+
+<h2>Inside step: it's a loop, not a single call</h2>
+<p>Many people imagine an agent as "send one, get one" — one message equals one model call. Letta isn't like that. Inside <span class="mono">step</span> is a <strong>loop of up to <span class="mono">max_steps</span> rounds</strong>, and each round is one <span class="mono">_step</span>:</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">_step</div><div class="nd">assemble context</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">call LLM</div><div class="nd">one model call</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">run tools</div><div class="nd">edit memory / look up</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">persist</div><div class="nd">write messages</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">decide</div><div class="nd">_decide_continuation</div></div>
+</div>
+
+<p>One <span class="mono">_step</span> = <strong>one LLM call + tool execution + persistence</strong>. After a round, <span class="mono">_decide_continuation</span> decides whether to run another. The whole loop, simplified:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">step / _step (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">step</span>(self, input_messages, max_steps=<span class="nb">50</span>):
+    msgs = in_context_messages + input_messages
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(max_steps):              <span class="cm"># one message may need several rounds</span>
+        <span class="kw">await</span> self.<span class="fn">_step</span>(msgs)              <span class="cm"># one LLM call + tool execution + persistence</span>
+        <span class="cm"># _step sets self.should_continue via _decide_continuation:</span>
+        <span class="cm">#   this step called a tool -&gt; True (continue); only a plain message -&gt; False (stop)</span>
+        <span class="kw">if not</span> self.should_continue:
+            <span class="kw">break</span>
+    <span class="kw">return</span> <span class="fn">LettaResponse</span>(messages=..., stop_reason=..., usage=...)
+</pre></div>
+
+<p>Look at the line <span class="mono">for i in range(max_steps)</span> — that's the root of "<strong>one message ≠ one model call</strong>." As long as the model <strong>called a tool</strong> this round (e.g. <span class="mono">core_memory_append</span> to edit memory, or <span class="mono">web_search</span> to look something up), the loop feeds the tool result back and <strong>calls the model again</strong>; only when some round produces <strong>just a plain message with no tool call</strong> does the loop stop. <span class="mono">max_steps</span> (default 50) is a safety stop against spinning forever.</p>
+
+<p>When the loop stops it carries a <span class="mono">stop_reason</span> explaining "why it stopped": the model said its piece with no further tool call, <span class="mono">end_turn</span>; it hit the step ceiling, <span class="mono">max_steps</span>; a tool rule flagged that it called a "terminal tool," <span class="mono">tool_rule</span>. Also, before calling the model each <span class="mono">_step</span> quietly does two small things: it <strong>refreshes the messages</strong> (scrubbing the previous round's inner thoughts to save tokens and preserve the prefix cache), and it computes <strong>which tools are available this round and whether a tool call must be forced</strong>. You needn't memorize these now, but knowing "a single step is more than one naked call" makes later lessons much easier.</p>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common misconception</div>
+  <strong>One message ≠ one model call.</strong> Behind a single <span class="mono">send_message</span> there may be <strong>2, 5, or even dozens</strong> of LLM calls — every tool call triggers "think one more round." So: a response may be slower than you expect (multiple round-trips) and more expensive (billed multiple times); when debugging, look at "<strong>what tool did the model call this round</strong>," not "why did this message only reply once." The loop's ceiling is <span class="mono">max_steps</span>, and hitting it wraps up with a <span class="mono">max_steps</span> stop reason.
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 Design spark</div>
+  This lesson's "aha" has two layers, both hidden in that counter-intuitively simple loop:<br><br>
+  ① <strong>The continuation rule is dead simple.</strong> "Should I think another round?" sounds mysterious, but the core of <span class="mono">_decide_continuation</span> is one sentence — <strong>"called a tool this step → keep going; produced only a plain message → stop."</strong> The source comment says it plainly: <em>Did not call a tool? Loop ends. Called a tool? Loop continues.</em> Compared with original MemGPT, which relied on the model emitting a <span class="mono">heartbeat</span> flag to "request another life," v3 drives the loop directly off the <strong>objective signal of whether a tool was called</strong> — one fewer convention the model must learn (and could get wrong), which greatly improves robustness.<br>
+  ② <strong>The runtime is stateless.</strong> Each request <strong>rebuilds</strong> a runtime agent from <span class="mono">AgentState</span> (<span class="mono">AgentLoop.load</span>) and discards it when done; between steps, everything about the agent lives in the database, nothing in memory. So both "one message triggers many rounds" and "another machine picks up the work" hold — because <strong>state is in the data, not the process</strong>.<br><br>
+  In one line: <strong>drive a stateless loop off the most primitive signal possible — whether a tool was called</strong> — simple to grasp, easy to scale, and hard to get wrong.
+</div>
+
+<p>Put the two together in one scenario: you send a message, the agent calls a tool in round 1 and only replies in round 2 — those two rounds <strong>can land on two different machines</strong>. When round 1 ends, the new messages and memory edits are already written to the database; round 2 is just another machine doing <span class="mono">load</span> on the <span class="mono">AgentState</span> again and continuing with <span class="mono">_step</span>. Precisely because "continue or not" depends only on an objective fact in the database (did this step call a tool), and "state" lives entirely in the database, the loop can span <strong>both many rounds</strong> and <strong>many machines</strong>. This is Lesson 2's "stateless runtime scales horizontally," cashed out at the data-flow level.</p>
+
+<h2>How the context gets assembled</h2>
+<p>Step 5, "assemble context," deserves its own dissection. Before each <span class="mono">_step</span> calls the model, it freshly assembles a complete input, synthesized from <strong>three sources</strong>:</p>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">system message</span><span class="name">Memory.compile() + memory_metadata</span></div>
+    <div class="ld">Compile the <strong>core memory blocks</strong> (persona / human, etc.) into text and splice it into message #0, the system message; then append a metadata note (how many in recall, how big archival is).</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">in-context messages</span><span class="name">in-context messages</span></div>
+    <div class="ld">The recent conversation currently kept in the context window (from recall memory): last round's tool result and your new message are both here.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">tool schemas</span><span class="name">tools / tool_rules</span></div>
+    <div class="ld">The tool signatures (names, parameters) this agent can call, so the model knows "what I can do," plus ordering constraints.</div></div>
+</div>
+
+<p>Distinguish two words here: <strong>recall (recall memory)</strong> is the archive of this agent's entire message history, possibly thousands of rows; <strong>in-context messages</strong> are only the recent slice that's "<strong>still in the context window right now</strong>." What the model sees each round is always the latter — earlier conversation hasn't vanished, it's just been paged out of the window, to be fished back from recall by a tool when needed. This is exactly what "finite context" looks like in the data flow: <strong>the window fills up, so there must be an in and an out</strong>.</p>
+
+<p>These three blocks <strong>assemble into one LLM request</strong>, roughly this shape — message #0 is always the compiled system, followed by in-context messages, with tool schemas sent along as a separate field:</p>
+
+<div class="cellgroup">
+  <div class="cg-cap">The <b>message sequence</b> of one LLM request (plus tool schemas):</div>
+  <div class="cells">
+    <span class="cell hl">system<br>(memory)</span>
+    <span class="cell">user</span>
+    <span class="cell">assistant<br>(tool_call)</span>
+    <span class="cell">tool<br>(result)</span>
+    <span class="cell">user<br>(this)</span>
+    <span class="cell q">+ tools schema</span>
+  </div>
+</div>
+
+<p>The key is <strong>message #0, the system</strong>. It isn't hard-coded — each time, <span class="mono">Memory.compile()</span> <strong>re-renders</strong> the current memory blocks, and <span class="mono">PromptGenerator</span> splices them into the system prompt. This is exactly where Lesson 1's "self-editing memory = rewriting your own system prompt" lands in the data flow: the agent edits a memory block with a tool, and the moment the next <span class="mono">_step</span> assembles context, the new memory automatically shows up in the system.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/prompts/prompt_generator.py</span><span class="ln">compile_system_message_async (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">compile_system_message_async</span>(system_prompt, in_context_memory, ...):
+    <span class="cm"># render core memory blocks into text (persona / human, etc.)</span>
+    memory_text = in_context_memory.<span class="fn">compile</span>(tool_usage_rules=..., sources=...)
+    <span class="cm"># then splice that memory + metadata into the system prompt template</span>
+    <span class="kw">return</span> PromptGenerator.<span class="fn">get_system_message_from_compiled_memory</span>(
+        system_prompt=system_prompt, memory_with_sources=memory_text, ...)
+</pre></div>
+
+<p>There's a performance angle too: once message #0, the system, is compiled, <strong>it's kept untouched as long as core memory doesn't change</strong>. Because most providers cache the "<strong>prompt prefix</strong>" (prefix cache) — putting the system first and keeping it stable lets every later round skip a big chunk of compute, faster and cheaper. Only when memory is actually rewritten, or a compaction happens, is message #0 recompiled via <span class="mono">rebuild_system_prompt_async</span>. <strong>"Stable prefix + changing tail"</strong> is a key performance intuition behind this context design.</p>
+
+<h3>What if the context is nearly full: compaction</h3>
+<p>As a conversation grows, in-context messages will eventually overflow the context window. Letta's answer is <strong>compaction</strong>: when token count nears a threshold, an older stretch of conversation is <strong>summarized</strong> into a single summary message that replaces the long original, freeing room to continue. The whole thing happens along the conversation timeline:</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">early</span><span class="tslot span">a long stretch from way back</span></div>
+  <div class="lane"><span class="lane-label">near limit</span><span class="tslot">msg</span><span class="tslot">msg</span><span class="tslot">msg</span><span class="tslot now">tokens near ceiling</span></div>
+  <div class="lane"><span class="lane-label">after compaction</span><span class="tslot now">summary</span><span class="tslot">recent msg</span><span class="tslot">this new msg</span></div>
+</div>
+
+<p>After compaction, because the message sequence changed, the system prompt is recompiled (<span class="mono">rebuild_system_prompt_async</span>) to keep the next round's context consistent. The details (when it triggers, how it summarizes, what the summary looks like) are saved for <strong>Lesson 12</strong>; here you only need to know: <strong>hidden inside step 5 of the spine is a "free up room when the window is nearly full" mechanism</strong>.</p>
+
+<h2>Digging a little deeper</h2>
+
+<details class="accordion"><summary>Why does one message trigger several model calls?</summary><div class="acc-body">
+<p><strong>Example:</strong> you say "save the birthday I just mentioned, then check today's weather." The agent might: round 1 call <span class="mono">core_memory_append</span> to save the birthday → round 2 call <span class="mono">web_search</span> for the weather → round 3 finally reply with a summary. Three rounds, three LLM calls.</p>
+<p><strong>Why it's designed this way:</strong> because "call a tool" and "reply" must be separate. The moment the model issues a tool call, it <strong>hasn't seen the tool result yet</strong>; only by feeding the result back and <strong>calling again</strong> can it continue based on the result. So "think a step, act a step, think again" is naturally a loop. <span class="mono">_decide_continuation</span> uses "did this step call a tool" to decide whether to continue — yes keeps going, no stops.</p>
+<p><strong>Where in the source:</strong> the loop is in <span class="mono">letta/agents/letta_agent_v3.py::LettaAgentV3.step</span>, the single step in <span class="mono">_step</span>, the decision in <span class="mono">_decide_continuation</span>.</p>
+<p><strong>Alternatives:</strong> original MemGPT relied on the model emitting a <span class="mono">heartbeat</span> boolean to "request continuation" — one more convention to learn and to get wrong. v3 switched to the objective signal of "was a tool called," simpler and steadier.</p>
+</div></details>
+
+<details class="accordion"><summary>What happens when the context window fills up?</summary><div class="acc-body">
+<p><strong>Example:</strong> an agent that's chatted hundreds of rounds has in-context messages well past what the model can swallow, yet it keeps conversing.</p>
+<p><strong>Why it's designed this way:</strong> because of compaction. As tokens near the threshold, old conversation is summarized into one summary placed on top — keeping the "gist" while paging the "verbatim long text" out of the window. This is exactly Lesson 1's "context = RAM, external memory = disk, page yourself" analogy showing up inside the loop. After compaction the system prompt is recompiled once via <span class="mono">rebuild_system_prompt_async</span>.</p>
+<p><strong>Where in the source:</strong> the trigger threshold and compaction logic live in the single-step flow of <span class="mono">letta/agents/letta_agent_v3.py</span> (with a summarizer); system-prompt rebuild is in <span class="mono">services/agent_manager.py::rebuild_system_prompt_async</span>. Full mechanism in <strong>Lesson 12</strong>.</p>
+<p><strong>Alternatives:</strong> bluntly "drop the oldest messages" — easy, but it genuinely forgets; or pile up context forever — slow, expensive, and may exceed limits. Summary-based compaction is the quality/cost compromise.</p>
+</div></details>
+
+<details class="accordion"><summary>What's the difference between streaming (stream) and blocking (step)?</summary><div class="acc-body">
+<p><strong>Example:</strong> for the same message, in a web UI you see characters pop out one by one (streaming); in a script, <span class="mono">client.agents.messages.create(...)</span> usually waits for everything to finish and returns the result at once (blocking).</p>
+<p><strong>Why it's designed this way:</strong> two entrances serve two needs. Blocking mode (<span class="mono">step</span>) has the simplest, most testable logic and returns a complete <span class="mono">LettaResponse</span> at once; streaming mode (<span class="mono">stream</span> + SSE) pushes as it computes for a more responsive feel. But they <strong>share the same loop</strong> — both go through <span class="mono">_step</span> internally; only "how intermediate results are handed out" differs.</p>
+<p><strong>Where in the source:</strong> blocking <span class="mono">LettaAgentV3.step</span>; streaming <span class="mono">LettaAgentV3.stream</span>; the route <span class="mono">send_message</span> picks one based on the request's <span class="mono">streaming</span> field (streaming goes SSE).</p>
+<p><strong>Alternatives:</strong> blocking only — simple to build but poor for long answers; streaming only — every caller must handle an event stream, which is awkward for scripts. Keeping both and sharing the core is the common practice.</p>
+</div></details>
+
+<h2>Where this lesson sits in the big map</h2>
+<p>You now hold the guide's <strong>third — and most important — map</strong>: the end-to-end data flow of one message. Stack the three maps: an agent is one <span class="mono">AgentState</span> (Lesson 1), it lives in a three-layer architecture (Lesson 2), and handling one message means having that <span class="mono">AgentState</span> get <strong>loaded → context assembled → looped over "call model + run tools" → written back</strong> (this lesson). Part 1, "The Big Picture," ends here: you can now "play" a message's whole journey in your head.</p>
+
+<p>Each part that follows <strong>presses one stop on this spine into slow motion</strong>: the <strong>memory</strong> part magnifies step 5 — how core memory compiles into the system, how recall / archival are layered, how compaction happens; the <strong>tools</strong> part magnifies step 6 — how functions become schemas, how a <span class="mono">tool_call</span> is parsed and executed, how <span class="mono">tool_rules</span> constrain ordering; the <strong>provider</strong> part magnifies the "call LLM" moment — how each vendor's differences are flattened by <span class="mono">llm_api</span>; the <strong>persistence</strong> part magnifies step 7 — how messages and state hit the database. Every time you read a new detail, return to this spine and ask: "<strong>which of the seven stops does it happen at?</strong>" — as long as you can answer, no depth of detail will lose you.</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li>A message's spine: <span class="mono">POST</span> → <span class="mono">send_message</span> → resolve <span class="mono">actor</span> → load <span class="mono">AgentState</span> → <span class="mono">AgentLoop.load</span> → <span class="mono">step</span> loop → tools/memory → persist → <span class="mono">LettaResponse</span>.</li>
+    <li>The route is thin: only "identify → load save → build runtime → run loop"; the business is all in <span class="mono">step</span> / <span class="mono">_step</span>.</li>
+    <li><strong>One message ≠ one model call</strong>: <span class="mono">step</span> is a loop of up to <span class="mono">max_steps</span> (default 50) rounds; one <span class="mono">_step</span> = one LLM call + tool execution + persistence.</li>
+    <li>The loop's continuation rule is minimal: <span class="mono">_decide_continuation</span> — <strong>called a tool → continue; only a plain message → stop</strong> (a big simplification from MemGPT's heartbeat).</li>
+    <li>Context is freshly assembled each round: <span class="mono">Memory.compile()</span> compiles core memory into message #0, the system (via <span class="mono">PromptGenerator</span>), plus in-context messages and tool schemas.</li>
+    <li>The runtime is <strong>stateless</strong>: rebuilt from <span class="mono">AgentState</span> each time and discarded after use; state between steps lives in the database.</li>
+  </ul>
+</div>
+""",
+}

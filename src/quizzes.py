@@ -182,6 +182,79 @@ QUIZZES = {
             },
         ],
     },
+    "03-message-lifecycle.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "路由 send_message 收到一条消息后，第一步做的是什么？",
+                    "en": "When the send_message route receives a message, what's the first thing it does?",
+                },
+                "opts": [
+                    {"zh": "解析 actor —— 确认是谁、属于哪个组织在操作",
+                     "en": "Resolve the actor - figure out who, and which organization, is acting"},
+                    {"zh": "立刻调用 LLM 生成回复",
+                     "en": "Immediately call the LLM to generate a reply"},
+                    {"zh": "把整段对话历史压缩成一条 summary",
+                     "en": "Compress the entire history into one summary"},
+                    {"zh": "训练（微调）底层模型",
+                     "en": "Train (fine-tune) the underlying model"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "send_message 很薄：先 get_actor_or_default_async 解析 actor（决定多租户隔离），再按 id 载入 AgentState，然后交给 AgentLoop.load → step。调模型发生在更下层的 _step 里。",
+                    "en": "send_message is thin: first get_actor_or_default_async resolves the actor (which drives multi-tenant isolation), then it loads the AgentState by id and hands off to AgentLoop.load → step. The model call happens lower down, inside _step.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "step 循环靠什么决定“要不要再来一轮”？",
+                    "en": "What does the step loop use to decide 'run another round or not'?",
+                },
+                "opts": [
+                    {"zh": "看这一步有没有调用工具：调了就继续，只产出普通消息就停",
+                     "en": "Whether this step called a tool: called one -> continue; only a plain message -> stop"},
+                    {"zh": "看用户有没有再发一条新消息",
+                     "en": "Whether the user sent another message"},
+                    {"zh": "看回复的字数有没有超过阈值",
+                     "en": "Whether the reply length exceeded a threshold"},
+                    {"zh": "随机决定，掷一次硬币",
+                     "en": "Randomly, by a coin flip"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "_decide_continuation 的核心规则就一句：调了工具就继续、没调就停（源码注释：Did not call a tool? Loop ends. Called a tool? Loop continues.）。这比 MemGPT 靠模型输出 heartbeat 简单得多，且受 max_steps 上限保护。",
+                    "en": "_decide_continuation's core rule is one line: called a tool -> continue, didn't -> stop (source comment: Did not call a tool? Loop ends. Called a tool? Loop continues.). Much simpler than MemGPT's heartbeat, and bounded by max_steps.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "两次 _step 之间，agent 的状态存在哪里？",
+                    "en": "Between two _step rounds, where does the agent's state live?",
+                },
+                "opts": [
+                    {"zh": "数据库里的 AgentState（运行时无状态：每次重建、用完即弃）",
+                     "en": "The AgentState in the database (the runtime is stateless: rebuilt each time, discarded after use)"},
+                    {"zh": "一直驻留在某台机器内存里的对象",
+                     "en": "An object kept resident in one machine's memory"},
+                    {"zh": "模型权重里",
+                     "en": "Inside the model weights"},
+                    {"zh": "前端浏览器的 localStorage 里",
+                     "en": "In the browser's localStorage"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "运行时 agent 由 AgentLoop.load 从 AgentState 现造、跑完即弃；新消息与记忆改动都写回库。正因状态在数据不在进程，一条消息的多轮才能跨机器接力，服务端也才能水平扩展。",
+                    "en": "The runtime agent is built fresh from AgentState by AgentLoop.load and discarded after the run; new messages and memory edits are written back. Because state lives in the data, not the process, a message's many rounds can hop across machines and the server can scale horizontally.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设一条消息触发了 3 轮 _step（改记忆 → 查资料 → 回话）。请按七步主轴把这 3 轮“摊开”：哪些步骤只发生一次、哪些重复了 3 次？如果第 2 轮所在的机器突然宕机，为什么换一台机器仍能接着把第 3 轮跑完？",
+                "en": "Suppose one message triggers 3 _step rounds (edit memory → look up → reply). Lay these 3 rounds onto the seven-stop spine: which steps happen once, which repeat 3 times? If the machine running round 2 suddenly crashes, why can a different machine still finish round 3?",
+            },
+        ],
+    },
 }
 
 
