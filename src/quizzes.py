@@ -255,6 +255,79 @@ QUIZZES = {
             },
         ],
     },
+    "04-agent-and-tools.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "当模型决定使用一个工具时，它实际上“产出”的是什么？",
+                    "en": "When a model decides to use a tool, what does it actually 'emit'?",
+                },
+                "opts": [
+                    {"zh": "一个结构化的 tool_call 请求（工具名 + JSON 参数），并不执行任何代码",
+                     "en": "A structured tool_call request (tool name + JSON args) - it runs no code itself"},
+                    {"zh": "它直接在自己的进程里运行那个函数并拿到返回值",
+                     "en": "It runs the function in its own process and gets the return value"},
+                    {"zh": "它把那个函数的源代码改写一遍",
+                     "en": "It rewrites the function's source code"},
+                    {"zh": "它当场训练出一个新工具",
+                     "en": "It trains a brand-new tool on the spot"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "function calling 发生在消息层：模型只产出一个 tool_call（名字 + JSON 参数）。真正执行的是运行时（letta_agent_v3.py::_execute_tool → ToolExecutionManager.execute_tool_async，必要时进沙箱）——这也是安全边界：模型输出不可信，执行与否由你的代码裁决。",
+                    "en": "Function calling happens at the message layer: the model only emits a tool_call (name + JSON args). The runtime actually executes it (letta_agent_v3.py::_execute_tool → ToolExecutionManager.execute_tool_async, sandboxed if needed) - the security boundary: model output is untrusted, your code decides whether to run it.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "Letta 为什么把“内心独白”做成每个工具 schema 里的一个参数（thinking）？",
+                    "en": "Why does Letta make the 'inner monologue' an argument (thinking) inside every tool schema?",
+                },
+                "opts": [
+                    {"zh": "用 schema 的最大公约数，跨所有支持 function calling 的 provider 统一强制“先推理后行动”，还能用 required + 排第一强制顺序",
+                     "en": "Using the schema's greatest common denominator to force 'reason before act' uniformly across all function-calling providers, and enforce order via required + first position"},
+                    {"zh": "为了让工具执行得更快",
+                     "en": "To make tool execution run faster"},
+                    {"zh": "因为模型权重里没有空间存放思考",
+                     "en": "Because the model weights have no room to store thinking"},
+                    {"zh": "为了减少 token 计费",
+                     "en": "To reduce token billing"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "不是所有 provider 都有原生思考通道，格式还各不相同。add_inner_thoughts_to_functions 把 thinking 设成必填（required）且排第一（put_inner_thoughts_first），描述（..._GO_FIRST）再明令第一个生成——把“但愿它会想”的软约束变成“调用格式必须先写想法”的硬约束，且跨厂商通用。",
+                    "en": "Not every provider has a native thinking channel, and formats differ. add_inner_thoughts_to_functions makes thinking required and first (put_inner_thoughts_first), and the description (..._GO_FIRST) orders it generated first - turning a soft 'hopefully it thinks' into a hard 'the call format must contain the thought first,' uniformly across vendors.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "ReAct 循环的正确顺序是哪一个？",
+                    "en": "Which is the correct order of the ReAct loop?",
+                },
+                "opts": [
+                    {"zh": "想（推理）→ 做（产出 tool_call）→ 看（观察工具结果）→ 再想……直到不再调工具",
+                     "en": "Think (reason) → Act (emit tool_call) → Observe (see the tool result) → think again... until no tool is called"},
+                    {"zh": "做 → 想 → 看 → 训练",
+                     "en": "Act → Think → Observe → Train"},
+                    {"zh": "看 → 回话 → 想 → 做",
+                     "en": "Observe → Reply → Think → Act"},
+                    {"zh": "一次性想完所有步骤，再一起执行",
+                     "en": "Think through all steps at once, then execute them together"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "ReAct = Reasoning + Acting 交替：想→做→看→再想。模型发起调用时还没看到结果，必须把结果喂回去再调一次。Letta 用 _decide_continuation“调了工具就继续、否则停”驱动它——这正是第 3 课 step 循环的内核。",
+                    "en": "ReAct = interleaved Reasoning + Acting: think→act→observe→think again. The model hasn't seen the result when it issues a call, so the result must be fed back and it's called again. Letta drives this with _decide_continuation ('called a tool → continue, else stop') - the very core of Lesson 3's step loop.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设你要给 agent 加一个“删除文件”的工具。结合本课“模型只产出请求、运行时才执行”和“tool_call 不可信”，你会在执行前加哪些检查（权限、参数校验、沙箱、白名单）？为什么把这些放在运行时，而不是指望模型自律？",
+                "en": "Suppose you add a 'delete file' tool to an agent. Given this lesson's 'the model only emits a request, the runtime executes' and 'tool_call is untrusted,' what checks would you add before execution (permissions, arg validation, sandbox, allow-list)? Why put these in the runtime instead of trusting the model to police itself?",
+            },
+        ],
+    },
 }
 
 
