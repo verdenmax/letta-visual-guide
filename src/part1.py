@@ -811,7 +811,7 @@ LESSON_03 = {
   <div class="step"><div class="num">2</div><div class="sc"><h4>解析 actor</h4><p><span class="mono">get_actor_or_default_async</span> 按请求头里的身份定位"<strong>谁、属于哪个组织</strong>"，这决定了后面只能看到自己组织的数据。</p></div></div>
   <div class="step"><div class="num">3</div><div class="sc"><h4>载入存档</h4><p><span class="mono">get_agent_by_id_async</span> 按 <span class="mono">agent_id</span> 取出 <span class="mono">AgentState</span>：记忆块、在窗消息、工具、模型配置一并到位。</p></div></div>
   <div class="step"><div class="num">4</div><div class="sc"><h4>进入循环</h4><p><span class="mono">AgentLoop.load(agent_state, actor)</span> 据此造出运行时 agent（默认是 <span class="mono">LettaAgentV3</span>），再调它的 <span class="mono">step</span>。</p></div></div>
-  <div class="step"><div class="num">5</div><div class="sc"><h4>组装 + 调模型</h4><p>把核心记忆<strong>编译进 system</strong>，连同在窗消息、工具 schema 一起发给 LLM；这一步发生在每一轮 <span class="mono">_step</span> 里。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>组装 + 调模型</h4><p>把<strong>系统提示</strong>（已把核心记忆编译进去）、在窗消息、工具 schema <strong>组装</strong>成一次请求发给 LLM；组装每轮都做，系统提示本身只在记忆变化时才重编译。</p></div></div>
   <div class="step"><div class="num">6</div><div class="sc"><h4>执行工具 / 改记忆</h4><p>解析模型返回的 <span class="mono">tool_call</span> 并执行；工具可能改写记忆块、查档案，结果作为新消息喂回下一轮。</p></div></div>
   <div class="step"><div class="num">7</div><div class="sc"><h4>持久化 + 判定</h4><p>新消息落库、更新 <span class="mono">message_ids</span>；<span class="mono">_decide_continuation</span> 判断"再来一轮"还是"收工"，收工就返回 <span class="mono">LettaResponse</span>。</p></div></div>
 </div>
@@ -903,7 +903,7 @@ LESSON_03 = {
   一句话：<strong>用"是否调用工具"这个最朴素的信号，驱动一个无状态的循环</strong>——既好懂、又好扩展、还难写错。
 </div>
 
-<p>把这两点合起来看一个场景：你发一条消息，agent 在第 1 轮调了工具、第 2 轮才回话——这两轮<strong>完全可以落在两台不同的机器上</strong>。第 1 轮结束时，新消息与记忆改动都已写回数据库；第 2 轮无非是另一台机器再 <span class="mono">load</span> 一次 <span class="mono">AgentState</span>、接着跑 <span class="mono">_step</span>。正因为"继续与否"只看数据库里的客观事实（这一步有没有工具调用），而"状态"又全在数据库里，整套循环才能既<strong>横跨多轮</strong>、又<strong>横跨多机</strong>。这是第 2 课"无状态运行时可水平扩展"在数据流层面的兑现。</p>
+<p>把这两点合起来看一个场景：你发一条消息，agent 在第 1 轮调了工具、第 2 轮才回话——这两轮<strong>完全可以落在两台不同的机器上</strong>。第 1 轮结束时，新消息与记忆改动都已写回数据库；第 2 轮无非是另一台机器再 <span class="mono">load</span> 一次 <span class="mono">AgentState</span>、接着跑 <span class="mono">_step</span>。正因为"继续与否"只看<strong>这一步有没有调用工具</strong>这个客观事实（结果也随即落库），而"状态"又全在数据库里，整套循环才能既<strong>横跨多轮</strong>、又<strong>横跨多机</strong>。这是第 2 课"无状态运行时可水平扩展"在数据流层面的兑现。</p>
 
 <h2>上下文是怎么拼出来的</h2>
 <p>第 5 步"组装上下文"值得单独拆开。每一轮 <span class="mono">_step</span> 调模型前，都要现拼出一份完整的输入。它由<strong>三种来源</strong>合成：</p>
@@ -1016,7 +1016,7 @@ The last two lessons drew two maps: <strong>an agent is just one <span class="mo
   <div class="step"><div class="num">2</div><div class="sc"><h4>Resolve the actor</h4><p><span class="mono">get_actor_or_default_async</span> locates "<strong>who, and which organization</strong>" from the request headers — this decides that later it can only see its own org's data.</p></div></div>
   <div class="step"><div class="num">3</div><div class="sc"><h4>Load the save file</h4><p><span class="mono">get_agent_by_id_async</span> fetches the <span class="mono">AgentState</span> by <span class="mono">agent_id</span>: memory blocks, in-context messages, tools, and model config all arrive together.</p></div></div>
   <div class="step"><div class="num">4</div><div class="sc"><h4>Enter the loop</h4><p><span class="mono">AgentLoop.load(agent_state, actor)</span> builds a runtime agent from it (by default <span class="mono">LettaAgentV3</span>), then calls its <span class="mono">step</span>.</p></div></div>
-  <div class="step"><div class="num">5</div><div class="sc"><h4>Assemble + call the model</h4><p>Compile core memory <strong>into the system message</strong>, and send it together with in-context messages and tool schemas to the LLM — this happens inside every <span class="mono">_step</span>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Assemble + call the model</h4><p><strong>Assemble</strong> the request - the system message (with core memory already compiled in), in-context messages and tool schemas - and send it to the LLM; the assembly runs every <span class="mono">_step</span>, while the system message itself is only recompiled when memory changes.</p></div></div>
   <div class="step"><div class="num">6</div><div class="sc"><h4>Run tools / edit memory</h4><p>Parse the model's <span class="mono">tool_call</span> and execute it; a tool may rewrite a memory block or look something up, and its result is fed back as a new message for the next round.</p></div></div>
   <div class="step"><div class="num">7</div><div class="sc"><h4>Persist + decide</h4><p>New messages are written and <span class="mono">message_ids</span> updated; <span class="mono">_decide_continuation</span> judges "another round" vs "wrap up," and on wrap-up returns a <span class="mono">LettaResponse</span>.</p></div></div>
 </div>
@@ -1108,7 +1108,7 @@ The last two lessons drew two maps: <strong>an agent is just one <span class="mo
   In one line: <strong>drive a stateless loop off the most primitive signal possible — whether a tool was called</strong> — simple to grasp, easy to scale, and hard to get wrong.
 </div>
 
-<p>Put the two together in one scenario: you send a message, the agent calls a tool in round 1 and only replies in round 2 — those two rounds <strong>can land on two different machines</strong>. When round 1 ends, the new messages and memory edits are already written to the database; round 2 is just another machine doing <span class="mono">load</span> on the <span class="mono">AgentState</span> again and continuing with <span class="mono">_step</span>. Precisely because "continue or not" depends only on an objective fact in the database (did this step call a tool), and "state" lives entirely in the database, the loop can span <strong>both many rounds</strong> and <strong>many machines</strong>. This is Lesson 2's "stateless runtime scales horizontally," cashed out at the data-flow level.</p>
+<p>Put the two together in one scenario: you send a message, the agent calls a tool in round 1 and only replies in round 2 — those two rounds <strong>can land on two different machines</strong>. When round 1 ends, the new messages and memory edits are already written to the database; round 2 is just another machine doing <span class="mono">load</span> on the <span class="mono">AgentState</span> again and continuing with <span class="mono">_step</span>. Precisely because "continue or not" depends only on an objective fact - did this step call a tool (which is then persisted) - and "state" lives entirely in the database, the loop can span <strong>both many rounds</strong> and <strong>many machines</strong>. This is Lesson 2's "stateless runtime scales horizontally," cashed out at the data-flow level.</p>
 
 <h2>How the context gets assembled</h2>
 <p>Step 5, "assemble context," deserves its own dissection. Before each <span class="mono">_step</span> calls the model, it freshly assembles a complete input, synthesized from <strong>three sources</strong>:</p>
