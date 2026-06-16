@@ -255,6 +255,225 @@ QUIZZES = {
             },
         ],
     },
+    "04-agent-and-tools.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "当模型决定使用一个工具时，它实际上“产出”的是什么？",
+                    "en": "When a model decides to use a tool, what does it actually 'emit'?",
+                },
+                "opts": [
+                    {"zh": "一个结构化的 tool_call 请求（工具名 + JSON 参数），并不执行任何代码",
+                     "en": "A structured tool_call request (tool name + JSON args) - it runs no code itself"},
+                    {"zh": "它直接在自己的进程里运行那个函数并拿到返回值",
+                     "en": "It runs the function in its own process and gets the return value"},
+                    {"zh": "它把那个函数的源代码改写一遍",
+                     "en": "It rewrites the function's source code"},
+                    {"zh": "它当场训练出一个新工具",
+                     "en": "It trains a brand-new tool on the spot"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "function calling 发生在消息层：模型只产出一个 tool_call（名字 + JSON 参数）。真正执行的是运行时（letta_agent_v3.py::_execute_tool → ToolExecutionManager.execute_tool_async，必要时进沙箱）——这也是安全边界：模型输出不可信，执行与否由你的代码裁决。",
+                    "en": "Function calling happens at the message layer: the model only emits a tool_call (name + JSON args). The runtime actually executes it (letta_agent_v3.py::_execute_tool → ToolExecutionManager.execute_tool_async, sandboxed if needed) - the security boundary: model output is untrusted, your code decides whether to run it.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "Letta 为什么把“内心独白”做成每个工具 schema 里的一个参数（thinking）？",
+                    "en": "Why does Letta make the 'inner monologue' an argument (thinking) inside every tool schema?",
+                },
+                "opts": [
+                    {"zh": "用 schema 的最大公约数，跨所有支持 function calling 的 provider 统一强制“先推理后行动”，还能用 required + 排第一强制顺序",
+                     "en": "Using the schema's greatest common denominator to force 'reason before act' uniformly across all function-calling providers, and enforce order via required + first position"},
+                    {"zh": "为了让工具执行得更快",
+                     "en": "To make tool execution run faster"},
+                    {"zh": "因为模型权重里没有空间存放思考",
+                     "en": "Because the model weights have no room to store thinking"},
+                    {"zh": "为了减少 token 计费",
+                     "en": "To reduce token billing"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "不是所有 provider 都有原生思考通道，格式还各不相同。add_inner_thoughts_to_functions 把 thinking 设成必填（required）且排第一（put_inner_thoughts_first），描述（..._GO_FIRST）再明令第一个生成——把“但愿它会想”的软约束变成“调用格式必须先写想法”的硬约束，且跨厂商通用。",
+                    "en": "Not every provider has a native thinking channel, and formats differ. add_inner_thoughts_to_functions makes thinking required and first (put_inner_thoughts_first), and the description (..._GO_FIRST) orders it generated first - turning a soft 'hopefully it thinks' into a hard 'the call format must contain the thought first,' uniformly across vendors.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "ReAct 循环的正确顺序是哪一个？",
+                    "en": "Which is the correct order of the ReAct loop?",
+                },
+                "opts": [
+                    {"zh": "想（推理）→ 做（产出 tool_call）→ 看（观察工具结果）→ 再想……直到不再调工具",
+                     "en": "Think (reason) → Act (emit tool_call) → Observe (see the tool result) → think again... until no tool is called"},
+                    {"zh": "做 → 想 → 看 → 训练",
+                     "en": "Act → Think → Observe → Train"},
+                    {"zh": "看 → 回话 → 想 → 做",
+                     "en": "Observe → Reply → Think → Act"},
+                    {"zh": "一次性想完所有步骤，再一起执行",
+                     "en": "Think through all steps at once, then execute them together"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "ReAct = Reasoning + Acting 交替：想→做→看→再想。模型发起调用时还没看到结果，必须把结果喂回去再调一次。Letta 用 _decide_continuation“调了工具就继续、否则停”驱动它——这正是第 3 课 step 循环的内核。",
+                    "en": "ReAct = interleaved Reasoning + Acting: think→act→observe→think again. The model hasn't seen the result when it issues a call, so the result must be fed back and it's called again. Letta drives this with _decide_continuation ('called a tool → continue, else stop') - the very core of Lesson 3's step loop.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设你要给 agent 加一个“删除文件”的工具。结合本课“模型只产出请求、运行时才执行”和“tool_call 不可信”，你会在执行前加哪些检查（权限、参数校验、沙箱、白名单）？为什么把这些放在运行时，而不是指望模型自律？",
+                "en": "Suppose you add a 'delete file' tool to an agent. Given this lesson's 'the model only emits a request, the runtime executes' and 'tool_call is untrusted,' what checks would you add before execution (permissions, arg validation, sandbox, allow-list)? Why put these in the runtime instead of trusting the model to police itself?",
+            },
+        ],
+    },
+    "05-context-window.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "Letta（以及 MemGPT）要解决的“上下文窗口”核心约束，最准确的描述是？",
+                    "en": "What most accurately describes the core 'context window' constraint Letta (and MemGPT) address?",
+                },
+                "opts": [
+                    {"zh": "它是一笔固定大小、且按 token 计费的预算，system + 核心记忆 + 工具 schema + 在窗消息共享它",
+                     "en": "It's a fixed-size, per-token-billed budget shared by system + core memory + tool schemas + in-context messages"},
+                    {"zh": "它只是对话历史的存储上限，与 system 和工具无关",
+                     "en": "It's only a cap on conversation history, unrelated to system or tools"},
+                    {"zh": "它是模型权重的大小限制",
+                     "en": "It's a limit on the size of the model weights"},
+                    {"zh": "它是磁盘上能存多少条消息的限制",
+                     "en": "It's a limit on how many messages can be stored on disk"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "上下文窗口是一次调用能“看见”的 token 上限，而且 system、核心记忆、工具 schema 和在窗消息一起挤这条预算——真正留给历史的只是剩余。预算有限、尾巴只会增长，这正是记忆管理被逼出来的根本原因。",
+                    "en": "The window is the token ceiling a single call can 'see,' and system, core memory, tool schemas, and in-context messages all squeeze into it — only the remainder is left for history. Finite budget plus an ever-growing tail is exactly why memory management is forced into existence.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么 Letta 坚持“稳定前缀 + 变化尾巴”，正常步骤里不刷新系统提示？",
+                    "en": "Why does Letta insist on 'stable prefix + changing tail,' not refreshing the system prompt during normal steps?",
+                },
+                "opts": [
+                    {"zh": "前缀逐 token 不变才能命中 prefix cache、跳过昂贵的 prefill，省时省钱",
+                     "en": "A token-for-token stable prefix hits the prefix cache and skips the costly prefill, saving time and money"},
+                    {"zh": "因为系统提示不允许被修改",
+                     "en": "Because the system prompt is not allowed to be modified"},
+                    {"zh": "因为模型读不懂太长的系统提示",
+                     "en": "Because the model can't understand a long system prompt"},
+                    {"zh": "为了让 decode 阶段并行化",
+                     "en": "To parallelize the decode phase"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "prefill 按输入 token 计费/耗时，且会把前缀的 KV 缓存起来。只要前缀逐 token 一致，第二次就能复用缓存、跳过这段 prefill；改动前缀（哪怕一个字）会让缓存作废、全量重算。所以 rebuild_system_prompt_async 只在记忆变化或压缩后才重写第 0 条消息。",
+                    "en": "prefill is billed/timed by input tokens and caches the prefix's KV. As long as the prefix is token-for-token identical, the next request reuses the cache and skips that prefill; changing the prefix (even one character) invalidates it and forces a full recompute. That's why rebuild_system_prompt_async rewrites message 0 only on memory change or after compaction.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "“换个 1M 上下文的模型就不用管理记忆了”——这个说法的问题在哪？",
+                    "en": "'Just switch to a 1M-context model and you won't need memory management' — what's wrong with this?",
+                },
+                "opts": [
+                    {"zh": "长上下文只是放宽约束而非取消它：成本随 token 涨、prefill 延迟涨、还有 lost-in-the-middle",
+                     "en": "Long context only loosens, not removes, the constraint: cost rises with tokens, prefill latency rises, plus lost-in-the-middle"},
+                    {"zh": "1M 上下文的模型根本不存在",
+                     "en": "1M-context models don't exist at all"},
+                    {"zh": "长上下文模型不能调用工具",
+                     "en": "Long-context models cannot call tools"},
+                    {"zh": "长上下文会让模型忘记系统提示",
+                     "en": "Long context makes the model forget the system prompt"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "更大的窗口抬高了上限，但三条代价仍在：按 token 计费导致成本线性上涨、prefill 读得越多越慢、研究反复发现放在超长上下文中间的信息容易被忽略（lost in the middle）。所以“放什么进窗口”的决策依然要做——Letta 用 ContextWindowOverview 量化、用 context_window×0.9 触发压缩来系统化地回答它。",
+                    "en": "A bigger window raises the ceiling, but three costs remain: per-token billing makes cost rise linearly, more tokens make prefill slower, and research repeatedly finds mid-context info gets ignored (lost in the middle). So the 'what goes into the window' decision still must be made — Letta answers it systematically by quantifying with ContextWindowOverview and triggering compaction at context_window×0.9.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "假设你的 agent 逼近了 context_window×0.9 的阈值。结合本课的 token 账本（ContextWindowOverview）和压缩闭环，你会优先换出/压缩哪一部分（旧消息？工具 schema？核心记忆？），又会尽量保住哪一部分前缀来吃 prefix cache？为什么？",
+                "en": "Suppose your agent nears the context_window×0.9 threshold. Given this lesson's token ledger (ContextWindowOverview) and the compaction loop, which part would you swap out/compress first (old messages? tool schemas? core memory?), and which prefix would you preserve to keep hitting the prefix cache? Why?",
+            },
+        ],
+    },
+    "06-stateful-vs-stateless.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 Letta 里，一个 agent 物理上到底是什么？",
+                    "en": "In Letta, what is an agent physically?",
+                },
+                "opts": [
+                    {"zh": "数据库里一条可序列化的 AgentState 记录（记忆 / message_ids / system / tools / 配置）",
+                     "en": "One serializable AgentState record in the database (memory / message_ids / system / tools / configs)"},
+                    {"zh": "一个必须一直开着的常驻进程，在内存里记着对话",
+                     "en": "A resident process that must stay running, holding the conversation in memory"},
+                    {"zh": "一份微调过的模型权重",
+                     "en": "A set of fine-tuned model weights"},
+                    {"zh": "一条长期保持的网络连接（session）",
+                     "en": "A long-lived network connection (session)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "创建 agent 就是往库里写一行；读出来是一个 AgentState，装着重建它所需的全部状态。没有活对象、没有常驻进程——状态被完整外化成数据，运行时每个请求由 AgentLoop.load 现搭、跑完即弃。",
+                    "en": "Creating an agent writes a row; read it back and you get an AgentState holding all state needed to rebuild it. There's no live object or resident process — state is fully externalized as data, and the runtime is rebuilt per request by AgentLoop.load and discarded.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "像 agent-1a2b… / block-9f8e… 这样的“带前缀 id”，前缀编码了什么、又为什么有用？",
+                    "en": "In a prefixed id like agent-1a2b… / block-9f8e…, what does the prefix encode and why is it useful?",
+                },
+                "opts": [
+                    {"zh": "前缀即实体类型：自证类型、好调试，配上 uuid4 不撞车且与机器无关（可移植）",
+                     "en": "The prefix is the entity type: self-describing, easy to debug, plus a uuid4 means no collisions and machine-independence (portable)"},
+                    {"zh": "前缀是创建时间戳，用来排序",
+                     "en": "The prefix is the creation timestamp, used for sorting"},
+                    {"zh": "前缀是分片所在的服务器编号",
+                     "en": "The prefix is the shard's server number"},
+                    {"zh": "前缀是自增主键，越小越早创建",
+                     "en": "The prefix is an auto-increment key; smaller means created earlier"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "generate_id = f\"{__id_prefix__}-{uuid4()}\"，前缀由各 schema 的 __id_prefix__ 指定（如 AgentState→agent）。前缀让你一眼看出实体类型、便于排错；uuid4 几乎不撞车，且 id 不依赖自增主键或机器，导出别处仍有效，这是“agent 可搬运”的前提。",
+                    "en": "generate_id = f\"{__id_prefix__}-{uuid4()}\", with the prefix set by each schema's __id_prefix__ (e.g. AgentState→agent). The prefix makes the entity type obvious and aids debugging; uuid4 avoids collisions, and the id depends on no auto-increment key or machine, so it stays valid when exported — the premise of portable agents.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么同一个 Block / Agent 既有 letta/schemas/ 里的 pydantic 类，又有 letta/orm/ 里的 SQLAlchemy 类？",
+                    "en": "Why does the same Block / Agent have both a pydantic class in letta/schemas/ and a SQLAlchemy class in letta/orm/?",
+                },
+                "opts": [
+                    {"zh": "schema 是稳定的对外 API 契约，orm 是可为性能演进的存储；解耦后 DB 重构不惊动 API，manager 负责转换",
+                     "en": "The schema is the stable external API contract, the orm is evolvable storage; decoupling lets DB refactors not disturb the API, with the manager converting between them"},
+                    {"zh": "纯粹是历史遗留的重复代码，应该删掉一套",
+                     "en": "It's just leftover duplicate code that should be deleted"},
+                    {"zh": "一套给 Python 用、一套给 JavaScript 用",
+                     "en": "One is for Python, the other for JavaScript"},
+                    {"zh": "pydantic 用于训练，SQLAlchemy 用于推理",
+                     "en": "pydantic is for training, SQLAlchemy is for inference"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "pydantic schema 定义对外承诺的形状（要稳定），SQLAlchemy orm 定义数据怎么落表（可为性能调整）。两者解耦：DB 怎么改都不漏到 API，API 加校验也不动表结构；manager 层用 to_pydantic_async 之类做转换，有的 pydantic 配置还以 JSON 整块存进一列（custom_columns.py）。",
+                    "en": "The pydantic schema defines the externally promised shape (must stay stable); the SQLAlchemy orm defines how data lands in tables (tunable for performance). Decoupled, DB changes don't leak into the API and API validation doesn't touch tables; the manager converts (e.g. to_pydantic_async), and some pydantic configs are stored whole as JSON columns (custom_columns.py).",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "本课说“状态在数据里，算力在运行时里”。如果让你把一个调好的 Letta agent 复制一份、换掉底层模型再版本化入库，你会具体改 AgentState 的哪个字段、保留哪些字段不动？再想想：为什么同样的事在“把 agent 当常驻进程”的方案里很难做到？",
+                "en": "This lesson says \"state lives in the data, compute in the runtime.\" To clone a tuned Letta agent, swap its underlying model, and version it into a repo, which AgentState field would you edit and which would you keep untouched? Then consider: why is the same thing hard when an agent is treated as a resident process?",
+            },
+        ],
+    },
 }
 
 

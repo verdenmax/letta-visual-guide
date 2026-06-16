@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>04 · LLM agent 与 tool calling 基础 / LLM agents &amp; tool calling - Letta 图解教程</title>
+<meta name="description" content="第二部分 · 前置基础｜LLM agent 与 tool calling 基础 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="04 · LLM agent 与 tool calling 基础 / LLM agents &amp; tool calling - Letta 图解教程">
+<meta property="og:description" content="第二部分 · 前置基础｜LLM agent 与 tool calling 基础 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="04 · LLM agent 与 tool calling 基础 / LLM agents &amp; tool calling - Letta 图解教程">
+<meta name="twitter:description" content="第二部分 · 前置基础｜LLM agent 与 tool calling 基础 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第二部分 · 前置基础</span><span class="lang-en">Part 2 · Foundations</span></span>
+    <span class="pill">04 / 06</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:66%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第二部分 · 前置基础</span><span class="lang-en">Part 2 · Foundations</span></div>
+    <h1><span class="lang-zh">LLM agent 与 tool calling 基础</span><span class="lang-en">LLM agents &amp; tool calling</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第一部分我们把 Letta 的骨架看完了：一个 agent 是数据库里的一条 <span class="mono">AgentState</span>（第 1 课），住在 REST → services → ORM 三层架构里（第 2 课），处理一条消息就是让它进入一个<strong>最多 <span class="mono">max_steps</span> 轮的 step 循环</strong>（第 3 课）。但那张主轴图里有两个词，我们一直没拆开：<strong>"调 LLM"</strong>和<strong>"执行工具"</strong>。这一课就把这两下放到显微镜下，回答三个最基础、却最容易想当然的问题：模型到底怎么"调用"一个工具？谁真正去执行它？为什么 Letta 要逼着模型"先写一段内心独白、再动手"？把这三点搞透，你就拿到了读懂第四、五部分（agent 循环与工具系统）的钥匙。
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  把一个 LLM agent 想象成一位<strong>聪明但失忆的实习生</strong>，配了一个<strong>工具箱</strong>和一沓<strong>便签</strong>。你给他派活，但有三条铁律：① 他<strong>不能直接动手</strong>——想用某件工具，只能在便签上写"<strong>请帮我用『查天气』，参数是『北京』</strong>"，然后把便签递给你；真正跑去仓库、把工具用起来的是<strong>你</strong>，不是他。② 你把结果（"北京 26℃"）写回便签塞给他，他才知道发生了什么，接着想下一步。③ 公司还规定：每张工具便签的<strong>最上面一行</strong>，必须先写"<strong>我为什么要用这个工具</strong>"——逼他把思路落在纸上，而不是闷头乱抓。于是一件事常常要<strong>来回递好几张便签</strong>才办完：想一下、递一张、看结果、再想一下……这套"写便签—你执行—回结果"的节奏就是 tool calling；而"最上面先写想法"，就是这一课最妙的那一手。
+</div>
+
+<h2>agent = LLM + 工具 + 循环</h2>
+<p>先把"agent"这个词去神秘化。一个 LLM agent 不是某种新模型，它就是<strong>三样老东西拼起来</strong>：一个会预测下一个 token 的 <strong>LLM</strong>、一组它能调用的<strong>工具</strong>（函数）、以及一个把"调模型 → 执行工具 → 把结果喂回去"不断重复的<strong>循环</strong>。第 3 课的 step 循环，正是这个"循环"在 Letta 里的实现；本课要补的，是循环里那一下"调模型 + 执行工具"到底怎么运转。</p>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  一句话：<strong>LLM 负责"想和决定"，工具负责"摸到外部世界"，循环负责"把两者串起来直到事情办完"。</strong>模型本身只会做一件事——给定一段文本，预测接下来该写什么。它不能上网、不能读数据库、不能改自己的记忆。所谓"会用工具的 agent"，是在请求里<strong>额外告诉模型"你有这些函数可用"</strong>，模型于是可以在该用的时候<strong>产出一个"调用请求"</strong>；但请求不等于执行——必须有一圈循环，把请求接住、真的去跑、再把结果交回给模型，它才能基于结果继续。<strong>没有这圈循环，LLM 永远停在"我想查一下"，到不了"查到了"。</strong>
+</div>
+
+<h2>函数调用，在消息层到底怎么工作</h2>
+<p>很多人以为"function calling"是模型偷偷帮你运行了代码。<strong>恰恰相反。</strong>它发生在<strong>消息层</strong>，全程只是"文本进、结构化文本出"。一次完整的往返是这样的：</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">请求</div><div class="nd">messages + 工具 schema</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">模型产出</div><div class="nd">tool_call(name, args)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">你的代码执行</div><div class="nd">真正跑这个函数</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">回填结果</div><div class="nd">tool result 消息</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">模型继续</div><div class="nd">再想 / 回话</div></div>
+</div>
+
+<p>逐格拆开：<strong>第一格</strong>，你发给模型的请求里，除了对话消息，还附上一份<strong>工具清单</strong>——每个工具是一段 JSON schema，写清"函数叫什么、是干嘛的、要哪些参数"。<strong>第二格</strong>，模型读完后，如果决定用某个工具，它<strong>不会执行</strong>，只会在回复里产出一个结构化的 <span class="mono">tool_call</span>：工具名 + 一串 JSON 参数。<strong>第三格</strong>，你的运行时（Letta）接住这个请求，<strong>在你的机器上真正调用那个函数</strong>。<strong>第四格</strong>，把函数返回值包成一条 <span class="mono">tool</span>（工具结果）消息。<strong>第五格</strong>，连同之前的对话一起再发给模型，它这才"看到"结果，决定继续调下一个工具还是直接回话。</p>
+
+<p>这里有两个容易忽略、却很关键的事实。其一，<strong>模型是无状态的</strong>（这正是第 1 课的根本约束）：第五格"再发给模型"时，并不是接着上次的对话继续，而是把 <strong>system + 历史消息 + 刚才的 tool_call + 工具结果</strong>整段<strong>重新拼好、整包发过去</strong>——模型每一轮都是"读一遍完整剧本，再决定下一句台词"。其二，请求里的工具结果靠一个 <span class="mono">tool_call_id</span> 和发起它的那次调用<strong>配对</strong>，所以即便一轮里发了好几个工具调用，模型也能把"哪个结果对应哪次调用"对上号。把这两点和第 3 课连起来：<strong>step 循环每转一圈，都要把上下文从 <span class="mono">AgentState</span> 现拼一份</strong>——这也是为什么"稳定前缀 + 变化尾巴"对省钱那么重要。</p>
+
+<p>关键就在第一格那份"工具 schema"。它不是你手写的散文，而是<strong>从一个普通 Python 函数自动生成的 JSON</strong>。Letta 用 <span class="mono">generate_schema</span> 读函数的<strong>签名 + Google 风格 docstring</strong>，吐出下面这种模型能读懂的结构。以"往核心记忆追加内容"的工具 <span class="mono">core_memory_append</span> 为例，模型眼里看到的是：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/functions/schema_generator.py</span><span class="ln">generate_schema 产出（core_memory_append）</span></div>
+<pre><span class="cm"># 一个工具在模型眼里就是这样一段 JSON（名字 / 描述 / 参数）</span>
+{
+  <span class="st">"name"</span>: <span class="st">"core_memory_append"</span>,
+  <span class="st">"description"</span>: <span class="st">"Append to the contents of core memory."</span>,
+  <span class="st">"parameters"</span>: {
+    <span class="st">"type"</span>: <span class="st">"object"</span>,
+    <span class="st">"properties"</span>: {
+      <span class="st">"label"</span>:   {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"description"</span>: <span class="st">"Section of the memory to be edited."</span>},
+      <span class="st">"content"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"description"</span>: <span class="st">"Content to write to the memory. ..."</span>}
+    },
+    <span class="st">"required"</span>: [<span class="st">"label"</span>, <span class="st">"content"</span>]
+  }
+}
+</pre></div>
+
+<p>注意一个细节：函数原本的签名是 <span class="mono">core_memory_append(agent_state, label, content)</span>，但 schema 里<strong>看不到 <span class="mono">agent_state</span></strong>。因为它属于 <span class="mono">TOOL_RESERVED_KWARGS</span>（即 <span class="mono">["self", "agent_state"]</span>）——这类"由系统在执行时注入"的参数会被<strong>挡在 schema 之外</strong>，不暴露给模型。模型只需要、也只能填它该填的业务参数；运行时执行时再把 <span class="mono">agent_state</span> 这样的上下文补进去。<strong>"模型看到的参数"和"函数真正接收的参数"并不相同</strong>，这一层裁剪正是框架替你做的。</p>
+
+<div class="card warn">
+  <div class="tag">⚠️ 最容易想错的一点</div>
+  <strong>模型不会执行任何工具，它只会"请求"执行。</strong>当模型产出 <span class="mono">tool_call(name="web_search", args={...})</span>，这只是一段<strong>结构化文本</strong>，等价于"我想调用这个函数，参数是这些"——此刻什么都还没发生。真正去跑这个函数的，是<strong>你的运行时</strong>（在 Letta 里由运行时的 <span class="mono">_execute_tool</span> → <span class="mono">ToolExecutionManager.execute_tool_async</span> 执行，自定义工具还会进<strong>沙箱</strong>）。这有重大的<strong>安全含义</strong>：模型的输出是<strong>不可信</strong>的，它可能"请求"删库、可能"请求"访问内网。决定<strong>到底执不执行、在什么权限下执行、要不要拦</strong>的，永远是你的代码，不是模型。把模型的 <span class="mono">tool_call</span> 当成"用户提交的表单"来对待——先校验，再执行。
+</div>
+
+<h2>ReAct：想一步、做一步、再想一步</h2>
+<p>把上面那圈往返重复起来，就得到 agent 最核心的工作模式——<strong>ReAct</strong>（Reasoning + Acting，推理与行动交替）。它不是"一问一答"，而是一个小循环：<strong>想</strong>（推理出下一步该干嘛）→ <strong>做</strong>（产出一个 tool_call）→ <strong>看</strong>（观察工具结果）→ <strong>再想</strong>……直到不需要再用工具，才给出最终回话。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>想（Reason）</h4><p>模型基于当前上下文推理："要回答这个问题，我得先查一下资料。"这段思路就是<strong>内心独白</strong>。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>做（Act）</h4><p>产出一个 <span class="mono">tool_call</span>，例如 <span class="mono">web_search(query="...")</span>。注意：只是<strong>请求</strong>，还没执行。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>看（Observe）</h4><p>运行时执行工具，把返回值作为一条 <span class="mono">tool</span> 结果消息<strong>喂回</strong>上下文。模型这才"看到"答案。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>再想 / 收工</h4><p>带着新结果再推理：够了就<strong>回话结束</strong>；不够就<strong>再产出一个 tool_call</strong>，回到第 2 步。</p></div></div>
+</div>
+
+<p>这个循环你<strong>第 3 课已经见过</strong>——只是当时叫它 step 循环。Letta 里"要不要再转一圈"的判断极简：<span class="mono">_decide_continuation</span> 看<strong>这一步有没有调用工具</strong>——调了就继续（结果要喂回去让它接着想），只产出普通消息就停（<span class="mono">end_turn</span>）。所以 <strong>ReAct 的循环，就是第 3 课那个 step 循环的"思想内核"</strong>：每一轮 <span class="mono">_step</span> 是一次"想 + 做"，把工具结果喂回去，触发下一轮"看 + 再想"。</p>
+
+<p>如果把"用一个工具"的完整过程摊成<strong>消息序列</strong>，长这样——注意 assistant 那一条里<strong>同时</strong>带着"内心独白"和"工具调用"，而工具结果是单独的一条 <span class="mono">tool</span> 消息：</p>
+
+<div class="cellgroup">
+  <div class="cg-cap">一次工具调用的<b>消息序列</b>（从用户提问到最终回话）：</div>
+  <div class="cells">
+    <span class="cell">user<br>(你的问题)</span>
+    <span class="cell hl">assistant<br>(inner_thoughts<br>+ tool_call)</span>
+    <span class="cell q">tool<br>(执行结果)</span>
+    <span class="cell">assistant<br>(最终回话)</span>
+  </div>
+</div>
+
+<p>这条序列里藏着一个 Letta 特有的设计：那条 assistant 消息里的 <strong>inner_thoughts（内心独白）</strong>是从哪来的？为什么模型会"先说想法、再调工具"？答案就是这一课的亮点。</p>
+
+<h2>内心独白：把"思维链"塞进工具的一个参数</h2>
+<p>很多新模型有原生的"思考"通道（reasoning / thinking），但<strong>不是所有 provider 都有</strong>，而且各家格式还不一样。Letta 想要一个<strong>跨所有模型都成立</strong>的办法，让 agent 在每次动手前都<strong>先把推理写出来</strong>。它的解法非常巧：<strong>给每个工具的参数表，额外塞进一个名为 <span class="mono">thinking</span> 的字符串参数，并强制它必填、且排在第一个。</strong></p>
+
+<div class="cols">
+  <div class="col">
+    <h4>普通工具 schema</h4>
+    <p>模型只被要求填业务参数：</p>
+    <p class="mono" style="font-size:.82rem">required: [label, content]</p>
+    <p>模型可以<strong>不写任何推理</strong>，直接产出一个 tool_call——想错了也看不出来。</p>
+  </div>
+  <div class="col">
+    <h4>注入 inner_thoughts 后</h4>
+    <p>参数表最前面多了一个 <span class="mono">thinking</span>：</p>
+    <p class="mono" style="font-size:.82rem">required: [thinking, label, content]</p>
+    <p>模型<strong>必须先填 <span class="mono">thinking</span></strong>（描述里明写"先想后做，永远第一个生成它"），等于被结构性地逼着先推理。</p>
+  </div>
+</div>
+
+<p>这一步由 <span class="mono">add_inner_thoughts_to_functions</span> 完成。它遍历每个工具 schema，把 <span class="mono">thinking</span> 插到 properties 的最前面、再插到 required 的第 0 位：</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/helpers.py</span><span class="ln">add_inner_thoughts_to_functions（简化）</span></div>
+<pre><span class="cm"># 给每个工具 schema 注入一个"内心独白"参数，并要求最先生成</span>
+<span class="kw">def</span> <span class="fn">add_inner_thoughts_to_functions</span>(functions, inner_thoughts_key, inner_thoughts_description,
+                                    inner_thoughts_required=<span class="kw">True</span>, put_inner_thoughts_first=<span class="kw">True</span>):
+    <span class="kw">for</span> schema <span class="kw">in</span> functions:
+        props = schema[<span class="st">"parameters"</span>][<span class="st">"properties"</span>]
+        <span class="cm"># inner_thoughts 作为"第一个"属性插入（key 默认为 "thinking"）</span>
+        schema[<span class="st">"parameters"</span>][<span class="st">"properties"</span>] = {
+            inner_thoughts_key: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"description"</span>: inner_thoughts_description},
+            **props,
+        }
+        schema[<span class="st">"parameters"</span>][<span class="st">"required"</span>].insert(<span class="nb">0</span>, inner_thoughts_key)  <span class="cm"># 必填且排第一</span>
+    <span class="kw">return</span> functions
+</pre></div>
+
+<p>那段"描述"也大有讲究。<span class="mono">local_llm/constants.py</span> 里有两版：普通版 <span class="mono">INNER_THOUGHTS_KWARG_DESCRIPTION</span> 写 "Deep inner monologue private to you only."；而<strong>强制版</strong> <span class="mono">..._GO_FIRST</span> 额外加一句 "<em>Think before you act, so always generate arg 'thinking' first before any other arg.</em>"——直接用自然语言命令模型"先生成 thinking"。等模型回话后，Letta 再用 <span class="mono">unpack_inner_thoughts_from_kwargs</span> 把这个 <span class="mono">thinking</span> 从工具参数里<strong>抠出来</strong>，单独放进 assistant 消息的正文（就是上面 cellgroup 里那条 inner_thoughts 的来历）。对上层来说，它看起来就像模型"先说了段独白、再调了工具"。</p>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>把"思维链"做成工具的一个参数——这是这一课的"啊哈"。</strong>主流做法是指望模型自带"思考通道"，或在提示里恳求它"请一步步想"；但通道<strong>不是每家都有</strong>，恳求也<strong>可被无视</strong>。Letta 换了个根本不同的支点：既然 agent 每次动手都得调用工具、而工具调用<strong>必须符合 schema</strong>，那就把"先想"写进 schema 本身——加一个 <span class="mono">thinking</span> 参数，设成<strong>必填（required）</strong>、<strong>排第一（put_inner_thoughts_first）</strong>，描述里再明令"永远第一个生成它"。于是"推理"从"<strong>但愿它会想</strong>"变成了"<strong>想法是必填参数——不写它，这次调用就不合法</strong>"（至于"排第一"，则由参数顺序加上描述里那句明令共同保证）。更妙的是，这招<strong>跨 provider 通用</strong>：任何支持 function calling 的模型——哪怕完全没有原生思考能力——都被这套结构<strong>逼着"先推理、后行动"</strong>。一个参数，把一条"软约束"变成了"硬约束"。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 源码对应</div>
+  这一课的每个环节落在哪：<strong>工具 → schema</strong> 在 <span class="mono">letta/functions/schema_generator.py::generate_schema</span>（读签名 + docstring，<span class="mono">TOOL_RESERVED_KWARGS</span> 挡掉 <span class="mono">self / agent_state</span>）；<strong>注入内心独白</strong>在 <span class="mono">letta/llm_api/helpers.py::add_inner_thoughts_to_functions</span>，回收在同文件 <span class="mono">unpack_inner_thoughts_from_kwargs</span>；<strong>键名与描述</strong>在 <span class="mono">letta/local_llm/constants.py</span>（<span class="mono">INNER_THOUGHTS_KWARG="thinking"</span>、<span class="mono">VALID_INNER_THOUGHTS_KWARGS</span>、<span class="mono">..._DESCRIPTION(_GO_FIRST)</span>）；<strong>请求组装时触发注入</strong>见 <span class="mono">letta/llm_api/openai.py</span>（当 <span class="mono">llm_config.put_inner_thoughts_in_kwargs</span> 为真）；<strong>续转判定</strong>在 <span class="mono">letta/agents/letta_agent_v3.py</span>（<span class="mono">_decide_continuation</span>）；<strong>工具执行</strong>在 <span class="mono">letta/agents/letta_agent_v2.py</span>（<span class="mono">_execute_tool</span>，v3 继承）→ <span class="mono">ToolExecutionManager.execute_tool_async</span>。
+</div>
+
+<p>把"函数调用往返 + ReAct 续转 + 模型只产出不执行"三件事合到一段伪代码里，整个 agent 的心跳就是这样：</p>
+
+<pre class="code"><span class="cm"># 一个 agent 的最小循环（伪代码，对应第 3 课的 step 循环）</span>
+messages = [system, ...history..., user_msg]
+tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema</span>(my_tools))   <span class="cm"># thinking 被塞成第一个参数</span>
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(max_steps):                    <span class="cm"># 上限默认 50</span>
+    reply = llm.<span class="fn">call</span>(messages, tools)            <span class="cm"># 模型只"产出"，绝不执行</span>
+    <span class="kw">if</span> reply.tool_calls:                          <span class="cm"># 它请求调用某个工具</span>
+        name, args = reply.tool_calls[<span class="nb">0</span>]
+        result = runtime.<span class="fn">execute</span>(name, args)      <span class="cm"># 你的代码真正执行（必要时进沙箱）</span>
+        messages += [reply, <span class="fn">tool_result</span>(result)]  <span class="cm"># 回填结果 -> 触发"再想一轮"</span>
+    <span class="kw">else</span>:
+        <span class="kw">break</span>                                     <span class="cm"># 没调工具 -> 收工（end_turn）</span>
+</pre>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>模型为什么不自己执行工具？</summary><div class="acc-body">
+<p><strong>示例：</strong>模型产出 <span class="mono">run_code("rm -rf /")</span>。如果"产出"就等于"执行"，那就完了。事实是：这只是一段它<strong>请求</strong>执行的文本，跑不跑由你的运行时说了算。</p>
+<p><strong>为什么这样设计：</strong>因为模型输出<strong>天然不可信</strong>——它可能被提示注入、可能幻觉出危险调用。把"决定权"留在框架手里，才能在执行前做权限校验、参数清洗、放进沙箱、甚至直接拒绝。这就是"模型提议、运行时裁决"的安全边界。</p>
+<p><strong>源码在哪：</strong>执行入口 <span class="mono">letta/agents/letta_agent_v2.py::LettaAgentV2._execute_tool</span>（<span class="mono">LettaAgentV3</span> 继承并调用）→ <span class="mono">letta/services/tool_executor/tool_execution_manager.py::ToolExecutionManager.execute_tool_async</span>；自定义工具走 <span class="mono">letta/services/tool_executor/sandbox_tool_executor.py</span> 的沙箱。</p>
+<p><strong>还有什么替代：</strong>有些玩具框架让模型直接 <span class="mono">eval()</span> 自己的输出——开发快，但等于把 root 权限交给一段概率文本，生产环境绝不可取。</p>
+</div></details>
+
+<details class="accordion"><summary>为什么把"思考"塞进参数，而不是单独开一个字段？</summary><div class="acc-body">
+<p><strong>示例：</strong>同一个 agent，今天接 OpenAI、明天换 Anthropic、后天用本地 LM Studio。如果"思考"依赖各家私有的 reasoning 字段，就得为每家写一套适配，还可能有的家根本没有这个通道。</p>
+<p><strong>为什么这样设计：</strong>所有支持 function calling 的 provider 都认 schema 里的 <span class="mono">required</span> 和参数顺序。把 <span class="mono">thinking</span> 做成"必填且第一"的普通参数，就用<strong>最大公约数</strong>的能力，换来了<strong>跨厂商一致</strong>的"先想后做"，还能<strong>强制顺序</strong>（GO_FIRST 描述明令第一个生成）。回话后再 <span class="mono">unpack</span> 出来当独白，对上层透明。</p>
+<p><strong>源码在哪：</strong>注入 <span class="mono">letta/llm_api/helpers.py::add_inner_thoughts_to_functions</span>（<span class="mono">put_inner_thoughts_first=True</span>、<span class="mono">inner_thoughts_required=True</span>）；回收 <span class="mono">unpack_inner_thoughts_from_kwargs</span>；描述 <span class="mono">letta/local_llm/constants.py::INNER_THOUGHTS_KWARG_DESCRIPTION_GO_FIRST</span>。</p>
+<p><strong>还有什么替代：</strong>① 指望原生思考通道——不通用；② 在 system 提示里恳求"请一步步想"——软约束，模型可无视；③ 单开一个非工具字段——又回到"各家格式不同"的老问题。塞进参数是覆盖面最广的一招。</p>
+</div></details>
+
+<details class="accordion"><summary>ReAct 循环 vs 直接回答：什么时候才需要绕这一圈？</summary><div class="acc-body">
+<p><strong>示例：</strong>问"1+1 等于几"，模型一轮直接回答，根本不调工具——ReAct 退化成普通一问一答。问"我上周说的项目截止日是哪天、顺便查下那天天气"，就得先 recall 记忆、再 web_search，两三轮工具才答得了。</p>
+<p><strong>为什么这样设计：</strong>循环的价值在于"<strong>模型发起调用时还没看到结果</strong>"。只有把结果喂回去再调一次，它才能基于真实信息继续。需要"看一眼外部世界再决定"的任务，就得绕这一圈；纯靠已有知识能答的，第一轮就 <span class="mono">end_turn</span> 了。</p>
+<p><strong>源码在哪：</strong>续转判定 <span class="mono">letta/agents/letta_agent_v3.py::LettaAgentV3._decide_continuation</span>（"调了工具就继续、否则停"）；循环上限 <span class="mono">letta/constants.py::DEFAULT_MAX_STEPS</span>（默认 50）。</p>
+<p><strong>还有什么替代：</strong>不带循环的"单次函数调用"——适合一锤子买卖的小任务，但没法多步推理；纯 chain（写死步骤）——可控但不灵活，没法让模型自己决定下一步。ReAct 在"灵活"和"可控"之间取了平衡。</p>
+</div></details>
+
+<h2>这一课在整张大图的哪里</h2>
+<p>回到第一部分的主轴：第 3 课里那个 step 循环，被我们这一课<strong>拆成了内核</strong>——它跳动的每一下，就是一次"<strong>函数调用往返</strong>"（请求带 schema → 模型产出 tool_call → 运行时执行 → 结果回填 → 再想），而"调了工具就继续、没调就停"这条续转规则，正是 <strong>ReAct"想-做-看-再想"</strong>的直接体现。你现在应该能把第 3 课的 <span class="mono">_step</span> 和本课的 ReAct 循环<strong>对上号</strong>了：它们是同一个东西的两种讲法。</p>
+
+<p>而 Letta 把"先想后做"<strong>焊进了工具的 schema</strong>，这又把第 1 课"自我编辑记忆"的故事补完了一环：agent 改记忆用的就是 <span class="mono">core_memory_append</span> 这样的工具，调用它之前会被 <span class="mono">thinking</span> 参数逼着先写一句"我为什么要改这块记忆"。<strong>记忆、工具、推理，在 Letta 里是同一套机制串起来的。</strong></p>
+
+<p>往后看：<strong>第四部分（agent 循环）</strong>会把本课的循环放大——续转规则、并行工具、<span class="mono">max_steps</span>、流式怎么逐字吐出；<strong>第五部分（工具系统）</strong>会把"工具"这一格放大——schema 怎么从函数生成、<span class="mono">tool_rules</span> 怎么约束调用顺序、沙箱怎么隔离执行、MCP 怎么接外部工具。本课给你的，是读懂那两部分所需的<strong>最小心智模型</strong>：<strong>agent = 会产出调用请求的 LLM + 真正执行的运行时 + 把两者串起来的循环，外加一个被塞进参数、逼它先想的内心独白。</strong></p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>agent = LLM + 工具 + 循环</strong>：模型负责想和决定，工具负责碰外部世界，循环把两者串到事情办完。</li>
+    <li><strong>function calling 在消息层</strong>：请求带工具 schema → 模型只<strong>产出</strong> <span class="mono">tool_call</span>（名字 + JSON 参数）→ <strong>你的运行时执行</strong> → tool 结果回填 → 模型继续。</li>
+    <li><strong>模型不执行工具</strong>，只发出"调用请求"；真正执行的是 <span class="mono">_execute_tool</span> / <span class="mono">ToolExecutionManager</span>（必要时进沙箱）——这是安全边界。</li>
+    <li><strong>工具 schema 由函数自动生成</strong>（<span class="mono">generate_schema</span>，读签名 + docstring），<span class="mono">self / agent_state</span> 等保留参数不暴露给模型。</li>
+    <li><strong>ReAct = 想 → 做 → 看 → 再想</strong>，就是第 3 课 step 循环的内核；续转规则极简：调了工具就继续、否则停。</li>
+    <li><strong>内心独白塞进参数（亮点）</strong>：<span class="mono">add_inner_thoughts_to_functions</span> 给每个工具加一个必填且排第一的 <span class="mono">thinking</span> 参数，跨 provider 把"先推理后行动"从软约束变成硬约束。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 当模型决定使用一个工具时，它实际上“产出”的是什么？</div>
+  <ol class="opts">
+    <li>一个结构化的 tool_call 请求（工具名 + JSON 参数），并不执行任何代码</li>
+    <li>它直接在自己的进程里运行那个函数并拿到返回值</li>
+    <li>它当场训练出一个新工具</li>
+    <li>它把那个函数的源代码改写一遍</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。function calling 发生在消息层：模型只产出一个 tool_call（名字 + JSON 参数）。真正执行的是运行时（letta_agent_v3.py::_execute_tool → ToolExecutionManager.execute_tool_async，必要时进沙箱）——这也是安全边界：模型输出不可信，执行与否由你的代码裁决。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. Letta 为什么把“内心独白”做成每个工具 schema 里的一个参数（thinking）？</div>
+  <ol class="opts">
+    <li>为了减少 token 计费</li>
+    <li>为了让工具执行得更快</li>
+    <li>用 schema 的最大公约数，跨所有支持 function calling 的 provider 统一强制“先推理后行动”，还能用 required + 排第一强制顺序</li>
+    <li>因为模型权重里没有空间存放思考</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。不是所有 provider 都有原生思考通道，格式还各不相同。add_inner_thoughts_to_functions 把 thinking 设成必填（required）且排第一（put_inner_thoughts_first），描述（..._GO_FIRST）再明令第一个生成——把“但愿它会想”的软约束变成“调用格式必须先写想法”的硬约束，且跨厂商通用。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. ReAct 循环的正确顺序是哪一个？</div>
+  <ol class="opts">
+    <li>想（推理）→ 做（产出 tool_call）→ 看（观察工具结果）→ 再想……直到不再调工具</li>
+    <li>做 → 想 → 看 → 训练</li>
+    <li>看 → 回话 → 想 → 做</li>
+    <li>一次性想完所有步骤，再一起执行</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。ReAct = Reasoning + Acting 交替：想→做→看→再想。模型发起调用时还没看到结果，必须把结果喂回去再调一次。Letta 用 _decide_continuation“调了工具就继续、否则停”驱动它——这正是第 3 课 step 循环的内核。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>假设你要给 agent 加一个“删除文件”的工具。结合本课“模型只产出请求、运行时才执行”和“tool_call 不可信”，你会在执行前加哪些检查（权限、参数校验、沙箱、白名单）？为什么把这些放在运行时，而不是指望模型自律？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Part 1 gave us Letta's skeleton: an agent is one <span class="mono">AgentState</span> row in a database (Lesson 1), it lives in a three-layer house — REST → services → ORM (Lesson 2), and handling a message means dropping it into a <strong>step loop of up to <span class="mono">max_steps</span> rounds</strong> (Lesson 3). But two words in that spine were never opened up: <strong>"call the LLM"</strong> and <strong>"execute a tool."</strong> This lesson puts both under a microscope and answers the three most basic — yet most easily mis-assumed — questions: how does a model actually "call" a tool? Who really executes it? And why does Letta force the model to "write a line of inner monologue before it acts"? Nail these three and you hold the key to Parts 4 and 5 (the agent loop &amp; the tool system).
+</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  Picture an LLM agent as a <strong>brilliant but amnesiac intern</strong> equipped with a <strong>toolbox</strong> and a stack of <strong>sticky notes</strong>. You give it work, but with three iron rules: ① It <strong>cannot act directly</strong> — to use a tool, it can only write on a note "<strong>please use 'check weather' with the argument 'Beijing'</strong>" and hand it to <strong>you</strong>; the one who actually walks to the warehouse and runs the tool is <strong>you</strong>, not the intern. ② Only when you write the result back ("Beijing 26℃") and hand the note back does it learn what happened and think about the next step. ③ The company also mandates: the <strong>very first line</strong> of every tool note must say "<strong>why I'm using this tool</strong>" — forcing the thinking onto paper instead of grabbing blindly. So one task often takes <strong>several notes back and forth</strong>: think, hand over a note, see the result, think again… That "write-a-note → you-execute → return-result" rhythm <strong>is</strong> tool calling; and "write the thought on the top line first" is the cleverest move in this lesson.
+</div>
+
+<h2>agent = LLM + tools + a loop</h2>
+<p>Let's de-mystify the word "agent." An LLM agent is not some new model — it's <strong>three old things bolted together</strong>: an <strong>LLM</strong> that predicts the next token, a set of <strong>tools</strong> (functions) it can call, and a <strong>loop</strong> that keeps repeating "call the model → execute a tool → feed the result back." Lesson 3's step loop is exactly that "loop" inside Letta; what this lesson adds is how the "call the model + execute a tool" beat actually works.</p>
+
+<div class="card macro">
+  <div class="tag">🌍 The big picture</div>
+  In one line: <strong>the LLM does the "thinking and deciding," tools "touch the outside world," and the loop "strings them together until the job is done."</strong> The model itself does exactly one thing — given some text, predict what to write next. It can't browse the web, read a database, or edit its own memory. A "tool-using agent" simply <strong>tells the model "you have these functions available"</strong> in the request, so the model can <strong>emit a "call request"</strong> when appropriate; but a request is not an execution — there must be a loop to catch the request, actually run it, and hand the result back, before the model can continue from the result. <strong>Without that loop, the LLM is forever stuck at "I'd like to look this up" and never reaches "I looked it up."</strong>
+</div>
+
+<h2>How function calling actually works, at the message layer</h2>
+<p>Many people think "function calling" means the model secretly ran code for you. <strong>It's the opposite.</strong> It happens at the <strong>message layer</strong> — the whole thing is just "text in, structured text out." One full round-trip looks like this:</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">Request</div><div class="nd">messages + tool schemas</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Model emits</div><div class="nd">tool_call(name, args)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Your code runs it</div><div class="nd">actually call the function</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Feed result back</div><div class="nd">tool result message</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Model continues</div><div class="nd">think / reply</div></div>
+</div>
+
+<p>Cell by cell: <strong>cell 1</strong>, the request you send the model carries — besides the conversation messages — a <strong>tool list</strong>, where each tool is a JSON schema stating "what the function is called, what it does, which arguments it takes." <strong>Cell 2</strong>, having read them, if the model decides to use a tool it <strong>does not execute</strong> it; it only emits a structured <span class="mono">tool_call</span>: a tool name + a JSON blob of arguments. <strong>Cell 3</strong>, your runtime (Letta) catches that request and <strong>actually calls the function on your machine</strong>. <strong>Cell 4</strong>, the return value is wrapped into a <span class="mono">tool</span> (tool-result) message. <strong>Cell 5</strong>, it's sent back to the model together with the prior conversation, and only now does the model "see" the result and decide whether to call another tool or just reply.</p>
+
+<p>Two easily-missed but crucial facts hide here. First, <strong>the model is stateless</strong> (exactly Lesson 1's core constraint): "sending it back" in cell 5 doesn't resume a session — it <strong>re-assembles and re-sends the entire packet</strong> of <strong>system + history + that tool_call + the tool result</strong>. The model re-reads the whole script every round before deciding its next line. Second, the tool result is <strong>paired</strong> with the call that produced it via a <span class="mono">tool_call_id</span>, so even if a round emits several tool calls, the model can match "which result belongs to which call." Tie both back to Lesson 3: <strong>every turn of the step loop re-assembles the context fresh from <span class="mono">AgentState</span></strong> — which is why "stable prefix + changing tail" matters so much for cost.</p>
+
+<p>The crux is that "tool schema" in cell 1. It isn't prose you hand-write — it's <strong>JSON auto-generated from an ordinary Python function</strong>. Letta uses <span class="mono">generate_schema</span> to read a function's <strong>signature + Google-style docstring</strong> and emit a structure the model can read. Take <span class="mono">core_memory_append</span>, the tool that appends to core memory; here's what the model sees:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/functions/schema_generator.py</span><span class="ln">generate_schema output (core_memory_append)</span></div>
+<pre><span class="cm"># To the model, a tool is just this JSON (name / description / parameters)</span>
+{
+  <span class="st">"name"</span>: <span class="st">"core_memory_append"</span>,
+  <span class="st">"description"</span>: <span class="st">"Append to the contents of core memory."</span>,
+  <span class="st">"parameters"</span>: {
+    <span class="st">"type"</span>: <span class="st">"object"</span>,
+    <span class="st">"properties"</span>: {
+      <span class="st">"label"</span>:   {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"description"</span>: <span class="st">"Section of the memory to be edited."</span>},
+      <span class="st">"content"</span>: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"description"</span>: <span class="st">"Content to write to the memory. ..."</span>}
+    },
+    <span class="st">"required"</span>: [<span class="st">"label"</span>, <span class="st">"content"</span>]
+  }
+}
+</pre></div>
+
+<p>Note a detail: the function's real signature is <span class="mono">core_memory_append(agent_state, label, content)</span>, yet the schema has <strong>no <span class="mono">agent_state</span></strong>. That's because it belongs to <span class="mono">TOOL_RESERVED_KWARGS</span> (namely <span class="mono">["self", "agent_state"]</span>) — these "injected-by-the-system-at-execution" parameters are <strong>kept out of the schema</strong> and never exposed to the model. The model only needs to (and only can) fill the business arguments; the runtime adds context like <span class="mono">agent_state</span> back in when it executes. <strong>"What the model sees" and "what the function actually receives" are not the same</strong> — that trimming layer is the framework doing work for you.</p>
+
+<div class="card warn">
+  <div class="tag">⚠️ The thing people get wrong</div>
+  <strong>The model executes nothing — it only "requests" execution.</strong> When the model emits <span class="mono">tool_call(name="web_search", args={...})</span>, that's just <strong>structured text</strong>, equivalent to "I'd like to call this function with these arguments" — nothing has happened yet. The one that actually runs the function is <strong>your runtime</strong> (in Letta, the runtime's <span class="mono">_execute_tool</span> → <span class="mono">ToolExecutionManager.execute_tool_async</span>; custom tools even go through a <strong>sandbox</strong>). This has serious <strong>security implications</strong>: the model's output is <strong>untrusted</strong> — it could "request" to drop a database or reach an internal network. What decides <strong>whether to run it, under what privileges, and whether to block it</strong> is always your code, not the model. Treat a model's <span class="mono">tool_call</span> like "a form submitted by a user" — validate first, then execute.
+</div>
+
+<h2>ReAct: think a step, act a step, think again</h2>
+<p>Repeat that round-trip and you get the agent's core working pattern — <strong>ReAct</strong> (Reasoning + Acting, interleaved). It isn't "one question, one answer"; it's a small loop: <strong>think</strong> (reason out the next move) → <strong>act</strong> (emit a tool_call) → <strong>observe</strong> (look at the tool result) → <strong>think again</strong>… until no tool is needed, then give the final reply.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Think (Reason)</h4><p>The model reasons from the current context: "to answer this, I should look something up first." That reasoning is the <strong>inner monologue</strong>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Act</h4><p>It emits a <span class="mono">tool_call</span>, e.g. <span class="mono">web_search(query="...")</span>. Note: only a <strong>request</strong>, not yet executed.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Observe</h4><p>The runtime executes the tool and <strong>feeds</strong> the return value back as a <span class="mono">tool</span> result message. Only now does the model "see" the answer.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Think again / finish</h4><p>Reason with the new result: enough → <strong>reply and stop</strong>; not enough → <strong>emit another tool_call</strong> and go back to step 2.</p></div></div>
+</div>
+
+<p>You've <strong>already met this loop in Lesson 3</strong> — we just called it the step loop. Letta's "go around again?" decision is dead simple: <span class="mono">_decide_continuation</span> checks <strong>whether this step called a tool</strong> — called one, continue (the result must be fed back so it can keep thinking); only a plain message, stop (<span class="mono">end_turn</span>). So <strong>the ReAct loop IS the "intellectual core" of Lesson 3's step loop</strong>: each <span class="mono">_step</span> round is one "think + act," feeding the tool result back to trigger the next round's "observe + think again."</p>
+
+<p>If you lay out "using one tool" as a <strong>message sequence</strong>, it looks like this — note that the assistant message carries <strong>both</strong> the "inner monologue" and the "tool call," while the tool result is a separate <span class="mono">tool</span> message:</p>
+
+<div class="cellgroup">
+  <div class="cg-cap">The <b>message sequence</b> of one tool call (from your question to the final reply):</div>
+  <div class="cells">
+    <span class="cell">user<br>(your question)</span>
+    <span class="cell hl">assistant<br>(inner_thoughts<br>+ tool_call)</span>
+    <span class="cell q">tool<br>(execution result)</span>
+    <span class="cell">assistant<br>(final reply)</span>
+  </div>
+</div>
+
+<p>This sequence hides a Letta-specific design: where do the <strong>inner_thoughts</strong> in that assistant message come from? Why does the model "state its thinking before calling a tool"? That's the spark of this lesson.</p>
+
+<h2>Inner monologue: stuffing the "chain of thought" into a tool argument</h2>
+<p>Many new models have a native "thinking" channel (reasoning / thinking), but <strong>not every provider does</strong>, and the formats differ. Letta wanted a way that <strong>holds across all models</strong> to make the agent <strong>write its reasoning before every action</strong>. Its solution is clever: <strong>add to every tool's parameter list one extra string argument named <span class="mono">thinking</span>, force it to be required, and put it first.</strong></p>
+
+<div class="cols">
+  <div class="col">
+    <h4>Ordinary tool schema</h4>
+    <p>The model is only asked to fill business args:</p>
+    <p class="mono" style="font-size:.82rem">required: [label, content]</p>
+    <p>The model can <strong>write no reasoning at all</strong> and emit a tool_call directly — if it reasoned wrong, you can't tell.</p>
+  </div>
+  <div class="col">
+    <h4>After injecting inner_thoughts</h4>
+    <p>A <span class="mono">thinking</span> is prepended to the param list:</p>
+    <p class="mono" style="font-size:.82rem">required: [thinking, label, content]</p>
+    <p>The model <strong>must fill <span class="mono">thinking</span> first</strong> (the description literally says "think before you act, always generate it first") — structurally forced to reason first.</p>
+  </div>
+</div>
+
+<p>This step is done by <span class="mono">add_inner_thoughts_to_functions</span>. It walks each tool schema, inserts <span class="mono">thinking</span> at the front of properties, then inserts it at index 0 of required:</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/helpers.py</span><span class="ln">add_inner_thoughts_to_functions (simplified)</span></div>
+<pre><span class="cm"># Inject an "inner monologue" arg into every tool schema, required to come first</span>
+<span class="kw">def</span> <span class="fn">add_inner_thoughts_to_functions</span>(functions, inner_thoughts_key, inner_thoughts_description,
+                                    inner_thoughts_required=<span class="kw">True</span>, put_inner_thoughts_first=<span class="kw">True</span>):
+    <span class="kw">for</span> schema <span class="kw">in</span> functions:
+        props = schema[<span class="st">"parameters"</span>][<span class="st">"properties"</span>]
+        <span class="cm"># insert inner_thoughts as the "first" property (key defaults to "thinking")</span>
+        schema[<span class="st">"parameters"</span>][<span class="st">"properties"</span>] = {
+            inner_thoughts_key: {<span class="st">"type"</span>: <span class="st">"string"</span>, <span class="st">"description"</span>: inner_thoughts_description},
+            **props,
+        }
+        schema[<span class="st">"parameters"</span>][<span class="st">"required"</span>].insert(<span class="nb">0</span>, inner_thoughts_key)  <span class="cm"># required and first</span>
+    <span class="kw">return</span> functions
+</pre></div>
+
+<p>That "description" matters too. <span class="mono">local_llm/constants.py</span> holds two versions: the plain <span class="mono">INNER_THOUGHTS_KWARG_DESCRIPTION</span> ("Deep inner monologue private to you only."), and the <strong>forcing</strong> <span class="mono">..._GO_FIRST</span> which adds "<em>Think before you act, so always generate arg 'thinking' first before any other arg.</em>" — a natural-language command to "generate thinking first." After the model replies, Letta uses <span class="mono">unpack_inner_thoughts_from_kwargs</span> to <strong>pop</strong> that <span class="mono">thinking</span> out of the tool arguments and place it into the assistant message's content (that's the origin of the inner_thoughts in the cellgroup above). To everything upstream, it looks like the model "spoke a monologue, then called a tool."</p>
+
+<div class="card spark">
+  <div class="tag">💡 Design spark</div>
+  <strong>Making the "chain of thought" a tool argument — that's this lesson's "aha."</strong> The mainstream approach hopes the model has a "thinking channel," or begs it in the prompt to "please think step by step"; but channels <strong>aren't universal</strong> and pleas <strong>can be ignored</strong>. Letta picks a fundamentally different fulcrum: since the agent must call a tool to act, and a tool call <strong>must conform to the schema</strong>, write "think first" into the schema itself — add a <span class="mono">thinking</span> argument, mark it <strong>required</strong>, put it <strong>first (put_inner_thoughts_first)</strong>, and have the description order "always generate it first." So "reasoning" goes from "<strong>hopefully it thinks</strong>" to "<strong>the thought is a required argument — omit it and the call is invalid</strong>" (its first position is enforced by property order plus the explicit "generate it first" instruction). Even better, this trick is <strong>provider-agnostic</strong>: any model that supports function calling — even one with zero native thinking ability — is <strong>forced by this structure to "reason before acting."</strong> One argument turns a "soft constraint" into a "hard constraint."
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 Source map</div>
+  Where each piece lives: <strong>function → schema</strong> in <span class="mono">letta/functions/schema_generator.py::generate_schema</span> (reads signature + docstring; <span class="mono">TOOL_RESERVED_KWARGS</span> filters out <span class="mono">self / agent_state</span>); <strong>injecting the monologue</strong> in <span class="mono">letta/llm_api/helpers.py::add_inner_thoughts_to_functions</span>, recovered in the same file's <span class="mono">unpack_inner_thoughts_from_kwargs</span>; <strong>the key &amp; descriptions</strong> in <span class="mono">letta/local_llm/constants.py</span> (<span class="mono">INNER_THOUGHTS_KWARG="thinking"</span>, <span class="mono">VALID_INNER_THOUGHTS_KWARGS</span>, <span class="mono">..._DESCRIPTION(_GO_FIRST)</span>); <strong>injection is triggered during request assembly</strong> in <span class="mono">letta/llm_api/openai.py</span> (when <span class="mono">llm_config.put_inner_thoughts_in_kwargs</span> is true); <strong>continuation</strong> in <span class="mono">letta/agents/letta_agent_v3.py</span> (<span class="mono">_decide_continuation</span>); <strong>tool execution</strong> in <span class="mono">letta/agents/letta_agent_v2.py</span> (<span class="mono">_execute_tool</span>, inherited by v3) → <span class="mono">ToolExecutionManager.execute_tool_async</span>.
+</div>
+
+<p>Fuse "function-call round-trip + ReAct continuation + the model only emits, never executes" into one pseudo-code block, and the agent's heartbeat is just this:</p>
+
+<pre class="code"><span class="cm"># An agent's minimal loop (pseudo-code, maps to Lesson 3's step loop)</span>
+messages = [system, ...history..., user_msg]
+tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema</span>(my_tools))   <span class="cm"># thinking forced as the first arg</span>
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(max_steps):                    <span class="cm"># default cap 50</span>
+    reply = llm.<span class="fn">call</span>(messages, tools)            <span class="cm"># the model only "emits," never executes</span>
+    <span class="kw">if</span> reply.tool_calls:                          <span class="cm"># it requests a tool</span>
+        name, args = reply.tool_calls[<span class="nb">0</span>]
+        result = runtime.<span class="fn">execute</span>(name, args)      <span class="cm"># your code actually runs it (sandboxed if needed)</span>
+        messages += [reply, <span class="fn">tool_result</span>(result)]  <span class="cm"># feed result back -> trigger "think again"</span>
+    <span class="kw">else</span>:
+        <span class="kw">break</span>                                     <span class="cm"># no tool -> finish (end_turn)</span>
+</pre>
+
+<h2>Dig a little deeper</h2>
+
+<details class="accordion"><summary>Why doesn't the model execute tools itself?</summary><div class="acc-body">
+<p><strong>Example:</strong> the model emits <span class="mono">run_code("rm -rf /")</span>. If "emit" equaled "execute," you'd be done for. In fact it's just text it <strong>requests</strong> to run; whether it runs is your runtime's call.</p>
+<p><strong>Why designed this way:</strong> because model output is <strong>inherently untrusted</strong> — it can be prompt-injected or hallucinate a dangerous call. Keeping the "decision" in the framework's hands lets you validate permissions, sanitize args, sandbox it, or outright refuse before execution. That's the "model proposes, runtime adjudicates" security boundary.</p>
+<p><strong>Where in source:</strong> the execution entry <span class="mono">letta/agents/letta_agent_v2.py::LettaAgentV2._execute_tool</span> (inherited and called by <span class="mono">LettaAgentV3</span>) → <span class="mono">letta/services/tool_executor/tool_execution_manager.py::ToolExecutionManager.execute_tool_async</span>; custom tools go through the sandbox in <span class="mono">letta/services/tool_executor/sandbox_tool_executor.py</span>.</p>
+<p><strong>Alternatives:</strong> some toy frameworks let the model <span class="mono">eval()</span> its own output — fast to build, but it hands root to a probabilistic string; never acceptable in production.</p>
+</div></details>
+
+<details class="accordion"><summary>Why stuff "thinking" into an argument instead of a separate field?</summary><div class="acc-body">
+<p><strong>Example:</strong> the same agent runs on OpenAI today, Anthropic tomorrow, local LM Studio the day after. If "thinking" relied on each vendor's private reasoning field, you'd write an adapter per vendor — and some vendors have no such channel at all.</p>
+<p><strong>Why designed this way:</strong> every function-calling provider honors a schema's <span class="mono">required</span> list and parameter order. Making <span class="mono">thinking</span> an ordinary "required and first" parameter uses the <strong>greatest common denominator</strong> capability to buy <strong>cross-vendor consistency</strong> for "think before act," and even <strong>forces order</strong> (the GO_FIRST description orders it first). After the reply it's <span class="mono">unpack</span>ed back out as the monologue — transparent to everything above.</p>
+<p><strong>Where in source:</strong> injection <span class="mono">letta/llm_api/helpers.py::add_inner_thoughts_to_functions</span> (<span class="mono">put_inner_thoughts_first=True</span>, <span class="mono">inner_thoughts_required=True</span>); recovery <span class="mono">unpack_inner_thoughts_from_kwargs</span>; description <span class="mono">letta/local_llm/constants.py::INNER_THOUGHTS_KWARG_DESCRIPTION_GO_FIRST</span>.</p>
+<p><strong>Alternatives:</strong> ① rely on a native thinking channel — not universal; ② beg "please think step by step" in the system prompt — soft, ignorable; ③ open a separate non-tool field — back to the "every vendor differs" problem. Stuffing it into an argument has the widest coverage.</p>
+</div></details>
+
+<details class="accordion"><summary>ReAct loop vs a direct answer: when do you even need the round-trip?</summary><div class="acc-body">
+<p><strong>Example:</strong> ask "what's 1+1" and the model answers in one round, no tool at all — ReAct degenerates into plain Q&amp;A. Ask "what was the project deadline I mentioned last week, and by the way what's the weather that day" and it must recall memory, then web_search — two or three tool rounds to answer.</p>
+<p><strong>Why designed this way:</strong> the loop's value is that "<strong>when the model issues a call it hasn't seen the result yet</strong>." Only by feeding the result back and calling again can it continue on real information. Tasks that need to "peek at the outside world before deciding" require the round-trip; those answerable from existing knowledge hit <span class="mono">end_turn</span> on round one.</p>
+<p><strong>Where in source:</strong> the continuation decision <span class="mono">letta/agents/letta_agent_v3.py::LettaAgentV3._decide_continuation</span> ("called a tool → continue, else stop"); the loop cap <span class="mono">letta/constants.py::DEFAULT_MAX_STEPS</span> (default 50).</p>
+<p><strong>Alternatives:</strong> a loop-less "single function call" — fine for one-shot tasks, but no multi-step reasoning; a pure chain (hard-coded steps) — controllable but inflexible, the model can't decide its own next move. ReAct balances flexibility and control.</p>
+</div></details>
+
+<h2>Where this lesson sits on the big map</h2>
+<p>Back to Part 1's spine: this lesson <strong>cracked open the core</strong> of Lesson 3's step loop — every beat it makes is one "<strong>function-call round-trip</strong>" (request carries schemas → model emits tool_call → runtime executes → result fed back → think again), and the continuation rule "called a tool → continue, else stop" is the direct expression of <strong>ReAct's "think-act-observe-think."</strong> You should now be able to <strong>match</strong> Lesson 3's <span class="mono">_step</span> with this lesson's ReAct loop: they're two tellings of the same thing.</p>
+
+<p>And by <strong>welding "think before act" into the tool schema</strong>, Letta closes a loop on Lesson 1's "self-editing memory" story: the agent edits memory using tools like <span class="mono">core_memory_append</span>, and before calling one it's forced by the <span class="mono">thinking</span> argument to first write "why I'm editing this memory block." <strong>Memory, tools, and reasoning are strung together by one and the same mechanism in Letta.</strong></p>
+
+<p>Looking ahead: <strong>Part 4 (the agent loop)</strong> magnifies this lesson's loop — continuation rules, parallel tools, <span class="mono">max_steps</span>, how streaming emits token by token; <strong>Part 5 (the tool system)</strong> magnifies the "tool" cell — how schemas are generated from functions, how <span class="mono">tool_rules</span> constrain call order, how the sandbox isolates execution, how MCP plugs in external tools. What this lesson gives you is the <strong>minimal mental model</strong> needed to read those parts: <strong>agent = an LLM that emits call requests + a runtime that actually executes + a loop stringing them together, plus an inner monologue stuffed into an argument that forces it to think first.</strong></p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>agent = LLM + tools + a loop</strong>: the model thinks and decides, tools touch the outside world, the loop strings them until the job is done.</li>
+    <li><strong>function calling lives at the message layer</strong>: request carries tool schemas → the model only <strong>emits</strong> a <span class="mono">tool_call</span> (name + JSON args) → <strong>your runtime executes</strong> → tool result fed back → the model continues.</li>
+    <li><strong>The model does not execute tools</strong>, it only issues a "call request"; the actual executor is <span class="mono">_execute_tool</span> / <span class="mono">ToolExecutionManager</span> (sandboxed if needed) — that's the security boundary.</li>
+    <li><strong>Tool schemas are auto-generated from functions</strong> (<span class="mono">generate_schema</span>, reading signature + docstring); reserved params like <span class="mono">self / agent_state</span> aren't exposed to the model.</li>
+    <li><strong>ReAct = think → act → observe → think again</strong>, the core of Lesson 3's step loop; the continuation rule is dead simple: called a tool → continue, else stop.</li>
+    <li><strong>Inner monologue stuffed into an argument (the spark)</strong>: <span class="mono">add_inner_thoughts_to_functions</span> adds a required, first-position <span class="mono">thinking</span> argument to every tool, turning "reason before act" from a soft into a hard constraint across providers.</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. When a model decides to use a tool, what does it actually 'emit'?</div>
+  <ol class="opts">
+    <li>A structured tool_call request (tool name + JSON args) - it runs no code itself</li>
+    <li>It runs the function in its own process and gets the return value</li>
+    <li>It trains a brand-new tool on the spot</li>
+    <li>It rewrites the function's source code</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Function calling happens at the message layer: the model only emits a tool_call (name + JSON args). The runtime actually executes it (letta_agent_v3.py::_execute_tool → ToolExecutionManager.execute_tool_async, sandboxed if needed) - the security boundary: model output is untrusted, your code decides whether to run it.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. Why does Letta make the 'inner monologue' an argument (thinking) inside every tool schema?</div>
+  <ol class="opts">
+    <li>To reduce token billing</li>
+    <li>To make tool execution run faster</li>
+    <li>Using the schema's greatest common denominator to force 'reason before act' uniformly across all function-calling providers, and enforce order via required + first position</li>
+    <li>Because the model weights have no room to store thinking</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. Not every provider has a native thinking channel, and formats differ. add_inner_thoughts_to_functions makes thinking required and first (put_inner_thoughts_first), and the description (..._GO_FIRST) orders it generated first - turning a soft 'hopefully it thinks' into a hard 'the call format must contain the thought first,' uniformly across vendors.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. Which is the correct order of the ReAct loop?</div>
+  <ol class="opts">
+    <li>Think (reason) → Act (emit tool_call) → Observe (see the tool result) → think again... until no tool is called</li>
+    <li>Act → Think → Observe → Train</li>
+    <li>Observe → Reply → Think → Act</li>
+    <li>Think through all steps at once, then execute them together</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. ReAct = interleaved Reasoning + Acting: think→act→observe→think again. The model hasn't seen the result when it issues a call, so the result must be fed back and it's called again. Letta drives this with _decide_continuation ('called a tool → continue, else stop') - the very core of Lesson 3's step loop.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Suppose you add a 'delete file' tool to an agent. Given this lesson's 'the model only emits a request, the runtime executes' and 'tool_call is untrusted,' what checks would you add before execution (permissions, arg validation, sandbox, allow-list)? Why put these in the runtime instead of trusting the model to police itself?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="03-message-lifecycle.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">一条消息的生命周期</span><span class="lang-en">Lifecycle of one message</span></div></a><a class="next" href="05-context-window.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">上下文窗口的根本问题</span><span class="lang-en">The context-window problem</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

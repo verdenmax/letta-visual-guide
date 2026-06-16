@@ -52,6 +52,12 @@ PAGES = [
      "第一部分 · 宏观全景", "Part 1 · The Big Picture"),
     ("03-message-lifecycle.html", "一条消息的生命周期", "Lifecycle of one message",
      "第一部分 · 宏观全景", "Part 1 · The Big Picture"),
+    ("04-agent-and-tools.html", "LLM agent 与 tool calling 基础", "LLM agents & tool calling",
+     "第二部分 · 前置基础", "Part 2 · Foundations"),
+    ("05-context-window.html", "上下文窗口的根本问题", "The context-window problem",
+     "第二部分 · 前置基础", "Part 2 · Foundations"),
+    ("06-stateful-vs-stateless.html", "有状态 vs 无状态", "Stateful vs stateless",
+     "第二部分 · 前置基础", "Part 2 · Foundations"),
 ]
 
 
@@ -471,6 +477,12 @@ SUBTITLES = {
                             "Directory tour; 3-layer architecture (REST -> services -> ORM/DB)"),
     "03-message-lifecycle.html": ("POST -> actor -> AgentState -> step 循环 -> 工具/记忆 -> 持久化 -> 响应",
                                   "POST -> actor -> AgentState -> step loop -> tools/memory -> persist -> response"),
+    "04-agent-and-tools.html": ("函数调用怎么工作 · ReAct 循环 · 内心独白",
+                                "How function calling works; ReAct loop; inner monologue"),
+    "05-context-window.html": ("token 预算 · prefill/decode · prefix cache · 为什么需要记忆系统",
+                               "token budget; prefill/decode; prefix cache; why a memory system"),
+    "06-stateful-vs-stateless.html": ("AgentState 存档 · prefixed id · schema 与 orm · 对比 OpenAI Assistants",
+                                      "The AgentState save; prefixed ids; schema vs orm; vs OpenAI Assistants"),
 }
 
 
