@@ -317,6 +317,11 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   把上下文窗口想象成一张<strong>固定大小的办公桌台面</strong>。所有要"现在就看着办"的材料——系统说明书（system）、便利贴上的核心备忘（核心记忆）、刚来回的几封信（在窗消息）、还有一张"我能用哪些工具"的清单（工具 schema）——都得<strong>摊在这张桌面上</strong>；模型只能看见桌面上的东西，桌子外的一概看不到。桌面有两个残酷的事实：① <strong>它就这么大</strong>，新材料铺上来，旧的就得收走，否则放不下；② <strong>每一格都在计费</strong>——桌上铺得越满，每"看一眼"（每次调用）越贵、越慢。于是你被迫做一件事：<strong>把不常用的材料归档进抽屉，只在桌面留最相关的</strong>，要用时再取回来。这套"放不下就归档、要用再取回"的收拾动作，就是记忆管理；而 Letta 的高明之处在于，它会<strong>随时量一量桌面还剩多少、谁占了多少</strong>，快满了就自动收拾——这正是这一课的主线。
 </div>
 
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  一句话抓住本课：<strong>上下文窗口 = 模型一次能"看见"的、固定大小的 token 预算</strong>，它既<strong>有限</strong>、每个 token 又<strong>要花钱</strong>。这条预算里同时挤着 system、核心记忆、在窗消息、工具 schema 四样东西——这正是 Letta（乃至整个 MemGPT 思路）存在的<strong>根本约束</strong>：因为窗口装不下"全部历史"，才必须有<strong>分层记忆</strong>与<strong>"满了就压缩"</strong>。记住这条核心约束，后面记忆系统的一切设计都是它的回声。
+</div>
+
 <h2>有限的 token 预算：这才是核心约束</h2>
 <p>先把"上下文窗口"翻译成一句大白话：<strong>模型一次调用最多能"看见"的 token 数，是一个写死的上限</strong>（比如 8k、128k、200k、甚至 1M）。token 是模型眼里的最小单位——一个汉字大约 1～2 个 token，一个常见英文单词约 1 个多。这个上限不是建议，是<strong>物理边界</strong>：超了，要么直接报错（<span class="mono">ContextWindowExceededError</span>），要么把最前面的内容悄悄截掉。更要命的是，这条预算<strong>不是只装对话历史</strong>——它得同时容纳四样东西，它们一起挤同一条预算：</p>
 
@@ -558,6 +563,11 @@ We've leaned on one phrase for four lessons — "the context window" — without
 <div class="card analogy">
   <div class="tag">🔌 Analogy</div>
   Picture the context window as a <strong>fixed-size desktop</strong>. Everything you need to "act on right now" — the manual (system), the sticky-note core memos (core memory), the few letters just exchanged (in-context messages), and a checklist of "which tools I can use" (tool schemas) — all has to be <strong>spread out on this desktop</strong>; the model can only see what's on the desk, nothing off it. The desk has two brutal facts: ① <strong>it's only this big</strong> — lay down something new and something old must go, or it won't fit; ② <strong>every square is billed</strong> — the fuller the desk, the more expensive and slower each "glance" (each call). So you're forced into one habit: <strong>file the rarely-used material into a drawer, keep only the most relevant on the desk</strong>, fetch it back when needed. That "file it when it won't fit, fetch it when you need it" tidying <strong>is</strong> memory management; and Letta's cleverness is that it <strong>constantly measures how much desk is left and who's using it</strong>, tidying up automatically as it fills — the throughline of this lesson.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  Grab this lesson in one line: <strong>the context window = a fixed-size token budget the model can "see" in a single call</strong> - it is both <strong>finite</strong> and <strong>costly per token</strong>. That budget is shared at once by four things: the system prompt, core memory, in-context messages, and tool schemas. This is the <strong>root constraint</strong> that Letta - and the whole MemGPT idea - exists to answer: because the window cannot hold "all of history," you must have <strong>tiered memory</strong> and <strong>"compact when it fills."</strong> Hold onto this constraint; every later memory-system design is an echo of it.
 </div>
 
 <h2>A finite token budget: this is the core constraint</h2>
