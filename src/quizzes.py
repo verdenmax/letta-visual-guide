@@ -681,8 +681,8 @@ QUIZZES = {
                 ],
                 "answer": 0,
                 "why": {
-                    "zh": "system 提示是最靠前、最稳定的前缀，命中 KV cache 能省大量重复 prefill（第 5 课）。letta_agent_v3.py 的 _step 在步开头只刷新消息、跳过 system 重建，注释明写 “preserve prefix caching”；只有记忆真的变了（core_memory_*）或发生压缩后才 rebuild_system_prompt_async(force=True)。重建不会清空历史；core 默认可写；模型每轮都会读 system。",
-                    "en": "The system prompt is the leading, stablest prefix; hitting the KV cache saves heavy repeated prefill (Lesson 5). _step in letta_agent_v3.py only refreshes messages at step start and skips the system rebuild, with the comment \"preserve prefix caching\"; it rebuilds via rebuild_system_prompt_async(force=True) only on a real memory change (core_memory_*) or after compaction. Rebuilding doesn't wipe history; core is writable by default; the model reads system every turn.",
+                    "zh": "system 提示是最靠前、最稳定的前缀，命中 KV cache 能省大量重复 prefill（第 5 课）。letta_agent_v3.py 的 _step 在步开头只刷新消息、跳过 system 重建，注释明写 “preserve prefix caching”；只有记忆真的变了（core_memory_*）或发生压缩后才重建 system（其中只有压缩那次带 force=True）。重建不会清空历史；core 默认可写；模型每轮都会读 system。",
+                    "en": "The system prompt is the leading, stablest prefix; hitting the KV cache saves heavy repeated prefill (Lesson 5). _step in letta_agent_v3.py only refreshes messages at step start and skips the system rebuild, with the comment \"preserve prefix caching\"; it rebuilds the system message only on a real memory change (core_memory_*) or after compaction (only the compaction path passing force=True). Rebuilding doesn't wipe history; core is writable by default; the model reads system every turn.",
                 },
             },
         ],

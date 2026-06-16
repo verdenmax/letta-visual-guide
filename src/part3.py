@@ -1024,11 +1024,11 @@ LESSON_09 = {
 </div>
 
 <h2>先记住一句话：core memory 就是 system 的一部分</h2>
-<p>很多人以为 core memory 像 recall / archival 那样"存在某个表里、要时才取"。<strong>不是。</strong>core 始终在窗，靠的是每轮把 <span class="mono">Memory.compile()</span> 的产物拼进 system 提示（第 7、8 课讲过）。它<strong>本身就是 system 文本</strong>。</p>
+<p>很多人以为 core memory 像 recall / archival 那样"存在某个表里、要时才取"。<strong>不是。</strong>core 始终在窗，是因为 <span class="mono">Memory.compile()</span> 把它编译进了<strong>持久化的第 0 条 system</strong>（第 7、8 课讲过）——那条 system 每轮都在窗内，只有它改了才重新编译。它<strong>本身就是 system 文本</strong>。</p>
 
 <div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>关键一句：</strong>core memory 不是"存在别处的记忆"，它<strong>就是 system 提示的一部分</strong>。agent 改记忆 = 改自己每轮都会读到的"出厂设定"。</span></div>
 
-<p>对比一下就清楚：recall 和 archival 是"窗外的库"，要靠工具调用才取得回；而 core <strong>不需要"取"</strong>——它每轮都被 <span class="mono">Memory.compile()</span> 现拼进 system，模型睁眼就看见。正因为它"长在 system 上"，改它才等于改 system。</p>
+<p>对比一下就清楚：recall 和 archival 是"窗外的库"，要靠工具调用才取得回；而 core <strong>不需要"取"</strong>——它就<strong>长在持久化的 system 里</strong>，模型每轮睁眼就看见、无需取回。正因为它"长在 system 上"，改它才等于改 system。</p>
 
 
 <p>抓住这一点，本课后面全是推论：既然 core 就是 system 文本，那"改记忆"就必然意味着"改 system 文本"；而 system 文本是<strong>持久化的第 0 条消息</strong>，于是改记忆最终会<strong>落到那一条消息上</strong>。下面把这条因果链一步步走清。</p>
@@ -1181,7 +1181,7 @@ formatted_prompt = system_prompt.replace(memory_variable_string, full_memory_str
 <p>算笔账更直观：假设 system 提示有几千 token，每轮重写就意味着这几千 token 的 prefill <strong>无法复用</strong>、得从头重算。十轮下来就是几万 token 的白烧。把"不动第 0 条"设成默认，正是把第 5 课的省钱手艺用到了底。</p>
 
 
-<div class="note info"><span class="ni">👉</span><span class="nx">看源码里的原话：<span class="mono">letta_agent_v3.py</span> 的 <span class="mono">_step</span> 在每步开头只刷新消息、<strong>跳过 system 重建</strong>，注释写着"preserve prefix caching"；只有<strong>记忆变化</strong>或<strong>压缩之后</strong>才会 <span class="mono">rebuild_system_prompt_async(force=True)</span>。</span></div>
+<div class="note info"><span class="ni">👉</span><span class="nx">看源码里的原话：<span class="mono">letta_agent_v3.py</span> 的 <span class="mono">_step</span> 在每步开头只刷新消息、<strong>跳过 system 重建</strong>，注释写着"preserve prefix caching"；只有<strong>记忆变化</strong>（<span class="mono">core_memory_*</span> 触发 <span class="mono">update_memory_if_changed_async</span>）或<strong>压缩之后</strong>才会重建第 0 条——其中只有压缩那次带 <span class="mono">force=True</span>。</span></div>
 
 <p>于是策略很清楚：<strong>能不动第 0 条就不动</strong>。普通对话轮次保持前缀稳定、吃满缓存；只有当核心记忆真的被改了、或发生上下文压缩（第 12 课）时，才不得不重建一次——用一次缓存失效，换一份正确的"自我"。</p>
 
@@ -1274,11 +1274,11 @@ The answer is a little surprising: when an agent "remembers" something, it is <s
 </div>
 
 <h2>First, one line: core memory IS part of system</h2>
-<p>Many assume core memory is like recall / archival — stored in some table, fetched on demand. <strong>It isn't.</strong> core stays in-window because every turn the output of <span class="mono">Memory.compile()</span> is spliced into the system prompt (Lessons 7 & 8). It <strong>is the system text itself</strong>.</p>
+<p>Many assume core memory is like recall / archival — stored in some table, fetched on demand. <strong>It isn't.</strong> core stays in-window because <span class="mono">Memory.compile()</span> has compiled it into the <strong>persisted message #0</strong> (Lessons 7 &amp; 8) — and that #0 is in-window every turn, recompiled only when it changes. It <strong>is the system text itself</strong>.</p>
 
 <div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>Key line:</strong> core memory isn't "memory stored elsewhere" — it <strong>is part of the system prompt</strong>. An agent editing memory = editing the "factory settings" it reads every turn.</span></div>
 
-<p>Contrast makes it clear: recall and archival are "out-of-window stores" you must fetch with a tool; core needs <strong>no fetch</strong> — it's freshly spliced into system by <span class="mono">Memory.compile()</span> every turn, visible the moment the model opens its eyes. Because it "lives on" system, editing it equals editing system.</p>
+<p>Contrast makes it clear: recall and archival are "out-of-window stores" you must fetch with a tool; core needs <strong>no fetch</strong> — it <strong>lives in the persisted system message</strong>, visible the moment the model opens its eyes each turn. Because it "lives on" system, editing it equals editing system.</p>
 
 <p>Hold that, and the rest is corollaries: since core is system text, editing memory must mean editing system text; and system text is the <strong>persisted message #0</strong>, so an edit ultimately <strong>lands on that one message</strong>. Let's walk the causal chain step by step.</p>
 
@@ -1420,7 +1420,7 @@ formatted_prompt = system_prompt.replace(memory_variable_string, full_memory_str
 
 <p>Concretely: say the system prompt is a few thousand tokens; rewriting it every turn means those tokens of prefill <strong>can't be reused</strong> and must be recomputed. Ten turns is tens of thousands of tokens burned. Making "don't touch #0" the default is Lesson 5's cost-saving craft taken to its conclusion.</p>
 
-<div class="note info"><span class="ni">👉</span><span class="nx">Straight from the source: <span class="mono">_step</span> in <span class="mono">letta_agent_v3.py</span> only refreshes messages at the start of each step and <strong>skips the system rebuild</strong>, with the comment "preserve prefix caching"; only on a <strong>memory change</strong> or <strong>after compaction</strong> does it call <span class="mono">rebuild_system_prompt_async(force=True)</span>.</span></div>
+<div class="note info"><span class="ni">👉</span><span class="nx">Straight from the source: <span class="mono">_step</span> in <span class="mono">letta_agent_v3.py</span> only refreshes messages at the start of each step and <strong>skips the system rebuild</strong>, with the comment "preserve prefix caching"; only on a <strong>memory change</strong> (<span class="mono">core_memory_*</span> triggers <span class="mono">update_memory_if_changed_async</span>) or <strong>after compaction</strong> does it rebuild message #0 — and only the compaction path passes <span class="mono">force=True</span>.</span></div>
 
 <p>So the strategy is clear: <strong>don't touch #0 if you can avoid it</strong>. Normal turns keep the prefix stable and feast on the cache; only when core memory truly changed, or compaction (Lesson 12) happens, is a rebuild forced — trading one cache miss for a correct "self."</p>
 
