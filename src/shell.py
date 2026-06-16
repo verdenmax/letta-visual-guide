@@ -68,6 +68,8 @@ PAGES = [
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
     ("11-recall-memory.html", "回忆记忆与对话历史", "Recall memory & conversation history",
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("12-context-compaction.html", "上下文压缩与记忆压力", "Context compaction & memory pressure",
+     "第三部分 · 记忆系统", "Part 3 · The memory system"),
 ]
 
 
@@ -528,6 +530,8 @@ SUBTITLES = {
                                 "Passage; embeddings; insert/search; pgvector / sqlite-vec; tags"),
     "11-recall-memory.html": ("Message · message_ids 在窗 · conversation_search · JSON 信封",
                               "Message; in-window message_ids; conversation_search; JSON envelopes"),
+    "12-context-compaction.html": ("90% 阈值 · compact_messages · 滑窗摘要 · summary 消息 · 系统提示溢出",
+                                   "the 90% threshold; compact_messages; sliding-window summary; the summary message; system-prompt overflow"),
 }
 
 

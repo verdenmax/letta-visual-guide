@@ -2429,3 +2429,503 @@ Just three keywords: <strong>Message</strong> (one message = one durable, search
 </div>
 """,
 }
+
+
+LESSON_12 = {
+    "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第 5 课摊清过一笔账：上下文窗口又小又贵，"把历史一股脑全塞进去"必然失败。当时我们停在两件<strong>可操作</strong>的事上——<strong>可度量</strong>（<span class="mono">ContextWindowOverview</span> 把窗口拆成一本 token 账本）、与<strong>可触发动作</strong>（逼近阈值就压缩）。那一课讲的是"度量"那一半，这一课补上"动手"那一半。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+窗口快满了怎么办？答案是<strong>压缩</strong>：把较旧的对话<strong>总结成一段摘要</strong>，再把原话换出窗外。五个关键词串起整课——<strong>90% 阈值</strong>、<span class="mono">compact_messages</span>、<strong>滑窗摘要</strong>、<span class="mono">role=summary</span> 的<strong>摘要消息</strong>，以及"核心记忆压不动"的<strong>系统提示溢出</strong>。这是第三部分的收尾，也是整套记忆系统真正闭环的一环。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把"记忆压力"想成一张快堆满的办公桌。</strong>你正在桌上摊开资料办事，桌面就那么大——纸越摞越高，眼看连放笔的地方都没了。聪明的做法不是把旧纸<strong>直接扔掉</strong>（万一还要查呢？），而是花一分钟把较旧的那叠<strong>读一遍、写成一张"会议纪要"</strong>：要点都落在纪要上，原始的厚厚一叠则收进抽屉。于是桌面腾出大半，你又能继续摊开新资料，而那张纪要还摆在眼前提醒你"前面聊到哪了"。原纸没销毁，要核对时还能从抽屉翻出来；但日常推进，靠那张<strong>压缩过的纪要</strong>就够了。Letta 的上下文压缩干的正是这件事——只不过"较旧的那叠纸"是旧对话消息，"会议纪要"是一段自动生成的摘要，而决定"什么时候该收桌子"的，是一条画在 90% 处的水位线。记住这张桌子，下面每个机制你都能对号入座。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：当在窗 token 逼近上限的 90%，Letta 就把较旧的对话压成一段摘要、换出原话，腾出空间继续聊——这套机制把"记忆压力"当成操作系统问题来管。</strong>触发靠一条水位线：每次模型调用后顺手记下用量（<span class="mono">context_token_estimate</span>），一旦超过 <span class="mono">context_window × 0.9</span> 这个阈值（<span class="mono">get_compaction_trigger_threshold</span>），就调 <span class="mono">compact</span> 动手。动手的方式是<strong>滑窗摘要</strong>：把较旧的一段消息交给一个 summarizer，递归地总结成一条 <span class="mono">role=summary</span> 的摘要消息插回上下文，原话退到窗外但仍留在 recall 里可搜。整个过程还会抛出一个<strong>可见事件</strong>，让客户端看到"我刚做了一次压缩"。唯一压不动的是<strong>核心记忆与系统提示</strong>——它们是 system 的一部分，summarizer 只清理对话、绝不动 core，所以另有一条<strong>系统提示溢出</strong>的特判路径来兜底。
+</div>
+
+<h2>先把这一课接回第 5 课</h2>
+<p>第 5 课画过一条闭环：<strong>度量 → 判定 → 压缩 → 重建前缀</strong>。前两步（数清谁占了多少 token、判断是否逼近阈值）那一课已经讲透；这一课从第三步<strong>"压缩"</strong>接着往下挖，看它具体怎么动手、动完之后又发生了什么。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>一句话定位：</strong>第 5 课是"<strong>量得出</strong>"（<span class="mono">ContextWindowOverview</span> 那本账本），第 12 课是"<strong>压得动</strong>"（<span class="mono">compact</span> 那把剪刀）。同一条闭环的两半，这一课补齐后半段。</span></div>
+
+<p>为什么非压不可？因为 recall（第 11 课）保证了"对话<strong>不丢</strong>"，却没解决"在窗装<strong>不下</strong>"。消息只增不减，迟早撑爆预算；压缩就是那把让窗口"转得动"的阀门——它不删历史，只把较旧的一段<strong>换成更短的摘要</strong>。</p>
+
+<div class="cute"><div class="row"><span class="emoji">📚</span><span class="arrow">→</span><span class="emoji">🗜️</span><span class="arrow">→</span><span class="emoji">📝</span><span class="bubble">一段摘要</span></div>
+<div class="cap">窗口快满（~90%）：把较旧的一摞消息压成一张"会议纪要"，腾出空间继续聊；原话退到窗外但仍可搜</div></div>
+
+<h2>90% 阈值：什么时候开始压</h2>
+<p>压缩不等窗口"真满"才动手——那样很容易撞上"prompt 太长"的报错。Letta 留了 10% 余量：在上限的 <strong>90%</strong> 就触发。这个阈值由 <span class="mono">get_compaction_trigger_threshold</span> 算出，等于 <span class="mono">context_window × 0.9</span>。</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">用量</span>
+    <span class="tslot">0% · 安心聊</span>
+    <span class="tslot">70% · 还宽裕</span>
+    <span class="tslot now">90% · 触发阈值</span>
+  </div>
+  <div class="lane"><span class="lane-label">动作</span>
+    <span class="tslot span">逼近 90% → compact：把较旧消息压成摘要</span>
+    <span class="tslot now">换出原话 · 插入 summary</span>
+  </div>
+  <div class="lane"><span class="lane-label">结果</span>
+    <span class="tslot">用量回落 → 继续聊；原话仍在 recall 可搜</span>
+  </div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/thresholds.py · letta/constants.py</span><span class="ln">压缩触发阈值（简化）</span></div>
+<pre><span class="cm"># 触发阈值 = 上下文窗口 × 0.9（留 10% 余量，避免撞上 "prompt 太长"）</span>
+SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm"># letta/constants.py</span>
+
+<span class="kw">def</span> <span class="fn">get_compaction_trigger_threshold</span>(llm_config, *, force_proactive=<span class="kw">False</span>):
+    <span class="cm"># 不区分模型，一律取 上限 × 0.9（force_proactive 目前不改变结果）</span>
+    <span class="kw">return</span> <span class="fn">int</span>(llm_config.context_window * SUMMARIZATION_TRIGGER_MULTIPLIER)
+</pre></div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">阈值<strong>按窗口比例</strong>算，不是写死的某个数字：窗口 8k 就在 ~7.2k 触发，128k 就在 ~115k 触发。<strong>窗口再大，到 90% 照样压</strong>——大窗口只是把"何时压"推后，并没取消它。</span></div>
+
+<h2>触发点：用量 vs 阈值，就在 agent 主循环里</h2>
+<p>阈值在哪被用上？在 <span class="mono">letta/agents/letta_agent_v3.py</span> 的主循环里。运行时为了快，<strong>不每步重算整本账</strong>，而是顺手记下每次模型调用返回的 token 用量，拿这个估算值跟阈值比一下。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>记下用量</h4><p>模型一返回，就把它报告的 <span class="mono">usage.total_tokens</span> 存进 <span class="mono">context_token_estimate</span>。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>比一比阈值</h4><p>估算值 &gt; <span class="mono">get_compaction_trigger_threshold</span>（×0.9）？</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>抛可见事件</h4><p>先 yield 一个 <span class="mono">compaction</span> 事件，告诉客户端"要压了"。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>动手压缩</h4><p>调 <span class="mono">self.compact(messages, ...)</span>，把较旧消息换成摘要。</p></div></div>
+</div>
+
+<p>关键细节：拿来比的不是"账本精算值"，而是<strong>上一次模型调用自己报告的 <span class="mono">usage.total_tokens</span></strong>。这等于让模型<strong>每轮顺带量一次自己的体重</strong>——省去重算，又足够准。一旦超阈值，就进压缩分支。</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx"><strong>两条触发路径，殊途同归。</strong>一条是<strong>事后水位检查</strong>（这步聊完、用量过 90% 就压，<span class="mono">trigger="post_step_context_check"</span>）；另一条是<strong>真撞墙兜底</strong>（模型直接报 <span class="mono">ContextWindowExceededError</span>，就地压完重试，<span class="mono">trigger="context_window_exceeded"</span>）。两条都汇入同一个 <span class="mono">compact</span>。</span></div>
+
+<h2>compact_messages：把旧消息压成摘要</h2>
+<p><span class="mono">self.compact(...)</span> 只是个薄壳，真正干活的是 <span class="mono">letta/services/summarizer/compact.py::compact_messages</span>。它拿到当前在窗消息，交给 summarizer 总结，产出三样东西：<strong>一条摘要消息</strong>、<strong>压缩后的消息列表</strong>、<strong>摘要正文</strong>。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/compact.py</span><span class="ln">compact_messages（伪代码）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">compact_messages</span>(..., messages, use_summary_role=<span class="kw">True</span>, trigger_threshold=<span class="kw">None</span>, ...):
+    <span class="cm"># 1) 用 summarizer 把较旧的一段消息总结掉（滑窗 / 递归）</span>
+    summary, compacted_messages = <span class="kw">await</span> <span class="fn">summarize</span>(messages)
+
+    <span class="cm"># 2) 再数一遍 token，确认压完是否真降到阈值以下</span>
+    context_token_estimate = <span class="kw">await</span> <span class="fn">count_tokens_with_tools</span>(messages=compacted_messages, ...)
+
+    <span class="cm"># 3) 若仍超阈值，且元凶是第 0 条系统消息 -> 走溢出特判</span>
+    <span class="kw">if</span> context_token_estimate &gt;= trigger_threshold:
+        <span class="kw">if</span> <span class="fn">tokens_of</span>(compacted_messages[<span class="nb">0</span>]) &gt;= llm_config.context_window:
+            <span class="kw">raise</span> <span class="fn">SystemPromptTokenExceededError</span>(...)   <span class="cm"># 核心记忆/系统提示太大</span>
+
+    <span class="kw">return</span> <span class="fn">CompactResult</span>(summary_message, compacted_messages, summary, ...)
+</pre></div>
+
+<p>注意第 3 步：压完之后它会<strong>再数一遍 token</strong> 验收。要是还超，而且一查发现"元凶是第 0 条系统消息本身"——那就<strong>不是对话太长</strong>，是核心记忆/系统提示撑爆了预算。这条岔路就是后面要讲的"系统提示溢出"。</p>
+
+<h2>滑窗摘要：到底压哪一段、怎么压</h2>
+<p>"压缩"具体怎么选消息？由 <span class="mono">Summarizer</span>（<span class="mono">summarizer.py</span>）负责。它有几种模式，常用这种叫<strong>滑动窗口 / 部分驱逐</strong>（partial-evict）。核心思路一句话：<strong>留最近的一截，把更早的那截总结掉</strong>。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>算一条切割线</h4><p>按比例 <span class="mono">partial_evict_summarizer_percentage</span>（默认 0.30）定"保留多少、驱逐多少"。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>对齐到边界</h4><p>从切割点往后找第一条 <span class="mono">assistant</span> 消息，保证摘要插回后角色顺序合法。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>总结被驱逐段</h4><p>把 <span class="mono">[1 : 该 assistant)</span> 这一段交给 summarizer LLM，生成一段摘要。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>替换 index 1</h4><p>摘要放回<strong>第 1 条</strong>（第 0 条永远是系统消息），原话退出窗口。</p></div></div>
+</div>
+
+<p>这就是 MemGPT 论文里的<strong>递归摘要</strong>：摘要被固定放在 <span class="mono">[1]</span>，下一次再压时，它又会连同后来的新消息<strong>一起被再总结一遍</strong>。于是历史像滚雪球一样被<strong>一层层压进越来越浓缩的一段摘要</strong>，越久远的越凝练。</p>
+
+<p>为什么从切割点"往后找 assistant"？因为摘要要占 <span class="mono">[1]</span>，那 <span class="mono">[2]</span> 就得是一条合法后继（通常是 <span class="mono">assistant</span>）。对齐到 assistant 边界，是为了<strong>不把一次"工具调用 / 工具返回"从中劈开</strong>。</p>
+
+<h2>summary 消息：一段可见的"我做了摘要"</h2>
+<p>压缩的产物是一条特殊消息。它由 <span class="mono">letta/system.py::package_summarize_message</span> 打包成一个 <span class="mono">type=system_alert</span> 的 JSON 事件，正文写明"前面 N 条已隐藏，以下是它们的摘要"。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/system.py · letta/schemas/enums.py</span><span class="ln">摘要消息 + role=summary（简化）</span></div>
+<pre><span class="cm"># 把摘要打包成一条 system_alert 事件（带计数：藏了几条 / 共几条）</span>
+<span class="kw">def</span> <span class="fn">package_summarize_message</span>(summary, summary_message_count,
+                              hidden_message_count, total_message_count, timezone):
+    context_message = (
+        <span class="st">f"Note: prior messages ({hidden_message_count} of {total_message_count} "</span>
+        <span class="st">f"total messages) have been hidden ... due to memory constraints.\n"</span>
+        <span class="st">f"The following is a summary of the previous {summary_message_count} messages:\n {summary}"</span>
+    )
+    <span class="kw">return</span> <span class="fn">json_dumps</span>({<span class="st">"type"</span>: <span class="st">"system_alert"</span>, <span class="st">"message"</span>: context_message, <span class="st">"time"</span>: ...})
+
+<span class="cm"># Message 的 role 里本就有 summary 这一项</span>
+<span class="kw">class</span> <span class="fn">MessageRole</span>(str, Enum):
+    ...
+    summary = <span class="st">"summary"</span>   <span class="cm"># use_summary_role=True 时，摘要以此角色入库</span>
+</pre></div>
+
+<p>这条摘要消息有两副面孔。<strong>对模型</strong>：它就摆在上下文里（紧跟系统消息之后），让模型一眼读到"前情提要"。<strong>对客户端</strong>：agent 还会额外 yield 一个结构化事件——压缩<strong>开始前</strong>抛 <span class="mono">event_type="compaction"</span> 的 <span class="mono">EventMessage</span>，<strong>完成后</strong>抛 <span class="mono">SummaryMessage</span>，于是 UI 能显示一条"已压缩 N 条消息"。</p>
+
+<p>还记得第 11 课的角色表吗？<span class="mono">Message.role</span> 里那个不起眼的 <span class="mono">summary</span>，正是为这一刻准备的。打开 <span class="mono">use_summary_role</span>，摘要就以 <span class="mono">role=summary</span> 一等公民的身份入库，而不是伪装成一条普通 <span class="mono">user</span> 消息。</p>
+
+<h2>能压 / 不能压：核心记忆为什么压不动</h2>
+<p>压缩有个<strong>边界</strong>：它只清理<strong>对话消息</strong>，绝不动<strong>核心记忆与系统提示</strong>。原因很简单——core 是 system 的一部分，是 agent"此刻是谁、记着哪些事"的依据，<strong>压掉它等于让 agent 失忆</strong>。</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>✅ 能压：对话消息</h4>
+    <p>较旧的 user / assistant / tool 消息，总结成一段摘要、换出窗外；原话仍留 recall 可搜。</p>
+    <p class="mono" style="font-size:.82rem">compact_messages → summarize</p>
+  </div>
+  <div class="col">
+    <h4>⛔ 不能压：核心记忆 / 系统提示</h4>
+    <p>第 0 条系统消息（含 core memory）是稳定前缀，summarizer 一行都不碰。</p>
+    <p class="mono" style="font-size:.82rem">system message [0] · 原样保留</p>
+  </div>
+</div>
+
+<p>于是冒出一个尴尬情形：万一<strong>核心记忆自己</strong>就撑爆了预算呢？压缩只能驱逐对话，对话压光了也救不了一个过大的系统提示。这时 Letta 走一条<strong>特判</strong>：<span class="mono">_check_for_system_prompt_overflow</span>。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>系统提示溢出，是一条专门的"压不动"分支。</strong>压完仍超阈值、且一数发现"光第 0 条系统消息就 ≥ 整个窗口"——这不是对话太长，是 core/系统提示太大。Letta 停下并抛 <span class="mono">SystemPromptTokenExceededError</span>，停止原因记为 <span class="mono">context_window_overflow_in_system_prompt</span>，提示你"<strong>该瘦身核心记忆，而不是再压对话</strong>"。</span></div>
+
+<p>这也回扣了第 7、8 课的告诫：core 有字符上限（<span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT</span>），是稀缺资源。压缩能化解"对话型"记忆压力，却化解不了"你往 core 里塞太多"——后者只能靠你自己克制。</p>
+
+<h2>一个真实场景：聊了两小时还没爆窗</h2>
+<p>把机制串成一个故事。你和一个客服 agent 聊了两个钟头，几十轮来回，外加好几次工具调用。换成"把全部历史塞进 prompt"的朴素做法，<strong>早就撞窗报错</strong>了。</p>
+
+<p>但这个 agent 一直好端端的。秘密就是那条 90% 水位线：每当在窗 token 逼近上限，它就<strong>悄悄做一次压缩</strong>——把前一个钟头的闲聊总结成一两段摘要，原始几十条消息退到窗外。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">第 40 轮时，UI 上闪过一行"<strong>已压缩 38 条消息</strong>"——那就是 <span class="mono">compaction</span> 事件。摘要进了上下文，<strong>前情没丢</strong>；你随口提起"开头说的那个订单号"，它还能用 <span class="mono">conversation_search</span>（第 11 课）从 recall 里把原话捞回来。</span></div>
+
+<p>这就是"记忆压力"被管住的样子：<strong>对话可以无限长，窗口却始终在预算内转。</strong>摘要扛起"前情提要"，recall 兜底"原话可查"，两者一配合，agent 既不爆窗、又不真正失忆。</p>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>"记忆压力"被当成一个操作系统问题来解——这正是 MemGPT 论文"队列管理器"的落地。</strong>操作系统怎么应对内存不够？它不会崩，而是<strong>换页</strong>：把不常用的页换出到磁盘，腾出物理内存。Letta 对上下文窗口做的是同一件事：到 ~90% 水位，就把较旧的对话<strong>递归地</strong>总结成一段摘要（旧摘要 + 新消息再压一层，越久越浓缩），把原话"换出"到窗外的 recall。三个设计选择让它格外像 OS：其一，<strong>有水位线</strong>——不等真满（撞 OOM）才动手，留 10% 余量主动触发；其二，<strong>换页可见</strong>——每次压缩都抛一个 <span class="mono">compaction</span> 事件、生成一条 <span class="mono">role=summary</span> 的摘要消息，agent 与用户都看得到"我刚做了一次摘要"，而不是黑箱丢数据；其三，<strong>有一块"锁定内存"不可换出</strong>——核心记忆与系统提示是 agent 的身份，summarizer 永不触碰，于是必须另设一条<strong>系统提示溢出</strong>特判去处理"锁定区自己就爆了"的极端情况。把这三点合起来，你看到的不是一个"聊久了就失忆"的聊天机器人，而是一个像内核一样<strong>主动管理自身内存压力</strong>的系统——这也是 MemGPT 那篇论文最核心的隐喻：给 LLM 配一个虚拟内存管理器，让有限的上下文窗口，撑起近乎无限的对话。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>摘要是有损的，而且压缩救不了"核心记忆自己太大"。</strong>两件事都容易被想当然，得分开记清。第一，<strong>压缩 = 有损总结，不是无损归档</strong>。一段对话被总结成"用户咨询了退货并给了订单号"，那些<strong>具体措辞、语气、边角细节</strong>就从在窗视野里消失了。好在它们<strong>没被删</strong>——原始 <span class="mono">Message</span> 仍躺在 recall 里，<span class="mono">conversation_search</span> 能捞回来。但你不能假设"摘要里没有 = 模型还记得清"：摘要里没有，就意味着<strong>模型当下看不到、得主动去搜才行</strong>。所以别把压缩当成"免费无限记忆"——它是用"细节精度"换"窗口空间"的一笔交易。第二，<strong>压缩只驱逐对话、不动 core</strong>。如果你把一大堆东西塞进核心记忆，把系统提示撑到逼近甚至超过整个窗口，那么<strong>压多少对话都没用</strong>——summarizer 根本不碰 core。这时触发的是 <span class="mono">_check_for_system_prompt_overflow</span> 那条特判：直接报 <span class="mono">SystemPromptTokenExceededError</span>，停止原因 <span class="mono">context_window_overflow_in_system_prompt</span>。它在<strong>提醒你</strong>："问题不在对话，在你的 core 太胖，去精简记忆块、或换更大的窗口。"记住这条边界，你就不会一边往 core 狂塞、一边纳闷"为什么压缩不管用"。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>整条压缩链路的源码坐标。</strong><strong>阈值</strong>：<span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span> = <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>，后者在 <span class="mono">letta/constants.py</span> 为 <span class="mono">0.9</span>。<strong>触发与动作</strong>：<span class="mono">letta/agents/letta_agent_v3.py</span> 里，<span class="mono">_step</span> 把 <span class="mono">context_token_estimate</span>（取自 LLM 返回的 <span class="mono">usage.total_tokens</span>）跟阈值比，超了就调 <span class="mono">compact</span>，并抛 <span class="mono">_create_compaction_event_message</span>。<strong>压缩实现</strong>：<span class="mono">letta/services/summarizer/compact.py::compact_messages</span>，选段与递归摘要在 <span class="mono">summarizer.py::Summarizer</span>（<span class="mono">_partial_evict_buffer_summarization</span>，默认 <span class="mono">partial_evict_summarizer_percentage=0.30</span>）。<strong>摘要消息</strong>：<span class="mono">letta/system.py::package_summarize_message</span>（打成 <span class="mono">system_alert</span>），角色取值 <span class="mono">letta/schemas/enums.py::MessageRole.summary</span>。<strong>溢出特判</strong>：<span class="mono">letta/agents/letta_agent_v3.py::_check_for_system_prompt_overflow</span> 与 <span class="mono">compact.py</span> 末尾的同款检查，触发 <span class="mono">SystemPromptTokenExceededError</span>（<span class="mono">letta/errors.py</span>）。顺着这串符号读，你能把"从超阈值到摘要落库"完整走通。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>递归摘要到底怎么做：摘要也会被再摘要</summary><div class="acc-body">
+<p><strong>示例：</strong>第一次压缩，把第 1–30 条总结成摘要 S1，放到 <span class="mono">[1]</span>。又聊了 30 轮、再次逼近 90%，第二次压缩会把"<strong>S1 + 第 31–60 条</strong>"一起总结成 S2。</p>
+<p><strong>为什么这样设计：</strong>历史无限增长，但摘要长度大体可控——越久远的内容被<strong>反复压缩、层层凝练</strong>，近期的保留更多细节。这正是 MemGPT 论文"递归摘要"的核心。</p>
+<p><strong>源码在哪：</strong><span class="mono">summarizer.py::_partial_evict_buffer_summarization</span>——它把摘要消息固定放在 <span class="mono">[1]</span>，下一轮该位置又被纳入新的待总结区间。</p>
+<p><strong>代价：</strong>越老的信息精度损失越大。但"<strong>原话仍在 recall</strong>"是兜底——真要细节，还能搜回来。</p>
+</div></details>
+
+<details class="accordion"><summary>为什么核心记忆压不动：系统提示溢出特判</summary><div class="acc-body">
+<p><strong>示例：</strong>你往 persona / human 块塞了几万字，系统提示本身就快顶满窗口。这时哪怕把对话全压光，也腾不出空间。</p>
+<p><strong>为什么这样设计：</strong>core 是 agent 的身份与即时记忆，<strong>必须始终在窗、且逐字稳定</strong>（还关系到第 5 课的 prefix cache）。让 summarizer 去压它，等于让 agent 一边说话一边失忆——绝不允许。</p>
+<p><strong>源码在哪：</strong><span class="mono">compact.py</span> 压完会复核：若 <span class="mono">compacted_messages[0]</span>（系统消息）单独就 ≥ 窗口，抛 <span class="mono">SystemPromptTokenExceededError</span>；<span class="mono">letta_agent_v3.py::_check_for_system_prompt_overflow</span> 是同款检查，停止原因 <span class="mono">context_window_overflow_in_system_prompt</span>。</p>
+<p><strong>给你的信号：</strong>遇到它，别再想"多压点对话"，而要去<strong>精简核心记忆</strong>（回看第 8 课的 <span class="mono">limit</span>）或换更大的窗口。</p>
+</div></details>
+
+<details class="accordion"><summary>可见的 compaction 事件：客户端怎么知道压过了</summary><div class="acc-body">
+<p><strong>示例：</strong>UI 上出现一行"压缩中…"，紧接着一条"已将 38 条消息总结为摘要"。</p>
+<p><strong>为什么这样设计：</strong>记忆压缩会改变上下文，<strong>偷偷做会让用户困惑</strong>（"它怎么忘了刚才的细节？"）。抛成显式事件，行为可观测、可解释。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta_agent_v3.py::_create_compaction_event_message</span> 产出 <span class="mono">event_type="compaction"</span> 的 <span class="mono">EventMessage</span>（压缩<strong>开始前</strong>抛）；<span class="mono">_create_summary_result_message</span> 产出 <span class="mono">SummaryMessage</span>（压缩<strong>完成后</strong>抛，受 <span class="mono">include_compaction_messages</span> 控制）。</p>
+<p><strong>对比：</strong>很多框架"截断历史"是无声的；Letta 把它做成一等事件，是"<strong>记忆操作要透明</strong>"这一哲学的延续。</p>
+</div></details>
+
+<details class="accordion"><summary>和第 5 课"度量"如何接上"动手"</summary><div class="acc-body">
+<p><strong>示例：</strong>第 5 课用 <span class="mono">ContextWindowOverview</span> 把窗口拆成 system / core / 工具 / 消息各占多少 token——那是"<strong>体检报告</strong>"。第 12 课的压缩，是<strong>读着报告动手治疗</strong>。</p>
+<p><strong>为什么这样设计：</strong>"能量出来"和"能压下去"是两件事。光有账本不压，窗口照样爆；光会压不会量，又不知何时该动手。两半合起来才是闭环。</p>
+<p><strong>源码在哪：</strong>度量 <span class="mono">letta/schemas/memory.py::ContextWindowOverview</span>（第 5 课）；判定 + 动手 <span class="mono">letta_agent_v3.py</span>（<span class="mono">context_token_estimate</span> 比 <span class="mono">get_compaction_trigger_threshold</span>，超则 <span class="mono">compact</span>）。</p>
+<p><strong>一句话：</strong>第 5 课"<strong>量得出</strong>"，第 12 课"<strong>压得动</strong>"——同一条闭环的前后两半。</p>
+</div></details>
+
+<h2>收尾：记忆系统至此闭环</h2>
+<p>这一课你拿下了让整个记忆系统"转得动"的那道阀门：到 90% 阈值就 <span class="mono">compact</span>，用滑窗递归摘要把较旧对话压成一条 <span class="mono">role=summary</span> 消息，过程可见，唯独核心记忆压不动、另有溢出特判。</p>
+
+<p>把第三部分整个串起来——这正是第 7 课那张三层地图的<strong>收官</strong>：</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>记忆系统全景（07–12）</b>：三层 + 让它转起来的压缩阀</div>
+  <div class="cells">
+    <span class="cell hl">07 三层总览</span>
+    <span class="sep">·</span>
+    <span class="cell">08 记忆块</span>
+    <span class="sep">·</span>
+    <span class="cell">09 自编辑 core</span>
+    <span class="sep">·</span>
+    <span class="cell">10 archival 向量</span>
+    <span class="sep">·</span>
+    <span class="cell">11 recall 历史</span>
+    <span class="sep">→</span>
+    <span class="cell hl">12 压缩阀</span>
+  </div>
+</div>
+
+<p>逐块回放：core 让 agent <strong>改写自己是谁</strong>（07–09），archival 让它<strong>积累长期知识</strong>（10），recall 让它<strong>记得每句话</strong>（11），而压缩（12）让这一切在<strong>有限窗口</strong>里持续运转。四块拼齐，记忆系统才真正闭环。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>承上启下：</strong>第 5 课提出"窗口有限"这条根本约束并给出"度量"；第三部分（07–12）把"记忆系统"整套答案讲完——压缩，正是这套答案里<strong>对抗压力</strong>的最后一块拼图。</span></div>
+
+<p>临走默背一条链：<strong>每轮记下用量 → 过 90% 阈值 → 抛 compaction 事件 → compact 滑窗递归摘要 → 插入 role=summary、原话退到 recall → 唯独 core 压不动，撑爆就走系统提示溢出特判</strong>。把这条链记牢，"上下文压缩与记忆压力"你就真正握住了。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>90% 阈值触发</strong>：<span class="mono">get_compaction_trigger_threshold</span> = <span class="mono">context_window × 0.9</span>（<span class="mono">SUMMARIZATION_TRIGGER_MULTIPLIER</span> 在 <span class="mono">constants.py</span>）；留 10% 余量主动压，不等撞窗。</li>
+    <li><strong>触发在 agent 主循环</strong>：<span class="mono">letta_agent_v3.py</span> 拿 <span class="mono">context_token_estimate</span>（= LLM 报告的 <span class="mono">usage.total_tokens</span>）比阈值，超了调 <span class="mono">compact</span>。</li>
+    <li><strong>compact_messages 干活</strong>：<span class="mono">summarizer/compact.py</span> 把较旧消息总结掉；选段 + 递归摘要在 <span class="mono">Summarizer</span>（partial-evict，默认 0.30），摘要固定放 <span class="mono">[1]</span>。</li>
+    <li><strong>摘要消息可见</strong>：<span class="mono">system.py::package_summarize_message</span> 打成 <span class="mono">system_alert</span>，以 <span class="mono">role=summary</span>（<span class="mono">enums.py</span>）入库；并抛 <span class="mono">compaction</span> 事件 / <span class="mono">SummaryMessage</span>。</li>
+    <li><strong>核心记忆压不动</strong>：summarizer 只驱逐对话、不碰 core/系统提示；core 自己撑爆 → <span class="mono">_check_for_system_prompt_overflow</span> → <span class="mono">SystemPromptTokenExceededError</span>。</li>
+    <li><strong>压缩有损、但不删</strong>：摘要丢的是细节，原话仍在 recall 可 <span class="mono">conversation_search</span> 捞回；这是 MemGPT"队列管理器"的落地。</li>
+  </ul>
+</div>
+""",
+    "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Lesson 5 laid out a hard account: the context window is small and expensive, so "just stuff the whole history in" is doomed. We stopped on two <strong>actionable</strong> things — making it <strong>measurable</strong> (<span class="mono">ContextWindowOverview</span> breaks the window into a token ledger) and making it <strong>trigger an action</strong> (compact as you approach the limit). That lesson covered the "measure" half; this one fills in the "act" half.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+What happens when the window fills up? The answer is <strong>compaction</strong>: summarize the older conversation into a <strong>compact summary</strong> and evict the verbatim messages. Five keywords thread the whole lesson — the <strong>90% threshold</strong>, <span class="mono">compact_messages</span>, <strong>sliding-window summary</strong>, the <span class="mono">role=summary</span> <strong>summary message</strong>, and the <strong>system-prompt overflow</strong> path for "core memory can't be compacted." This closes Part 3 and the memory system's loop.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture "memory pressure" as a desk filling up.</strong> You're spreading papers across it to get work done, but the surface is finite — the stack grows until there's no room left to set down a pen. The smart move isn't to <strong>throw the old papers away</strong> (what if you need them?), but to spend a minute <strong>reading the older stack and writing a one-page "meeting minutes"</strong>: the key points land on the minutes, the thick original stack goes into a drawer. Now most of the desk is clear, you can spread new papers again, and that minutes page stays in front of you reminding you "here's where we were." The originals weren't destroyed — you can pull them from the drawer to double-check; but for day-to-day work, the <strong>compressed minutes</strong> is enough. Letta's context compaction does exactly this — except "the older stack" is old conversation messages, the "minutes" is an auto-generated summary, and what decides "when to clear the desk" is a watermark drawn at 90%. Remember this desk and every mechanism below has a place to land.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>Grab this lesson in one line: when in-window tokens approach 90% of the limit, Letta compacts the older conversation into a summary and evicts the originals to free space — treating "memory pressure" as an operating-system problem.</strong> The trigger is a watermark: after each model call it records usage (<span class="mono">context_token_estimate</span>), and once that exceeds the <span class="mono">context_window × 0.9</span> threshold (<span class="mono">get_compaction_trigger_threshold</span>), it calls <span class="mono">compact</span>. The act is a <strong>sliding-window summary</strong>: hand an older slice of messages to a summarizer, recursively condense it into one <span class="mono">role=summary</span> message inserted into context, while the originals drop out of the window but stay searchable in recall. The whole thing also emits a <strong>visible event</strong> so the client sees "I just compacted." The one thing it can't touch is <strong>core memory and the system prompt</strong> — they're part of system, so the summarizer only clears conversation; hence a separate <strong>system-prompt overflow</strong> path as a backstop.
+</div>
+
+<h2>First, connect this lesson back to Lesson 5</h2>
+<p>Lesson 5 drew a loop: <strong>measure → decide → compact → rebuild prefix</strong>. The first two steps (count who holds how many tokens, decide whether you're near the threshold) were covered there; this lesson picks up at step three, <strong>"compact"</strong> — how it actually acts, and what happens afterward.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>One-line placement:</strong> Lesson 5 is "<strong>you can measure it</strong>" (the <span class="mono">ContextWindowOverview</span> ledger); Lesson 12 is "<strong>you can compact it</strong>" (the <span class="mono">compact</span> scissors). Two halves of one loop; this lesson completes the back half.</span></div>
+
+<p>Why is compaction unavoidable? Because recall (Lesson 11) guarantees the conversation is <strong>never lost</strong>, but doesn't solve "won't <strong>fit</strong> in-window." Messages only grow; eventually they blow the budget. Compaction is the valve that keeps the window turning — it doesn't delete history, it just <strong>swaps an older slice for a shorter summary</strong>.</p>
+
+<div class="cute"><div class="row"><span class="emoji">📚</span><span class="arrow">→</span><span class="emoji">🗜️</span><span class="arrow">→</span><span class="emoji">📝</span><span class="bubble">one summary</span></div>
+<div class="cap">Window nearly full (~90%): compress an older stack of messages into one "meeting minutes," freeing space to keep going; originals drop out of the window but stay searchable</div></div>
+
+<h2>The 90% threshold: when compaction starts</h2>
+<p>Compaction doesn't wait for the window to be "actually full" — that easily slams into a "prompt too long" error. Letta keeps a 10% margin: it triggers at <strong>90%</strong> of the limit. That threshold comes from <span class="mono">get_compaction_trigger_threshold</span>, equal to <span class="mono">context_window × 0.9</span>.</p>
+
+<div class="timeline">
+  <div class="lane"><span class="lane-label">usage</span>
+    <span class="tslot">0% · chat freely</span>
+    <span class="tslot">70% · still roomy</span>
+    <span class="tslot now">90% · trigger threshold</span>
+  </div>
+  <div class="lane"><span class="lane-label">action</span>
+    <span class="tslot span">near 90% → compact: compress older messages into a summary</span>
+    <span class="tslot now">evict originals · insert summary</span>
+  </div>
+  <div class="lane"><span class="lane-label">result</span>
+    <span class="tslot">usage drops → keep chatting; originals stay searchable in recall</span>
+  </div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/thresholds.py · letta/constants.py</span><span class="ln">compaction trigger threshold (simplified)</span></div>
+<pre><span class="cm"># trigger threshold = context window x 0.9 (10% margin, avoid "prompt too long")</span>
+SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm"># letta/constants.py</span>
+
+<span class="kw">def</span> <span class="fn">get_compaction_trigger_threshold</span>(llm_config, *, force_proactive=<span class="kw">False</span>):
+    <span class="cm"># model-agnostic: always limit x 0.9 (force_proactive doesn't change the result today)</span>
+    <span class="kw">return</span> <span class="fn">int</span>(llm_config.context_window * SUMMARIZATION_TRIGGER_MULTIPLIER)
+</pre></div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">The threshold is <strong>a fraction of the window</strong>, not a hard-coded number: an 8k window triggers around 7.2k, a 128k window around 115k. <strong>However big the window, 90% still compacts</strong> — a larger window only delays "when," it doesn't cancel it.</span></div>
+
+<h2>The trigger point: usage vs threshold, right in the agent loop</h2>
+<p>Where does the threshold get used? In the main loop of <span class="mono">letta/agents/letta_agent_v3.py</span>. For speed, the runtime <strong>doesn't recompute the whole ledger each step</strong> — it records the token usage each model call reports and compares that estimate to the threshold.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>record usage</h4><p>As the model returns, store the <span class="mono">usage.total_tokens</span> it reports into <span class="mono">context_token_estimate</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>compare threshold</h4><p>estimate &gt; <span class="mono">get_compaction_trigger_threshold</span> (×0.9)?</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>emit visible event</h4><p>first yield a <span class="mono">compaction</span> event telling the client "about to compact."</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>do the compaction</h4><p>call <span class="mono">self.compact(messages, ...)</span> to swap older messages for a summary.</p></div></div>
+</div>
+
+<p>Key detail: what gets compared isn't a "ledger-precise" value but the <strong><span class="mono">usage.total_tokens</span> the last model call reported itself</strong>. That's like having the model <strong>weigh itself each turn</strong> — no recompute, yet accurate enough. Exceed the threshold and it enters the compaction branch.</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx"><strong>Two trigger paths, one destination.</strong> One is the <strong>post-step watermark check</strong> (this step done, usage past 90% → compact, <span class="mono">trigger="post_step_context_check"</span>); the other is the <strong>hit-the-wall backstop</strong> (the model raises <span class="mono">ContextWindowExceededError</span>, compact-and-retry in place, <span class="mono">trigger="context_window_exceeded"</span>). Both funnel into the same <span class="mono">compact</span>.</span></div>
+
+<h2>compact_messages: compress old messages into a summary</h2>
+<p><span class="mono">self.compact(...)</span> is just a thin shell; the real work is in <span class="mono">letta/services/summarizer/compact.py::compact_messages</span>. It takes the current in-window messages, hands them to the summarizer, and produces three things: <strong>a summary message</strong>, <strong>the compacted message list</strong>, and <strong>the summary text</strong>.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/summarizer/compact.py</span><span class="ln">compact_messages (pseudocode)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">compact_messages</span>(..., messages, use_summary_role=<span class="kw">True</span>, trigger_threshold=<span class="kw">None</span>, ...):
+    <span class="cm"># 1) summarize away an older slice of messages (sliding-window / recursive)</span>
+    summary, compacted_messages = <span class="kw">await</span> <span class="fn">summarize</span>(messages)
+
+    <span class="cm"># 2) re-count tokens, confirm we actually dropped below the threshold</span>
+    context_token_estimate = <span class="kw">await</span> <span class="fn">count_tokens_with_tools</span>(messages=compacted_messages, ...)
+
+    <span class="cm"># 3) if still over AND the culprit is message[0] (system) -> overflow special case</span>
+    <span class="kw">if</span> context_token_estimate &gt;= trigger_threshold:
+        <span class="kw">if</span> <span class="fn">tokens_of</span>(compacted_messages[<span class="nb">0</span>]) &gt;= llm_config.context_window:
+            <span class="kw">raise</span> <span class="fn">SystemPromptTokenExceededError</span>(...)   <span class="cm"># core memory/system prompt too big</span>
+
+    <span class="kw">return</span> <span class="fn">CompactResult</span>(summary_message, compacted_messages, summary, ...)
+</pre></div>
+
+<p>Note step 3: after compacting it <strong>re-counts tokens</strong> to verify. If it's still over, and a check shows "the culprit is message[0], the system message itself" — then it's <strong>not that the conversation is too long</strong>, it's that core memory/system prompt blew the budget. That fork is the "system-prompt overflow" we'll cover next.</p>
+
+<h2>Sliding-window summary: which slice gets compressed, and how</h2>
+<p>How does "compaction" pick messages? Via the <span class="mono">Summarizer</span> (<span class="mono">summarizer.py</span>). It has several modes; the common one is <strong>sliding-window / partial-evict</strong>. The core idea in one line: <strong>keep the recent slice, summarize away the earlier slice</strong>.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>compute a cut line</h4><p>by ratio <span class="mono">partial_evict_summarizer_percentage</span> (default 0.30) — how much to keep vs evict.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>align to a boundary</h4><p>from the cut point, find the first <span class="mono">assistant</span> message so role order stays valid after re-insert.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>summarize the evicted slice</h4><p>hand <span class="mono">[1 : that assistant)</span> to the summarizer LLM, producing one summary.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>replace index 1</h4><p>put the summary back at <strong>position 1</strong> (position 0 is always the system message); originals leave the window.</p></div></div>
+</div>
+
+<p>This is the MemGPT paper's <strong>recursive summary</strong>: the summary is pinned at <span class="mono">[1]</span>, and the next time you compact, it gets <strong>summarized again together with the newer messages</strong>. History snowballs into an <strong>ever-more-condensed single summary</strong> — the older it is, the more distilled.</p>
+
+<p>Why "find an assistant after the cut point"? Because the summary takes <span class="mono">[1]</span>, so <span class="mono">[2]</span> must be a valid successor (typically an <span class="mono">assistant</span>). Aligning to an assistant boundary avoids <strong>splitting a tool-call / tool-response pair down the middle</strong>.</p>
+
+<h2>The summary message: a visible "I made a summary"</h2>
+<p>The product of compaction is a special message. <span class="mono">letta/system.py::package_summarize_message</span> packs it into a <span class="mono">type=system_alert</span> JSON event whose body says "the previous N messages were hidden; here's their summary."</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/system.py · letta/schemas/enums.py</span><span class="ln">summary message + role=summary (simplified)</span></div>
+<pre><span class="cm"># pack the summary into a system_alert event (with counts: how many hidden / total)</span>
+<span class="kw">def</span> <span class="fn">package_summarize_message</span>(summary, summary_message_count,
+                              hidden_message_count, total_message_count, timezone):
+    context_message = (
+        <span class="st">f"Note: prior messages ({hidden_message_count} of {total_message_count} "</span>
+        <span class="st">f"total messages) have been hidden ... due to memory constraints.\n"</span>
+        <span class="st">f"The following is a summary of the previous {summary_message_count} messages:\n {summary}"</span>
+    )
+    <span class="kw">return</span> <span class="fn">json_dumps</span>({<span class="st">"type"</span>: <span class="st">"system_alert"</span>, <span class="st">"message"</span>: context_message, <span class="st">"time"</span>: ...})
+
+<span class="cm"># Message.role already includes a summary value</span>
+<span class="kw">class</span> <span class="fn">MessageRole</span>(str, Enum):
+    ...
+    summary = <span class="st">"summary"</span>   <span class="cm"># with use_summary_role=True, the summary is stored under this role</span>
+</pre></div>
+
+<p>This summary message has two faces. <strong>To the model</strong>: it sits right in context (just after the system message), letting the model read the "story so far" at a glance. <strong>To the client</strong>: the agent also yields a structured event — <strong>before</strong> compaction an <span class="mono">EventMessage</span> with <span class="mono">event_type="compaction"</span>, and <strong>after</strong> a <span class="mono">SummaryMessage</span> — so the UI can show "compacted N messages."</p>
+
+<p>Remember Lesson 11's role table? That unassuming <span class="mono">summary</span> in <span class="mono">Message.role</span> was made for this moment. Turn on <span class="mono">use_summary_role</span> and the summary is stored as a first-class <span class="mono">role=summary</span> citizen, rather than disguised as a plain <span class="mono">user</span> message.</p>
+
+<h2>Compressible / not: why core memory can't be compacted</h2>
+<p>Compaction has a <strong>boundary</strong>: it only clears <strong>conversation messages</strong> and never touches <strong>core memory or the system prompt</strong>. The reason is simple — core is part of system, the basis for "who the agent is right now and what it remembers"; <strong>compacting it amounts to giving the agent amnesia</strong>.</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>✅ Compressible: conversation</h4>
+    <p>older user / assistant / tool messages — summarized and evicted; originals stay searchable in recall.</p>
+    <p class="mono" style="font-size:.82rem">compact_messages → summarize</p>
+  </div>
+  <div class="col">
+    <h4>⛔ Not: core memory / system prompt</h4>
+    <p>message[0], the system message (with core memory), is the stable prefix; the summarizer never touches a line.</p>
+    <p class="mono" style="font-size:.82rem">system message [0] · kept verbatim</p>
+  </div>
+</div>
+
+<p>So an awkward case arises: what if <strong>core memory itself</strong> blows the budget? Compaction can only evict conversation, and clearing all conversation still won't save an oversized system prompt. Here Letta takes a <strong>special case</strong>: <span class="mono">_check_for_system_prompt_overflow</span>.</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>System-prompt overflow is a dedicated "can't compact" branch.</strong> Still over threshold after compacting, and a count shows "message[0] alone ≥ the whole window" — that's not a too-long conversation, it's too-big core/system prompt. Letta stops and raises <span class="mono">SystemPromptTokenExceededError</span>, stop reason <span class="mono">context_window_overflow_in_system_prompt</span>, telling you "<strong>slim down core memory, don't compact more conversation</strong>."</span></div>
+
+<p>This circles back to Lessons 7 and 8: core has a char limit (<span class="mono">CORE_MEMORY_BLOCK_CHAR_LIMIT</span>) and is a scarce resource. Compaction relieves "conversational" memory pressure, but it can't relieve "you stuffed too much into core" — that one is on your own restraint.</p>
+
+<h2>A real scenario: two hours of chat, window never blows</h2>
+<p>Let's thread the mechanics into a story. You chat with a support agent for two hours, dozens of turns, plus several tool calls. With the naive "stuff all history into the prompt" approach, it would have <strong>blown the window long ago</strong>.</p>
+
+<p>But this agent stayed perfectly fine. The secret is that 90% watermark: whenever in-window tokens approach the limit, it <strong>quietly runs a compaction</strong> — summarizing the past hour of chatter into a paragraph or two, dropping the original dozens of messages out of the window.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">At turn 40, a line flashes in the UI: "<strong>compacted 38 messages</strong>" — that's the <span class="mono">compaction</span> event. The summary went into context, the <strong>story so far isn't lost</strong>; if you casually mention "that order number from the start," it can still use <span class="mono">conversation_search</span> (Lesson 11) to pull the original back from recall.</span></div>
+
+<p>This is what managed "memory pressure" looks like: <strong>the conversation can be arbitrarily long, yet the window always stays within budget.</strong> The summary carries the "story so far," recall backstops "originals are queryable," and together the agent neither blows the window nor truly forgets.</p>
+
+<div class="card spark">
+  <div class="tag">💡 Design highlight</div>
+  <strong>"Memory pressure" is solved as an operating-system problem — this is exactly the MemGPT paper's "queue manager," realized.</strong> How does an OS handle low memory? It doesn't crash — it <strong>pages</strong>: swap rarely-used pages out to disk to free physical RAM. Letta does the same to the context window: at the ~90% watermark it <strong>recursively</strong> summarizes older conversation into one summary (old summary + new messages compressed one layer further, more condensed over time) and "swaps" the originals out to recall. Three design choices make it feel like an OS. First, <strong>there's a watermark</strong> — it acts at a 10% margin rather than waiting for a true OOM. Second, <strong>paging is visible</strong> — every compaction emits a <span class="mono">compaction</span> event and produces a <span class="mono">role=summary</span> message, so agent and user both see "I just summarized," instead of a black box dropping data. Third, <strong>there's a "locked" region that can't be swapped</strong> — core memory and the system prompt are the agent's identity, the summarizer never touches them, hence a separate <strong>system-prompt overflow</strong> special case to handle "the locked region itself overflowed." Put these together and you see not a chatbot that forgets after a while, but a system that, like a kernel, <strong>actively manages its own memory pressure</strong> — the core metaphor of the MemGPT paper: give the LLM a virtual memory manager so a finite context window can sustain a near-infinite conversation.
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfalls</div>
+  <strong>The summary is lossy, and compaction can't save "core memory itself is too big."</strong> Both are easy to take for granted; keep them straight. First, <strong>compaction = lossy summary, not lossless archive</strong>. A stretch of conversation summarized to "the user asked about a return and gave an order number" makes the <strong>exact wording, tone, and edge details</strong> vanish from the in-window view. The good news: they <strong>weren't deleted</strong> — the original <span class="mono">Message</span> rows still sit in recall, and <span class="mono">conversation_search</span> can fetch them. But you can't assume "not in the summary = the model still remembers it": not in the summary means <strong>the model can't see it right now and must actively search</strong>. So don't treat compaction as "free infinite memory" — it's a trade of "detail precision" for "window space." Second, <strong>compaction only evicts conversation, not core</strong>. If you stuff a pile into core memory and push the system prompt toward or past the whole window, then <strong>no amount of compacting conversation helps</strong> — the summarizer never touches core. What triggers then is the <span class="mono">_check_for_system_prompt_overflow</span> special case: a direct <span class="mono">SystemPromptTokenExceededError</span>, stop reason <span class="mono">context_window_overflow_in_system_prompt</span>. It's <strong>telling you</strong>: "the problem isn't the conversation, your core is too fat — trim the memory blocks, or use a bigger window." Remember this boundary and you won't keep cramming core while wondering "why isn't compaction working."
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Source coordinates for the whole compaction chain.</strong> <strong>Threshold</strong>: <span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span> = <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>, the latter <span class="mono">0.9</span> in <span class="mono">letta/constants.py</span>. <strong>Trigger & action</strong>: in <span class="mono">letta/agents/letta_agent_v3.py</span>, <span class="mono">_step</span> compares <span class="mono">context_token_estimate</span> (from the LLM-reported <span class="mono">usage.total_tokens</span>) to the threshold; over it calls <span class="mono">compact</span> and emits <span class="mono">_create_compaction_event_message</span>. <strong>Compaction impl</strong>: <span class="mono">letta/services/summarizer/compact.py::compact_messages</span>; slice selection and recursive summary in <span class="mono">summarizer.py::Summarizer</span> (<span class="mono">_partial_evict_buffer_summarization</span>, default <span class="mono">partial_evict_summarizer_percentage=0.30</span>). <strong>Summary message</strong>: <span class="mono">letta/system.py::package_summarize_message</span> (packed as <span class="mono">system_alert</span>), role value <span class="mono">letta/schemas/enums.py::MessageRole.summary</span>. <strong>Overflow special case</strong>: <span class="mono">letta/agents/letta_agent_v3.py::_check_for_system_prompt_overflow</span> plus the same check at the end of <span class="mono">compact.py</span>, raising <span class="mono">SystemPromptTokenExceededError</span> (<span class="mono">letta/errors.py</span>). Follow this chain of symbols and you can walk "from over-threshold to summary persisted" end to end.
+</div>
+
+<h2>Going deeper</h2>
+
+<details class="accordion"><summary>How recursive summary works: summaries get summarized too</summary><div class="acc-body">
+<p><strong>Example:</strong> first compaction summarizes messages 1–30 into summary S1, placed at <span class="mono">[1]</span>. After 30 more turns and nearing 90% again, the second compaction summarizes "<strong>S1 + messages 31–60</strong>" together into S2.</p>
+<p><strong>Why designed this way:</strong> history grows without bound, but summary length stays roughly bounded — older content is <strong>repeatedly compressed, layer by layer</strong>, while recent content keeps more detail. This is the heart of the MemGPT paper's "recursive summarization."</p>
+<p><strong>Where in source:</strong> <span class="mono">summarizer.py::_partial_evict_buffer_summarization</span> — it pins the summary message at <span class="mono">[1]</span>, and the next round folds that position into the new range to summarize.</p>
+<p><strong>The cost:</strong> the older the info, the more precision lost. But "<strong>originals stay in recall</strong>" is the backstop — need the detail, search it back.</p>
+</div></details>
+
+<details class="accordion"><summary>Why core memory can't be compacted: the system-prompt overflow case</summary><div class="acc-body">
+<p><strong>Example:</strong> you stuff tens of thousands of chars into persona / human blocks, and the system prompt alone nearly fills the window. Now even compacting all conversation frees no space.</p>
+<p><strong>Why designed this way:</strong> core is the agent's identity and immediate memory — it <strong>must always be in-window and byte-stable</strong> (it also ties to Lesson 5's prefix cache). Letting the summarizer compress it would make the agent forget mid-sentence — never allowed.</p>
+<p><strong>Where in source:</strong> <span class="mono">compact.py</span> rechecks after compacting: if <span class="mono">compacted_messages[0]</span> (the system message) alone is ≥ the window, raise <span class="mono">SystemPromptTokenExceededError</span>; <span class="mono">letta_agent_v3.py::_check_for_system_prompt_overflow</span> is the same check, stop reason <span class="mono">context_window_overflow_in_system_prompt</span>.</p>
+<p><strong>The signal to you:</strong> when you hit it, stop thinking "compact more conversation" and instead <strong>trim core memory</strong> (revisit Lesson 8's <span class="mono">limit</span>) or use a bigger window.</p>
+</div></details>
+
+<details class="accordion"><summary>The visible compaction event: how the client knows it happened</summary><div class="acc-body">
+<p><strong>Example:</strong> a line appears in the UI, "compacting…", followed by "summarized 38 messages into a summary."</p>
+<p><strong>Why designed this way:</strong> compaction changes the context, and <strong>doing it silently confuses users</strong> ("why did it forget that detail?"). Emitted as an explicit event, the behavior is observable and explainable.</p>
+<p><strong>Where in source:</strong> <span class="mono">letta_agent_v3.py::_create_compaction_event_message</span> yields an <span class="mono">EventMessage</span> with <span class="mono">event_type="compaction"</span> (<strong>before</strong> compaction); <span class="mono">_create_summary_result_message</span> yields a <span class="mono">SummaryMessage</span> (<strong>after</strong>, gated by <span class="mono">include_compaction_messages</span>).</p>
+<p><strong>Contrast:</strong> many frameworks "truncate history" silently; Letta makes it a first-class event — a continuation of the "<strong>memory operations should be transparent</strong>" philosophy.</p>
+</div></details>
+
+<details class="accordion"><summary>How Lesson 5's "measure" connects to "act"</summary><div class="acc-body">
+<p><strong>Example:</strong> Lesson 5 used <span class="mono">ContextWindowOverview</span> to break the window into how many tokens system / core / tools / messages each hold — that's the "<strong>checkup report</strong>." Lesson 12's compaction is <strong>reading the report and treating the patient</strong>.</p>
+<p><strong>Why designed this way:</strong> "can measure" and "can compact" are two things. Measure without compacting and the window still blows; compact without measuring and you don't know when to act. The two halves together make the loop.</p>
+<p><strong>Where in source:</strong> measure <span class="mono">letta/schemas/memory.py::ContextWindowOverview</span> (Lesson 5); decide + act <span class="mono">letta_agent_v3.py</span> (<span class="mono">context_token_estimate</span> vs <span class="mono">get_compaction_trigger_threshold</span>, over it <span class="mono">compact</span>).</p>
+<p><strong>In one line:</strong> Lesson 5 "<strong>you can measure</strong>," Lesson 12 "<strong>you can compact</strong>" — the front and back halves of one loop.</p>
+</div></details>
+
+<h2>Wrap-up: the memory system is now a closed loop</h2>
+<p>This lesson got you the valve that keeps the whole memory system turning: at the 90% threshold, <span class="mono">compact</span>; use sliding-window recursive summary to compress older conversation into one <span class="mono">role=summary</span> message; the process is visible; only core memory can't be compacted, with its own overflow special case.</p>
+
+<p>Thread all of Part 3 together — this is the <strong>capstone</strong> of Lesson 7's three-tier map:</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>The memory system (07–12)</b>: three tiers + the compaction valve that keeps it turning</div>
+  <div class="cells">
+    <span class="cell hl">07 three tiers</span>
+    <span class="sep">·</span>
+    <span class="cell">08 memory blocks</span>
+    <span class="sep">·</span>
+    <span class="cell">09 self-editing core</span>
+    <span class="sep">·</span>
+    <span class="cell">10 archival vectors</span>
+    <span class="sep">·</span>
+    <span class="cell">11 recall history</span>
+    <span class="sep">→</span>
+    <span class="cell hl">12 compaction valve</span>
+  </div>
+</div>
+
+<p>Replay block by block: core lets the agent <strong>rewrite who it is</strong> (07–09), archival lets it <strong>accumulate long-term knowledge</strong> (10), recall lets it <strong>remember every line</strong> (11), and compaction (12) keeps all of it running inside a <strong>finite window</strong>. With all four in place, the memory system truly closes the loop.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>Bridging back and forward:</strong> Lesson 5 posed the root constraint "the window is finite" and gave you "measure"; Part 3 (07–12) tells the whole "memory system" answer — and compaction is the last piece that <strong>fights the pressure</strong>.</span></div>
+
+<p>Memorize one chain on your way out: <strong>record usage each turn → past the 90% threshold → emit a compaction event → compact via sliding-window recursive summary → insert role=summary, originals retreat to recall → only core can't be compacted; if it overflows, take the system-prompt overflow special case</strong>. Hold this chain and you've truly grasped "context compaction & memory pressure."</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>90% threshold trigger</strong>: <span class="mono">get_compaction_trigger_threshold</span> = <span class="mono">context_window × 0.9</span> (<span class="mono">SUMMARIZATION_TRIGGER_MULTIPLIER</span> in <span class="mono">constants.py</span>); a 10% margin to compact proactively, not at the wall.</li>
+    <li><strong>Trigger in the agent loop</strong>: <span class="mono">letta_agent_v3.py</span> compares <span class="mono">context_token_estimate</span> (= the LLM-reported <span class="mono">usage.total_tokens</span>) to the threshold; over it calls <span class="mono">compact</span>.</li>
+    <li><strong>compact_messages does the work</strong>: <span class="mono">summarizer/compact.py</span> summarizes away older messages; slice selection + recursive summary in <span class="mono">Summarizer</span> (partial-evict, default 0.30), summary pinned at <span class="mono">[1]</span>.</li>
+    <li><strong>The summary message is visible</strong>: <span class="mono">system.py::package_summarize_message</span> packs a <span class="mono">system_alert</span>, stored under <span class="mono">role=summary</span> (<span class="mono">enums.py</span>); plus a <span class="mono">compaction</span> event / <span class="mono">SummaryMessage</span>.</li>
+    <li><strong>Core memory can't be compacted</strong>: the summarizer only evicts conversation, never core/system prompt; if core overflows → <span class="mono">_check_for_system_prompt_overflow</span> → <span class="mono">SystemPromptTokenExceededError</span>.</li>
+    <li><strong>Compaction is lossy but non-deleting</strong>: the summary drops detail, originals stay in recall via <span class="mono">conversation_search</span>; this is the MemGPT "queue manager," realized.</li>
+  </ul>
+</div>
+""",
+}

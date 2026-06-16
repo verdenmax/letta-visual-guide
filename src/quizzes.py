@@ -839,6 +839,79 @@ QUIZZES = {
             },
         ],
     },
+    "12-context-compaction.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "Letta 的压缩触发阈值是 context_window × 0.9，而不是等到 100% 才压。为什么要留这 10% 余量？",
+                    "en": "Letta's compaction trigger threshold is context_window × 0.9, not waiting until 100%. Why keep that 10% margin?",
+                },
+                "opts": [
+                    {"zh": "提前在 90% 主动压缩，留出余量，避免真撞上“prompt 太长”的报错；这也呼应第 5 课“度量 → 动手”的闭环",
+                     "en": "Compact proactively at 90% to keep a buffer and avoid actually hitting a “prompt too long” error; this echoes Lesson 5's “measure → act” loop"},
+                    {"zh": "因为模型只能数到窗口的 90%，剩下 10% 物理上无法使用",
+                     "en": "Because the model can only count to 90% of the window; the last 10% is physically unusable"},
+                    {"zh": "0.9 是随模型变化的，每个模型都有自己的阈值倍数",
+                     "en": "0.9 varies per model; each model has its own threshold multiplier"},
+                    {"zh": "留 10% 是为了给核心记忆压缩腾地方",
+                     "en": "The 10% is reserved to make room for compacting core memory"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "get_compaction_trigger_threshold = int(context_window × SUMMARIZATION_TRIGGER_MULTIPLIER)，后者在 constants.py 固定为 0.9（不区分模型，force_proactive 目前也不改变结果）。在 90% 就触发，是为了在真正撞满、报“prompt 太长”之前主动腾空间。这正是第 5 课那条“度量 → 判定 → 压缩”闭环里“动手”的一步。核心记忆从不被压缩，所以最后一项是错的。",
+                    "en": "get_compaction_trigger_threshold = int(context_window × SUMMARIZATION_TRIGGER_MULTIPLIER), the latter fixed at 0.9 in constants.py (model-agnostic; force_proactive doesn't change the result today). Triggering at 90% frees space before truly hitting the wall and raising “prompt too long.” That's the “act” step of Lesson 5's “measure → decide → compact” loop. Core memory is never compacted, so the last option is wrong.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你把几万字塞进 persona/human 块，系统提示本身就快顶满窗口。这时 agent 不断压缩对话却仍然报错——发生了什么？",
+                    "en": "You stuff tens of thousands of chars into persona/human blocks, so the system prompt alone nearly fills the window. The agent keeps compacting conversation yet still errors out — what happened?",
+                },
+                "opts": [
+                    {"zh": "走了“系统提示溢出”特判：压缩只驱逐对话、绝不动 core；当第 0 条系统消息自己就 ≥ 窗口，抛 SystemPromptTokenExceededError",
+                     "en": "It took the “system-prompt overflow” special case: compaction only evicts conversation and never touches core; when message[0] alone is ≥ the window, it raises SystemPromptTokenExceededError"},
+                    {"zh": "压缩会把核心记忆也一起摘要掉，多压几次就好了",
+                     "en": "Compaction summarizes core memory too; just compact a few more times and it's fine"},
+                    {"zh": "agent 自动把超出的核心记忆挪进 archival，不会报错",
+                     "en": "The agent auto-moves the overflowing core memory into archival, so it won't error"},
+                    {"zh": "这是 recall 满了，清空对话历史即可",
+                     "en": "This is recall being full; just clear the conversation history"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "summarizer 只总结对话消息，绝不碰核心记忆与系统提示（core 是 agent 的身份、必须始终在窗且逐字稳定）。compact_messages 压完会复核：若 compacted_messages[0]（系统消息）单独就 ≥ 窗口，说明元凶不是对话太长，而是 core/系统提示太大——于是 _check_for_system_prompt_overflow 抛 SystemPromptTokenExceededError，停止原因 context_window_overflow_in_system_prompt。正确做法是精简核心记忆（第 8 课的 limit）或换更大窗口，而不是再压对话。",
+                    "en": "The summarizer only summarizes conversation messages and never touches core memory or the system prompt (core is the agent's identity — it must stay in-window and byte-stable). After compacting, compact_messages rechecks: if compacted_messages[0] (the system message) alone is ≥ the window, the culprit isn't a too-long conversation but a too-big core/system prompt — so _check_for_system_prompt_overflow raises SystemPromptTokenExceededError with stop reason context_window_overflow_in_system_prompt. The fix is to trim core memory (Lesson 8's limit) or use a bigger window, not to compact more conversation.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "压缩把前一小时的对话总结成了一段摘要。那些原始消息的命运是？",
+                    "en": "Compaction summarized the past hour of conversation into one summary. What happens to those original messages?",
+                },
+                "opts": [
+                    {"zh": "摘要是有损的，但原话没被删：原始 Message 仍留在 recall 里，可用 conversation_search 按 hybrid 捞回",
+                     "en": "The summary is lossy, but the originals aren't deleted: the original Message rows stay in recall and can be fetched back by conversation_search (hybrid)"},
+                    {"zh": "原始消息被永久删除，只剩摘要，细节再也找不回",
+                     "en": "The original messages are permanently deleted; only the summary remains and details are gone forever"},
+                    {"zh": "原始消息被原样保留在上下文窗口里，只是折叠起来",
+                     "en": "The originals stay verbatim in the context window, just collapsed"},
+                    {"zh": "原始消息被搬进核心记忆长期保存",
+                     "en": "The originals are moved into core memory for long-term keeping"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "压缩是用“细节精度”换“窗口空间”的有损总结，不是无损归档：具体措辞、语气、边角细节从在窗视野里消失了。但它们没被删——原始 Message 行依旧躺在 recall 里（第 11 课），conversation_search 能按 hybrid 把它们捞回来。所以别把“摘要里没有”当成“模型还记得清”：摘要里没有，就意味着模型当下看不到、得主动去搜。原话退出的是窗口，不是数据库。",
+                    "en": "Compaction is a lossy summary trading “detail precision” for “window space,” not a lossless archive: exact wording, tone, and edge details vanish from the in-window view. But they aren't deleted — the original Message rows still sit in recall (Lesson 11), and conversation_search can fetch them back by hybrid. So don't treat “not in the summary” as “the model still remembers it”: not in the summary means the model can't see it now and must actively search. The originals leave the window, not the database.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "你在做一个要连聊几小时的客服 agent。结合本课想三件事：(1) 为什么“到 90% 就压缩”比“等撞满再处理”更稳？把它和第 5 课的“度量 → 动手”闭环接起来说。(2) 压缩是可见事件（compaction / SummaryMessage）——对用户体验和调试，这种“透明”比悄悄截断历史好在哪？(3) 既然摘要有损、原话又还在 recall，你会怎么设计“什么时候直接读摘要、什么时候该 conversation_search 翻原话”，才不至于既丢细节又浪费 token？",
+                "en": "You're building a support agent that chats for hours. Using this lesson, think through three things: (1) why is “compact at 90%” steadier than “wait until the wall, then deal with it”? Connect it to Lesson 5's “measure → act” loop. (2) Compaction is a visible event (compaction / SummaryMessage) — for UX and debugging, how is this “transparency” better than silently truncating history? (3) Since the summary is lossy but the originals remain in recall, how would you design “when to just read the summary vs when to conversation_search the originals,” so you neither lose detail nor waste tokens?",
+            },
+        ],
+    },
 }
 
 
