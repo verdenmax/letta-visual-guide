@@ -1518,20 +1518,20 @@ LESSON_10 = {
 
 <div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>一句话定位：</strong>archival 就是<strong>内建进 agent 的 RAG</strong>——agent 自己写长期笔记（insert）、再按意思取回（search），不依赖外部检索管线，发起权全在 agent 手里。</span></div>
 
-<p>三层最值得记住的差别是<strong>"怎么检索"</strong>：core 不用检索（一直在眼前），recall 按<strong>字面/时间</strong>翻聊天记录，archival 按<strong>意思</strong>翻向量库。下面这张表把它们并排放一起，一眼对清楚。</p>
+<p>三层最值得记住的差别是<strong>"怎么检索"</strong>：core 不用检索（一直在眼前），recall 用 <strong>hybrid（字面+语义）</strong>翻完整聊天记录，archival 按<strong>意思</strong>翻向量库。下面这张表把它们并排放一起，一眼对清楚。</p>
 
 <table class="t">
   <thead><tr><th>记忆层</th><th>在上下文?</th><th>容量</th><th>谁来写</th><th>怎么检索</th></tr></thead>
   <tbody>
     <tr><td>core 核心</td><td>✅ 永远在窗</td><td class="mono">极小（字符上限）</td><td>agent 自改</td><td>不用检索</td></tr>
-    <tr><td>recall 回忆</td><td>❌ 仅最近一段在窗</td><td class="mono">全量对话史</td><td>系统自动记</td><td>按字面 / 时间</td></tr>
+    <tr><td>recall 回忆</td><td>❌ 仅最近一段在窗</td><td class="mono">全量对话史</td><td>系统自动记</td><td>hybrid（字面+语义）</td></tr>
     <tr><td>archival 归档</td><td>❌ 全在窗外</td><td class="mono">近乎无限</td><td>agent 主动 insert</td><td>按<strong>语义</strong>（向量）</td></tr>
   </tbody>
 </table>
 
 <p>注意 archival 这一行的两个"主动"：容量近乎无限，但它<strong>不会自动记</strong>——得 agent 判断"这条值得长期留着"，主动调 insert；要用时也得<strong>主动</strong> search。它是 agent 自己经营的一座库，不是后台默默记的流水账。</p>
 
-<p>为什么 archival 偏偏要"按语义"检索？因为长期库里的东西<strong>时过境迁</strong>：三个月前 agent 记下"客户偏好深色界面"，今天用户问"界面风格我之前怎么说的来着"——用词对不上，但<strong>意思是一回事</strong>。靠字面早就搜不到了，靠语义却能稳稳捞回。这正是 archival 把"按意思找"设成<strong>默认检索方式</strong>的原因，也是它和 recall"按字面/时间"翻历史的根本分工。</p>
+<p>为什么 archival 偏偏要"按语义"检索？因为长期库里的东西<strong>时过境迁</strong>：三个月前 agent 记下"客户偏好深色界面"，今天用户问"界面风格我之前怎么说的来着"——用词对不上，但<strong>意思是一回事</strong>。靠字面早就搜不到了，靠语义却能稳稳捞回。这正是 archival 把"按意思找"设成<strong>默认检索方式</strong>的原因。archival 与 recall 的根本分工其实在"<strong>存什么</strong>"：recall 是系统自动记下的全量对话历史，archival 是 agent 精选的长期知识库。</p>
 
 <div class="cute"><div class="row"><span class="emoji">📦</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="lab">嵌入向量</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">"按意思找最像的"</span></div>
 <div class="cap">归档记忆 = 会按语义检索的长期笔记本，容量近乎无限</div></div>
@@ -1552,7 +1552,7 @@ LESSON_10 = {
 
 <p>四个字段串起整课：<strong>(1) text</strong> 是你存的原话；<strong>(2) embedding</strong> 是它的语义坐标，search 全靠它；<strong>(3) embedding_config</strong> 记下"用哪个模型嵌入的"，保证存和查用<strong>同一把尺子</strong>；<strong>(4) tags</strong> 让 agent 给自己的知识贴分类标签。</p>
 
-<div class="note info"><span class="ni">📌</span><span class="nx">向量从哪来？由 <span class="mono">embedding_config</span>（<span class="mono">letta/schemas/embedding_config.py</span>）指定的嵌入模型算出。归档向量还会被<strong>补齐到固定维度</strong> <span class="mono">MAX_EMBEDDING_DIM = 4096</span>（<span class="mono">letta/constants.py</span>），这样不同模型产出的向量能存进同一列。</span></div>
+<div class="note info"><span class="ni">📌</span><span class="nx">向量从哪来？由 <span class="mono">embedding_config</span>（<span class="mono">letta/schemas/embedding_config.py</span>）指定的嵌入模型算出。在 pgvector（Postgres）上，归档向量还会被<strong>补齐到固定维度</strong> <span class="mono">MAX_EMBEDDING_DIM = 4096</span>（<span class="mono">letta/constants.py</span>），这样不同模型产出的向量能存进同一列。</span></div>
 
 <p>这里藏着一条铁律：<strong>insert 和 search 必须用同一个嵌入模型</strong>。向量空间是嵌入模型"私人定义"的坐标系，换了模型，同一句话的坐标就全变了——存进去的旧向量和新查询根本不在一个空间里，没法比距离。<span class="mono">embedding_config</span> 把这把"尺子"钉死在每条 <span class="mono">Passage</span> 上，正是为了让存与查<strong>始终量纲一致</strong>。</p>
 
@@ -1602,7 +1602,7 @@ LESSON_10 = {
 
 <p>那条 Passage 具体存到哪？存进 agent 的<strong>默认 archive</strong>（档案库）。<span class="mono">insert_passage</span> 内部先调 <span class="mono">ArchiveManager.get_or_create_default_archive_for_agent_async</span>——没有就建一个、有就拿来用，再把新 Passage 挂到这座库上。一个 agent 默认对应一座 archive，它所有的归档记忆都装在里面，<span class="mono">archive_id</span> 就是它们的"户口"。</p>
 
-<p>search 也只是<strong>转交</strong>给 <span class="mono">search_agent_archival_memory_async</span>。关键在它内部那句 <span class="mono">order_by(cosine_distance(...).asc())</span>：距离越小 = 意思越近，所以<strong>升序取前 K 条</strong>就是"最像的几条"。<span class="mono">top_k</span> 控制取几条，默认 10。</p>
+<p>search 也只是<strong>转交</strong>给 <span class="mono">search_agent_archival_memory_async</span>。关键在它内部那句 <span class="mono">order_by(cosine_distance(...).asc())</span>：距离越小 = 意思越近，所以<strong>升序取前 K 条</strong>就是"最像的几条"。<span class="mono">top_k</span> 控制取几条（工具 docstring 标注默认 10，未传时实际回退到 <span class="mono">RETRIEVAL_QUERY_DEFAULT_PAGE_SIZE</span>=5）。</p>
 
 <p>串个具体场景：用户两周前随口提过"我对花生过敏"，agent 当时 <span class="mono">archival_memory_insert("用户对花生过敏", tags=["健康"])</span> 记了一笔。今天用户问"这家餐厅你觉得我能吃吗"，agent 调 <span class="mono">archival_memory_search("用户的饮食禁忌")</span>——查询里一个"花生"都没提，但语义最近的那条 Passage 还是被捞了回来，agent 于是想起了过敏这件事。这就是"按意思找"在真实对话里的威力：<strong>记得的是意思，而不是字眼</strong>。</p>
 
@@ -1693,7 +1693,7 @@ LESSON_10 = {
 <h2>下一站：从"长期向量库"回到"对话历史"</h2>
 <p>这一课你拿下了三层里最"远"的一层：archival 是 agent 自己经营的<strong>长期向量库</strong>，靠 <span class="mono">insert</span> 写、<span class="mono">search</span> 按语义读，底层是一列"二选一"的向量。它把 RAG 收进了 agent 自己手里。</p>
 
-<div class="note info"><span class="ni">👉</span><span class="nx"><strong>预告第 11 课：</strong>archival 是"<strong>按意思</strong>翻长期库"，而 recall 是"<strong>按字面/时间</strong>翻完整对话历史"。下一课讲 recall——每条消息怎么作为带类型的 JSON 事件被持久，又怎么用 <span class="mono">conversation_search</span> 捞回。</span></div>
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>预告第 11 课：</strong>archival 是 agent <strong>精选</strong>的长期库（按意思翻），而 recall 是系统<strong>自动记</strong>的完整对话历史（hybrid 检索）。下一课讲 recall——每条消息怎么作为带类型的 JSON 事件被持久，又怎么用 <span class="mono">conversation_search</span> 捞回。</span></div>
 
 <p>再往后，<strong>第 12 课</strong>回到第 5 课那道"上下文窗口"的墙：当窗口快满，较旧的消息怎么被<strong>压缩成摘要</strong>换出去——也就是第 9 课结尾说的"压缩后会强制重建第 0 条"的那条路径。三层记忆 + 一套压缩，第三部分就闭环了。</p>
 
@@ -1733,20 +1733,20 @@ Just four keywords: <strong>Passage</strong> (one archival memory = text + vecto
 
 <div class="note tip"><span class="ni">🧠</span><span class="nx"><strong>One-line placement:</strong> archival is <strong>RAG built into the agent</strong> — the agent writes its own long-term notes (insert) and retrieves them by meaning (search), with no external retrieval pipeline; the agent itself holds the trigger.</span></div>
 
-<p>The difference worth memorizing across the three is <strong>"how you retrieve"</strong>: core needs no retrieval (always in view), recall flips through chat logs <strong>by text/time</strong>, archival flips through a vector store <strong>by meaning</strong>. The table below puts them side by side.</p>
+<p>The difference worth memorizing across the three is <strong>"how you retrieve"</strong>: core needs no retrieval (always in view), recall searches the full chat log with <strong>hybrid (text + meaning)</strong>, archival flips through a vector store <strong>by meaning</strong>. The table below puts them side by side.</p>
 
 <table class="t">
   <thead><tr><th>Memory tier</th><th>In context?</th><th>Capacity</th><th>Who writes</th><th>How retrieved</th></tr></thead>
   <tbody>
     <tr><td>core</td><td>✅ always in-window</td><td class="mono">tiny (char limit)</td><td>agent self-edits</td><td>no retrieval</td></tr>
-    <tr><td>recall</td><td>❌ only recent slice in-window</td><td class="mono">full history</td><td>system auto-logs</td><td>by text / time</td></tr>
+    <tr><td>recall</td><td>❌ only recent slice in-window</td><td class="mono">full history</td><td>system auto-logs</td><td>hybrid (text + meaning)</td></tr>
     <tr><td>archival</td><td>❌ all out-of-window</td><td class="mono">near-infinite</td><td>agent actively inserts</td><td>by <strong>meaning</strong> (vectors)</td></tr>
   </tbody>
 </table>
 
 <p>Note the two "actives" in the archival row: capacity is near-infinite, but it <strong>doesn't auto-record</strong> — the agent must judge "this is worth keeping long-term" and actively call insert; and it must <strong>actively</strong> search to use it. It's a library the agent runs itself, not a ledger quietly kept in the background.</p>
 
-<p>Why must archival retrieve "by meaning"? Because long-term contents <strong>drift over time</strong>: three months ago the agent noted "customer prefers a dark UI"; today the user asks "what did I say about the interface style?" — the words don't match, but <strong>the meaning is the same</strong>. Literal search lost it long ago; semantic search pulls it back reliably. That's why archival makes "search by meaning" its <strong>default</strong>, and the core split from recall's "by text/time."</p>
+<p>Why must archival retrieve "by meaning"? Because long-term contents <strong>drift over time</strong>: three months ago the agent noted "customer prefers a dark UI"; today the user asks "what did I say about the interface style?" — the words don't match, but <strong>the meaning is the same</strong>. Literal search lost it long ago; semantic search pulls it back reliably. That's why archival makes "search by meaning" its <strong>default</strong>. The real split from recall is <strong>what each stores</strong>: recall is the system's full auto-logged conversation history, archival is the agent's curated long-term store.</p>
 
 <div class="cute"><div class="row"><span class="emoji">📦</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="lab">embed vector</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">"find the closest by meaning"</span></div>
 <div class="cap">Archival memory = a long-term notebook searched semantically, with near-infinite capacity</div></div>
@@ -1767,7 +1767,7 @@ Just four keywords: <strong>Passage</strong> (one archival memory = text + vecto
 
 <p>Four fields tie the lesson together: <strong>(1) text</strong> is what you stored; <strong>(2) embedding</strong> is its semantic coordinates, on which search wholly relies; <strong>(3) embedding_config</strong> records "which model embedded it," so storing and searching use <strong>the same ruler</strong>; <strong>(4) tags</strong> let the agent categorize its own knowledge.</p>
 
-<div class="note info"><span class="ni">📌</span><span class="nx">Where do vectors come from? Computed by the embedding model named in <span class="mono">embedding_config</span> (<span class="mono">letta/schemas/embedding_config.py</span>). Archival vectors are also <strong>padded to a fixed dimension</strong>, <span class="mono">MAX_EMBEDDING_DIM = 4096</span> (<span class="mono">letta/constants.py</span>), so vectors from different models fit one column.</span></div>
+<div class="note info"><span class="ni">📌</span><span class="nx">Where do vectors come from? Computed by the embedding model named in <span class="mono">embedding_config</span> (<span class="mono">letta/schemas/embedding_config.py</span>). On pgvector (Postgres), archival vectors are also <strong>padded to a fixed dimension</strong>, <span class="mono">MAX_EMBEDDING_DIM = 4096</span> (<span class="mono">letta/constants.py</span>), so vectors from different models fit one column.</span></div>
 
 <p>There's an iron rule hiding here: <strong>insert and search must use the same embedding model</strong>. A vector space is a coordinate system "privately defined" by the embedding model; change the model and the same sentence's coordinates change entirely — old stored vectors and the new query aren't even in the same space, so distances are meaningless. <span class="mono">embedding_config</span> pins that "ruler" onto every <span class="mono">Passage</span> precisely to keep storing and searching <strong>dimensionally consistent</strong>.</p>
 
@@ -1892,7 +1892,7 @@ Just four keywords: <strong>Passage</strong> (one archival memory = text + vecto
 
 <details class="accordion"><summary>archive and tags: how the agent categorizes knowledge</summary><div class="acc-body">
 <p><strong>Example:</strong> insert with <span class="mono">tags=["meetings","roadmap"]</span>; search with <span class="mono">tags=["meetings"], tag_match_mode="all"</span> to find by meaning only within meeting files.</p>
-<p><strong>Why it's designed this way:</strong> pure semantic search is sometimes too "diffuse." tags give the agent a <strong>structured filter knife</strong>: scope by tag first, then rank by vector, for sharper recall. Each agent has one <strong>archive</strong> (store) by default holding all its Passages.</p>
+<p><strong>Why it's designed this way:</strong> pure semantic search is sometimes too "diffuse." tags give the agent a <strong>structured filter</strong>: scope by tag first, then rank by vector, for sharper recall. Each agent has one <strong>archive</strong> (store) by default holding all its Passages.</p>
 <p><strong>Where in the source:</strong> the default archive comes from <span class="mono">ArchiveManager.get_or_create_default_archive_for_agent_async</span> (<span class="mono">archive_manager.py</span>); tags are stored both in <span class="mono">Passage.tags</span>'s JSON column and written to the <span class="mono">PassageTag</span> junction table (<span class="mono">letta/orm/passage_tag.py</span>) for efficient filter/count.</p>
 <p><strong>Alternatives:</strong> it works without tags, all by semantics; but as knowledge grows and categories clarify, tags markedly improve "finding precisely." This is "semantics + structure" stacked.</p>
 <p><strong>One more implementation detail:</strong> tags are <strong>dual-stored</strong> — both in <span class="mono">Passage.tags</span>'s JSON column (handy when fetching a Passage) and split into the <span class="mono">PassageTag</span> junction table (one row per tag). The former rides along with the data; the latter lets "filter/count by a tag" use an index and run fast. One piece of info, two layouts, each serving an access pattern.</p>
@@ -1908,7 +1908,7 @@ Just four keywords: <strong>Passage</strong> (one archival memory = text + vecto
 <h2>Next stop: from "long-term vector store" back to "conversation history"</h2>
 <p>This lesson nailed the "farthest" of the three tiers: archival is a <strong>long-term vector store</strong> the agent runs itself, written by <span class="mono">insert</span> and read by <span class="mono">search</span> by meaning, with a "two-way" vector column underneath. It pulls RAG into the agent's own hands.</p>
 
-<div class="note info"><span class="ni">👉</span><span class="nx"><strong>Preview of Lesson 11:</strong> archival "flips through a long-term store <strong>by meaning</strong>," while recall "flips through the full conversation history <strong>by text/time</strong>." Next lesson covers recall — how each message is persisted as a typed JSON event, and how <span class="mono">conversation_search</span> fetches it back.</span></div>
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>Preview of Lesson 11:</strong> archival is the agent's <strong>curated</strong> long-term store (searched by meaning), while recall is the system's <strong>auto-logged</strong> full conversation history (hybrid retrieval). Next lesson covers recall — how each message is persisted as a typed JSON event, and how <span class="mono">conversation_search</span> fetches it back.</span></div>
 
 <p>Further on, <strong>Lesson 12</strong> returns to Lesson 5's "context window" wall: when the window nears full, how older messages get <strong>compacted into a summary</strong> and swapped out — the very path Lesson 9 ended on, "after compaction it force-rebuilds message #0." Three tiers of memory + one compaction, and Part 3 closes the loop.</p>
 
