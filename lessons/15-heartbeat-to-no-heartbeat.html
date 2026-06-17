@@ -332,7 +332,264 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <div class="part"><span class="lang-zh">第四部分 · Agent 执行循环</span><span class="lang-en">Part 4 · The agent execution loop</span></div>
     <h1><span class="lang-zh">从 heartbeat 到无 heartbeat</span><span class="lang-en">From heartbeat to no-heartbeat</span></h1>
   </div>
-  <div class="lang-zh"><p>stub</p></div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+上一课拆 V3 循环时，我们撞见一句反直觉的判据：续不续步，<strong>不看模型想不想继续，只看这一轮有没有调工具</strong>。当时埋了个悬念——<span class="mono">letta_v1_agent</span> 注释里那句 "no heartbeats"（无心跳）到底拿掉了什么？这一课就来还这笔账。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+这是一堂<strong>设计演化课</strong>。老的 MemGPT、元老 <span class="mono">Agent</span>、第二代 <span class="mono">LettaAgentV2</span> 都靠一个叫 <span class="mono">request_heartbeat</span> 的开关续步：模型得在工具调用里<strong>自己举手</strong>说"我还要继续"。第三代 V3 把这个开关整个删掉了。一删一留之间，藏着一条朴素的工程智慧——<strong>别把"要不要继续"这种关键决定，押在模型的自觉上。</strong></p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把两代机制想成两种对讲机。</strong>老机制是<strong>半双工对讲机</strong>：你每说完一句，必须主动加一句"完毕，请继续（over）"，对面才知道该接话；万一你忘了说这句"完毕"，线路就<strong>静默</strong>了——对面干等，你也以为在等对方，整条对话就卡死在那。新机制换了规矩：<strong>只要你还在往外递"工具单子"，线路就默认接着转</strong>，不必每次都喊"请继续"；什么时候你不再递单子、直接开口说话了，才算把话筒交还回去。老机制把"继续"的责任压在<strong>说话人记不记得喊口令</strong>上，新机制把它焊死在<strong>"有没有递单子"这个客观动作</strong>上——后者不会忘，也就不会卡死。说到底，靠谱的流水线不靠工人时时记得喊"完毕"，而靠传送带本身的机械确定性。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：老设计让<em>模型</em>决定"继续不继续"，V3 把这个决定收回给<em>框架</em>。</strong>老机制（<span class="mono">letta/agent.py</span> 的元老 <span class="mono">Agent</span>，以及 <span class="mono">LettaAgentV2</span>）给每个<strong>非终止工具</strong>都塞一个必填布尔参数 <span class="mono">request_heartbeat</span>；模型若想接着干，就得把它设成 <span class="mono">true</span>，框架随后注入一条"心跳"用户消息把控制权还给模型、续上一圈（<span class="mono">agent.py::_handle_ai_response</span> 读这个标志，<span class="mono">agent.py::step</span> 注入并续步）。工具<strong>报错</strong>时，框架还会自动补一条心跳，好让模型看见错误去补救。V3（<span class="mono">letta_agent_v3.py</span>）的洞见是：这个决定<strong>不该问模型</strong>——"这一轮调了工具"本身就是"还有后续"的可靠信号，于是 <span class="mono">_get_valid_tools</span> 传 <span class="mono">request_heartbeat=False</span>（注释 "NOTE: difference for v3"），续步判据回到上一课的 <span class="mono">_decide_continuation</span>。一个必填参数、一类心跳消息、一整类"模型忘了设"的 bug，就此一起消失。代价几乎为零——因为"调了工具"本就等价于"还要继续"，老机制那层让模型再确认一次的设计，从一开始就是冗余的。
+</div>
+
+<h2>旧设计：每个非终止工具都挂一个 request_heartbeat</h2>
+<p>先认清这个开关。老机制在把工具的 JSON schema 交给模型之前，会<strong>动态地</strong>给每个工具多塞一个参数 <span class="mono">request_heartbeat</span>（布尔值），并把它列进 <span class="mono">required</span>。注入逻辑在 <span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>，文档字符串写得很直白——"工具会被加上一个额外的 <span class="mono">request_heartbeat</span> 参数（终止工具除外）"。</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">这个参数的描述（<span class="mono">constants.py::REQUEST_HEARTBEAT_DESCRIPTION</span>）就是写给模型看的说明书：<strong>"若你想发后续消息或再调一个工具（把多个工具串起来），你必须把这个值设为 <span class="mono">True</span>；若设为 <span class="mono">False</span>（默认），执行链会在这次调用后立即结束。"</strong>——"继续"与否，明明白白交到了模型手里。</span></div>
+
+<p>注意两个"只"字：<strong>只加给非终止工具</strong>（<span class="mono">send_message</span> 这类终止工具被排除在外，它本就该结束这一轮），而且加进去就是<strong>必填的</strong>。于是模型每调一个普通工具，都被迫表态一次"我还继不继续"。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">工具原始 schema</div><div class="nd">只有工具自身的参数</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">runtime_override_tool_json_schema</div><div class="nd">改写工具 schema 的那道关</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">旧 · 加 request_heartbeat</div><div class="nd">bool，且进 required（终止工具除外）</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">V3 · 什么都不加</div><div class="nd">传 request_heartbeat=False</div></div>
+</div>
+
+<p>为什么 MemGPT 当初要这么设计？因为模型一次只产出"一段话"，而一个任务常要连着调好几个工具——先查核心记忆、再搜归档、最后才回话。模型需要一个口子告诉框架"我这段还没完，别急着把话筒还给用户"，<span class="mono">request_heartbeat=true</span> 就是这个口子。它和第 4 课的 ReAct、内心独白一脉相承：让模型<strong>显式</strong>说出"我还要再想一步、再做一步"。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">注入 request_heartbeat（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">runtime_override_tool_json_schema</span>(tool_list, response_format,
+                                      request_heartbeat=<span class="nb">True</span>, terminal_tools=<span class="kw">None</span>):
+    <span class="cm"># 文档：工具会被加上一个 request_heartbeat 参数（终止工具除外）</span>
+    terminal_tools = terminal_tools <span class="kw">or</span> <span class="fn">set</span>()
+    <span class="kw">for</span> tool_json <span class="kw">in</span> tool_list:
+        <span class="kw">if</span> request_heartbeat:
+            <span class="kw">if</span> tool_json[<span class="st">"name"</span>] <span class="kw">not in</span> terminal_tools:   <span class="cm"># 只加给非终止工具</span>
+                tool_json[<span class="st">"parameters"</span>][<span class="st">"properties"</span>][REQUEST_HEARTBEAT_PARAM] = {
+                    <span class="st">"type"</span>: <span class="st">"boolean"</span>,
+                    <span class="st">"description"</span>: REQUEST_HEARTBEAT_DESCRIPTION,
+                }
+                <span class="kw">if</span> REQUEST_HEARTBEAT_PARAM <span class="kw">not in</span> tool_json[<span class="st">"parameters"</span>][<span class="st">"required"</span>]:
+                    tool_json[<span class="st">"parameters"</span>][<span class="st">"required"</span>].<span class="fn">append</span>(REQUEST_HEARTBEAT_PARAM)  <span class="cm"># 必填</span>
+    <span class="kw">return</span> tool_list
+</pre></div>
+
+<h2>旧机制怎么续步：一条"心跳"消息链</h2>
+<p>参数有了，循环怎么用它续步？分三拍：模型在工具调用里带上 <span class="mono">request_heartbeat=true</span> → 框架执行完工具后，<strong>注入一条"心跳"用户消息</strong>把控制权交还模型 → 下一圈模型看着这条消息接着说。若带的是 <span class="mono">false</span>（或没带），就 <span class="mono">break</span>，把话筒还给真正的用户。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">这条"心跳"消息角色是 <span class="mono">role=user</span>，但它不是真用户发的——内容前缀是 <span class="mono">NON_USER_MSG_PREFIX</span>（"[This is an automated system message hidden from the user] "），对用户<strong>隐藏</strong>。常量见 <span class="mono">constants.py::REQ_HEARTBEAT_MESSAGE</span>。</span></div>
+
+<p>这里的关键和上一课同源：工具调用天生是<strong>两段式</strong>的——模型先说"我要调 <span class="mono">search</span>"，框架执行、拿到结果，还得把结果<strong>喂回</strong>模型让它接着说。所以"调了工具"本就意味着"还有下半场"。可老机制没有直接用上这个事实，而是<strong>多绕了一道</strong>：让模型在参数里再确认一次"我要继续"。V3 看穿了这道确认是多余的，才把它省掉。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>模型调工具</h4><p>带上 <span class="mono">request_heartbeat=true</span>，表示"我还要继续"。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>_handle_ai_response 读标志</h4><p><span class="mono">function_args.pop("request_heartbeat")</span>；字符串 "true" 归一成布尔。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>执行工具</h4><p>跑完拿结果；若<strong>报错</strong>，记下 <span class="mono">function_failed=True</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>step 注入心跳</h4><p><span class="mono">true</span> → 注入 <span class="mono">REQ_HEARTBEAT_MESSAGE</span>（role=user），<span class="mono">continue</span>。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>false → break</h4><p>没要心跳，跳出循环，收尾交还用户。</p></div></div>
+</div>
+
+<p>解析这一步发生在 <span class="mono">agent.py::Agent._handle_ai_response</span>：它把 <span class="mono">request_heartbeat</span> 从工具参数里 <span class="mono">pop</span> 出来，顺手处理"被序列化成字符串 'true'"的边角情况。工具规则还能<strong>覆盖</strong>这个标志——<span class="mono">has_children_tools</span> 强制 <span class="mono">True</span>、<span class="mono">is_terminal_tool</span> 强制 <span class="mono">False</span>、<span class="mono">is_continue_tool</span> 强制 <span class="mono">True</span>（这套规则留到第 16 课细讲）。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">别记错落点：解析心跳标志的是 <span class="mono">Agent._handle_ai_response</span>，<strong>不是</strong> <span class="mono">inner_step</span>；真正"注入心跳消息、决定 continue/break"的是 <span class="mono">Agent.step</span>（它的文档字符串原话就是"在循环里处理基于心跳请求与函数失败的链式续步"）。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agent.py</span><span class="ln">老链式续步（_handle_ai_response + step，简化）</span></div>
+<pre><span class="cm"># _handle_ai_response：从工具参数里取出心跳标志</span>
+heartbeat_request = function_args.<span class="fn">pop</span>(<span class="st">"request_heartbeat"</span>, <span class="kw">None</span>)
+<span class="kw">if</span> <span class="fn">isinstance</span>(heartbeat_request, <span class="nb">str</span>) <span class="kw">and</span> heartbeat_request.<span class="fn">lower</span>() == <span class="st">"true"</span>:
+    heartbeat_request = <span class="nb">True</span>             <span class="cm"># "true" 字符串归一成布尔</span>
+
+<span class="cm"># step：根据标志决定续步还是收尾</span>
+<span class="kw">if</span> function_failed:                       <span class="cm"># 工具报错 -> 自动续，让模型看错误</span>
+    inject(<span class="fn">get_heartbeat</span>(FUNC_FAILED_HEARTBEAT_MESSAGE)); <span class="kw">continue</span>
+<span class="kw">elif</span> heartbeat_request:                   <span class="cm"># 模型要心跳 -> 续</span>
+    inject(<span class="fn">get_heartbeat</span>(REQ_HEARTBEAT_MESSAGE)); <span class="kw">continue</span>
+<span class="kw">else</span>:
+    <span class="kw">break</span>                                <span class="cm"># 没要心跳 -> 收尾，交还用户</span>
+</pre></div>
+
+<p>第 4 拍那条"工具报错就自动续"值得单独点出：哪怕模型<strong>没</strong>要心跳，只要工具执行<strong>失败</strong>，老机制也会强行注入一条 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span>，把控制权还给模型——好让它看见错误、有机会补救，而不是带着一个失败的工具调用就草草收场。</p>
+
+<div class="cellgroup">
+  <div class="cg-cap">老机制的两条"控制权交还"消息，都带 <b>NON_USER_MSG_PREFIX</b> 前缀、对用户隐藏</div>
+  <div class="cells">
+    <span class="lab">续步</span>
+    <span class="cell hl">REQ_HEARTBEAT_MESSAGE</span>
+    <span class="sep">·</span>
+    <span class="cell">模型设 true，归还控制权</span>
+  </div>
+  <div class="cells">
+    <span class="lab">报错</span>
+    <span class="cell hl">FUNC_FAILED_HEARTBEAT_MESSAGE</span>
+    <span class="sep">·</span>
+    <span class="cell">函数失败，归还控制权</span>
+  </div>
+  <div class="cells">
+    <span class="lab">前缀</span>
+    <span class="cell q">[This is an automated system message hidden from the user]</span>
+  </div>
+</div>
+
+<div class="cols">
+  <div class="col">
+    <h4>🕰️ 老机制（Agent / V2）</h4>
+    <p>schema 里有<strong>必填</strong>的 <span class="mono">request_heartbeat</span>。</p>
+    <p>模型设 <span class="mono">true</span> → 注入 <span class="mono">REQ_HEARTBEAT_MESSAGE</span>（role=user）→ 续。</p>
+    <p>工具报错 → 注入 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> → 续。</p>
+    <p class="mono" style="font-size:.82rem">继续 = 模型自己举手</p>
+  </div>
+  <div class="col">
+    <h4>🆕 V3（letta_v1_agent）</h4>
+    <p>schema 里<strong>根本不加</strong> <span class="mono">request_heartbeat</span>。</p>
+    <p><span class="mono">_decide_continuation</span>：这轮调了工具 → 续；没调 → 停。</p>
+    <p>就算模型硬塞一个心跳参数，也被 <span class="mono">args.pop(...)</span> 默默丢掉。</p>
+    <p class="mono" style="font-size:.82rem">继续 = 框架看"调没调工具"</p>
+  </div>
+</div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">💓</span><span class="lab">老 · 对讲机</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🤐</span><span class="bubble">忘喊"完毕，请继续" → 线路静默</span>
+    <span class="emoji">🔁</span><span class="bubble">只要还递工具单 → 线路照转</span>
+    <span class="lab">新 · 默认继续</span>
+  </div>
+  <div class="cap">老机制靠模型每次喊 "over, please continue"，忘了就卡死；新机制把"继续"焊在"调没调工具"上，不用喊也不会忘</div>
+</div>
+
+<h2>模型忘了设怎么办：insert_heartbeat 这块补丁</h2>
+<p>把"继续"的决定交给模型，灵活，却<strong>脆弱</strong>：模型只要忘了把 <span class="mono">request_heartbeat</span> 设成 <span class="mono">true</span>，agent 就会在用户刚说完话、它调了个工具之后<strong>直接冻住</strong>——工具执行完没人续步，对话凭空卡死。这正是 <span class="mono">insert_heartbeat</span> 存在的理由。</p>
+
+<p>这块补丁在 <span class="mono">local_llm/function_parser.py</span>，是给<strong>本地 LLM</strong> 兜底的。<span class="mono">heartbeat_correction</span> 会看两件事：上一条消息是不是<strong>真用户消息</strong>、这条新消息是不是一个<strong>非 <span class="mono">send_message</span></strong> 的工具调用（<span class="mono">NO_HEARTBEAT_FUNCS = ["send_message"]</span>）。两条都满足，就调 <span class="mono">insert_heartbeat</span> 把这次调用的参数里<strong>强行设上</strong> <span class="mono">request_heartbeat=True</span>。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>上一条是真用户消息？</h4><p>解析 <span class="mono">content.type == "user_message"</span>。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>新消息是非 send_message 工具调用？</h4><p><span class="mono">send_message</span> 本就该收尾，跳过。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>两条都满足 → 补心跳</h4><p><span class="mono">insert_heartbeat</span> 强设 <span class="mono">request_heartbeat=True</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>否则原样放行</h4><p>不该补的不动，避免误伤。</p></div></div>
+</div>
+
+<p>换句话说，<span class="mono">insert_heartbeat</span> 是在替模型"补一句它忘了说的 over"。它只在最容易卡死的那个节点出手——用户刚开口、模型却调了个非收尾工具——既救了场，又不会在本该收尾时画蛇添足。但这终究是<strong>打补丁</strong>：补丁能盖住症状，盖不住"把控制权押在模型自觉上"这个根因。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">这块补丁专为本地模型而生，缘起 <span class="mono">issue #601</span>（本地模型常忘设心跳 → agent 静默）。它甚至带着一个已知的笔误（<span class="mono">tool_call</span> 分支里把 <span class="mono">tool_calls</span> 写成了 <span class="mono">tools_calls</span>）——一个为"模型不靠谱"打的补丁，自己也不那么稳。这恰好反衬出 V3 的思路：与其层层打补丁，不如<strong>从根上不依赖模型的自觉</strong>。</span></div>
+
+<h2>V3 的洞见：把这个决定从模型手里收回</h2>
+<p>V3 的做法干脆利落：<span class="mono">_get_valid_tools</span> 调 <span class="mono">runtime_override_tool_json_schema</span> 时直接传 <span class="mono">request_heartbeat=False</span>，源码注释挑明——"NOTE: difference for v3（don't add request heartbeat）"。于是工具 schema 里<strong>压根没有</strong>这个参数，模型也就无从设它。</p>
+
+<p>那循环靠什么续步？靠上一课的 <span class="mono">_decide_continuation</span>：<strong>这一轮调了工具就继续，没调就停</strong>。"调了工具"这个客观动作，取代了"模型举手要心跳"这个主观表态——前者不会忘，于是"模型忘了设"这类 bug 整类消失。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">V3 还留了一手防御：就算模型（或某个旧 prompt）<strong>硬塞</strong>进来一个 <span class="mono">request_heartbeat</span>，<span class="mono">letta_agent_v3.py::_handle_ai_response</span> 也会用 <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM, None)</span> 把它<strong>默默丢掉</strong>，绝不让一个残留参数干扰续步判据。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">V3 不注入心跳（_get_valid_tools / _handle_ai_response，简化）</span></div>
+<pre><span class="cm"># _get_valid_tools：传 False，不给工具加 request_heartbeat</span>
+allowed_tools = <span class="fn">runtime_override_tool_json_schema</span>(
+    tool_list=allowed_tools,
+    response_format=self.agent_state.response_format,
+    request_heartbeat=<span class="nb">False</span>,   <span class="cm"># NOTE: difference for v3（不加心跳）</span>
+    terminal_tools=terminal_tool_names,
+)
+
+<span class="cm"># _handle_ai_response：防御性地丢掉任何残留的心跳参数</span>
+args = <span class="fn">_safe_load_tool_call_str</span>(tc.function.arguments)
+args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None</span>)   <span class="cm"># 续步只看"调没调工具"</span>
+</pre></div>
+
+<p>可别以为"心跳"是被全盘否定的设计——同代的<strong>第二代 V2 依然在用</strong>。<span class="mono">letta_agent_v2.py::_get_valid_tools</span> 传的是 <span class="mono">request_heartbeat=True</span>，它的 <span class="mono">_handle_ai_response</span> 里 <span class="mono">continue_stepping = request_heartbeat</span>，续步判据仍由模型的心跳标志驱动。只有 V3（<span class="mono">letta_v1_agent</span>，注释 "no heartbeats or forced tool calls"）才把它彻底拿掉。</p>
+
+<table class="t">
+  <tr><th>实现</th><th>给工具加 request_heartbeat？</th><th>靠什么续步</th></tr>
+  <tr><td class="mono">Agent（元老 / 同步）</td><td>加（必填，非终止工具）</td><td>模型设 true → 注入心跳</td></tr>
+  <tr><td class="mono">LettaAgentV2</td><td>加（<span class="mono">request_heartbeat=True</span>）</td><td><span class="mono">continue_stepping = request_heartbeat</span></td></tr>
+  <tr><td class="mono">LettaAgentV3</td><td><strong>不加</strong>（<span class="mono">=False</span>）</td><td><span class="mono">_decide_continuation</span>：调了工具就继续</td></tr>
+</table>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">还有个反方向的坑别踩：老机制里 <span class="mono">finish_reason == "length"</span>（模型因长度被截断）是直接 <span class="mono">raise RuntimeError</span> 的——它是个<strong>不可重试的错误</strong>，<strong>不是</strong>什么"心跳"。别把"截断"和"续步"搞混。</span></div>
+
+<p>退一步看，这次改动的内核是一句朴素的工程原则：<strong>能用客观信号判定的事，就别去问模型的主观意愿。</strong>"模型想不想继续"是主观的、会忘、会漂移；"这一轮有没有调工具"是客观的、可复现、不看模型脸色。把判据从前者换成后者，循环的行为立刻从"赌模型尽责"变成"按规矩办事"——这正是 agent 从"能跑"走向"可靠"的关键一步。</p>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>这是一堂"少即是多"的设计课：删掉一个参数，等于删掉一整类 bug。</strong>老机制把"我还要不要继续"这个决定交给<strong>模型</strong>——灵活，但脆弱：模型一旦忘了把 <span class="mono">request_heartbeat</span> 设成 <span class="mono">true</span>，agent 就在用户说完话后<strong>冻住</strong>。这正是 <span class="mono">insert_heartbeat</span> 这块补丁存在的原因（还专门为本地模型修过，见 <span class="mono">issue #601</span>）。V3 的洞见是：这个决定<strong>压根不该问模型</strong>——"这一轮调了工具"本身就是"还有后续要做"的可靠信号，那就让<strong>框架</strong>来拍板。于是一个必填参数、一类心跳提示消息、外加"模型忘了设"这一整类 bug，<strong>一起消失</strong>。把控制流从"靠模型自觉"拉回到"靠框架确定"，正是迈向可靠 agent 工程的一步经典操作——<strong>能不交给模型决定的，就别交给它。</strong>同样的哲学，你会在第 16 课的 <span class="mono">tool_rules</span> 里再遇到：把约束写进框架去强制执行，而不是寄望模型自觉遵守。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>五个锚点，一条演化线。</strong>注入参数在 <span class="mono">services/helpers/tool_parser_helper.py::runtime_override_tool_json_schema</span>（给非终止工具加必填 <span class="mono">request_heartbeat</span>）；老的解析与链式在 <span class="mono">agent.py::Agent._handle_ai_response</span>（<span class="mono">pop</span> 出标志）与 <span class="mono">agent.py::Agent.step</span>（注入心跳、<span class="mono">continue</span>/<span class="mono">break</span>）；本地模型兜底在 <span class="mono">local_llm/function_parser.py::insert_heartbeat</span>；V3 的"不注入"在 <span class="mono">letta_agent_v3.py::_get_valid_tools</span>（<span class="mono">request_heartbeat=False</span>）；常量在 <span class="mono">constants.py</span>（<span class="mono">REQUEST_HEARTBEAT_PARAM / REQUEST_HEARTBEAT_DESCRIPTION / NON_USER_MSG_PREFIX / REQ_HEARTBEAT_MESSAGE / FUNC_FAILED_HEARTBEAT_MESSAGE</span>）。一句话串起来：<strong>schema 里塞参数、_handle_ai_response 读它、step 据它续步、insert_heartbeat 给本地模型兜底，到了 V3 这一串全删，只剩"调了工具就继续"。</strong>想顺藤摸瓜时，从 <span class="mono">constants.py</span> 里那几个心跳常量入手最快——谁还引用它们，谁就还在用心跳。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>四个别记错的点。</strong>其一，解析心跳标志的是 <span class="mono">Agent._handle_ai_response</span>，<strong>不是</strong> <span class="mono">inner_step</span>——注入与续步则在 <span class="mono">Agent.step</span>。其二，<span class="mono">request_heartbeat</span> 是<strong>必填</strong>的，而且<strong>只</strong>加给<strong>非终止工具</strong>（<span class="mono">send_message</span> 这类终止工具不加）。其三，别以为"心跳"是被否定的旧设计——<strong>V2 仍在用</strong>心跳续步，<strong>只有 V3</strong> 把它拿掉。其四，老机制里 <span class="mono">finish_reason == "length"</span> 是 <span class="mono">raise RuntimeError</span>（不可重试的错误），<strong>不是</strong>心跳，别混为一谈。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary><span class="mono">request_heartbeat</span> 加在哪、为什么必填、为什么不加给终止工具？</summary><div class="acc-body">
+<p><strong>加在哪：</strong>在 <span class="mono">runtime_override_tool_json_schema</span> 这道"改写工具 schema"的关口，遍历每个工具，往它的 <span class="mono">parameters.properties</span> 里塞一个 <span class="mono">request_heartbeat: {type: boolean}</span>，并 <span class="mono">append</span> 进 <span class="mono">parameters.required</span>。</p>
+<p><strong>为什么必填：</strong>若它是可选的，模型很可能干脆不提它，"继续"就成了薛定谔状态。设成必填，逼模型每次调工具都<strong>明确表态</strong>——这是老设计把决定权交给模型的代价。</p>
+<p><strong>为什么不加给终止工具：</strong>终止工具（如 <span class="mono">send_message</span>）的语义本就是"这一轮到此为止"，再问它"要不要继续"自相矛盾。所以 <span class="mono">terminal_tools</span> 集合里的工具被显式跳过。</p>
+<p><strong>一个副作用：</strong>因为它进了 <span class="mono">required</span>，模型每次调普通工具都得带上这个参数——这也是为什么 <span class="mono">_handle_ai_response</span> 第一件事就是把它 <span class="mono">pop</span> 出来，免得它混进真正传给工具函数的实参里。</p>
+<p><strong>源码在哪：</strong><span class="mono">services/helpers/tool_parser_helper.py::runtime_override_tool_json_schema</span>。</p>
+</div></details>
+
+<details class="accordion"><summary>工具<strong>报错</strong>时那条"自动心跳"是干嘛的？</summary><div class="acc-body">
+<p><strong>示例：</strong>模型调了个查数据库的工具，工具抛了异常。如果就这么收场，模型根本不知道发生了什么，用户只会收到一句莫名其妙的沉默。</p>
+<p><strong>为什么这样设计：</strong>老机制在 <span class="mono">step</span> 里把"函数失败"排在心跳判断<strong>之前</strong>：只要 <span class="mono">function_failed</span> 为真，就算模型没要心跳，也强行注入一条 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> 续上一圈，让模型<strong>看见错误、有机会补救</strong>（换个参数重试，或向用户解释）。</p>
+<p><strong>一个连锁反应：</strong>正因为"报错也续步"，模型才能在下一圈换个参数重试同一个工具——这也是为什么第 14 课那道 <span class="mono">max_steps=50</span> 保险丝必须存在：万一模型反复失败、反复重试，总得有个上限兜住，免得无限烧 token。</p>
+<p><strong>源码在哪：</strong><span class="mono">agent.py::step</span> 的 <span class="mono">if function_failed: ... continue</span> 分支；常量 <span class="mono">constants.py::FUNC_FAILED_HEARTBEAT_MESSAGE</span>。</p>
+<p><strong>还有什么替代：</strong>报错即停——但模型没机会自愈，体验更差。老机制选了"出错也续一圈让模型救场"。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">insert_heartbeat</span> 和 issue #601 到底在补什么？</summary><div class="acc-body">
+<p><strong>示例：</strong>一个<strong>本地小模型</strong>跑 agent，用户问完问题，它调了个工具却忘了设 <span class="mono">request_heartbeat=true</span>。工具跑完没人续步，agent 当场静默——用户以为它死机了。</p>
+<p><strong>为什么这样设计：</strong>本地模型不如大厂模型"听话"，常漏设这个参数。<span class="mono">heartbeat_correction</span> 于是兜底：<strong>上一条是真用户消息</strong> 且 <strong>新消息是非 <span class="mono">send_message</span> 的工具调用</strong>时，就 <span class="mono">insert_heartbeat</span> 强行补上 <span class="mono">request_heartbeat=True</span>。这正是 <span class="mono">issue #601</span> 的修复。</p>
+<p><strong>源码在哪：</strong><span class="mono">local_llm/function_parser.py::insert_heartbeat / heartbeat_correction</span>；<span class="mono">NO_HEARTBEAT_FUNCS = ["send_message"]</span>。</p>
+<p><strong>还有什么替代：</strong>就是 V3 的路子——不依赖模型设标志，从根上让"调了工具"驱动续步，这块补丁也就不必存在了。</p>
+</div></details>
+
+<details class="accordion"><summary>V3 凭什么敢删掉心跳，V2 又为什么还留着？</summary><div class="acc-body">
+<p><strong>V3 凭什么敢删：</strong>因为它换了续步信号。老机制问"模型想不想继续"（主观、会忘），V3 改问"这一轮调没调工具"（客观、不会忘）——而"调了工具"本身就蕴含"还得把结果喂回模型"，天然等价于"要继续"。信号更可靠，心跳参数就成了多余。</p>
+<p><strong>V2 为什么还留：</strong>V2 是从老 MemGPT 循环平滑演进来的异步版，续步判据仍是 <span class="mono">continue_stepping = request_heartbeat</span>，<strong>为兼容旧设计</strong>而保留心跳。删除是 V3 才迈出的一步。</p>
+<p><strong>怎么记：</strong>看 <span class="mono">_get_valid_tools</span> 传的那个布尔——V2 传 <span class="mono">True</span>（加心跳），V3 传 <span class="mono">False</span>（不加）。一参之差，正是两代的分水岭。</p>
+<p><strong>一句话总结这条演化：</strong>从"模型举手要心跳"（元老 <span class="mono">Agent</span>）→ 异步化但仍保留心跳（<span class="mono">V2</span>）→ 彻底改用"调了工具就继续"（<span class="mono">V3</span>）。每一代都在把"继续"的决定权，从模型一点点挪回框架。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta_agent_v2.py::_get_valid_tools</span> vs <span class="mono">letta_agent_v3.py::_get_valid_tools</span>；续步见 <span class="mono">letta_agent_v3.py::_decide_continuation</span>（第 14 课）。</p>
+</div></details>
+
+<h2>下一站</h2>
+<p>这一课我们追了一条设计演化线：老的 MemGPT / 元老 <span class="mono">Agent</span> / V2 给每个非终止工具塞一个必填的 <span class="mono">request_heartbeat</span>，让模型自己举手续步；本地模型忘了设，就靠 <span class="mono">insert_heartbeat</span> 兜底。到了 V3，这一整套被"调了工具就继续"取代——参数、心跳消息，连同"模型忘了设"的 bug，一并删干净。</p>
+
+<p>这正好接回第 14 课那句 <span class="mono">_decide_continuation</span> 的判据，也呼应它注释里的 "no heartbeats"。而老机制里反复出现的"工具规则可以覆盖心跳标志"（<span class="mono">has_children_tools</span> / <span class="mono">is_terminal_tool</span> / <span class="mono">is_continue_tool</span>），正是下一课第 16 课的主角——<span class="mono">tool_rules</span>（终止 / 必调 / 审批）究竟怎么左右这个循环。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">一句话带走：<strong>老机制让模型设 <span class="mono">request_heartbeat=true</span> 来续步，V3 改成"调了工具就继续"，把这个决定从模型手里收回给框架——删一个参数，灭一类 bug。</strong></span></div>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>request_heartbeat 是什么</strong>：老机制给每个<strong>非终止工具</strong>加的一个<strong>必填</strong>布尔参数；模型设 <span class="mono">true</span> 才续步。注入在 <span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>。</li>
+    <li><strong>老机制怎么续步</strong>：模型设 <span class="mono">true</span> → 框架注入一条 <span class="mono">REQ_HEARTBEAT_MESSAGE</span>（<span class="mono">role=user</span>，对用户隐藏）→ 续；工具报错 → 注入 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> → 续；否则 <span class="mono">break</span>。解析在 <span class="mono">agent.py::_handle_ai_response</span>，链式在 <span class="mono">agent.py::step</span>。</li>
+    <li><strong>insert_heartbeat</strong>：本地模型常忘设标志（<span class="mono">issue #601</span>）→ 上一条是用户消息且这是非 <span class="mono">send_message</span> 工具调用时，强行补 <span class="mono">request_heartbeat=True</span>（<span class="mono">local_llm/function_parser.py</span>）。</li>
+    <li><strong>V3 拿掉它</strong>：<span class="mono">_get_valid_tools</span> 传 <span class="mono">request_heartbeat=False</span>（"NOTE: difference for v3"），续步改由 <span class="mono">_decide_continuation</span>"调了工具就继续"决定；还会 <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM)</span> 防御性丢弃残留。</li>
+    <li><strong>别记错</strong>：<strong>V2 仍用心跳</strong>（传 <span class="mono">True</span>），只有 V3 删；解析在 <span class="mono">_handle_ai_response</span> 不是 <span class="mono">inner_step</span>；老机制 <span class="mono">finish_reason=="length"</span> 是 <span class="mono">raise</span>，不是心跳。</li>
+    <li><strong>设计亮点</strong>：把"要不要继续"从"模型自觉"收回到"框架确定"——删一个参数，灭一类 bug。</li>
+    <li><strong>源码</strong>：<span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>、<span class="mono">agent.py::_handle_ai_response / step</span>、<span class="mono">local_llm/function_parser.py::insert_heartbeat</span>、<span class="mono">letta_agent_v3.py::_get_valid_tools</span>、<span class="mono">constants.py</span> 心跳常量。</li>
+  </ul>
+</div>
+</div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="14-v3-step-loop.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">V3 步进循环</span><span class="lang-en">The V3 step loop</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
