@@ -181,5 +181,65 @@ LESSON_21 = {"zh": r"""
 <div class="note info"><span class="ni">💡</span><span class="nx">一句话收束本课：<strong>endpoint 类型选 client，三方法把差异收敛成 OpenAI 形状，循环只认这一种</strong>。这三句，正是后面两课所有"怪癖隔离"赖以成立的地基。</span></div>
 <p>契约这张纸立好了，可各家供应商的"怪脾气"并没就此消失——Anthropic 的提示缓存、Google 的请求格式、给没有原生推理能力的模型<strong>硬注入一段内心独白</strong>……这些差异究竟被藏在哪、又是怎么做到不污染上面那套循环的？下一课，第 22 课就来讲"provider 怪癖的隔离"。</p>
 """, "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">For the last five parts we have treated "call the LLM" as a one-liner — hand the messages over, wait for the reply to come back. Reality is far messier: Letta supports <strong>more than twenty providers</strong> at once — from OpenAI, Anthropic and Google to Groq, all the way down to local models running on your own machine — and what their requests look like, what their responses look like, even the names of their error fields, all differ.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson answers a single question: how do you tuck that pile of wildly different behaviour <strong>neatly behind one unified interface</strong>, so the execution loop from Lessons 13–16 never knows — and never needs to care — which provider it is actually talking to. This is the opening of Part 6.</p>
+<div class="card analogy"><div class="tag">🔌 Real-world analogy</div>
+<p>Picture the simultaneous interpretation at a UN General Assembly. On the floor, each nation's delegate speaks their own language — one in French, one in Arabic, one in Chinese — and nobody accommodates anyone else. Each of those delegates is one <span class="mono">provider</span>.</p>
+<p>But you, down in the audience, hear only <strong>one</strong> working language in your headset. The secret lives in the interpretation booth: whatever a delegate says, the interpreter turns it into the same language before it reaches your ears, so understanding that one language is all you need.</p>
+<p>The "working language" Letta settles on is the <strong>OpenAI response shape</strong>. The agent loop in the audience only has to understand this one, and it makes no difference who takes the floor — and that "interpretation booth" is exactly the three-method client we will take apart in this lesson.</p>
+<p>Hidden in this analogy is a key principle: <strong>unification is not about forcing everyone to become the same — it is about adding one layer of translation in the middle</strong>. The delegates go on speaking their own languages; all that changes is that "it passes through interpretation before it reaches your ears".</p>
+<p>And precisely because that translation layer sits in the middle, the day a new delegate who speaks Swahili shows up, the audience has nothing to relearn — which is exactly the refrain this lesson keeps repeating: "add a provider, change the loop by zero lines".</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Grab this lesson in one sentence: <strong>one field drives one factory, and one set of three methods collapses the differences into one shape</strong>.</p>
+<p>The field that drives the dispatch is <span class="mono">llm_config.model_endpoint_type</span>. It is passed into <span class="mono">LLMClient.create</span>, where a <span class="mono">match/case</span> picks out the concrete client class; anything not listed explicitly falls through to the default <span class="mono">OpenAIClient</span>.</p>
+<p>The chosen client inherits from <span class="mono">LLMClientBase</span>, whose core is three methods — <span class="mono">build_request_data</span> / <span class="mono">request_async</span> / <span class="mono">convert_response_to_chat_completion</span> — strung together by <span class="mono">send_llm_request</span>. No matter which provider sits underneath, what comes out is always an OpenAI-shaped <span class="mono">ChatCompletionResponse</span>.</p>
+<p>Remember the three layers as one line: <strong>field → factory → three methods → unified shape</strong>. The rest of this lesson is just spelling out each link of that chain, one at a time.</p>
+</div>
+<p>So this lesson really covers three interlocking things: <strong>how the factory picks a client</strong>, <strong>how the three methods do their work</strong>, and <strong>why everyone ends up looking like OpenAI</strong>. Let's take them apart one by one.</p>
+<h2>First, a question: why do we need this abstraction</h2>
+<p>Before we take the factory apart, let's get clear on "what happens without it". Putting the two worlds — with it and without it — side by side is what makes the case clearest.</p>
+<div class="cols">
+  <div class="col"><h4>😵 Without a unified abstraction</h4><p>The execution loop fills up with <span class="mono">if provider == ...</span> branches: building requests is written per provider, parsing responses is written per provider, and even reading the token usage means remembering what each provider's fields are called. Every provider you add rewrites the loop once more, and dirties it a little further.</p></div>
+  <div class="col"><h4>😌 With a unified abstraction</h4><p>The loop programs against one interface and one shape. "Which provider exactly" is pressed entirely down into the factory and the three methods, so the loop writes no branches and never has to change as providers come and go — clean and stable.</p></div>
+</div>
+<p>That contrast is almost the whole value of this lesson: fence "the part that varies by provider" inside the client, and set "the loop that is the same for everyone" completely free. Keep this contrast in mind as you read on, and the intent behind every later design choice becomes clearer.</p>
+<h2>The factory: pick a client by endpoint type</h2>
+<p>Start with the "pick a client" step. The entry point of the whole adaptation is one overview diagram: the agent loop hands a request off, the factory selects a concrete client by <span class="mono">model_endpoint_type</span>, the three methods run, and a unified-shape response is handed back to the loop.</p>
+<div class="flow">
+  <div class="node"><div class="nt">agent loop</div><div class="nd">only knows the OpenAI shape</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">LLMClient.create</div><div class="nd">pick client by model_endpoint_type</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">three methods</div><div class="nd">build / request / convert</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">ChatCompletionResponse</div><div class="nd">universal intermediate format</div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">In one line: <strong>pick one data shape as the "lingua franca" and make every provider translate into it</strong>. The loop learns only this one language, and no number of added providers forces a change.</span></div>
+<p>The factory itself is thin — it is <strong>not</strong> a client, it sends no request of its own, it only "manufactures the right client by type". Put differently, it is a triage desk: it does not treat you, it only sorts you, and hands you off to the right specialist.</p>
+<p>Here is the simplified dispatch logic: a <span class="mono">@staticmethod</span> that runs <span class="mono">match</span> on <span class="mono">provider_type</span>, returns the matching client case by case, and finally falls back with <span class="mono">case _</span>.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/llm_client.py</span><span class="ln">LLMClient.create dispatch (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">LLMClient</span>:
+    <span class="nb">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">create</span>(provider_type, put_inner_thoughts_first=<span class="kw">True</span>, actor=<span class="kw">None</span>):
+        <span class="kw">match</span> provider_type:                 <span class="cm"># = llm_config.model_endpoint_type</span>
+            <span class="kw">case</span> ProviderType.anthropic:     <span class="kw">return</span> <span class="fn">AnthropicClient</span>(...)
+            <span class="kw">case</span> ProviderType.google_vertex: <span class="kw">return</span> <span class="fn">GoogleVertexClient</span>(...)
+            <span class="kw">case</span> ProviderType.groq:          <span class="kw">return</span> <span class="fn">GroqClient</span>(...)
+            <span class="cm"># … a dozen-odd cases …</span>
+            <span class="kw">case</span> _:                          <span class="kw">return</span> <span class="fn">OpenAIClient</span>(...)   <span class="cm"># default: openai/ollama/vllm/… all land here</span>
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx"><span class="mono">LLMClient</span> is not itself a client; it only <strong>manufactures</strong> clients. The dispatch relies on <span class="mono">llm_config.model_endpoint_type</span> — and because <span class="mono">ProviderType(str, Enum)</span> is essentially a string, <span class="mono">match/case</span> can match on it directly.</span></div>
+<p>Laying the dispatch out as a table is more intuitive. Note the last row: a whole crowd of common endpoints actually <strong>share</strong> that default client — not every provider needs its own class.</p>
+<table class="t">
+<tr><th>model_endpoint_type</th><th>client selected</th></tr>
+<tr><td class="mono">anthropic</td><td class="mono">AnthropicClient</td></tr>
+<tr><td class="mono">google_vertex</td><td class="mono">GoogleVertexClient</td></tr>
+<tr><td class="mono">groq</td><td class="mono">GroqClient</td></tr>
+<tr><td class="mono">openrouter</td><td class="mono">OpenAIClient (explicit)</td></tr>
+<tr><td class="mono">openai / ollama / vllm / …</td><td class="mono">OpenAIClient (default case _)</td></tr>
+</table>
+<p>Why do so many providers land in that default bucket? Because most of them are already compatible with OpenAI's interface — local inference frameworks (ollama, vllm, lmstudio…) almost all expose an "OpenAI-compatible" endpoint, so Letta only has to send the request to a different <span class="mono">model_endpoint</span>, and the same <span class="mono">OpenAIClient</span> can serve a whole crowd of them.</p>
+<p>Look at that dozen-odd <span class="mono">case</span>s from another angle: they are really an "exceptions list" — only providers whose behaviour genuinely differs from OpenAI need a separate entry, and the rest are all handled as "OpenAI-compatible" by default. The shorter the list, the more universal the standard.</p>
 <!--ENMORE-->
 """}
