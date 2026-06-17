@@ -49,5 +49,78 @@ LESSON_21 = {"zh": r"""
 <tr><td class="mono">openrouter</td><td class="mono">OpenAIClient（显式）</td></tr>
 <tr><td class="mono">openai / ollama / vllm / …</td><td class="mono">OpenAIClient（默认 case _）</td></tr>
 </table>
+<h2>三方法契约</h2>
+<p>选好 client 之后，真正干活的是它从 <span class="mono">LLMClientBase</span> 继承来的三个方法。把它们竖着排开看，就是一条很顺的三步流水线：组请求 → 发请求 → 转形状。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>build_request_data</h4><p>把消息、工具、配置组装成<strong>这一家</strong>认得的请求体。同步方法，返回一个 dict。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>request_async</h4><p>把请求体发出去，拿回这一家的<strong>原始响应</strong>。async 方法，返回一个 dict。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>convert_response_to_chat_completion</h4><p>把原始响应<strong>翻译成 OpenAI 形状</strong>的 ChatCompletionResponse。async 方法。</p></div></div>
+</div>
+<p>这三步谁来串？是 <span class="mono">send_llm_request</span>——它名字里没带 async，<strong>实际却是个 async 方法</strong>，依次调用三方法，并把任何一步抛出的异常都交给 <span class="mono">handle_llm_error</span> 兜底。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/llm_client_base.py</span><span class="ln">三方法 + send_llm_request 编排（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">LLMClientBase</span>:
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">def</span> <span class="fn">build_request_data</span>(self, agent_type, messages, llm_config, tools, ...) -&gt; dict: ...
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">async def</span> <span class="fn">request_async</span>(self, request_data, llm_config) -&gt; dict: ...
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">async def</span> <span class="fn">convert_response_to_chat_completion</span>(self, response_data, ...) -&gt; ChatCompletionResponse: ...
+
+    <span class="kw">async def</span> <span class="fn">send_llm_request</span>(self, ...):           <span class="cm"># 编排：串起三步</span>
+        data = self.<span class="fn">build_request_data</span>(...)
+        <span class="kw">try</span>:    resp = <span class="kw">await</span> self.<span class="fn">request_async</span>(data, llm_config)
+        <span class="kw">except</span> Exception <span class="kw">as</span> e: <span class="kw">raise</span> self.<span class="fn">handle_llm_error</span>(e, llm_config)
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">convert_response_to_chat_completion</span>(resp, ...)
+</pre></div>
+<div class="note tip"><span class="ni">💡</span><span class="nx">"三方法"是<strong>教学化简</strong>。<span class="mono">LLMClientBase</span> 实际有 8 个抽象方法，另外 5 个是 <span class="mono">request</span>（同步）/<span class="mono">request_embeddings</span>/<span class="mono">stream_async</span>/<span class="mono">is_reasoning_model</span>/<span class="mono">handle_llm_error</span>。本课只抓"数据形状"这条主线。</span></div>
+<p>注意这条流水线的分工：第 1 步知道"这一家要什么格式"，第 3 步知道"这一家会回什么格式"。<strong>所有 provider 差异，都被关进这首尾两步</strong>，中间的发送与编排则是所有家共用的。</p>
+<p>这就是抽象基类最值钱的地方：它把"变的部分"和"不变的部分"切开了。变的是请求体怎么拼、响应怎么解；不变的是"先组、再发、后转，出错就映射成统一异常"这条骨架。新接一家，你只需填那两个变的方法。</p>
+<h2>OpenAI 形状＝通用中间格式</h2>
+<p>三方法里最关键的是第三个。不管底层是 Anthropic 的内容块、Google 的 <span class="mono">functionCall</span>、还是本地模型吐出来的一段纯文本，<span class="mono">convert_*</span> 都把它收敛成<strong>同一个</strong>类型——<span class="mono">ChatCompletionResponse</span>。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/openai/chat_completion_response.py</span><span class="ln">通用中间格式（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">ChatCompletionResponse</span>(BaseModel):    <span class="cm"># 不管哪家 provider，都转成这个</span>
+    id: str
+    choices: List[Choice]                  <span class="cm"># Choice(message, finish_reason, ...)</span>
+    created: int
+    model: Optional[str]
+    usage: UsageStatistics
+    object: Literal[<span class="st">"chat.completion"</span>] = <span class="st">"chat.completion"</span>
+</pre></div>
+<p>有了这个统一出口，第 14 课那套循环才能放心地<strong>只读固定字段</strong>：从 <span class="mono">choices</span> 取消息和工具调用、从 <span class="mono">usage</span> 取 token 用量，完全不必先问一句"这次是哪家回的"。</p>
+<p>顺带一提流式：<span class="mono">stream_async</span> 返回的是 OpenAI SDK 的 <span class="mono">AsyncStream[ChatCompletionChunk]</span>——连"边生成边返回"的分块格式，也统一收敛到 OpenAI 这一套上。</p>
+<div class="cute"><div class="row"><span class="emoji">🔌🔌🔌</span><span class="lab">各家响应</span><span class="arrow">→</span><span class="emoji">🟢</span><span class="bubble">统一插座</span></div><div class="cap">不同形状的插头 → 转接 → 一个统一插座（OpenAI 形状）：循环只读这一种</div></div>
+<h2>LLMConfig：每个 agent 带的"连接配置"</h2>
+<p>工厂要拿到 <span class="mono">model_endpoint_type</span>，这个值究竟从哪来？来自每个 agent 随身携带的 <span class="mono">LLMConfig</span>——一张写着"连这家、用这个模型、窗口多大"的连接配置卡。</p>
+<div class="cellgroup"><div class="cg-cap"><b>LLMConfig 关键字段</b></div><div class="cells"><span class="cell hl">model_endpoint_type</span><span class="sep">·</span><span class="cell">model</span><span class="sep">·</span><span class="cell">model_endpoint</span><span class="sep">·</span><span class="cell">context_window</span><span class="sep">·</span><span class="cell">put_inner_thoughts_in_kwargs</span><span class="sep">·</span><span class="cell">max_tokens</span><span class="sep">·</span><span class="cell">enable_reasoner</span></div></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">这张卡挂在 <span class="mono">AgentState.llm_config</span> 上（回扣第 13 课）。整个 <span class="mono">LLMConfig</span> 类<strong>已被标记弃用</strong>、导向 <span class="mono">ModelSettings</span>，但它仍是工厂与基类正在消费的活抽象；其中 <span class="mono">model_endpoint_type</span> 就是驱动分派的那一项。</span></div>
+<p>把这一串顺下来看就通了：<span class="mono">AgentState</span> 带着 <span class="mono">LLMConfig</span>，循环从中取出 <span class="mono">model_endpoint_type</span> 递给工厂，工厂据此造出 client，client 再用其余字段（<span class="mono">model_endpoint</span>、<span class="mono">context_window</span>、<span class="mono">max_tokens</span>…）去拼这一家的请求。一条线就接通了。</p>
+<p>也正因如此，"换一家供应商"在 Letta 里往往只是<strong>换一份 <span class="mono">LLMConfig</span></strong>：把 <span class="mono">model_endpoint_type</span> 和 <span class="mono">model_endpoint</span> 一改，工厂自然分派到另一个 client，循环代码一行都不用动。</p>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>这是一节把<strong>"适配器模式"开到极致</strong>的课。第 13 到 16 课那套循环，从头到尾不知道自己在跟谁说话——秘诀只有一句：<strong>选定一种数据形状当"普通话"，让每个 provider 把自己翻译成它</strong>。</p>
+<p>于是 Anthropic 的内容块、Google 的 <span class="mono">functionCall</span>、本地模型吐的纯文本，最后都收敛成同一个 <span class="mono">ChatCompletionResponse</span>，循环读它就行。想加第二十家供应商？写一个子类、实现三个方法，循环一行都不用改。</p>
+<p>更"投降式"的一手，是那个默认 <span class="mono">case _ → OpenAIClient</span>：既然行业早已把 OpenAI 的形状奉为事实标准，Letta 干脆把"OpenAI 兼容"设成<strong>默认假设</strong>。这也呼应第 14 课循环消费 <span class="mono">usage</span> 与响应、以及第 12、14 课里 <span class="mono">handle_llm_error</span> 把上下文超限映射成 <span class="mono">ContextWindowExceededError</span>。</p>
+</div>
+<h2>回顾：把工厂和三方法连起来跑一遍</h2>
+<p>抽象讲完，走一遍具体的会更踏实。假设某个 agent 的 <span class="mono">LLMConfig</span> 里 <span class="mono">model_endpoint_type</span> 是 <span class="mono">groq</span>，循环要发一次请求，幕后会发生这样三件事。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>选 client</h4><p>循环取出 <span class="mono">groq</span> 传给 <span class="mono">LLMClient.create</span>，<span class="mono">match</span> 命中 <span class="mono">GroqClient</span>。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>组 + 发</h4><p><span class="mono">build_request_data</span> 拼出 Groq 要的请求体，<span class="mono">request_async</span> 发出去并拿回原始响应。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>转形状</h4><p><span class="mono">convert_*</span> 把 Groq 的响应翻成 <span class="mono">ChatCompletionResponse</span>，交回循环。</p></div></div>
+</div>
+<p>从循环的视角看，这一整趟它只递出去一个请求、又收回来一个 <span class="mono">ChatCompletionResponse</span>。"这次走的是 Groq"这件事，被彻底挡在了工厂和三方法里头，循环全程无感。</p>
+<p>把 <span class="mono">groq</span> 换成 <span class="mono">anthropic</span>、<span class="mono">google_vertex</span>、或干脆是本地的 <span class="mono">ollama</span>，上面三步的"主语"会换成不同 client，但<strong>形状完全一样</strong>，循环代码同样一字不改——这正是统一契约最直接的红利。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">下面两张卡片，把本课牵涉到的真实代码位置、以及几个最容易踩的坑收拢在一起，方便你回头自查或翻源码。</span></div>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">llm_api/llm_client.py::LLMClient.create</span>——<span class="mono">match/case</span> 分派，默认 <span class="mono">OpenAIClient</span>。</p>
+<p><span class="mono">llm_api/llm_client_base.py::LLMClientBase</span>——三方法 + <span class="mono">send_llm_request</span> 编排。</p>
+<p><span class="mono">schemas/openai/chat_completion_response.py::ChatCompletionResponse</span>——通用中间格式。</p>
+<p><span class="mono">schemas/llm_config.py::LLMConfig</span>——已弃用但仍是活路径；错误映射见 <span class="mono">OpenAIClient.handle_llm_error → ContextWindowExceededError</span>（定义在 <span class="mono">letta/errors.py</span>）。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>工厂分派靠的是 <span class="mono">model_endpoint_type</span>（一个 <span class="mono">ProviderType</span> 字符串），<strong>不是</strong> <span class="mono">LLMConfig</span> 对象本身。</p>
+<p>没被显式列出的 provider（<span class="mono">openai</span>/<span class="mono">ollama</span>/<span class="mono">vllm</span>…）<strong>不是没人管</strong>，而是统一落到默认的 <span class="mono">case _ → OpenAIClient</span>。</p>
+<p><span class="mono">convert_response_to_chat_completion</span> 是 <strong>async</strong>，别当成同步函数调用；"三方法"也只是 8 个抽象方法的教学化简。</p>
+<p><span class="mono">LLMConfig</span> 整类虽已弃用，但它<strong>仍在被消费</strong>——别因为标了"deprecated"就以为是死代码、可以直接绕开。</p>
+</div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
