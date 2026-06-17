@@ -1621,8 +1621,8 @@ QUIZZES = {
                 ],
                 "answer": 0,
                 "why": {
-                    "zh": "schema 层默认 tool_type=CUSTOM（custom 不会被 upsert_base_tools 按名字归类）。工厂 ToolExecutorFactory._executor_map 只显式列了 5 个（LETTA_CORE/LETTA_MEMORY_CORE→LettaCore、LETTA_BUILTIN→LettaBuiltin、LETTA_FILES_CORE→LettaFile、EXTERNAL_MCP→ExternalMCP），custom 不在其中；get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor) 兜底，所以自定义工具默认进沙箱。它不会失败——兜底正是为这种情况设计的。",
-                    "en": "At the schema layer tool_type defaults to CUSTOM (custom is not name-sorted by upsert_base_tools). The factory ToolExecutorFactory._executor_map lists only 5 explicitly (LETTA_CORE/LETTA_MEMORY_CORE→LettaCore, LETTA_BUILTIN→LettaBuiltin, LETTA_FILES_CORE→LettaFile, EXTERNAL_MCP→ExternalMCP), and custom is not among them; get_executor falls back via _executor_map.get(tool_type, SandboxToolExecutor), so a custom tool goes to the sandbox by default. It does not fail — the fallback exists precisely for this case.",
+                    "zh": "schema 层默认 tool_type=CUSTOM（custom 不会被 upsert_base_tools 按名字归类）。工厂 ToolExecutorFactory._executor_map 显式登记 7 条、落到 5 个执行器类（LETTA_CORE/LETTA_MEMORY_CORE/LETTA_SLEEPTIME_CORE→LettaCore、LETTA_MULTI_AGENT_CORE→Sandbox、LETTA_BUILTIN→LettaBuiltin、LETTA_FILES_CORE→LettaFile、EXTERNAL_MCP→ExternalMCP），custom 不在其中；get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor) 兜底，所以自定义工具默认进沙箱。它不会失败——兜底正是为这种情况设计的。",
+                    "en": "At the schema layer tool_type defaults to CUSTOM (custom is not name-sorted by upsert_base_tools). The factory ToolExecutorFactory._executor_map wires 7 entries explicitly onto 5 executor classes (LETTA_CORE/LETTA_MEMORY_CORE/LETTA_SLEEPTIME_CORE→LettaCore, LETTA_MULTI_AGENT_CORE→Sandbox, LETTA_BUILTIN→LettaBuiltin, LETTA_FILES_CORE→LettaFile, EXTERNAL_MCP→ExternalMCP), and custom is not among them; get_executor falls back via _executor_map.get(tool_type, SandboxToolExecutor), so a custom tool goes to the sandbox by default. It does not fail — the fallback exists precisely for this case.",
                 },
             },
             {
