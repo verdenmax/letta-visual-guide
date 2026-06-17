@@ -745,4 +745,29 @@ LESSON_18 = {"zh": r"""
 """}
 
 
-LESSON_19 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}
+LESSON_19 = {"zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 14 课讲 agent 的执行循环时，"执行工具"只用一行带过；第 17、18 课又让工具长出了 schema、能被模型"看见"并调用。可是当模型真吐出一个工具调用、系统<strong>要去跑它</strong>的那一步，我们一直没拆开看。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就把"执行"摊开：当 agent 真要跑一个工具时，它怎么知道<strong>该用哪种方式</strong>跑——进程内直接调？丢进沙箱隔离执行？还是开一条网络连接到外部服务器？答案藏在一个叫 <span class="mono">ToolType</span> 的标签和一个工厂里。</p>
+
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>把"执行工具"想成医院的<strong>分诊台</strong>。同样是来"看病"，前台并不自己治，而是按你的<strong>科室标签</strong>把你送到不同地方。</p>
+<p>内科的小毛病，直接进诊室当场看（对应 <span class="mono">core</span>，进程内直跑）；要动刀的，送进<strong>手术室</strong>隔离操作（对应 <span class="mono">sandbox</span>，在沙箱里跑陌生代码）；本院看不了的疑难，<strong>转外院会诊</strong>（对应 <span class="mono">MCP</span>，连外部服务器）。</p>
+<p>关键在于：分诊台自己<strong>不看病</strong>，它只做一件事——<strong>按类型把你送到对的地方</strong>。Letta 里这个分诊台，就是下面要讲的"工厂"。</p>
+</div>
+
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>每个 <span class="mono">Tool</span> 都带一个 <span class="mono">ToolType</span>（共 11 种），相当于贴在工具上的"科室标签"。</p>
+<p><span class="mono">tool_execution_manager.py::ToolExecutorFactory</span> 是那个分诊台：它按 <span class="mono">ToolType</span> 把工具映射到对应的<strong>执行器</strong>。但真正被 agent 循环调用的入口，是同一个文件里的 <span class="mono">ToolExecutionManager::execute_tool_async</span>。</p>
+<p>执行器们各管一摊：<span class="mono">core</span> 进程内直跑、<span class="mono">builtin</span> 跑内置工具、<span class="mono">files</span> 管文件、<span class="mono">mcp</span> 连外部服务器、<span class="mono">sandbox</span> 跑自定义代码。</p>
+<p>所以这一课只讲三件事：<strong>ToolType 是什么</strong>、<strong>工厂怎么按它选执行器</strong>、<strong>每个执行器到底干啥</strong>。</p>
+</div>
+
+<h2>ToolType：工具的"种类标签"</h2>
+<p>先认标签。<span class="mono">schemas/enums.py::ToolType</span> 一共 11 种，可以归成三类——<strong>内置</strong>（Letta 自带，进程内或受控执行）、<strong>自定义</strong>（你写的，默认进沙箱）、<strong>外部</strong>（连第三方）。</p>
+<div class="cellgroup"><div class="cg-cap"><b>内置 · Letta 自带（7 种）</b></div><div class="cells"><span class="cell hl">letta_core</span><span class="sep">·</span><span class="cell">letta_memory_core</span><span class="sep">·</span><span class="cell">letta_multi_agent_core</span><span class="sep">·</span><span class="cell">letta_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_voice_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_builtin</span><span class="sep">·</span><span class="cell">letta_files_core</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>自定义 · 默认值（1 种）</b></div><div class="cells"><span class="cell hl">custom</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>外部 · 第三方（3 种）</b></div><div class="cells"><span class="cell">external_langchain（弃用）</span><span class="sep">·</span><span class="cell">external_composio（弃用）</span><span class="sep">·</span><span class="cell hl">external_mcp</span></div></div>
+<div class="note info"><span class="ni">🏷️</span><span class="nx"><span class="mono">custom</span> 是<strong>默认值</strong>：注册一个工具如果没被归到别的类，它就是 <span class="mono">custom</span>——而 <span class="mono">custom</span> 会兜底走沙箱。两个 <span class="mono">external_langchain / external_composio</span> 已弃用，真正活跃的外部类型只有 <span class="mono">external_mcp</span>。</span></div>
+
+<!--ZHMORE-->
+""", "en": r"""<p>stub</p>"""}
