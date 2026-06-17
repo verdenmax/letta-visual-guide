@@ -191,5 +191,97 @@ LESSON_17 = {"zh": r"""
 <p>把这一课倒过来想会更清楚：你<strong>不是</strong>在"写一个函数、顺便加注释"，而是在"写一份给模型的接口说明、顺便实现它"。视角一转，docstring 的每个字都有了分量。签名给出接口的形状，docstring 给出接口的语义，两者合起来，才是模型眼里那个完整可用的工具。</p>
 <p>最后留个伏笔。这一课从头到尾都假设了一个前提：<strong>我们手里已经有一个函数对象</strong>，可以让 <span class="mono">inspect</span> 去读它的签名。可现实里，用户常常是上传<strong>一段源码字符串</strong>来注册自定义工具。这时服务端面临一个棘手的要求：要在<strong>绝不运行这段代码</strong>的前提下，仍然把 schema 生成出来。它是怎么做到的？这正是<strong>第 18 课</strong>的主题。</p>
 """, "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 4 said "a tool is the agent's hand reaching out into the world" — it lets the model not just <strong>talk</strong> but <strong>act</strong>. Yet we never answered the most basic question: <strong>what exactly is a tool</strong>? Is it a class? A plugin? Some config sitting in a registry?</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">The answer is surprisingly simple: <strong>a tool is just an ordinary Python function, plus its docstring</strong>. And crucially — the model never sees your function body. What it sees is a JSON schema auto-generated from the "signature + docstring". The docstring you write is, in the model's eyes, this tool's entire instruction manual.</p>
+<div class="card analogy"><div class="tag">🔌 Real-world analogy</div>
+<p>Think of a tool as ordering at a restaurant. The <strong>kitchen</strong> (your function body, the code that does the real work) is somewhere the customer can never enter or even see. The <strong>customer</strong> (the model) holds only one thing — a <strong>menu</strong> — listing dish names, a one-line description, and which options are available.</p>
+<p>The model orders entirely off this menu. If the menu says "Kung Pao chicken (mildly spicy, peanuts optional)", it can order correctly; if the menu only says "a chicken dish" — silent on spice or peanuts — the customer can only guess, and naturally gets it wrong. This menu is exactly the JSON schema that <span class="mono">generate_schema</span> stitches together from your docstring.</p>
+</div>
+<p>The analogy stretches one step further: the menu decides not only <strong>what</strong> the customer orders, but <strong>whether they dare to order at all</strong>. The more specific the description, the more confident the model is to call it; the vaguer it is, the more it either avoids the tool or misuses it. As we'll see, Letta simply forces you — in code — to spell the "dish name" out clearly.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Grab the lesson in one line: <strong>a tool = a function</strong>. In <span class="mono">letta/functions/schema_generator.py::generate_schema</span>, Letta uses <span class="mono">inspect.signature</span> to read the function's parameters and type annotations, then uses <span class="mono">docstring_parser</span> (Google style) to parse the docstring, and stitches the two into an OpenAI-compatible JSON schema. The model knows only this schema.</p>
+<p>So this lesson is really about three interlocking things: ① <strong>how</strong> the schema is generated; ② why the docstring is a <strong>hard contract</strong> (write it incompletely and the tool can't be built); ③ <strong>how</strong> Python types map onto JSON schema types. String these together and you understand what a "tool" truly is in Letta. Their shared foundation is the line that keeps coming back: <strong>the model knows only the schema</strong>.</p>
+</div>
+<p>Before we start, let's align one expectation: this lesson doesn't teach you how to <strong>use</strong> tools, but takes you to see clearly the <strong>construction</strong> of a tool. Once you understand the construction, writing custom tools later — and debugging "why won't the model call my tool" — finally gives you something to grab onto.</p>
+<p>Before touching any code, let's set up a core contrast: for the same tool, <strong>you</strong> and the <strong>model</strong> see two completely different things. You face a function with logic and a real implementation; the model faces only an abstract "interface card".</p>
+<div class="cols">
+  <div class="col"><h4>👩‍💻 What you write (for humans)</h4><p>The full Python function: parameters, type annotations, a docstring, and the <strong>function body</strong> that does the real work. You care how it's implemented, whether it can fail, what it returns.</p></div>
+  <div class="col"><h4>🤖 What the model sees (for machines)</h4><p>A JSON schema: just a name, a one-line description, and each parameter's type and explanation. The <strong>function body is wiped out entirely</strong>; the model can neither see the implementation nor know how you handle things inside.</p></div>
+</div>
+<p>This "dividing line" runs through the whole lesson: implementation details on the left, the outward contract on the right. What <span class="mono">generate_schema</span> does is <strong>distill</strong> the left into the right. Grasp this, and every rule that follows — why parameters must have descriptions, why types are restricted — becomes natural.</p>
+<h2>A tool is just a Python function</h2>
+<p>Let's look at a real basic tool first — <span class="mono">send_message</span>, from <span class="mono">letta/functions/function_sets/base.py</span>. This is the tool the agent uses to "talk". Notice it has no special base class, no decorator — it's just a perfectly ordinary method. The only "special" thing about it is that neatly written Google-style docstring.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/base.py</span><span class="ln">what a basic tool looks like</span></div>
+<pre><span class="kw">def</span> <span class="fn">send_message</span>(self, message: str) -&gt; Optional[str]:
+    <span class="st">&quot;&quot;&quot;</span>
+<span class="st">    Sends a message to the human user.</span>
+<span class="st">    Args:</span>
+<span class="st">        message (str): Message contents. All unicode (including emojis) are supported.</span>
+<span class="st">    Returns:</span>
+<span class="st">        Optional[str]: None is always returned as this function does not produce a response.</span>
+<span class="st">    &quot;&quot;&quot;</span>
+</pre></div>
+<p>The key is the <span class="mono">Args:</span> section: the line it writes for <span class="mono">message</span>, "Message contents. All unicode…", <strong>is exactly the parameter explanation the model will later see</strong>. What the function body looks like, what it returns — the model has no idea; all it can lean on is this description.</p>
+<p>Why doesn't Letta build a "tool base class" or a decorator, insisting on bare functions instead? Because that keeps the <strong>barrier lowest</strong>: any ordinary function — yours, one from a third-party library, something thrown together on the spot — can become a tool the moment its docstring is well-formed. It replaces <strong>configuration</strong> with <strong>convention</strong>.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">The three-part Google-style docstring matters: the opening line is the <strong>function's overall description</strong>, the <span class="mono">Args:</span> section writes each <strong>parameter description</strong> in turn, and the <span class="mono">Returns:</span> section writes the return value. Of these, only the "overall description" and "each parameter description" enter the schema; <span class="mono">Returns:</span> is mainly for humans.</span></div>
+<p>So when you write a docstring, only two places actually "take effect on the model": the first line, and every line under <span class="mono">Args:</span>. Spending your effort there pays off far more than agonizing over the wording of <span class="mono">Returns:</span>.</p>
+<p>One more thing worth knowing: Letta's built-in tools are grouped by purpose under <span class="mono">letta/functions/function_sets/</span> (base tools, memory tools, and so on), but <strong>no matter which group</strong>, they all run through the same <span class="mono">generate_schema</span> in the end. In other words, built-in tools and your custom tools carry no identity difference in the model's eyes — both are just a schema.</p>
+<div class="note info"><span class="ni">👉</span><span class="nx">The generated schema isn't recomputed each time; it is <strong>persisted</strong> on the Tool object (the <span class="mono">json_schema</span> field): computed once at registration, stored, and afterward spliced straight into the context window for reuse. That's also why, once the docstring is settled, the schema is fixed along with it.</span></div>
+<h2>From function to schema: generate_schema</h2>
+<div class="flow">
+  <div class="node"><div class="nt">Python function</div><div class="nd">signature + docstring</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">generate_schema</div><div class="nd">inspect.signature + docstring_parser</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">OpenAI JSON schema</div><div class="nd">name / description / parameters</div></div>
+</div>
+<p>The core of the whole pipeline sits in <span class="mono">letta/functions/schema_generator.py::generate_schema</span>. What it does breaks into a few steps: use <span class="mono">inspect.signature</span> to get each parameter and its type annotation; use <span class="mono">docstring_parser</span> to parse the docstring and pull out each parameter's description text; then, parameter by parameter, stuff "type + description" into the schema's <span class="mono">properties</span> and decide whether it belongs in <span class="mono">required</span>.</p>
+<p>Here's a key insight: <span class="mono">generate_schema</span> never needs to <strong>run</strong> your function — it produces the schema purely by <strong>statically reading</strong> the signature and docstring. <span class="mono">inspect</span> looks at the function's "outline", never touching its "innards". Remember this, and Lesson 18's "build a schema without running the code" won't catch you off guard.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/schema_generator.py</span><span class="ln">generate_schema core (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">generate_schema</span>(function, name=<span class="kw">None</span>, ...):
+    sig = inspect.<span class="fn">signature</span>(function)
+    doc = <span class="fn">parse</span>(function.__doc__)        <span class="cm"># docstring_parser, Google style</span>
+    <span class="kw">for</span> p <span class="kw">in</span> sig.parameters.values():
+        <span class="kw">if</span> p.name <span class="kw">in</span> [<span class="st">"self"</span>, <span class="st">"agent_state"</span>]: <span class="kw">continue</span>   <span class="cm"># reserved params, skip</span>
+        desc = next((d.description <span class="kw">for</span> d <span class="kw">in</span> doc.params <span class="kw">if</span> d.arg_name == p.name), <span class="kw">None</span>)
+        <span class="kw">if</span> <span class="kw">not</span> desc:
+            <span class="kw">raise</span> <span class="fn">ValueError</span>(<span class="st">f"Parameter '{p.name}' lacks a description in the docstring"</span>)
+        props[p.name] = <span class="fn">type_to_json_schema_type</span>(p.annotation)
+        <span class="kw">if</span> p.default <span class="kw">is</span> inspect.Parameter.empty <span class="kw">and</span> <span class="kw">not</span> is_optional(p.annotation):
+            required.append(p.name)
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">This loop hides two "quality gates": a parameter with <strong>no description</strong> triggers <span class="mono">raise ValueError</span>; a parameter <strong>missing its type annotation</strong> throws <span class="mono">TypeError</span> inside <span class="mono">type_to_json_schema_type</span>. Put another way, an incomplete docstring means the tool simply can't be built.</span></div>
+<p>Read this loop "a little slower": it walks <strong>each parameter</strong> in turn, and every parameter passes the same four steps — skip the reserved name, fetch the description, fix the type, decide required. If any step goes wrong, construction halts right there, and the error propagates all the way up to whoever is registering the tool.</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">Note the <span class="mono">name=None</span> parameter: when you don't pass a name explicitly, the schema's <span class="mono">name</span> defaults to <span class="mono">function.__name__</span>, the function name itself. So giving a function a good name is like giving the tool a good "dish name" — one glance at the name and the model can guess most of it.</span></div>
+<p>A word on this schema's "pedigree": it follows OpenAI's function-calling spec — <span class="mono">name</span> and <span class="mono">description</span> at the top, parameters all wrapped under <span class="mono">parameters</span>, and <span class="mono">type</span> fixed to <span class="mono">object</span>. Most mainstream models accept this format, so Letta treats it as a "lingua franca": one schema feeds different models and they all recognize it.</p>
+<p>So what does this machine finally "spit out"? Below is the JSON schema that <span class="mono">send_message</span> yields after <span class="mono">generate_schema</span> processes it. Compare it with the earlier function: the function name becomes <span class="mono">name</span>, the docstring's first line becomes <span class="mono">description</span>, the parameter <span class="mono">message</span> together with its description goes into <span class="mono">properties</span>, and because it has no default value it gets listed under <span class="mono">required</span>.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">result · JSON schema</span><span class="ln">what the model actually sees</span></div>
+<pre>{
+  <span class="st">"name"</span>: <span class="st">"send_message"</span>,
+  <span class="st">"description"</span>: <span class="st">"Sends a message to the human user."</span>,
+  <span class="st">"parameters"</span>: {
+    <span class="st">"type"</span>: <span class="st">"object"</span>,
+    <span class="st">"properties"</span>: {
+      <span class="st">"message"</span>: {
+        <span class="st">"type"</span>: <span class="st">"string"</span>,
+        <span class="st">"description"</span>: <span class="st">"Message contents. All unicode (including emojis) are supported."</span>
+      }
+    },
+    <span class="st">"required"</span>: [<span class="st">"message"</span>]
+  }
+}
+</pre></div>
+<div class="note tip"><span class="ni">👉</span><span class="nx">Hold this JSON up against the Python from the very start: you'll find <strong>every single word</strong> in it comes from the function signature or docstring — not one piece is conjured out of thin air. That is the literal meaning of "the docstring is the manual".</span></div>
+<p>No matter how complex the tool, the generated schema always wears the same "skeleton". Take it apart and it's just these few fixed parts:</p>
+<div class="cellgroup"><div class="cg-cap"><b>Anatomy of a tool schema</b></div>
+<div class="cells">
+<span class="cell hl">name</span><span class="sep">·</span>
+<span class="cell hl">description</span><span class="sep">·</span>
+<span class="cell">parameters.type = object</span><span class="sep">·</span>
+<span class="cell">properties (per param: type + description)</span><span class="sep">·</span>
+<span class="cell">required (list of required param names)</span>
+</div></div>
+<p>The blue-highlighted <span class="mono">name</span> and <span class="mono">description</span> come from the function name and the first docstring line; each parameter in <span class="mono">properties</span> maps to a "type + description" pair; <span class="mono">required</span> is the product of the must-fill decision chain. Memorize this skeleton and you'll never get lost reading any tool's schema.</p>
+<p>While we're here, let's bust a misconception: the schema contains <strong>no</strong> return type of your function, and no information about the function body. That <span class="mono">Returns:</span> section, your carefully written implementation — the model sees none of it. All it can ever lean on is this "name + description + parameters" skeleton.</p>
 <!--ENMORE-->
 """}
