@@ -569,5 +569,26 @@ LESSON_18 = {"zh": r"""
 <p>至此，工具有了 schema、能被模型"看见"并发起调用。可当 agent <strong>真要执行</strong>一个工具时，它怎么知道"该用哪种方式跑它"——是直接在进程内调用、丢进沙箱隔离执行、还是连去一台外部服务器？这就是<strong>第 19 课"工具分发与执行"</strong>要回答的问题。换句话说，schema 解决的是"模型怎么理解工具"，而执行要解决的是"系统怎么安全地把工具跑起来"——这个故事，才刚刚讲到一半。</p>
 
 """, "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 17 quietly leaned on one assumption: we <strong>already held a Python function object</strong> and could call <span class="mono">inspect.signature</span> on it directly. But in reality, when a user registers a custom tool, what reaches the server is usually not a function object but <strong>a string of source code</strong>.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">That raises a thorny demand: produce its JSON schema <strong>without ever running the code</strong>. You must "understand" the shape of this unfamiliar code yet execute not a single line — that is the real difficulty here. Lesson 17 solved the easy case of "we already have a function object"; this lesson tackles the hardcore case of "all we have is a source string."</p>
+
+<div class="card analogy"><div class="tag">🔌 Analogy</div>
+<p>Picture yourself receiving a batch of unfamiliar electronics at a warehouse. The safest move is not to <strong>unbox, power on, and try them out</strong> — what if one is a "booby trap"? Instead you <strong>inspect without unsealing</strong>: read only the "ingredients / spec sheet" printed on the box, and file each item by that information.</p>
+<p>Handing source code to the schema deriver is exactly this "read the spec, never power it on": look only at the function's <strong>signature and docstring</strong> (the printed spec), never <span class="mono">import</span> and run it (powering on). This code was uploaded by a user, and nobody knows what it will do once powered up.</p>
+<p>Better still, this "spec sheet" is self-checking: if the printed information doesn't add up (a syntax error in the source, a parameter missing its annotation), you can reject the shipment on the spot — no need to power anything on to know the batch is defective. Deriving a schema from source is the same: many problems are caught at the "reading" stage and never reach the "running" stage at all.</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Letta's answer is <span class="mono">letta/functions/functions.py::derive_openai_json_schema(source_code, name=None)</span>. Its recipe is just three steps: first use <strong>pure AST parsing</strong> to read the source into a syntax tree, then build a <span class="mono">MockFunction</span> from it (carrying only the trio <span class="mono">__name__ / __doc__ / __signature__</span>), and finally feed that "fake function" into the <strong>exact same</strong> <span class="mono">generate_schema</span> from Lesson 17.</p>
+<p>At no point does it <strong>ever <span class="mono">exec</span> or <span class="mono">import</span></strong> the user's code. To see through this magic, answer three questions:</p>
+<ul>
+<li>Why can we <strong>not</strong> just <span class="mono">import</span> this source directly?</li>
+<li>How does <span class="mono">MockFunction</span> manage to <strong>fool <span class="mono">inspect</span></strong>?</li>
+<li>What exactly does the AST <strong>read statically</strong>?</li>
+</ul>
+<p>Notice that all three steps <strong>only read, never write; only parse, never execute</strong>. The next sections dig down along these three questions: first why import is dangerous, then how <span class="mono">MockFunction</span> disguises itself, and finally which fields the AST actually reads.</p>
+</div>
+
+<p>Why is "never run it" a non-negotiable red line? Because Letta is a <strong>multi-tenant</strong> service: one process may run many users' tools at once. If a single piece of uploaded code oversteps at import time, the victim is not just its own session but the whole server and everyone's data on it. Keeping execution firmly in your own hands is the survival baseline for such a platform.</p>
 <!--ENMORE-->
 """}
