@@ -1227,5 +1227,26 @@ result = json.<span class="fn">loads</span>(payload)                     <span c
 agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic 重水合</span>
 </pre></div>
 <div class="note info"><span class="ni">💡</span><span class="nx">这套帧防的是什么？用户工具能往 stdout 打<strong>任何东西</strong>，包括一个伪造的结果或假 marker。marker 圈出真 payload，长度做精确切片，MD5 抓篡改/截断——三层叠起来，服务端才敢说"我读到的就是工具真正返回的那一份"。</span></div>
+<h2>PR #3343：把 pickle 换成 JSON</h2>
+<p>帧校验一直都在，但有一处老漏洞：早期回程 payload 是 <strong>pickle</strong> 编码的，服务端读回来时会 <span class="mono">pickle.loads</span>。这等于对"刚跑完任意用户代码的沙箱输出"做反序列化——一个干净利落的<strong>服务端 RCE</strong>。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">PR #3343 · commit 1131535</span></div>
+<pre><span class="cm"># 旧（有漏洞）：服务端对沙箱 stdout 直接 pickle.loads -> 服务端 RCE</span>
+<span class="cm">- result = pickle.loads(text)</span>
+<span class="cm"># 新（已修复）：只 json.loads，绝不执行代码</span>
+<span class="cm">+ result = json.loads(payload)</span>
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">注意分寸：<span class="mono">marker+长度+MD5</span> 帧<strong>早于 #3343 就存在</strong>。#3343 只把 sandbox→server 的 <strong>payload 编码</strong>从 pickle 换成 JSON；server→sandbox 仍然 pickle <span class="mono">agent_state</span>——那是有意保留的受信方向，不是漏改。</span></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>一句话收束：<strong>你信任哪个方向，决定你用哪种序列化。</strong></p>
+<p><span class="mono">pickle.loads</span> 能在反序列化时执行任意代码，于是规则被砍到极简：<strong>可以 pickle.loads 你自己造的数据</strong>（server→sandbox，权限往下流进低信任沙箱，没风险）；<strong>绝不 pickle.loads 跨过不可信边界回来的数据</strong>（sandbox→server，刚跑完任意用户代码，只能当 JSON 读）。</p>
+<p>PR #3343 修的正是这个：旧代码 <span class="mono">pickle.loads</span> 沙箱 stdout——服务端 RCE；改成 <span class="mono">json.loads</span> 就堵死了。而 <span class="mono">marker+长度+MD5</span> 是另一层——完整性层：用户工具能打假结果，marker 圈真 payload、MD5 抓篡改。</p>
+<p>安全被化简成一个词：<strong>信任＝方向</strong>。这也收口了整条工具链：第 18 课"不跑代码就读它" → 第 19 课"自定义→沙箱" → 第 20 课"连沙箱的输出也不可信"。</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p>生成脚本：<span class="mono">tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script</span> 与 <span class="mono">_render_sandbox_code</span>。本地执行：<span class="mono">local_sandbox.py::AsyncToolSandboxLocal</span>（建/复用 venv、子进程、超时）。</p>
+<p>回读校验：<span class="mono">local_sandbox.py::parse_out_function_results_markers</span> 找 marker、切长度、比 MD5；再交 <span class="mono">helpers/tool_parser_helper.py::parse_stdout_best_effort</span> 做 <span class="mono">json.loads</span> + <span class="mono">AgentState.model_validate</span>。</p>
+<p>类型与安全：沙箱类型在 <span class="mono">schemas/enums.py::SandboxType</span>；本次安全修复是 PR #3343（commit <span class="mono">1131535</span>）。</p>
+</div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
