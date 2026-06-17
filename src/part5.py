@@ -769,5 +769,67 @@ LESSON_19 = {"zh": r"""
 <div class="cellgroup"><div class="cg-cap"><b>外部 · 第三方（3 种）</b></div><div class="cells"><span class="cell">external_langchain（弃用）</span><span class="sep">·</span><span class="cell">external_composio（弃用）</span><span class="sep">·</span><span class="cell hl">external_mcp</span></div></div>
 <div class="note info"><span class="ni">🏷️</span><span class="nx"><span class="mono">custom</span> 是<strong>默认值</strong>：注册一个工具如果没被归到别的类，它就是 <span class="mono">custom</span>——而 <span class="mono">custom</span> 会兜底走沙箱。两个 <span class="mono">external_langchain / external_composio</span> 已弃用，真正活跃的外部类型只有 <span class="mono">external_mcp</span>。</span></div>
 
+<h2>工厂：按类型选执行器</h2>
+<p>标签有了，谁来读标签、派活？是 <span class="mono">ToolExecutorFactory</span>。它内部存了一张 <span class="mono">_executor_map</span>，把 <span class="mono">ToolType</span> 映射到执行器类；<span class="mono">get_executor</span> 查表、实例化、返回一个执行器。</p>
+<div class="flow">
+<div class="node"><div class="nt">tool.tool_type</div><div class="nd">工具上的标签</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">get_executor</div><div class="nd">查 _executor_map</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">具体执行器</div><div class="nd">LettaCore / Sandbox …</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">execute(...)</div><div class="nd">真正跑工具</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">ToolExecutionResult</div><div class="nd">统一结果</div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">循环只说"调这个工具"，<strong>怎么跑</strong>由 <span class="mono">ToolType</span> + 工厂决定：进程内直跑 / 沙箱 / 连 MCP server——同一个 <span class="mono">execute</span> 接口，藏起三种运行时。</span></div>
+<p>还要记住流程的<strong>终点</strong>：不管走哪条路，所有执行器都返回同一种 <span class="mono">ToolExecutionResult</span>。差异被藏在中间，出口却是统一的——这正是"多态"的形状。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">工厂（简化）</span></div><pre><span class="kw">class</span> <span class="fn">ToolExecutorFactory</span>:
+    _executor_map = {
+        ToolType.LETTA_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MEMORY_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_BUILTIN: LettaBuiltinToolExecutor,
+        ToolType.LETTA_FILES_CORE: LettaFileToolExecutor,
+        ToolType.EXTERNAL_MCP: ExternalMCPToolExecutor,
+    }
+    <span class="kw">def</span> <span class="fn">get_executor</span>(cls, tool_type, ...):
+        cls_ = cls._executor_map.<span class="fn">get</span>(tool_type, SandboxToolExecutor)   <span class="cm"># 未映射 -> 兜底沙箱</span>
+        <span class="kw">return</span> cls_(...)
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">看 <span class="mono">get_executor</span> 那行的 <span class="mono">.get(tool_type, SandboxToolExecutor)</span>：<strong>没在表里的类型，一律兜底走沙箱</strong>。<span class="mono">custom</span>、<span class="mono">letta_voice_sleeptime_core</span>、多 agent、两个弃用的 external 全落这里。所以"自定义工具＝在沙箱里跑"是<strong>默认</strong>，不是特例。</span></div>
+
+<h2>真正的入口：ToolExecutionManager</h2>
+<p>工厂只负责"选人"。真正被 agent 循环调用的，是 <span class="mono">ToolExecutionManager::execute_tool_async</span>：它用工厂拿到执行器，<strong>计时</strong>、<strong>截断超长返回</strong>、把异常<strong>包成结果对象</strong>，再交回循环。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">入口（简化）</span></div><pre><span class="kw">async def</span> <span class="fn">execute_tool_async</span>(self, function_name, function_args, tool, ...):
+    executor = ToolExecutorFactory.<span class="fn">get_executor</span>(tool.tool_type, ...)
+    result = <span class="kw">await</span> executor.<span class="fn">execute</span>(function_name, function_args, tool, actor, ...)
+    <span class="kw">if</span> len(return_str) > tool.return_char_limit:   <span class="cm"># 超长截断</span>
+        ...
+    <span class="kw">return</span> result   <span class="cm"># ToolExecutionResult(status, func_return, stdout, stderr, ...)</span>
+</pre></div>
+<div class="note tip"><span class="ni">🧭</span><span class="nx">分清两层：工厂只回答"<strong>用哪个执行器</strong>"，<span class="mono">ToolExecutionManager</span> 才是循环真正调的<strong>入口</strong>——它负责计时、超 <span class="mono">return_char_limit</span> 截断、把异常统一包成 <span class="mono">ToolExecutionResult(status="error")</span>。</span></div>
+
+<h2>五个执行器，各管一摊</h2>
+<p>工厂表里点名的、加上兜底的，一共五个执行器。下面这张表把"标签 → 执行器 → 类别 → 典型工具"对上号。</p>
+<table class="t">
+<tr><th>ToolType</th><th>执行器</th><th>类别</th><th>典型工具</th></tr>
+<tr><td class="mono">letta_core</td><td class="mono">LettaCoreToolExecutor</td><td>进程内</td><td class="mono">send_message · conversation_search</td></tr>
+<tr><td class="mono">letta_memory_core</td><td class="mono">LettaCoreToolExecutor</td><td>进程内 · 记忆</td><td class="mono">core_memory_append · core_memory_replace</td></tr>
+<tr><td class="mono">letta_builtin</td><td class="mono">LettaBuiltinToolExecutor</td><td>受控内置</td><td class="mono">run_code · web_search · fetch_webpage</td></tr>
+<tr><td class="mono">letta_files_core</td><td class="mono">LettaFileToolExecutor</td><td>文件</td><td class="mono">open_files · grep_files</td></tr>
+<tr><td class="mono">external_mcp</td><td class="mono">ExternalMCPToolExecutor</td><td>外部服务器</td><td class="mono">MCP 工具</td></tr>
+<tr><td class="mono">custom（兜底）</td><td class="mono">SandboxToolExecutor</td><td>沙箱</td><td class="mono">你写的自定义工具</td></tr>
+</table>
+<p>它们都继承基类 <span class="mono">tool_executor_base.py::ToolExecutor</span>，统一签名 <span class="mono">async def execute(...) -&gt; ToolExecutionResult</span>。注意记忆工具 <span class="mono">core_memory_append</span> 也归 <span class="mono">LettaCoreToolExecutor</span>，在<strong>进程内直跑</strong>，并不进沙箱。</p>
+
+<div class="cute">
+<div class="row"><span class="emoji">🏭</span><span class="lab">按 ToolType 分拣</span><span class="arrow">→</span><span class="emoji">🧠</span><span class="bubble">core · 进程内</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">同一座工厂</span><span class="arrow">→</span><span class="emoji">🔧</span><span class="bubble">builtin · 内置</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">不同传送带</span><span class="arrow">→</span><span class="emoji">📁</span><span class="bubble">files · 文件</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">各走各的</span><span class="arrow">→</span><span class="emoji">🔌</span><span class="bubble">mcp · 外部</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">兜底那条</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">sandbox · 沙箱</span></div>
+<div class="cap">工厂按 ToolType 把每个工具送上对的传送带：进程内、内置、文件、外部、沙箱</div>
+</div>
+
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
