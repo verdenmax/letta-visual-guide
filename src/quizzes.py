@@ -1466,6 +1466,121 @@ QUIZZES = {
             },
         ],
     },
+    "18-schema-without-executing.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "用户注册自定义 Python 工具时，递给服务器的是一段源码字符串（不是函数对象）。Letta 如何为它产出 JSON schema？",
+                    "en": "A user registers a custom Python tool by sending a source-code string (not a function object). How does Letta produce its JSON schema?",
+                },
+                "opts": [
+                    {"zh": "derive_openai_json_schema 用 ast.parse 纯静态解析源码、重建签名、包成 MockFunction，再复用 generate_schema——这段代码从不被 exec 或 import",
+                     "en": "derive_openai_json_schema parses the source with ast.parse (pure AST), rebuilds a signature, wraps it in a MockFunction, and reuses generate_schema — the code is never exec'd or imported"},
+                    {"zh": "它把源码当模块 import 进来，再对得到的函数对象调 inspect.signature",
+                     "en": "It imports the source as a module, then calls inspect.signature on the resulting function object"},
+                    {"zh": "它拿几组样例输入把函数跑一遍，记录观察到的参数/返回类型",
+                     "en": "It runs the function once on a few sample inputs and records the argument/return types it observes"},
+                    {"zh": "它让模型读源码、生成一份 schema，再把模型的输出缓存下来",
+                     "en": "It asks the model to read the source and emit a schema, then caches the model's output"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "第 18 课的核心就是“不运行代码也能派生 schema”。derive_openai_json_schema（letta/functions/functions.py）调用 _parse_function_from_source：用 ast.parse 纯静态解析、挑出函数节点、重建 inspect.Signature，返回一个 MockFunction；再把这个 mock 喂给第 17 课同一个 generate_schema。import + inspect 会执行顶层代码（在多租户服务器上即 RCE），既不是“跑函数”也不是“问模型”。是“读”，不是“跑”。",
+                    "en": "The whole point of lesson 18 is deriving a schema without running the code. derive_openai_json_schema (letta/functions/functions.py) calls _parse_function_from_source, which uses ast.parse — purely static — picks the function node, rebuilds an inspect.Signature, and returns a MockFunction; that mock is then fed to the same generate_schema from lesson 17. import + inspect would execute top-level code (an RCE on a multi-tenant server), and neither running the function nor asking the model is involved. Reading, not running.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "generate_schema 期待一个可内省的真函数对象，可我们手里只有从 AST 拆出来的零件。MockFunction 凭什么能顶替上场？",
+                    "en": "generate_schema expects a real function object to introspect, but we only hold fragments pulled from the AST. What makes a MockFunction good enough to stand in?",
+                },
+                "opts": [
+                    {"zh": "它设好 __name__、__doc__、__signature__——而 inspect.signature() 与 docstring 解析读的正是这几个属性，于是对从未运行的代码也能内省",
+                     "en": "It sets __name__, __doc__, and __signature__ — exactly what inspect.signature() and docstring parsing read — so introspection works on code that never ran"},
+                    {"zh": "它把源码编译成真正可调用的对象，让 inspect 能在沙箱里安全地执行它",
+                     "en": "It compiles the source into a real callable so inspect can execute it safely in a sandbox"},
+                    {"zh": "它继承用户的类、重写 __call__ 让其直接返回 schema",
+                     "en": "It subclasses the user's class and overrides __call__ to return the schema directly"},
+                    {"zh": "它保存原始源码字符串，generate_schema 每要一个字段就把字符串重新解析一遍",
+                     "en": "It stores the raw source string, and generate_schema re-parses that string each time it needs a field"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "inspect 不查血统、只读属性。MockFunction.__init__（letta/functions/functions.py）设好 __name__、__doc__、__signature__；一旦显式设了 __signature__，inspect.signature(mock) 就返回它、docstring 解析读 __doc__，于是同一个 generate_schema 能在从未运行的代码上工作（鸭子类型）。注意 MockFunction.__call__ 故意抛 NotImplementedError——它本就不该被执行。既不编译、不沙箱跑，也不会“每个字段重解析一次”。",
+                    "en": "inspect checks no pedigree — it reads attributes. MockFunction.__init__ (letta/functions/functions.py) sets __name__, __doc__, and __signature__; once __signature__ is set explicitly, inspect.signature(mock) returns it and docstring parsing reads __doc__, so the same generate_schema works on never-run code (duck typing). Notably MockFunction.__call__ raises NotImplementedError — it is never meant to execute. Nothing is compiled, sandbox-run, or re-parsed per field.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "用户上传的源码里定义了三个函数：先是两个辅助函数，最后才是真正的工具。哪个会成为工具？这个判断需要“运行”什么吗？",
+                    "en": "A user's uploaded source defines three functions: two helpers first, then the actual tool. Which one becomes the tool, and is anything run to decide?",
+                },
+                "opts": [
+                    {"zh": "解析树里最后一个 FunctionDef，纯靠遍历 AST 节点列表选出——不执行任何东西",
+                     "en": "The last FunctionDef in the parsed tree, chosen purely by walking the AST node list — nothing is executed"},
+                    {"zh": "第一个 FunctionDef，因为解析器惯例取最先定义的那个",
+                     "en": "The first FunctionDef, since parsers conventionally take the earliest definition"},
+                    {"zh": "哪个函数有 docstring 就取哪个；若有多个有 docstring，源码因有歧义被拒",
+                     "en": "Whichever function has a docstring; if several do, the source is rejected as ambiguous"},
+                    {"zh": "名字与 tool name 参数相符的那个，通过 import 模块来确定",
+                     "en": "The one whose name matches the tool name argument, resolved by importing the module"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "_parse_function_from_source 从 tree.body 收集 ast.FunctionDef 节点，取最后一个（[-1]）——约定是“工具就是文件里最后定义的那个函数”。这是对 AST 节点列表的静态读取，不跑任何代码。它明确不是第一个、也不是“有 docstring 的那个”（被选中的函数要求有 docstring，但选择靠位置），更不会为匹配名字去 import。",
+                    "en": "_parse_function_from_source collects ast.FunctionDef nodes from tree.body and takes the last one ([-1]) — the convention is “the tool is the last function defined in the file.” This is a static read of the AST node list; nothing runs. It is explicitly NOT the first function, and not “the one with a docstring” (a docstring is required on the chosen function, but selection is by position), and nothing is imported to match names.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你创建一个 source_type 为 typescript 的工具，却没传 json_schema，指望 Letta 像对 Python 那样替你自动派生。结果如何？",
+                    "en": "You create a tool whose source_type is typescript but pass no json_schema, expecting Letta to auto-derive it the way it does for Python. What happens?",
+                },
+                "opts": [
+                    {"zh": "创建失败：ToolCreate.validate_typescript_requires_schema 抛 ValueError——TypeScript 工具必须显式提供 json_schema",
+                     "en": "Creation fails: ToolCreate.validate_typescript_requires_schema raises ValueError — a TypeScript tool must supply an explicit json_schema"},
+                    {"zh": "和 Python 一样照常工作：derive_typescript_json_schema 通过 AST 从源码生成完整 schema",
+                     "en": "It works just like Python: derive_typescript_json_schema produces a complete schema from the source via the AST"},
+                    {"zh": "它静默地用一份空的 parameters schema 建出工具，模型靠猜来填参数",
+                     "en": "It silently creates the tool with an empty parameters schema, and the model fills arguments by guessing"},
+                    {"zh": "它先把 TypeScript 转译成 Python，再走普通的 AST 派生",
+                     "en": "It transpiles the TypeScript to Python first, then runs the normal AST derivation"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "TS 工具是“自动派生”的例外。ToolCreate.validate_typescript_requires_schema 会拒绝没有 json_schema 的 typescript 源码（ValueError），所以便利的自动派生主要服务 Python。derive_typescript_json_schema 确实存在，但它基于正则、较粗放（union/any → string），并非 AST，也没有 TS→Python 转译这一步。schema 不会被静默置空；缺显式 json_schema 时创建直接失败。",
+                    "en": "TS tools are the exception to auto-derivation. ToolCreate.validate_typescript_requires_schema rejects a typescript source with no json_schema (ValueError), so the convenient auto-derive path mainly serves Python. derive_typescript_json_schema does exist, but it is regex-based and coarse (union/any → string), not AST, and there is no TS→Python transpile step. The schema is not silently emptied; creation simply fails until you pass an explicit json_schema.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你想读 MockFunction 的定义，它在哪个文件里？",
+                    "en": "You want to read MockFunction's definition. Which file holds it?",
+                },
+                "opts": [
+                    {"zh": "letta/functions/functions.py——和 derive_openai_json_schema、_parse_function_from_source 在一起",
+                     "en": "letta/functions/functions.py — alongside derive_openai_json_schema and _parse_function_from_source"},
+                    {"zh": "letta/functions/ast_parsers.py——因为它属于 AST 解析辅助",
+                     "en": "letta/functions/ast_parsers.py — since it is part of the AST-parsing helpers"},
+                    {"zh": "letta/functions/typescript_parser.py——它被 Python 和 TypeScript 派生共用",
+                     "en": "letta/functions/typescript_parser.py — it is shared by both Python and TypeScript derivation"},
+                    {"zh": "letta/services/tool_schema_generator.py——挨着创建期接线",
+                     "en": "letta/services/tool_schema_generator.py — next to the creation-time wiring"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "MockFunction 住在 letta/functions/functions.py，和派生三件套 derive_openai_json_schema、_parse_function_from_source 在一起。ast_parsers.py 是常见的坑——它放的是 get_function_name_and_docstring、resolve_type（白名单，allow_unsafe_eval=False）等 AST 辅助，但没有 MockFunction。typescript_parser.py 负责基于正则的 TS 派生；tool_schema_generator.py 放的是 generate_schema_for_tool_creation（创建期分派）——都不是 MockFunction。",
+                    "en": "MockFunction lives in letta/functions/functions.py, together with the deriver trio derive_openai_json_schema and _parse_function_from_source. ast_parsers.py is a common trap — it holds AST helpers like get_function_name_and_docstring and resolve_type (whitelist, allow_unsafe_eval=False), but NOT MockFunction. typescript_parser.py handles regex-based TS derivation; tool_schema_generator.py holds generate_schema_for_tool_creation (the creation-time dispatch), not MockFunction.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“不拆封验货”这个比喻，把第 18 课的故事完整讲一遍，并想三件事：(1) 为什么 Letta 宁可“读源码”也绝不“import 跑一下”？若把 import 换成“先丢进沙箱再 import”，省下的麻烦和新增的风险各是什么？(2) MockFunction 只凑齐 __name__/__doc__/__signature__ 三个属性，却故意让 __call__ 抛 NotImplementedError。为什么“能被内省”和“不能被调用”要同时成立——这对一个“假函数”意味着怎样的设计取舍？(3) Python 工具能在创建时自动派生 schema，TypeScript 工具却必须显式带上 json_schema。若让你把“自动派生”也扩到 TypeScript，你会选 AST 式解析器还是继续用正则——如何权衡“覆盖更多语法”与“猜错复杂类型”的风险？",
+                "en": "Use the “inspect without unsealing” metaphor to tell lesson 18's story as a whole, and think through three things: (1) Why does Letta insist on “reading the source” and never “just import to run it”? If you swapped import for “sandbox it first, then import,” what trouble would you save and what new risk would you add? (2) MockFunction gathers only the three attributes __name__/__doc__/__signature__, yet deliberately makes __call__ raise NotImplementedError. Why should “introspectable” and “not callable” hold at the same time — and what design trade-off does that imply for a “fake function”? (3) Python tools can auto-derive a schema at creation, but TypeScript tools must bring an explicit json_schema. If you had to extend “auto-derivation” to TypeScript too, would you pick an AST-style parser or stay with regex — how would you weigh “covering more syntax” against the risk of “guessing complex types wrong”?",
+            },
+        ],
+    },
 }
 
 
