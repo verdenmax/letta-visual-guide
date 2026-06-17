@@ -616,6 +616,50 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 </div></div>
 <p>The blue-highlighted <span class="mono">name</span> and <span class="mono">description</span> come from the function name and the first docstring line; each parameter in <span class="mono">properties</span> maps to a "type + description" pair; <span class="mono">required</span> is the product of the must-fill decision chain. Memorize this skeleton and you'll never get lost reading any tool's schema.</p>
 <p>While we're here, let's bust a misconception: the schema contains <strong>no</strong> return type of your function, and no information about the function body. That <span class="mono">Returns:</span> section, your carefully written implementation — the model sees none of it. All it can ever lean on is this "name + description + parameters" skeleton.</p>
+<h2>How types are mapped</h2>
+<p>Every parameter in the schema needs a <span class="mono">type</span>, and that step is handled by <span class="mono">type_to_json_schema_type</span>: it <strong>hand-writes</strong> a translation from Python's type annotations into JSON schema types. This mapping table is the boundary of which parameter types a tool can accept — anything not in the table is either unwrapped or rejected outright.</p>
+<table class="t">
+<tr><th>Python type</th><th>JSON schema</th><th>Notes</th></tr>
+<tr><td class="mono">str</td><td class="mono">string</td><td>most common</td></tr>
+<tr><td class="mono">int</td><td class="mono">integer</td><td>integers</td></tr>
+<tr><td class="mono">bool</td><td class="mono">boolean</td><td>true / false</td></tr>
+<tr><td class="mono">float</td><td class="mono">number</td><td>floating point</td></tr>
+<tr><td class="mono">Optional[X]</td><td class="mono">X</td><td>unwrapped to X, removed from required</td></tr>
+<tr><td class="mono">List[X]</td><td class="mono">array</td><td>carries an items type</td></tr>
+<tr><td class="mono">Literal[...]</td><td class="mono">enum</td><td>enumerated allowed values</td></tr>
+<tr><td class="mono">BaseModel</td><td class="mono">object</td><td>calls model_json_schema()</td></tr>
+<tr><td class="mono">Dict[k,v]</td><td class="mono">✗</td><td>parameterized dict → ValueError</td></tr>
+<tr><td class="mono">Union[...]</td><td class="mono">✗</td><td>general Union → NotImplementedError</td></tr>
+</table>
+<p>The three kinds of "special treatment" are the most worth remembering. <span class="mono">Optional[X]</span> gets <strong>unwrapped</strong>: the type in the schema is just <span class="mono">X</span>, but that parameter automatically turns optional. <span class="mono">List[X]</span> maps to <span class="mono">array</span> and carries an <span class="mono">items</span> describing the element type. <span class="mono">Literal</span> becomes <span class="mono">enum</span>, writing the allowed values straight into the schema — in effect telling the model "you may only pick from these".</p>
+<div class="note tip"><span class="ni">💡</span><span class="nx">Want to pass a structured object (say a bundle of config options)? Don't use <span class="mono">Dict</span> — define a Pydantic <span class="mono">BaseModel</span>. <span class="mono">type_to_json_schema_type</span> will call its <span class="mono">model_json_schema()</span>, <strong>nesting</strong> the fields, types, and required relations into the tool schema — clear in structure, and correctly understood by the model.</span></div>
+<p>These mappings are mostly <strong>recursive</strong>: <span class="mono">List[Optional[int]]</span> first unwraps the outer list, then the inner Optional, finally yielding an "array of nullable integers". Precisely because the branches are hand-written and handled layer by layer, Letta can control exactly what each type translates into — and can clearly error on types it can't handle (parameterized Dict, arbitrary Union) instead of silently fudging them.</p>
+<p>Notice that the <span class="mono">Optional[X]</span> row is special: it doesn't only map the type, it also affects "whether the parameter is required". That brings us to the <span class="mono">required</span> decision logic — whether a parameter enters <span class="mono">required</span> follows the little decision chain below.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Does it have a default?</h4><p>If the parameter has a default in the signature (<span class="mono">p.default</span> is not empty) → <strong>optional</strong>, not added to required.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Is it Optional[X]?</h4><p>No default, but the type is <span class="mono">Optional[X]</span> (i.e. <span class="mono">is_optional</span> is true) → <strong>optional</strong>, not added to required.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Otherwise</h4><p>No default and not Optional → <strong>enters required</strong>; the model must supply it on every call.</p></div></div>
+</div>
+<p>Don't underestimate this <span class="mono">required</span> list — it directly sways the model's behavior. Parameters listed in <span class="mono">required</span> <strong>must</strong> be supplied by the model when it calls; those left out it may omit. So "which are required" is both a correctness constraint and a hint to the model.</p>
+<div class="note tip"><span class="ni">✅</span><span class="nx">A practical habit: for any parameter that "without it the work can't be done", give it no default and don't mark it <span class="mono">Optional</span> — let it enter <span class="mono">required</span>; for any "nice-to-have" parameter, give a default or use <span class="mono">Optional</span> so the model can skip it. This boundary decides how usable the tool is.</span></div>
+<h2>Advanced: using a Pydantic model as a parameter</h2>
+<p>When a parameter is itself "a set of fields" — say an email draft has a recipient, a subject, and a body — rather than flatten it into three scattered parameters, it's better to pack it into a Pydantic model so the schema carries its own structure. In the tool signature, a single parameter <span class="mono">draft: EmailDraft</span> is enough.</p>
+<div class="note tip"><span class="ni">💡</span><span class="nx">When <span class="mono">generate_schema</span> meets <span class="mono">draft: EmailDraft</span>, it calls <span class="mono">EmailDraft.model_json_schema()</span>, placing <span class="mono">to / subject / body</span> along with their types and required relations into the tool schema as one <strong>nested object</strong>.</span></div>
+<p>This way, what the model sees is a clearly structured object, not three unrelated strings. Better still: adding or removing fields, and constraining types, all live in the model definition, while the tool signature stays clean. This is exactly why, for structured inputs, the official recommendation is a Pydantic model rather than <span class="mono">Dict</span>.</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">Summing up the type section: use basic types when you can, use <span class="mono">Optional</span> for "optional", use <span class="mono">Literal</span> for "one of several", use a Pydantic model for "a set of fields" — steer clear of bare <span class="mono">Dict</span> and <span class="mono">Union</span> and you sidestep the vast majority of errors.</span></div>
+<div class="cute"><div class="row">
+  <span class="emoji">📝</span><span class="lab">docstring</span>
+  <span class="emoji">🔧</span><span class="lab">function</span>
+  <span class="arrow">→</span>
+  <span class="emoji">📜</span><span class="lab">schema</span>
+  <span class="arrow">→</span>
+  <span class="emoji">🤖</span><span class="bubble">I only read the menu</span>
+</div><div class="cap">The model never reads your function body — only the schema that generate_schema stitches together.</div></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>Here's an easily overlooked shift in perspective: <strong>a docstring is not a comment for humans, it's API documentation for the "model"</strong>. Whether the model decides to call this tool, and how it fills the parameters, all rests on this schema — and the schema's description text comes word for word from your docstring.</p>
+<p>So one vague or missing parameter description <strong>directly lowers</strong> the model's odds of using the tool correctly. This is a functional problem, not a code-style one. Letta simply promotes it to a "compile-time error": if any parameter lacks a description, <span class="mono">generate_schema</span> <span class="mono">raise</span>s <span class="mono">ValueError</span> on the spot, the tool can't be built at all, forcing you to say it clearly.</p>
+<p>Remember it in one line: <strong>write the docstring for the model, not for your colleague</strong>. This loops right back to Lesson 4 — a tool is the agent's interface to the world, and the quality of that interface rides on these few lines of description.</p>
+</div>
 <!--ENMORE-->
 </div>
   <div class="footnav"><a class="prev" href="16-tool-rules.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">工具规则 Tool Rules</span><span class="lang-en">Tool rules</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
