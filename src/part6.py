@@ -180,4 +180,6 @@ LESSON_21 = {"zh": r"""
 </div>
 <div class="note info"><span class="ni">💡</span><span class="nx">一句话收束本课：<strong>endpoint 类型选 client，三方法把差异收敛成 OpenAI 形状，循环只认这一种</strong>。这三句，正是后面两课所有"怪癖隔离"赖以成立的地基。</span></div>
 <p>契约这张纸立好了，可各家供应商的"怪脾气"并没就此消失——Anthropic 的提示缓存、Google 的请求格式、给没有原生推理能力的模型<strong>硬注入一段内心独白</strong>……这些差异究竟被藏在哪、又是怎么做到不污染上面那套循环的？下一课，第 22 课就来讲"provider 怪癖的隔离"。</p>
-""", "en": r"""<p>stub</p>"""}
+""", "en": r"""
+<!--ENMORE-->
+"""}
