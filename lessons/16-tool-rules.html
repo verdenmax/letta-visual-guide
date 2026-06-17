@@ -332,7 +332,282 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <div class="part"><span class="lang-zh">第四部分 · Agent 执行循环</span><span class="lang-en">Part 4 · The agent execution loop</span></div>
     <h1><span class="lang-zh">工具规则 Tool Rules</span><span class="lang-en">Tool rules</span></h1>
   </div>
-  <div class="lang-zh"><p>stub</p></div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第 14 课拆 V3 循环时，<span class="mono">_decide_continuation</span> 反复去问三个神秘判官——<span class="mono">is_terminal_tool</span>、<span class="mono">has_children_tools</span>、<span class="mono">is_continue_tool</span>；第 15 课结尾又留了一句话：这些"工具规则"到底是谁在背后掌舵，留到第 16 课讲。这一课，就把这笔账还清。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+这是<strong>第四部分的收尾课</strong>，主题只有一句：把"agent 该怎么用工具"从<strong>模型的自觉</strong>，变成一台<strong>声明式、可强制执行</strong>的状态机。三件事带走：9 种规则类型、一个每步<strong>现算</strong>"合法下一步"的求解器，以及最妙的一招——模型若挑了非法工具，框架<strong>不执行它</strong>，而是合成一条错误喂回去让它自己改。</p>
+
+<div class="card analogy">
+  <div class="tag">🚦 生活类比</div>
+  <strong>把工具规则想成一座城市的交通规则。</strong><span class="mono">run_first</span> 是"出厂必须先上这条主路"——开口回话前先去查资料；<span class="mono">exit_loop</span> 是"终点站，到了就下车"——调了 <span class="mono">send_message</span> 这一轮就收尾；<span class="mono">constrain_child_tools</span> 是"这个路口只许拐进这几条岔路"——调完 <em>规划</em> 工具，下一步只能走 <em>执行</em> 那几个孩子；<span class="mono">required_before_exit</span> 是"离厂前必须先打卡"——没调过结算工具，不准退出循环。关键在于：红绿灯<strong>不靠司机自觉</strong>，它装在路口、由市政强制——闯了就是闯了，灯不会因为你赶时间就变绿。工具规则做的是同一件事：把"该怎么用工具"从<strong>司机的素质</strong>，搬成<strong>路口的硬件</strong>。司机再莽撞，红灯也拦得住。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：工具规则是一套<em>声明式</em>约束，让<em>框架</em>而不是模型来拍板"这一步能调哪些工具"。</strong>它由三块拼成。其一，<strong>9 种规则类型</strong>（<span class="mono">schemas/tool_rule.py</span> 的九个子类，各 pin 一个 <span class="mono">Literal type</span>，按 <span class="mono">type</span> 区分的判别联合）——分别管"起点 / 终点 / 下一步 / 限频 / 必调 / 审批"。其二，<strong>一个求解器现算合法集</strong>：<span class="mono">helpers/tool_rule_solver.py::ToolRulesSolver</span> 把规则<strong>分桶</strong>，每一步算一次 <span class="mono">get_allowed_tool_names</span>——首步若配了 init 规则就<strong>强制</strong>只返回 init 工具，否则把 child / parent 规则各自的"合法集"<strong>求交</strong>、再 <span class="mono">&amp;</span> 当前可用工具。其三，也是最妙的：模型若<strong>仍</strong>挑了非法工具，框架<strong>不执行</strong>它，而是 <span class="mono">agents/helpers.py::_build_rule_violation_result</span> 合成一条 <span class="mono">[ToolConstraintError]</span> 当作"工具返回"喂回模型，让它自己改。约束因此<strong>两头都管</strong>：事前裁掉发给 LLM 的工具 schema，事后再用合成错误兜底。记住这三块的次序——<strong>规则声明 → 求解器现算 → 违规兜底</strong>——下面三节正是按它逐层展开。
+
+</div>
+
+<h2>一、九种工具规则：声明式约束的"字母表"</h2>
+<p>先认全这套"字母表"。九种规则都住在 <span class="mono">schemas/tool_rule.py</span>，是一组<strong>判别联合</strong>——每个子类 pin 死一个 <span class="mono">Literal type</span> 字符串，靠这个 <span class="mono">type</span> 把它们区分开。枚举名单在 <span class="mono">schemas/enums.py::ToolRuleType</span>。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">第一个坑先排掉：这些 <span class="mono">type</span> 是<strong>历史命名</strong>——<span class="mono">run_first</span> / <span class="mono">exit_loop</span> / <span class="mono">constrain_child_tools</span>…，<strong>不是</strong> <span class="mono">Init</span> / <span class="mono">Terminal</span> / <span class="mono">Child</span>。子类叫 <span class="mono">InitToolRule</span>，但它的 <span class="mono">type</span> 字符串是 <span class="mono">run_first</span>。别照着子类名去猜枚举值。</span></div>
+
+<table class="t">
+  <tr><th>枚举值 type</th><th>子类</th><th>关键字段</th><th>一句话含义</th></tr>
+  <tr><td class="mono">run_first</td><td class="mono">InitToolRule</td><td class="mono">args</td><td>必须作为<strong>第一步</strong>调用的工具</td></tr>
+  <tr><td class="mono">exit_loop</td><td class="mono">TerminalToolRule</td><td>—</td><td>一旦调用，agent 循环<strong>结束</strong></td></tr>
+  <tr><td class="mono">continue_loop</td><td class="mono">ContinueToolRule</td><td>—</td><td>一旦调用，<strong>强制</strong>循环继续</td></tr>
+  <tr><td class="mono">conditional</td><td class="mono">ConditionalToolRule</td><td class="mono">child_output_mapping</td><td>按本工具<strong>输出值</strong>挑下一个工具</td></tr>
+  <tr><td class="mono">constrain_child_tools</td><td class="mono">ChildToolRule</td><td class="mono">children</td><td>调完本工具后，<strong>只许</strong>调列出的孩子</td></tr>
+  <tr><td class="mono">max_count_per_step</td><td class="mono">MaxCountPerStepToolRule</td><td class="mono">max_count_limit</td><td>本工具一个 step 内最多调<strong>几次</strong></td></tr>
+  <tr><td class="mono">parent_last_tool</td><td class="mono">ParentToolRule</td><td class="mono">children</td><td>这些孩子<strong>只能紧跟</strong>该父工具之后调</td></tr>
+  <tr><td class="mono">required_before_exit</td><td class="mono">RequiredBeforeExitToolRule</td><td>—</td><td>退出循环前必须<strong>至少调一次</strong></td></tr>
+  <tr><td class="mono">requires_approval</td><td class="mono">RequiresApprovalToolRule</td><td>—</td><td>调用它会<strong>暂停等审批</strong>，而非直接执行</td></tr>
+</table>
+
+<p>九条按"管什么"归一下堆，就好记了：<span class="mono">run_first</span> 管<strong>起点</strong>，<span class="mono">exit_loop</span> / <span class="mono">continue_loop</span> 管<strong>终点与续步</strong>，<span class="mono">conditional</span> / <span class="mono">constrain_child_tools</span> / <span class="mono">parent_last_tool</span> 管<strong>下一步能走哪</strong>，<span class="mono">max_count_per_step</span> 管<strong>限频</strong>，<span class="mono">required_before_exit</span> 管<strong>必调</strong>，<span class="mono">requires_approval</span> 管<strong>审批闸口</strong>。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">这套"判别联合"对工程很实用：存进数据库的 <span class="mono">tool_rules</span> 不过是一串带 <span class="mono">type</span> 字段的 JSON，pydantic 读到 <span class="mono">type="run_first"</span> 就自动还原成 <span class="mono">InitToolRule</span>、读到 <span class="mono">"exit_loop"</span> 还原成 <span class="mono">TerminalToolRule</span>……一个字段、九种子类各归各位，将来新增规则类型也不破坏老数据。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/tool_rule.py</span><span class="ln">几个子类的定义（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">InitToolRule</span>(BaseToolRule):                <span class="cm"># run_first：必须第一个调</span>
+    type: Literal[<span class="st">"run_first"</span>] = <span class="st">"run_first"</span>
+    args: <span class="nb">dict</span> | <span class="kw">None</span> = <span class="kw">None</span>                    <span class="cm"># 可选：首步预填的参数</span>
+
+<span class="kw">class</span> <span class="fn">TerminalToolRule</span>(BaseToolRule):            <span class="cm"># exit_loop：调到就结束循环</span>
+    type: Literal[<span class="st">"exit_loop"</span>] = <span class="st">"exit_loop"</span>
+
+<span class="kw">class</span> <span class="fn">ChildToolRule</span>(BaseToolRule):               <span class="cm"># constrain_child_tools：限制下一步</span>
+    type: Literal[<span class="st">"constrain_child_tools"</span>] = <span class="st">"constrain_child_tools"</span>
+    children: <span class="nb">list</span>[<span class="nb">str</span>]                          <span class="cm"># 调完本工具后，只许调这些孩子</span>
+
+<span class="kw">class</span> <span class="fn">MaxCountPerStepToolRule</span>(BaseToolRule):     <span class="cm"># max_count_per_step：限频</span>
+    type: Literal[<span class="st">"max_count_per_step"</span>] = <span class="st">"max_count_per_step"</span>
+    max_count_limit: <span class="nb">int</span>                       <span class="cm"># 一个 step 内最多调几次</span>
+</pre></div>
+
+<p>顺带点出一个"超纲"能力：规则不止能<strong>限制</strong>工具，还能<strong>预填参数</strong>——<span class="mono">InitToolRule.args</span> 可以给首步工具预先塞好实参，<span class="mono">ChildToolRule.child_arg_nodes</span> 还能约束孩子工具的参数取值。基础用法之外，这层细节让规则比"白名单"更有表达力：它不只说"能调谁"，还能说"调它时大致怎么填"。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">九个子类共一个基类 <span class="mono">BaseToolRule</span>，它提供两样东西：方法 <span class="mono">get_valid_tools(tool_call_history, available_tools, last_function_response)</span>（这条规则此刻"放行哪些工具"，返回一个集合），以及属性 <span class="mono">requires_force_tool_call</span>（要不要逼模型这一步必须调工具）。求解器就是靠这套统一接口，把九种规则<strong>一视同仁</strong>地算到一起。</span></div>
+
+<h2>二、ToolRulesSolver：每一步现算"合法下一步"</h2>
+<p>规则是静态声明，真正把它们"跑起来"的是 <span class="mono">ToolRulesSolver</span>。它挂在 V2 基类上——<span class="mono">self.tool_rules_solver = ToolRulesSolver(tool_rules=agent_state.tool_rules)</span>——V3 直接继承复用。构造时 <span class="mono">model_post_init</span> 按 <span class="mono">isinstance</span> 把规则<strong>分桶</strong>。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>分桶</h4><p>按类型归入 <span class="mono">init</span> / <span class="mono">child_based</span>（Child+Conditional+MaxCount）/ <span class="mono">parent</span> / <span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required</span> / <span class="mono">approval</span>。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>是第一步、且配了 init 规则？</h4><p>是 → <strong>直接</strong>返回 <span class="mono">[r.tool_name for r in init_tool_rules]</span>，别的规则一概不算。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>否则取 child + parent 桶</h4><p>对每条规则调 <span class="mono">get_valid_tools(历史, 可用, 上次返回)</span>，各得一个"合法集"。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>求交集 ∩ 可用工具</h4><p><span class="mono">set.intersection(...)</span> 再 <span class="mono">&amp;</span> available，得到这一步真正的<strong>合法集</strong>。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>裁剪发给 LLM 的 schema</h4><p>V3 <span class="mono">_get_valid_tools</span> 据合法集缩小工具 JSON；<span class="mono">should_force_tool_call()</span> 再定 forced / auto。</p></div></div>
+</div>
+
+<p>核心方法是 <span class="mono">get_allowed_tool_names(available_tools, error_on_empty=True, last_function_response=None)</span>。它只有两条岔路：要么是"首步强制走 init 工具"，要么是"把相关规则的合法集求交"。求交的妙处下面专门讲——这里先记住：<strong>合法集是每一步现算的，不是一次性定死的</strong>。因为 <span class="mono">tool_call_history</span> 每调一次工具就被 <span class="mono">register_tool_call</span> 更新，孩子规则、限频规则下一步看到的"合法集"也随之变化。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">最容易记反的一点：<span class="mono">get_allowed_tool_names</span> <strong>只对 child + parent 规则求交</strong>来缩小工具集。<span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required_before_exit</span> / <span class="mono">requires_approval</span> 这几桶<strong>根本不进交集</strong>——它们不缩小"能调哪些"，而是在<strong>循环里</strong>左右"调了之后怎么走"。solver 的文档字符串原话就提醒：Continue / Terminal / RequiredBeforeExit 规则在 agent 循环中生效，不用来限制工具。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/helpers/tool_rule_solver.py</span><span class="ln">get_allowed_tool_names 核心（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">get_allowed_tool_names</span>(self, available_tools, error_on_empty=<span class="nb">True</span>,
+                           last_function_response=<span class="kw">None</span>) -> <span class="nb">list</span>:
+    <span class="cm"># 第一步且配了 init 规则 -> 强制只返回 init 工具</span>
+    <span class="kw">if</span> <span class="kw">not</span> self.tool_call_history <span class="kw">and</span> self.init_tool_rules:
+        <span class="kw">return</span> [r.tool_name <span class="kw">for</span> r <span class="kw">in</span> self.init_tool_rules]
+
+    <span class="cm"># 否则：把 child + parent 规则各自的"合法集"求交集</span>
+    relevant = self.child_based_tool_rules + self.parent_tool_rules
+    <span class="kw">if</span> <span class="kw">not</span> relevant:
+        <span class="kw">return</span> <span class="nb">list</span>(available_tools)
+    allowed = <span class="nb">set</span>.<span class="fn">intersection</span>(*[
+        r.<span class="fn">get_valid_tools</span>(self.tool_call_history, available_tools,
+                           last_function_response)
+        <span class="kw">for</span> r <span class="kw">in</span> relevant
+    ])
+    <span class="kw">return</span> <span class="nb">list</span>(allowed <span class="kw">&amp;</span> <span class="nb">set</span>(available_tools))   <span class="cm"># 再 &amp; 一道可用工具</span>
+</pre></div>
+
+<p>算出合法集后，V3 的 <span class="mono">_get_valid_tools</span> 拿它去<strong>裁剪</strong>真正发给 LLM 的那批工具 JSON schema——非法工具压根不出现在模型眼前。同时 <span class="mono">should_force_tool_call()</span> 决定这一步用 <strong>forced</strong>（逼模型必须调工具，比如首步 init）还是 <strong>auto</strong>（让模型自由发挥），终止工具的处理则走 <span class="mono">runtime_override_tool_json_schema</span>（第 15 课见过的那道改写关）。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">合法集是<strong>动态</strong>的：每执行一个工具，solver 就用 <span class="mono">register_tool_call</span> 把它记进 <span class="mono">tool_call_history</span>，下一步的 child / parent / 限频规则看到的"合法集"随之收窄。所以循环每一步的"可调范围"都是<strong>现算现裁</strong>，而非开局定死——这也是 <span class="mono">get_valid_tools</span> 必须把"调用历史"和"上次返回"都传进去的原因。</span></div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">🚦</span><span class="lab">路口 · solver</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🧰</span><span class="bubble">此刻只有这几个工具亮绿灯</span>
+    <span class="bubble">红灯的，schema 里直接裁掉</span>
+  </div>
+  <div class="cap">求解器每一步现算"合法集"，等于在路口给工具亮灯——红灯的工具模型根本看不到（schema 里被裁掉），从源头少犯错</div>
+</div>
+
+<h2>三、违规不执行：把错误"合成"出来喂回模型</h2>
+<p>裁了 schema，模型就一定听话吗？不一定——它仍可能无视约束、硬挑一个非法工具（旧 prompt、幻觉、或干脆不读 schema）。这时第二道防线登场：<strong>违规的工具不会被执行</strong>。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">模型挑了工具 X</div><div class="nd">这一轮 LLM 决定调 X</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">X 在合法集里吗？</div><div class="nd">name not in valid_tool_names？</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">在 → 正常执行</div><div class="nd">跑工具 + register_tool_call 记账</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">不在 → 合成错误（不执行）</div><div class="nd">_build_rule_violation_result 造 [ToolConstraintError]，喂回模型自纠</div></div>
+</div>
+
+<p>判定这一步发生在 <span class="mono">letta_agent_v3.py::_handle_ai_response</span>：它先算 <span class="mono">tool_rule_violated = name not in valid_tool_names</span>。若违规，就<strong>跳过执行</strong>，转而调 <span class="mono">_build_rule_violation_result</span> 造一条"假装是工具返回"的错误消息。模型读到这条消息，就明白自己挑错了、该从哪几个里重挑。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">一个值得玩味的分工：那句 <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span> 的错误字符串，是在 <strong>agent 这一层</strong>（<span class="mono">agents/helpers.py</span>）拼出来的，<strong>不在 solver 里</strong>。solver 只通过 <span class="mono">guess_rule_violation</span> 额外<strong>供一句提示</strong>（猜猜你大概违反了哪条规则），拼装与回喂是 agent 的活。职责切得很干净：solver 管"算合法集"，agent 管"违规了怎么向模型解释"。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/helpers.py</span><span class="ln">_build_rule_violation_result：违规合成一条错误（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">_build_rule_violation_result</span>(tool_name, valid_tools, tool_rules_solver):
+    <span class="cm"># 注意：错误字符串在 agent 这层拼，不在 solver 里</span>
+    hint = tool_rules_solver.<span class="fn">guess_rule_violation</span>(tool_name)
+    msg = (<span class="st">f"[ToolConstraintError] Cannot call {tool_name}, "</span>
+           <span class="st">f"valid tools include: {valid_tools}."</span>)
+    <span class="kw">if</span> hint:
+        msg += <span class="st">f" Hint: {hint}"</span>
+    <span class="cm"># 不执行该工具，只把这条"错误"当作它的返回喂回模型</span>
+    <span class="kw">return</span> <span class="fn">ToolExecutionResult</span>(status=<span class="st">"error"</span>, func_return=msg)
+</pre></div>
+
+<p>这一招为什么优雅？因为它把"违规"从一次<strong>崩溃</strong>变成一次<strong>教学</strong>。更妙的是它和第 14 课严丝合缝：违规<strong>仍然算"这一轮调了工具"</strong>——于是 <span class="mono">_decide_continuation</span> 那条"调了工具就继续"判据照样成立，循环自然又走一圈，正好把改正的机会递给模型。第 14 课那个敢于"极简"的循环，底气正来自这里。</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>🛡️ 事前 · 缩小 schema</h4>
+    <p><span class="mono">get_allowed_tool_names</span> 现算出合法集。</p>
+    <p>V3 <span class="mono">_get_valid_tools</span> 据此裁剪发给 LLM 的工具 JSON。</p>
+    <p>非法工具压根不出现 → 从<strong>源头</strong>少误选。</p>
+    <p class="mono" style="font-size:.82rem">约束前移：让模型看不到红灯工具</p>
+  </div>
+  <div class="col">
+    <h4>🧯 事后 · 合成错误</h4>
+    <p>模型若<strong>仍</strong>硬挑非法工具。</p>
+    <p><span class="mono">_build_rule_violation_result</span> 造 <span class="mono">[ToolConstraintError]</span>。</p>
+    <p>不执行，当工具返回喂回 → 模型<strong>自纠</strong>。</p>
+    <p class="mono" style="font-size:.82rem">约束兜底：闯了红灯也不放行</p>
+  </div>
+</div>
+
+<h2>四、规则怎么左右"继续 / 停止"（接第 14 课）</h2>
+<p>同一个 solver，除了"算合法集"，还要喂给第 14 课的 <span class="mono">_decide_continuation</span> 做续步判断。这几桶不缩小工具集的规则，作用就体现在这里。</p>
+
+<table class="t">
+  <tr><th>规则</th><th>solver 方法</th><th>在循环里的效果</th></tr>
+  <tr><td class="mono">exit_loop（终止）</td><td class="mono">is_terminal_tool</td><td>调到 → <strong>停</strong>，停止原因 <span class="mono">tool_rule</span></td></tr>
+  <tr><td class="mono">constrain_child / continue</td><td class="mono">has_children_tools / is_continue_tool</td><td>命中 → <strong>继续</strong>，强制再走一圈</td></tr>
+  <tr><td class="mono">required_before_exit</td><td class="mono">get_uncalled_required_tools</td><td>还没调过 → <strong>强制继续</strong>，逼模型先补调</td></tr>
+  <tr><td class="mono">requires_approval</td><td class="mono">is_requires_approval_tool</td><td>命中 → <strong>停</strong>，停止原因 <span class="mono">requires_approval</span></td></tr>
+</table>
+
+<p>单说 <span class="mono">requires_approval</span> 这条审批闸口：命中时循环<strong>不执行</strong>该工具，而是停下来，停止原因记 <span class="mono">StopReasonType.requires_approval</span>，并持久化一条由 <span class="mono">create_approval_request_message_from_llm_response(...)</span> 造的"审批请求"消息。等人点了批准，下一次进来是 <span class="mono">is_approval_response</span>，它<strong>绕过</strong>违规检查直接放行——这正接上第 15 课说的"工具规则可以覆盖心跳标志"，也对上第 14 课列的停止原因。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">把第 14、15、16 课串起来：第 14 课的循环之所以敢只用"调了工具就继续"这么简单的判据，第 15 课之所以敢整个删掉 <span class="mono">request_heartbeat</span>——<strong>因为工具规则在背后兜底</strong>。终止、必调、审批这些"非黑即白"的决定，被声明式地焊进了规则，循环本身就能保持极简。</span></div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>工具规则把"agent 该怎么用工具"从模型的自觉，升级成一台声明式、可强制执行的状态机——里头藏着两个漂亮设计。</strong>第一，<strong>约束是"算"出来的</strong>：每一步 <span class="mono">ToolRulesSolver</span> 把所有相关规则的合法集<strong>求交</strong>，得到"此刻只有这几个被允许"，再据此<strong>裁剪</strong>发给 LLM 的工具 schema——非法工具压根不进模型视野，从<strong>源头</strong>减少误选。第二，<strong>违规是一次教学，而非一次崩溃</strong>：万一模型仍挑了非法工具，框架<strong>不执行</strong>它，而是返回 <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span> 当作那个工具的"返回值"，让模型读到、自己改正。约束因此<strong>两头都管</strong>——事前缩 schema、事后合成错误兜底——把一门"放飞的 LLM"调教成一个"照规格干活的执行器"。这也正是第 14 课那个极简循环（"调了工具就继续"）敢于极简的原因：脏活累活，工具规则替它扛了。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>四个锚点，一条链。</strong><strong>九个子类</strong>在 <span class="mono">schemas/tool_rule.py</span>（各 pin 一个 <span class="mono">Literal type</span>，按 <span class="mono">type</span> 区分的判别联合），枚举名单在 <span class="mono">schemas/enums.py::ToolRuleType</span>，基类接口是 <span class="mono">BaseToolRule.get_valid_tools</span> 与属性 <span class="mono">requires_force_tool_call</span>。<strong>求解器</strong>是 <span class="mono">helpers/tool_rule_solver.py::ToolRulesSolver</span>：<span class="mono">model_post_init</span> 分桶，核心 <span class="mono">get_allowed_tool_names</span>，外加 <span class="mono">is_terminal_tool</span> / <span class="mono">has_children_tools</span> / <span class="mono">is_continue_tool</span> / <span class="mono">has_required_tools_been_called</span> / <span class="mono">is_requires_approval_tool</span> / <span class="mono">should_force_tool_call</span> / <span class="mono">register_tool_call</span> / <span class="mono">guess_rule_violation</span>。<strong>违规合成</strong>在 <span class="mono">agents/helpers.py::_build_rule_violation_result</span>。<strong>接线在 V3</strong>：<span class="mono">letta_agent_v3.py::_get_valid_tools</span>（裁 schema）、<span class="mono">_handle_ai_response</span>（校验 <span class="mono">tool_rule_violated</span>）、<span class="mono">_decide_continuation</span>（读终止 / 孩子 / 继续 / 必调）；solver 挂在 V2 基类 <span class="mono">self.tool_rules_solver = ToolRulesSolver(tool_rules=agent_state.tool_rules)</span>。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>四个别记错的点。</strong>其一，<strong>违规的工具不会被执行</strong>——它被 <span class="mono">_build_rule_violation_result</span> 换成一条<strong>合成错误</strong>喂回模型，<em>不是</em>"真跑了再报错"。其二，<span class="mono">get_allowed_tool_names</span> <strong>只对 child + parent 规则求交</strong>来缩工具集；<span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required</span> / <span class="mono">approval</span> <strong>不缩</strong>工具集，它们在循环里起作用。其三，枚举值是<strong>历史命名</strong>：<span class="mono">run_first</span> / <span class="mono">exit_loop</span> / <span class="mono">constrain_child_tools</span>…，<em>不是</em> <span class="mono">Init</span> / <span class="mono">Terminal</span> / <span class="mono">Child</span>。其四，Letta <strong>不做环 / 冲突检测</strong>——只有逐条 pydantic 校验（<span class="mono">ChildToolRule.child_arg_nodes</span> ⊆ children；<span class="mono">ConditionalToolRule</span> 至少一条映射）＋ <span class="mono">agent_manager_helper.py::check_supports_structured_output</span> 在配了 &gt;1 个 init 规则时报错。规则之间会不会打架，框架不替你兜，得靠配置者自己想清楚。这也提醒一句：工具规则是把"双刃剑"——用好了能精确编排，配拧了也没有保险丝替你拦下。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>九种规则，各一句话配个迷你例子</summary><div class="acc-body">
+<ul>
+<li><strong>run_first（Init）：</strong>强制首步——先 <span class="mono">archival_memory_search</span> 再 <span class="mono">send_message</span>，开口前必须先查资料。</li>
+<li><strong>exit_loop（Terminal）：</strong>调到就收尾——<span class="mono">send_message</span> 常被设成终止工具。</li>
+<li><strong>continue_loop（Continue）：</strong>调到就强制再走一圈，不让循环停。</li>
+<li><strong>conditional：</strong>按本工具输出挑下一步——像状态机的转移函数，<span class="mono">child_output_mapping</span> 把输出值映射到下一个工具。</li>
+<li><strong>constrain_child_tools（Child）：</strong>调完 <em>plan</em> 只能调 <em>execute</em> 那几个孩子，把"先规划后执行"焊死。</li>
+<li><strong>max_count_per_step：</strong>限频——防止模型在一个 step 里把同一个工具刷十遍。</li>
+<li><strong>parent_last_tool（Parent）：</strong>这些孩子只能<strong>紧跟</strong>某父工具之后调。</li>
+<li><strong>required_before_exit：</strong>退出前必须调过——比如必须先 <span class="mono">log_result</span> 才准结束。</li>
+<li><strong>requires_approval：</strong>调用前暂停等人批——删库、转账这类危险操作的保险。</li>
+</ul>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">conditional</span> 规则怎么按"输出值"挑下一步？</summary><div class="acc-body">
+<p><strong>示例：</strong>一个 <span class="mono">classify</span> 工具返回 <span class="mono">"refund"</span> 或 <span class="mono">"complaint"</span>。<span class="mono">ConditionalToolRule</span> 的 <span class="mono">child_output_mapping</span> 把 <span class="mono">"refund"</span> 映到 <span class="mono">process_refund</span>、<span class="mono">"complaint"</span> 映到 <span class="mono">escalate</span>，再用 <span class="mono">default_child</span> 兜底没匹配上的情况。</p>
+<p><strong>为什么这样设计：</strong>它把"下一步调谁"做成本工具<strong>输出的函数</strong>——等于在工具规则层内置了一台<strong>状态机</strong>，不必靠模型自己记住分支逻辑。</p>
+<p><strong>怎么算进合法集：</strong>它被分到 <span class="mono">child_based_tool_rules</span> 桶，<span class="mono">get_valid_tools</span> 会读 <span class="mono">last_function_response</span>（上一个工具的返回）来决定放行哪个孩子——这正是合法集要把"上次返回"一并传进去的原因。</p>
+<p><strong>源码在哪：</strong><span class="mono">schemas/tool_rule.py::ConditionalToolRule</span>（pydantic 校验器要求至少一条映射）；分桶在 <span class="mono">tool_rule_solver.py::model_post_init</span>。</p>
+</div></details>
+
+<details class="accordion"><summary>为什么"合法集"要用<strong>交集</strong>而不是并集？</summary><div class="acc-body">
+<p><strong>示例：</strong>同时配了 <span class="mono">ChildToolRule</span>（调完 A 后只能调 B/C）和 <span class="mono">MaxCountPerStepToolRule</span>（C 一步最多 1 次，且已调过）。两条都活跃：<span class="mono">{B,C} ∩ ({B,C} 去掉被限频的 C) = {B}</span>。</p>
+<p><strong>为什么这样设计：</strong>多条规则同时生效时，"合法"必须<strong>同时满足所有规则</strong>——求交就是"它们都放行的才算数"。若用并集，会放过某条规则明明禁掉的工具，约束就形同虚设。</p>
+<p><strong>源码在哪：</strong><span class="mono">tool_rule_solver.py::get_allowed_tool_names</span> 里 <span class="mono">set.intersection(*[r.get_valid_tools(...) for r in child_based + parent])</span> 再 <span class="mono">&amp; available</span>。</p>
+</div></details>
+
+<details class="accordion"><summary>为什么 terminal / required 这些规则<strong>不</strong>缩小工具集？</summary><div class="acc-body">
+<p><strong>示例：</strong><span class="mono">TerminalToolRule</span> 把 <span class="mono">send_message</span> 标成终止工具，但并不会把它从"能调的工具"里删掉——你当然还能调它，只是<strong>调了之后</strong>循环就停。</p>
+<p><strong>为什么这样设计：</strong>缩小工具集（<span class="mono">get_allowed_tool_names</span>）只回答一个问题——"下一步法律上允许调哪些"。而终止 / 继续 / 必调 / 审批管的是"<strong>调了之后</strong>循环怎么走"，是循环里的动作，不是工具过滤器。两件事分开，逻辑才清爽。</p>
+<p><strong>源码在哪：</strong>只有 <span class="mono">child_based_tool_rules + parent_tool_rules</span> 进交集；其余桶在 <span class="mono">_decide_continuation</span>（第 14 课）里被读。</p>
+</div></details>
+
+<details class="accordion"><summary>违规为什么"合成一条错误"，而不是直接抛异常？</summary><div class="acc-body">
+<p><strong>示例：</strong>模型无视约束挑了非法工具。若直接 <span class="mono">raise</span>，整个 step 崩，用户看到一个莫名其妙的报错。</p>
+<p><strong>为什么这样设计：</strong><span class="mono">_build_rule_violation_result</span> 把违规变成一条 <span class="mono">status="error"</span> 的工具返回——内容是 <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span>。模型读到这条"返回"，就知道挑错了、该从哪几个里重挑。循环不中断，模型自纠。</p>
+<p><strong>接第 14 课：</strong>违规<strong>仍然算"这一轮调了工具"</strong>——所以 <span class="mono">_decide_continuation</span> 判"调了工具就继续"，循环又走一圈，正好给模型改正的机会。这就是第 14 课那个极简循环敢极简的底气。</p>
+<p><strong>源码在哪：</strong><span class="mono">agents/helpers.py::_build_rule_violation_result</span>；solver 只通过 <span class="mono">guess_rule_violation</span> 供一句 hint。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">requires_approval</span> 的完整流程（接第 14 课停止原因）</summary><div class="acc-body">
+<p><strong>示例：</strong>模型要调 <span class="mono">delete_all_records</span>，这工具配了 <span class="mono">requires_approval</span>。</p>
+<p><strong>流程：</strong><span class="mono">is_requires_approval_tool(name)</span> 为真 → 循环<strong>不执行</strong>该工具，而是停下，停止原因记 <span class="mono">StopReasonType.requires_approval</span>，并持久化一条 <span class="mono">create_approval_request_message_from_llm_response(...)</span> 造的"审批请求"消息。</p>
+<p><strong>恢复：</strong>人点了批准后，下一次进来是 <span class="mono">is_approval_response</span>，它<strong>绕过</strong>违规检查，直接放行执行。</p>
+<p><strong>接第 14 课：</strong>这正是第 14 课列的停止原因之一——<span class="mono">requires_approval</span> 让循环优雅地停在"等人"，而不是硬闯危险操作。</p>
+</div></details>
+
+<h2>收尾：第四部分至此闭环</h2>
+<p>这一课你拿下了 agent 循环的"交规"：9 种声明式规则、一个每步现算合法集的 <span class="mono">ToolRulesSolver</span>（首步强制 init，否则求交 child+parent ∩ 可用），以及"违规不执行、合成错误喂回模型自纠"的兜底设计。</p>
+
+<p>把<strong>第四部分</strong>整个串起来——从"一个 agent 怎么存档"到"它怎么按规矩执行"：</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>第四部分全景（13–16）</b>：状态 → 循环 → 续步信号 → 工具约束</div>
+  <div class="cells">
+    <span class="cell hl">13 AgentState / 工厂</span>
+    <span class="sep">·</span>
+    <span class="cell">14 V3 步进循环</span>
+    <span class="sep">·</span>
+    <span class="cell">15 心跳 → 无心跳</span>
+    <span class="sep">→</span>
+    <span class="cell hl">16 工具规则</span>
+  </div>
+</div>
+
+<p>逐块回放：第 13 课给出 agent 的<strong>存档</strong>（<span class="mono">AgentState</span>）与按类型选引擎的<strong>工厂</strong>；第 14 课把存档跑成一个 <strong>step 循环</strong>（一次 LLM 调用 + 工具执行，调了工具就继续）；第 15 课讲这条循环的<strong>续步信号</strong>怎么从"模型举手要心跳"演进到"框架看调没调工具"；第 16 课补上最后一块——<strong>工具约束</strong>，让循环不只是"能跑"，还能"按规格跑"。<strong>状态 → 循环 → 续步信号 → 工具约束</strong>，四块拼齐，Agent 执行循环才算闭环。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>承上启下：</strong>第 14 课 <span class="mono">_decide_continuation</span> 反复查的 <span class="mono">is_terminal_tool</span> / <span class="mono">has_children_tools</span> / <span class="mono">is_continue_tool</span>，到这一课终于落地；第 15 课说"老机制的心跳标志可被工具规则覆盖"，覆盖它的正是 <span class="mono">has_children_tools</span>（强制续）/ <span class="mono">is_terminal_tool</span>（强制停）这些方法。三课其实在讲同一个循环的不同侧面。</span></div>
+
+<p>临走默背一条链：<strong>9 种规则声明约束 → solver 每步现算合法集（首步 init，否则交 child+parent）→ 裁掉发给 LLM 的工具 schema → 模型仍违规则合成 [ToolConstraintError] 不执行、喂回自纠 → 终止/必调/审批在 _decide_continuation 里左右继续与停止</strong>。把这条链记牢，"工具规则"你就真正握住了。</p>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>工具规则是什么</strong>：一套<strong>声明式</strong>约束，9 种 <span class="mono">ToolRuleType</span>（<span class="mono">run_first / exit_loop / continue_loop / conditional / constrain_child_tools / max_count_per_step / parent_last_tool / required_before_exit / requires_approval</span>），定义在 <span class="mono">schemas/tool_rule.py</span>。</li>
+    <li><strong>solver 现算合法集</strong>：<span class="mono">ToolRulesSolver.get_allowed_tool_names</span>——首步强制 init 工具；否则把 child + parent 规则的 <span class="mono">get_valid_tools</span> 求交，再 <span class="mono">&amp;</span> 可用工具。每步现算，随 <span class="mono">register_tool_call</span> 更新历史而变。</li>
+    <li><strong>事前缩 schema</strong>：V3 <span class="mono">_get_valid_tools</span> 用合法集裁剪发给 LLM 的工具，从源头减少误选；<span class="mono">should_force_tool_call()</span> 决定 forced / auto。</li>
+    <li><strong>事后兜底</strong>：模型仍挑非法工具 → <span class="mono">_build_rule_violation_result</span> 合成 <span class="mono">[ToolConstraintError]</span>（<span class="mono">status="error"</span>）当返回喂回，<strong>不执行</strong>；违规仍算"调了工具"，循环继续让模型自纠。</li>
+    <li><strong>接第 14 课</strong>：<span class="mono">_decide_continuation</span> 用 <span class="mono">is_terminal_tool</span>→停 <span class="mono">tool_rule</span>、<span class="mono">has_children_tools</span> / <span class="mono">is_continue_tool</span>→继续、未调的 <span class="mono">required_before_exit</span>→强制继续；<span class="mono">requires_approval</span>→停 <span class="mono">requires_approval</span> + 审批消息。</li>
+    <li><strong>别记错</strong>：违规工具<strong>不执行</strong>；<strong>只</strong>有 child / parent 进交集；枚举是 <span class="mono">run_first</span> 等<strong>而非</strong> <span class="mono">Init</span>；错误字符串在 agent 层拼、不在 solver。</li>
+    <li><strong>源码</strong>：<span class="mono">schemas/tool_rule.py</span>、<span class="mono">helpers/tool_rule_solver.py::ToolRulesSolver</span>、<span class="mono">agents/helpers.py::_build_rule_violation_result</span>、<span class="mono">letta_agent_v3.py::_get_valid_tools / _handle_ai_response / _decide_continuation</span>。</li>
+  </ul>
+</div>
+</div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="15-heartbeat-to-no-heartbeat.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">从 heartbeat 到无 heartbeat</span><span class="lang-en">From heartbeat to no-heartbeat</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
