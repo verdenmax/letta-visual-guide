@@ -503,7 +503,174 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <div class="note tip"><span class="ni">🧷</span><span class="nx">如果你只带走一张图，就带"信任＝方向"这张：它不仅解释了沙箱，也是一切"跨信任边界传数据"问题的通用解法——无论对面是沙箱、第三方服务，还是另一个不受控的进程。</span></div>
 <p>下一站是<strong>第六部分 · LLM Provider 抽象</strong>：工具讲完了，我们回到更上游的问题——Letta 怎么用一套统一接口，把 OpenAI、Anthropic 等不同厂商的模型，接进同一个 agent 循环。</p>
 </div>
-  <div class="lang-en"><p>stub</p></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 19 ended on a cliffhanger: a custom tool — Python source the user wrote themselves — is by default handed to <span class="mono">SandboxToolExecutor</span>, i.e. "thrown into a sandbox." But what gives the sandbox the nerve to run a stranger's code? And once it finishes, how do you safely collect the result back into the server?</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This is Part 5's finale, and the landing point for the whole tool system's "security mindset." We will draw one <strong>trust-boundary diagram</strong> clearly: which leg of the trip you can "pass along freely," which leg "must be verified," and how one real security fix (PR #3343) welds that boundary shut.</p>
+
+<div class="card analogy"><div class="tag">🔌 Real-world analogy</div>
+<p>Think of the sandbox as a prison visitation window. You (the server) want to pass something <strong>in</strong> — it is your own belongings, so you can hand over the original object. Because the risk only flows inward: once something is behind the high wall, however dangerous, it can never reach your side.</p>
+<p>But any parcel the other party (the stranger's code running inside) hands <strong>out</strong>, you must never reach in and take directly. It has to go through the glass, through the scanner, with its seal checked — because you have no idea whether it holds candy or a razor blade.</p>
+<p>All of this lesson's sense of safety rests on one plain rule: <strong>passing in may be the original; collecting out must pass the scanner</strong>. The rest of the engineering merely translates "the original" into <span class="mono">pickle</span> and "the scanner" into <span class="mono">JSON</span> plus a layer of verification.</p>
+<p>The rule looks simple yet is often broken: many "sandboxes" fixate on locking code <em>in</em>, yet forget that "collecting the result" crosses the boundary just the same. Real safety hides precisely in <strong>how you take things back out</strong>.</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>One sentence is enough: <strong>a custom tool is untrusted code</strong>. It does not run in the main process; it is dropped into a sandbox — a local venv, E2B, or Modal, one of three picked by <span class="mono">SandboxType</span>.</p>
+<p>Across the wall there are only two data channels, opposite in direction and opposite in trust. <strong>server→sandbox</strong> uses <span class="mono">pickle</span> (trusted: the server serializes the <span class="mono">agent_state</span> it built itself); <strong>sandbox→server</strong> uses <span class="mono">JSON</span> (untrusted: <strong>never <span class="mono">pickle.loads</span></strong>), with a <span class="mono">marker+length+MD5</span> frame to verify integrity.</p>
+<p>This <strong>trust-boundary diagram</strong> is the whole lesson. And PR #3343 is exactly the real security fix that switched the return channel from pickle to JSON — taking this boundary from "roughly safe" to "welded shut."</p>
+<p>Stressing the sense of direction once more: when data flows from server to sandbox, privilege <strong>narrows</strong> (entering a low-trust zone), so pickle is safe; when data flows from sandbox back to server, privilege <strong>widens</strong> (returning to a high-trust zone), so it must be JSON only. Treat "the direction in which privilege widens" as the red line, and you have memorized the whole diagram.</p>
+</div>
+<h2>Three sandboxes, one pick: where does the code actually run?</h2>
+<p>Before a custom tool runs, Letta first decides "where to run it." This is not random but a short-circuit decision chain: check the tool's own preference first, then the global config, and finally fall back to local.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Check tool.metadata</h4><p>If the tool explicitly marks <span class="mono">sandbox=="modal"</span> and Modal is enabled → use <strong>Modal</strong> (cloud container, strong isolation).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Check the global config</h4><p>Otherwise consult <span class="mono">ToolSettings.sandbox_type</span>: if an <span class="mono">e2b_api_key</span> is set → use <strong>E2B</strong> (cloud micro-sandbox).</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Fall back to local</h4><p>Neither → <strong>Local</strong>: build an isolated venv on the host and run it in a subprocess. The most common case during development.</p></div></div>
+</div>
+<p>The three sandboxes are not redundant; they are a <strong>trade-off between isolation strength and deployment cost</strong>. A local venv has zero dependencies and is fastest, but shares the kernel with the server and isolates the least; E2B and Modal ship code into a dedicated cloud container — strong isolation, yet they need network access and quota. So the same tool may run locally in development and be switched to Modal in production — exactly why "where to run" must be configurable.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">The type is defined in <span class="mono">schemas/enums.py::SandboxType</span> (<span class="mono">E2B / MODAL / LOCAL</span>); the selection logic lives in <span class="mono">sandbox_tool_executor.py</span>, and the global switch is <span class="mono">settings.py::ToolSettings.sandbox_type</span>. The key point: whichever you pick, the "generate script + trust boundary + frame check" machinery below is <strong>identical across all three sandboxes</strong> — the only difference is the outer container.</span></div>
+<p>A configuration aside: <span class="mono">LocalSandboxConfig</span> can also tune <span class="mono">sandbox_dir</span>, <span class="mono">use_venv</span>, <span class="mono">venv_name</span>, <span class="mono">pip_requirements</span> and more, deciding how the local sandbox is actually laid down. But these are all "how to run" knobs; they do not change the "whom to trust" boundary.</p>
+<h2>The generated sandbox script: wrap the tool and run it</h2>
+<p>The sandbox does not "directly call" the user's function. The server assembles a Python script on the fly, inlines everything it needs, and then lets the sandbox execute the whole thing. That script is assembled by <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span>.</p>
+<p>This "assemble-the-script" approach has an upside: the server has <strong>full control</strong> over everything that happens inside the sandbox — what gets passed in, what gets called, how the result is packed are all hard-coded into the script, and the sandbox is merely an obedient executor.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Unpickle agent_state</h4><p><span class="mono">pickle.loads(...)</span> restores the <span class="mono">agent_state</span> the server passed in (the trusted direction).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Inline the arguments</h4><p>Each call argument is written as a literal via <span class="mono">repr()</span>, <strong>not</strong> pickle.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Inline the user source</h4><p>The tool's <span class="mono">source_code</span> is pasted in verbatim, defining the function body.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Call + pack</h4><p><span class="mono">_function_result = tool(...)</span>, then pack the result + <span class="mono">agent_state</span> into JSON.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Frame + write stdout</h4><p>Prefix it with <span class="mono">marker+length+MD5</span>, write to standard output, and wait for the server to read it.</p></div></div>
+</div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/base.py</span><span class="ln">_render_sandbox_code (simplified skeleton)</span></div>
+<pre><span class="cm"># server pickles agent_state into the script; the sandbox loads it (trusted direction)</span>
+agent_state = pickle.<span class="fn">loads</span>(<span class="nb">b"..."</span>)
+x = <span class="st">"&lt;inlined literal&gt;"</span>            <span class="cm"># args inlined via repr(), not pickle</span>
+<span class="cm"># &lt;user tool source inlined verbatim&gt;</span>
+_function_result = <span class="fn">my_tool</span>(x, agent_state=agent_state)
+payload = _letta_json.<span class="fn">dumps</span>({<span class="st">"results"</span>: _function_result,
+    <span class="st">"agent_state"</span>: agent_state.<span class="fn">model_dump</span>(mode=<span class="st">"json"</span>)}).<span class="fn">encode</span>()  <span class="cm"># JSON, not pickle</span>
+sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn">pack</span>(<span class="st">"&gt;I"</span>, len(payload)) + md5_hex + payload)
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Why inline the source <strong>verbatim</strong> instead of importing the user's module? Because that module simply does not exist inside the sandbox — the tool source lives only in the database. Inlined, the script is self-contained, and the sandbox needs only a clean interpreter to run it. The script also calls <span class="mono">coerce_dict_args_by_annotations(...)</span> to coerce each argument to the right type per its annotation, avoiding string/number mismatches.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">agent_state</span> goes through <span class="mono">pickle.dumps</span> (server-built, sandbox <span class="mono">loads</span>); but <strong>the call arguments are inlined literals (<span class="mono">repr()</span>), not pickle</strong>. In the entire script, <span class="mono">agent_state</span> is the only thing that uses pickle — a distinction we will lean on repeatedly later.</span></div>
+<h2>Trust boundary: direction decides serialization</h2>
+<p>Now place the two channels side by side. <strong>One script, two directions, two serializations</strong> — not arbitrary, but trust speaking.</p>
+<div class="cols">
+  <div class="col"><h4>⬇️ server → sandbox</h4><p>Uses <span class="mono">pickle</span> to pass <span class="mono">agent_state</span>. <strong>Trusted</strong>: the server pickles an object it built itself, and the sandbox only loads it. Privilege flows toward the low-trust side, so there is no "deserializing untrusted input" problem.</p></div>
+  <div class="col"><h4>⬆️ sandbox → server</h4><p>Uses only <span class="mono">JSON</span> + <span class="mono">marker+length+MD5</span>. <strong>Untrusted</strong>: the sandbox just ran arbitrary user code, so its stdout must never be <span class="mono">pickle.loads</span>'d — it can only be read as data.</p></div>
+</div>
+<p>Why can the downward leg use pickle? Because the object being deserialized was built by the server itself; the sandbox receives data, not an attack surface. Even if the sandbox wanted to misbehave, it cannot alter "the bytes already pickled in."</p>
+<p>Why must the upward leg be JSON? Because <span class="mono">pickle.loads</span> executes arbitrary code during deserialization. The sandbox ran a stranger's tool, so its output is inherently suspect — read with <span class="mono">json.loads</span>, the worst case is a blob of fake data, not an RCE.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">A counterintuitive point: using pickle on the trusted direction is not "making do" but a <strong>deliberate choice</strong> — it restores a complex object like <span class="mono">agent_state</span> in one shot, sparing hand-written serialization. pickle itself is not the villain; using it on the untrusted direction is.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">A concrete attack: a malicious tool returns, instead of a plain dict, an object carrying a <span class="mono">__reduce__</span>. If the server reads it with <span class="mono">pickle.loads</span>, the moment of deserialization runs the attacker's chosen command — the server falls. Switch to <span class="mono">json.loads</span> and such an object cannot even be expressed; the attack surface is structurally eliminated.</span></div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">⬇️ pickle</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">Insider — let it through</span></div>
+<div class="row"><span class="emoji">🔐</span><span class="lab">⬆️ JSON</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">Outsider — scan with MD5</span></div>
+<div class="cap">Trust = direction: you may pickle.loads data you built yourself; never pickle.loads data coming back across the untrusted boundary.</div></div>
+
+<h2>The return frame: marker + length + MD5</h2>
+<p>The sandbox's stdout is a noisy river: user code may print debug info, may throw a stack trace, may even deliberately print a <strong>fake result</strong>. So the real result is not "the whole stdout" but the small piece <strong>fenced off</strong> by a frame.</p>
+<table class="t">
+  <tr><th>Field</th><th>Size</th><th>Role</th></tr>
+  <tr><td class="mono">MARKER</td><td class="mono">16 bytes</td><td>a uuid5-generated locator anchor that flags "the real result starts here" amid the noise</td></tr>
+  <tr><td class="mono">LENGTH</td><td class="mono">4 bytes '&gt;I'</td><td>big-endian unsigned int telling you how long the payload is, for a precise slice</td></tr>
+  <tr><td class="mono">MD5</td><td class="mono">32 bytes hex</td><td>checksum of the payload, catching tampering and truncation</td></tr>
+  <tr><td class="mono">JSON_PAYLOAD</td><td class="mono">LENGTH bytes</td><td>the real result: the tool's return value + agent_state as JSON</td></tr>
+</table>
+<div class="cellgroup"><div class="cg-cap"><b>stdout frame layout</b></div><div class="cells"><span class="cell hl">MARKER(16)</span><span class="sep">·</span><span class="cell">LENGTH(4)</span><span class="sep">·</span><span class="cell">MD5(32)</span><span class="sep">·</span><span class="cell">JSON_PAYLOAD</span></div></div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/local_sandbox.py</span><span class="ln">parse_out_function_results_markers (simplified)</span></div>
+<pre>pos = data.<span class="fn">find</span>(MARKER)                       <span class="cm"># locate the real result in noisy stdout</span>
+length = struct.<span class="fn">unpack</span>(<span class="st">"&gt;I"</span>, data[p:p+<span class="nb">4</span>])[<span class="nb">0</span>]
+payload = data[start : start+length]
+<span class="kw">if</span> hashlib.<span class="fn">md5</span>(payload).<span class="fn">hexdigest</span>() != checksum:
+    <span class="kw">raise</span> <span class="fn">Exception</span>(<span class="st">"Function ran, but output is corrupted."</span>)
+result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON, never pickle.loads</span>
+agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic re-hydrate</span>
+</pre></div>
+<p>You might ask: why use a "dirty" channel like stdout instead of opening a clean return pipe? Because the sandbox boundary is essentially a <strong>process</strong>, and the most universal, least runtime-fussy bridge between processes is standard output. The cost is that stdout mixes in everything, so a frame is required to fish "the real result" out of the noise.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">What does this frame defend against? A user tool can print <strong>anything</strong> to stdout, including a forged result or a fake marker. The marker fences off the real payload, the length slices it precisely, and MD5 catches tampering/truncation — stacked together, only then dare the server say "what I read is exactly the one the tool actually returned."</span></div>
+<p>The order matters too: <strong>compare MD5 first, then <span class="mono">json.loads</span></strong>. If you parsed first and handled errors later, an attacker could use malformed JSON to trigger the parser's corner-case behavior; verifying integrity first holds "suspicious input" back before parsing.</p>
+<h2>PR #3343: swap pickle for JSON</h2>
+<p>The frame check was always there, but one old hole remained: early on, the return payload was <strong>pickle</strong>-encoded, and the server would <span class="mono">pickle.loads</span> it on read-back. That amounts to deserializing "the output of a sandbox that just ran arbitrary user code" — a clean-cut <strong>server-side RCE</strong>.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">PR #3343 · commit 1131535</span></div>
+<pre><span class="cm"># old (vulnerable): server pickle.loads on the sandbox stdout -> server RCE</span>
+<span class="cm">- result = pickle.loads(text)</span>
+<span class="cm"># new (fixed): json.loads only, never executes code</span>
+<span class="cm">+ result = json.loads(payload)</span>
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Mind the scope: the <span class="mono">marker+length+MD5</span> frame <strong>existed before #3343</strong>. #3343 only switched the sandbox→server <strong>payload encoding</strong> from pickle to JSON; server→sandbox still pickles <span class="mono">agent_state</span> — that is the trusted direction kept on purpose, not an oversight.</span></div>
+<p>The fix's value is not in lines of code but in the <strong>mindset</strong>: the choice of serialization format is itself a security gate. Reserve pickle for "data I built, flowing to the low-trust side," and JSON for "data others built, returning to the high-trust side" — once internalized, this rule blocks similar RCEs at design time, instead of waiting to patch after the fact.</p>
+
+<h2>Walk the return trip in your head</h2>
+<p>Abstractions done, let us close with a concrete example. Suppose the user wrote a <span class="mono">get_weather(city)</span> tool, and at some step the model decides to call it with <span class="mono">city="Shanghai"</span>. From this moment on, here is what happens.</p>
+<p>The server first <span class="mono">pickle.dumps</span> the current <span class="mono">agent_state</span> into a blob of bytes and, together with the <span class="mono">city</span> literal and the user's <span class="mono">get_weather</span> source, assembles them into a temporary script.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">This step already shows the distinction: <span class="mono">agent_state</span> is pickle bytes, while <span class="mono">city</span> is just an inlined string literal <span class="mono">"Shanghai"</span> in the script. One script, two ways of "stuffing data in," matching two kinds of trust.</span></div>
+<p>The script is dropped into the sandbox to run: there it <span class="mono">pickle.loads</span> the <span class="mono">agent_state</span>, runs <span class="mono">get_weather("Shanghai")</span>, gets the return value, then packs "the return value + the updated agent_state" into JSON, prefixes marker, length, MD5, and writes the whole bundle to stdout.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">This is the lesson's turning point: from the next step on, all data has <strong>crossed the untrusted boundary</strong>. The sandbox just finished running code we could not trust in advance, so every byte it writes out must be treated as "a parcel handed over by an outsider."</span></div>
+<p>The server reads stdout back: first locate by marker, slice by length, compare MD5 — if any step mismatches, the result is judged corrupted and an error is thrown outright. Once verification passes, <strong>only</strong> the payload is <span class="mono">json.loads</span>'d.</p>
+<p>Finally <span class="mono">AgentState.model_validate</span> re-hydrates the state into an object. Nowhere along the way is a single line of <span class="mono">pickle.loads</span> applied to the sandbox output — that is the whole trip's safety guarantee: pickle going in, JSON coming out, the two sides of the boundary kept cleanly apart.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">Compress the trip into one sentence: <strong>data downstream uses pickle, upstream uses JSON, with a marker+length+MD5 security gate in between</strong>. Remember that one line and you have remembered the whole lesson.</span></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>Close it in one sentence: <strong>which direction you trust decides which serialization you use.</strong></p>
+<p><span class="mono">pickle.loads</span> can run arbitrary code during deserialization, so the rule is cut to the bone: <strong>you may pickle.loads data you built yourself</strong> (server→sandbox, privilege flowing down into the low-trust sandbox, no risk); <strong>never pickle.loads data coming back across the untrusted boundary</strong> (sandbox→server, just ran arbitrary user code, can only be read as JSON).</p>
+<p>PR #3343 fixed exactly this: the old code did <span class="mono">pickle.loads</span> on the sandbox stdout — a server RCE; switching to <span class="mono">json.loads</span> seals it. The <span class="mono">marker+length+MD5</span> is a separate layer — the integrity layer: a user tool can print a fake result, so the marker fences the real payload and MD5 catches tampering.</p>
+<p>Security boils down to one word: <strong>trust = direction</strong>. This also closes the whole tool chain: Lesson 18 "read it without running it" → Lesson 19 "custom → sandbox" → Lesson 20 "even the sandbox's output is untrusted."</p>
+<p>Following this line you can anticipate elsewhere too: whenever you see "deserializing an untrusted source," be instantly wary; whenever you confirm "the data is self-built, sent to the low-trust side," you may freely use a high-expressiveness format. This intuition reaches far beyond the sandbox — it is almost the baseline of all cross-boundary communication.</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p>Script generation: <span class="mono">tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script</span> and <span class="mono">_render_sandbox_code</span>. Local execution: <span class="mono">local_sandbox.py::AsyncToolSandboxLocal</span> (build/reuse venv, subprocess, timeout).</p>
+<p>Read-back verification: <span class="mono">local_sandbox.py::parse_out_function_results_markers</span> finds the marker, slices the length, compares MD5; then hands off to <span class="mono">helpers/tool_parser_helper.py::parse_stdout_best_effort</span> for <span class="mono">json.loads</span> + <span class="mono">AgentState.model_validate</span>.</p>
+<p>Types and security: the sandbox type is in <span class="mono">schemas/enums.py::SandboxType</span>; this security fix is PR #3343 (commit <span class="mono">1131535</span>).</p>
+<p>By the way, <span class="mono">local_sandbox.py</span> also hides engineering details like venv reuse, dependency install, and timeout control; they do not affect the trust-boundary throughline, yet they decide whether the local sandbox runs fast and stays stable.</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ Common misconceptions</div>
+<p><strong>Misconception 1: thinking the script is rendered from the <span class="mono">.j2</span> template.</strong> <span class="mono">letta/templates/sandbox_code_file.py.j2</span> is <strong>not referenced by any .py</strong> in v0.16.8 — it only serves as a side reference; the real script is string-assembled by <span class="mono">_render_sandbox_code</span>.</p>
+<p><strong>Misconception 2: thinking arguments also go through pickle.</strong> Arguments are <strong>inlined literals</strong> (<span class="mono">repr()</span>); in the whole script only <span class="mono">agent_state</span> uses pickle.</p>
+<p><strong>Misconception 3: thinking the frame was added by #3343.</strong> The <span class="mono">marker+length+MD5</span> frame <strong>already existed</strong>; #3343 only changed the payload encoding (pickle→JSON).</p>
+<p><strong>Misconception 4: trusting the docstring and variable names.</strong> The docstring of <span class="mono">generate_execution_script</span> says "base64-encode/pickle the result," and a variable carries <span class="mono">_pkl</span> — both are <strong>legacy</strong>; what is actually carried is JSON.</p>
+</div>
+<h2>Dig a little deeper</h2>
+<p>The four drawers below answer, respectively, "why cut the boundary this way," "whom the frame really defends against," "which lines #3343 changed," and "how the local venv runs." If you want the fine detail, expand them one by one.</p>
+<details class="accordion"><summary>① Why is the trust boundary cut this way?</summary><div class="acc-body">
+<p>There is just one core idea: <span class="mono">pickle.loads</span> runs arbitrary code during deserialization. So "may I pickle.loads this" is equivalent to "do I trust the source of these bytes."</p>
+<p>The server→sandbox <span class="mono">agent_state</span> is <span class="mono">pickle.dumps</span>'d by the server itself; the source is trusted, and the sandbox only loads it — risk flows to the low-trust side, no problem. The sandbox→server output comes from unfamiliar code; the source is untrusted, so it can only be <span class="mono">json.loads</span>'d.</p>
+<p>Another angle: trust is not "do I believe this data looks right" but "do I trust whoever made it." pickle is dangerous precisely because it mixes "data" and "executable code" — when the source is trusted this mix is convenient (it restores complex objects directly), and when the source is untrusted it becomes a bomb.</p>
+</div></details>
+<details class="accordion"><summary>② What does marker+length+MD5 defend against?</summary><div class="acc-body">
+<p>It defends against "the result channel being polluted." Anyone can write to the sandbox's stdout: debug prints, exception stacks, even a forged marker plus a fake result.</p>
+<p>So the three layers each do their job: <span class="mono">marker</span> locates the start of the real payload amid the noise; <span class="mono">length</span> slices the payload precisely, avoiding being misled by trailing noise; <span class="mono">MD5</span> compares the checksum, and on truncation or tampering it does <span class="mono">raise Exception("Function ran, but output is corrupted.")</span>.</p>
+<p>One more detail: the <span class="mono">marker</span> is a uuid5-generated 16 bytes, almost impossible for user output to hit by accident and hard to "guess" maliciously, so the "locate" step itself carries a touch of anti-forgery.</p>
+<p>Someone may ask: isn't MD5 insecure? Here it only catches <strong>accidental corruption</strong> and does not resist cryptographic attacks — what truly blocks malice is the rule "json.loads only, never pickle.loads"; MD5 is merely a cheap integrity snapshot.</p>
+</div></details>
+<details class="accordion"><summary>③ What exactly did PR #3343 change?</summary><div class="acc-body">
+<p>It changed just one thing: switching the sandbox→server <strong>payload encoding</strong> from pickle to JSON, so the server's read-back goes from <span class="mono">pickle.loads</span> to <span class="mono">json.loads</span>, and the RCE surface is eliminated.</p>
+<p>What it did not change: the marker+length+MD5 frame (already there), and server→sandbox still pickling <span class="mono">agent_state</span> (the intentional trusted direction). Also <span class="mono">safe_pickle.py::safe_pickle_dumps</span> serves only modal_sandbox_v2, adding a 10MB/depth-50 anti-crash guardrail, not an anti-malice one.</p>
+<p>One sentence to separate two things: the frame handles <strong>integrity</strong> (the result was not corrupted), and the encoding format handles <strong>security</strong> (reading it does not execute code). #3343 touched the latter; the former was there from the start.</p>
+<p>For intuition: before the fix the server side was <span class="mono">pickle.loads(sandbox bytes)</span>, after it is <span class="mono">json.loads(sandbox bytes)</span>. Both read untrusted input, but the former can be deserialization-triggered into an RCE while the latter at most fails to parse — that is how big the difference is.</p>
+</div></details>
+<details class="accordion"><summary>④ How does the local venv run? How do E2B/Modal differ?</summary><div class="acc-body">
+<p>Local <span class="mono">AsyncToolSandboxLocal</span>: on demand <span class="mono">venv.create(with_pip=True)</span> builds or reuses a virtual environment, <span class="mono">pip install -r</span> installs dependencies, the script is written to a temporary <span class="mono">.py</span>, and <span class="mono">asyncio.create_subprocess_exec</span> spawns a subprocess to run it, with the timeout being <span class="mono">tool_sandbox_timeout</span> (default 180s).</p>
+<p>The differences are only in the outer layer: E2B wraps the return in an extra base64 layer; Modal returns a structured dict. But the "generate script + trust boundary + frame check" backbone is identical across all three sandboxes.</p>
+<p>Precisely because the local sandbox shares the kernel with the server, its isolation is "good enough" rather than a "strong guarantee": it can block accidents and most mishaps, but to run fully untrusted code you should switch to the container-level isolation of E2B or Modal.</p>
+<p>What happens when the timeout hits? The subprocess is killed and this call is treated as a failure, without dragging the server down. The temporary script file is cleaned up after use, while the venv can be reused, saving the cost of rebuilding the environment each time.</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>A custom tool is untrusted code, run in a sandbox (<span class="mono">local / E2B / Modal</span>, one of three by <span class="mono">SandboxType</span>).</li>
+<li><strong>server→sandbox = pickle</strong> (trusted, passing <span class="mono">agent_state</span>); <strong>sandbox→server = JSON</strong> (untrusted) + a <span class="mono">marker+length+MD5</span> frame.</li>
+<li><strong>Never <span class="mono">pickle.loads</span> the sandbox output</strong> — that is exactly the fix in PR #3343 (commit <span class="mono">1131535</span>).</li>
+<li>The <span class="mono">.j2</span> template is unreferenced in v0.16.8; the real script lives in <span class="mono">_render_sandbox_code</span>; the docstring and the <span class="mono">_pkl</span> naming are legacy.</li>
+<li>One word to remember it all: <strong>trust = direction</strong>.</li>
+</ul>
+</div>
+<h2>Part 5 wrap-up: define → derive → dispatch → isolated execution</h2>
+<p>Part 5 ends here. String the four lessons into one line and the tool system's whole picture becomes clear: from "an ordinary Python function" to "safely finishing a piece of unfamiliar code," every step answers one concrete question.</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 5 · one line</b></div><div class="cells"><span class="cell">17 function+docstring→schema</span><span class="sep">·</span><span class="cell">18 derive without running</span><span class="sep">·</span><span class="cell">19 dispatch by type</span><span class="sep">·</span><span class="cell hl">20 sandbox isolation + trust boundary</span></div></div>
+<p>In one line: <strong>define → derive → dispatch → isolated execution</strong>. Lesson 17 turns a function into a schema, Lesson 18 derives the schema without executing, Lesson 19 dispatches to an executor by <span class="mono">ToolType</span>, and Lesson 20 handles the most dangerous class — custom code — and draws its runtime trust boundary clearly.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">It also points back to the previous two lessons: Lesson 20's "even the sandbox output is untrusted" is the same wariness as Lesson 18's "read it without running it"; and the "custom → sandbox" handoff at the end of Lesson 19 is exactly what this lesson delivers.</span></div>
+<p>Pull back, and this is the whole ambition of the <em>Letta Visual Guide</em> on tools: not to pile up APIs, but to explain end to end the chain of "how an ordinary function becomes a capability the model can call safely" — define it, derive its interface, dispatch it by type, then execute it in isolation.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">If you take away only one diagram, take "trust = direction": it explains not only the sandbox but is the general solution to every "passing data across a trust boundary" problem — whether the other side is a sandbox, a third-party service, or another uncontrolled process.</span></div>
+<p>Next stop is <strong>Part 6 · the LLM Provider abstraction</strong>: with tools covered, we return to a more upstream question — how Letta uses one unified interface to plug different vendors' models, like OpenAI and Anthropic, into the same agent loop.</p>
+</div>
   <div class="footnav"><a class="prev" href="19-tool-dispatch-and-mcp.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">工具分发与执行（含 MCP）</span><span class="lang-en">Tool dispatch &amp; execution (incl. MCP)</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>

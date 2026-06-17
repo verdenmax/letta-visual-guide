@@ -1480,5 +1480,12 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <li>One word to remember it all: <strong>trust = direction</strong>.</li>
 </ul>
 </div>
-<!--ENMORE-->
+<h2>Part 5 wrap-up: define → derive → dispatch → isolated execution</h2>
+<p>Part 5 ends here. String the four lessons into one line and the tool system's whole picture becomes clear: from "an ordinary Python function" to "safely finishing a piece of unfamiliar code," every step answers one concrete question.</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 5 · one line</b></div><div class="cells"><span class="cell">17 function+docstring→schema</span><span class="sep">·</span><span class="cell">18 derive without running</span><span class="sep">·</span><span class="cell">19 dispatch by type</span><span class="sep">·</span><span class="cell hl">20 sandbox isolation + trust boundary</span></div></div>
+<p>In one line: <strong>define → derive → dispatch → isolated execution</strong>. Lesson 17 turns a function into a schema, Lesson 18 derives the schema without executing, Lesson 19 dispatches to an executor by <span class="mono">ToolType</span>, and Lesson 20 handles the most dangerous class — custom code — and draws its runtime trust boundary clearly.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">It also points back to the previous two lessons: Lesson 20's "even the sandbox output is untrusted" is the same wariness as Lesson 18's "read it without running it"; and the "custom → sandbox" handoff at the end of Lesson 19 is exactly what this lesson delivers.</span></div>
+<p>Pull back, and this is the whole ambition of the <em>Letta Visual Guide</em> on tools: not to pile up APIs, but to explain end to end the chain of "how an ordinary function becomes a capability the model can call safely" — define it, derive its interface, dispatch it by type, then execute it in isolation.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">If you take away only one diagram, take "trust = direction": it explains not only the sandbox but is the general solution to every "passing data across a trust boundary" problem — whether the other side is a sandbox, a third-party service, or another uncontrolled process.</span></div>
+<p>Next stop is <strong>Part 6 · the LLM Provider abstraction</strong>: with tools covered, we return to a more upstream question — how Letta uses one unified interface to plug different vendors' models, like OpenAI and Anthropic, into the same agent loop.</p>
 """}
