@@ -1696,6 +1696,121 @@ QUIZZES = {
             },
         ],
     },
+    "20-tool-sandbox-security.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "服务端把 agent_state 送进沙箱时用的是哪种序列化？为什么这个方向用 pickle 是安全的？",
+                    "en": "When the server sends agent_state into the sandbox, which serialization does it use, and why is pickle safe in this direction?",
+                },
+                "opts": [
+                    {"zh": "用 pickle：被反序列化的 agent_state 是服务端自己造的可信对象，沙箱只负责 pickle.loads。数据从高信任流向低信任沙箱、权限在收窄，不存在“反序列化不可信输入”的问题",
+                     "en": "pickle: the agent_state being deserialized is a trusted object the server built itself, and the sandbox only pickle.loads it. Data flows from high trust down into the low-trust sandbox, so privilege narrows and there is no “deserializing untrusted input” problem"},
+                    {"zh": "用 JSON：所有跨沙箱边界的数据都必须是 JSON，pickle 在任何方向都被禁止",
+                     "en": "JSON: all data crossing the sandbox boundary must be JSON, and pickle is forbidden in every direction"},
+                    {"zh": "用 pickle，但只是因为快——agent_state 太大，JSON 编不动，和信任方向无关",
+                     "en": "pickle, but only because it is fast — agent_state is too big for JSON, and it has nothing to do with trust direction"},
+                    {"zh": "调用参数和 agent_state 都用 pickle 一起打包送进去，沙箱再统一 loads",
+                     "en": "both the call arguments and agent_state are pickled together and sent in, and the sandbox loads them all at once"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "server→sandbox 走 pickle 是有意的受信方向：agent_state 由服务端 pickle.dumps，沙箱里 pickle.loads 还原。因为被反序列化的字节来源可信（服务端自己造的），且权限往低信任侧流，pickle.loads 不会变成攻击面。注意区分：整段脚本里只有 agent_state 用 pickle；调用参数是按 repr() 内联的字面量，不是 pickle。说“任何方向都禁 pickle”是错的——被禁的是回程（sandbox→server）。",
+                    "en": "server→sandbox uses pickle as a deliberate trusted direction: agent_state is pickle.dumps'd by the server and pickle.loads'd back inside the sandbox. Because the deserialized bytes come from a trusted source (the server built them) and privilege flows toward the low-trust side, pickle.loads never becomes an attack surface. Note the distinction: in the whole script only agent_state uses pickle; call arguments are inlined literals via repr(), not pickle. “Forbid pickle in every direction” is wrong — what is forbidden is the return leg (sandbox→server).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么沙箱回传给服务端的结果必须用 JSON 读，而绝不能 pickle.loads？",
+                    "en": "Why must the result the sandbox sends back to the server be read as JSON, and never pickle.loads'd?",
+                },
+                "opts": [
+                    {"zh": "因为沙箱刚执行过不可信的用户代码，它的 stdout 是不可信输出。pickle.loads 会在反序列化时执行任意代码——对沙箱输出 pickle.loads 等于一个服务端 RCE；json.loads 最坏只是拿到假数据",
+                     "en": "Because the sandbox just ran untrusted user code, so its stdout is untrusted output. pickle.loads executes arbitrary code during deserialization — pickle.loads on the sandbox output is a server-side RCE; json.loads at worst yields fake data"},
+                    {"zh": "因为 JSON 比 pickle 快，回程数据量大，必须用最快的格式",
+                     "en": "Because JSON is faster than pickle, and the return data is large, so the fastest format is required"},
+                    {"zh": "因为沙箱里没装 pickle 模块，只能用 JSON 编码结果",
+                     "en": "Because the sandbox has no pickle module installed, so it can only encode results as JSON"},
+                    {"zh": "因为 agent_state 已经在去程用过 pickle 了，回程不能重复用同一种格式",
+                     "en": "Because agent_state already used pickle on the way in, and the return trip cannot reuse the same format"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "回程是不可信方向：沙箱刚跑完陌生人的工具代码，它写到 stdout 的每个字节都可疑。pickle.loads 在反序列化时执行任意代码，一个恶意工具只要返回带 __reduce__ 的对象，服务端 pickle.loads 的瞬间就被 RCE。改用 json.loads，这类对象根本无法表达，最坏只是解析到假数据。这和“快不快”“装没装模块”都无关——纯粹是信任边界问题。这也正是 PR #3343 修复的点。",
+                    "en": "The return leg is the untrusted direction: the sandbox just ran a stranger's tool code, so every byte it writes to stdout is suspect. pickle.loads executes arbitrary code during deserialization — a malicious tool need only return an object carrying a __reduce__, and the instant the server pickle.loads it, it is RCE'd. With json.loads such objects cannot even be expressed, so the worst case is parsing fake data. This has nothing to do with speed or installed modules — it is purely a trust-boundary issue, and exactly what PR #3343 fixed.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "回程帧里的 marker + 长度 + MD5 解决的是哪一类问题？",
+                    "en": "What class of problem does the return frame's marker + length + MD5 solve?",
+                },
+                "opts": [
+                    {"zh": "结果通道被污染：用户工具能往 stdout 打任何东西（调试 print、异常栈、甚至伪造的假结果）。marker 在噪声里定位真 payload、长度精确切片、MD5 抓篡改/截断，三层叠起来保证读到的就是工具真正返回的那份",
+                     "en": "The result channel being polluted: a user tool can print anything to stdout (debug prints, stack traces, even a forged fake result). The marker locates the real payload amid the noise, the length slices it precisely, and MD5 catches tampering/truncation — three layers ensuring what is read is exactly what the tool actually returned"},
+                    {"zh": "把 pickle 升级成加密格式，防止 agent_state 在去程被沙箱偷看",
+                     "en": "Upgrading pickle to an encrypted format to stop the sandbox from peeking at agent_state on the way in"},
+                    {"zh": "压缩 stdout，避免大结果占用太多带宽",
+                     "en": "Compressing stdout to keep large results from using too much bandwidth"},
+                    {"zh": "替代 JSON 解析，让服务端可以直接 pickle.loads 沙箱输出",
+                     "en": "Replacing JSON parsing so the server can pickle.loads the sandbox output directly"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "stdout 是条嘈杂的河：调试输出、异常栈、甚至用户故意打的假结果/假 marker 都混在里面。三层各司其职——marker（uuid5 的 16 字节）在噪声里定位真 payload 起点；length（4 字节 big-endian '&gt;I'）精确切出 payload；MD5（32 hex）抓篡改与截断，不符就 raise Exception(\"Function ran, but output is corrupted.\")。它防的是完整性/伪造，和加密、压缩无关；更不是为了让服务端去 pickle.loads——恰恰相反，校验通过后只 json.loads。",
+                    "en": "stdout is a noisy river: debug output, stack traces, even a fake result/fake marker a user deliberately prints are all mixed in. The three layers each do a job — marker (uuid5's 16 bytes) locates the real payload's start amid the noise; length (4 bytes big-endian '&gt;I') slices the payload precisely; MD5 (32 hex) catches tampering and truncation, raising Exception(\"Function ran, but output is corrupted.\") on mismatch. It defends integrity/forgery, unrelated to encryption or compression; and it is certainly not there to let the server pickle.loads — on the contrary, once verified, only json.loads runs.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "PR #3343（commit 1131535）到底改了什么？哪些是它没动的？",
+                    "en": "What exactly did PR #3343 (commit 1131535) change, and what did it leave untouched?",
+                },
+                "opts": [
+                    {"zh": "它只把 sandbox→server 的 payload 编码从 pickle 换成 JSON，于是服务端读回从 pickle.loads 变成 json.loads，消除 RCE 面。marker+长度+MD5 帧早就存在、不是它加的；server→sandbox 仍 pickle agent_state，是有意保留的受信方向",
+                     "en": "It only switched the sandbox→server payload encoding from pickle to JSON, so the server's read-back changed from pickle.loads to json.loads, eliminating the RCE surface. The marker+length+MD5 frame already existed and was not added by it; server→sandbox still pickles agent_state, the intentionally kept trusted direction"},
+                    {"zh": "它新增了 marker+长度+MD5 帧，在此之前回程根本没有任何完整性校验",
+                     "en": "It added the marker+length+MD5 frame; before it, the return leg had no integrity check at all"},
+                    {"zh": "它把去程的 agent_state 也从 pickle 改成 JSON，彻底禁用了 pickle",
+                     "en": "It also switched the inbound agent_state from pickle to JSON, banning pickle entirely"},
+                    {"zh": "它把本地沙箱换成 E2B，用云端隔离替代了进程隔离",
+                     "en": "It replaced the local sandbox with E2B, swapping cloud isolation for process isolation"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "#3343 的范围很窄但很关键：只改回程 payload 的编码（pickle→JSON），落点在 tool_parser_helper.py——服务端从 pickle.loads(沙箱字节) 变成 json.loads(payload)，结构性消除了服务端 RCE。它没动的：①marker+长度+MD5 帧本就存在（负责完整性，不是 #3343 引入）；②server→sandbox 仍 pickle agent_state（受信方向，有意保留，不是漏改）。说它“加了帧”“禁用了所有 pickle”“换成 E2B”都把范围搞错了。一句话：帧管完整性、编码格式管安全性，#3343 动的是后者。",
+                    "en": "#3343's scope is narrow but pivotal: it changes only the return payload's encoding (pickle→JSON), landing in tool_parser_helper.py — the server goes from pickle.loads(sandbox bytes) to json.loads(payload), structurally eliminating the server RCE. What it left alone: (1) the marker+length+MD5 frame already existed (it handles integrity and was not introduced by #3343); (2) server→sandbox still pickles agent_state (the trusted direction, kept on purpose, not an oversight). Saying it “added the frame,” “banned all pickle,” or “switched to E2B” all misstate the scope. In one line: the frame governs integrity, the encoding governs security, and #3343 moved the latter.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "在 v0.16.8 里，沙箱实际执行的那段脚本是由 letta/templates/sandbox_code_file.py.j2 模板渲染出来的吗？",
+                    "en": "In v0.16.8, is the script the sandbox actually runs rendered from the letta/templates/sandbox_code_file.py.j2 template?",
+                },
+                "opts": [
+                    {"zh": "不是。那个 .j2 模板在 v0.16.8 没有被任何 .py 引用，只能当对照参考；真实脚本是 tool_sandbox/base.py 里 generate_execution_script / _render_sandbox_code 用字符串拼出来的",
+                     "en": "No. That .j2 template is not referenced by any .py in v0.16.8 and only serves as a side reference; the real script is string-assembled by generate_execution_script / _render_sandbox_code in tool_sandbox/base.py"},
+                    {"zh": "是的，Jinja2 在运行时渲染该模板，把 agent_state 和用户源码填进去生成脚本",
+                     "en": "Yes, Jinja2 renders that template at runtime, filling in agent_state and the user source to produce the script"},
+                    {"zh": "是的，但只有 Modal 沙箱用模板，本地和 E2B 用别的方式",
+                     "en": "Yes, but only the Modal sandbox uses the template; local and E2B use other means"},
+                    {"zh": "没有脚本——沙箱直接 import 用户的工具模块并调用，不需要拼脚本",
+                     "en": "There is no script — the sandbox directly imports the user's tool module and calls it, with no assembling needed"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这是常见误区。letta/templates/sandbox_code_file.py.j2 在 v0.16.8 是死文件——没有任何 .py 引用它，只能当人类对照参考。真实脚本由 tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script 调 _render_sandbox_code 用字符串拼出：pickle.loads 还原 agent_state、按 repr() 内联参数、逐字内联用户 source_code、调用并把结果+agent_state 打成 JSON、加 marker+长度+MD5 写 stdout。也别被 docstring（写着“base64-encode/pickle the result”）和带 _pkl 的变量名骗了——都是遗留，实际装 JSON。沙箱也不会 import 用户模块（那模块只存在数据库里），所以必须内联自包含。",
+                    "en": "A common trap. letta/templates/sandbox_code_file.py.j2 is dead in v0.16.8 — no .py references it, so it is only a human side reference. The real script is string-assembled by tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script via _render_sandbox_code: pickle.loads to restore agent_state, inline arguments via repr(), inline the user's source_code verbatim, call it, pack result+agent_state into JSON, and write marker+length+MD5 to stdout. Do not be fooled by the docstring (which says “base64-encode/pickle the result”) or the _pkl variable name — both are legacy; what is actually carried is JSON. The sandbox also cannot import the user module (it lives only in the database), so the script must be inlined and self-contained.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“监狱探视窗”这个比喻，把第 20 课的“信任边界”完整讲一遍，并想三件事：(1) 为什么 server→sandbox 能放心用 pickle、而 sandbox→server 必须只用 json.loads？把它和“权限放大的方向”联系起来——什么样的通用规则能让你在任何跨边界场景里一眼判断“这里能不能反序列化”？(2) marker+长度+MD5 帧负责“完整性”、JSON 编码负责“安全性”，这是两件事，PR #3343 只改了后者。如果有人只加强了帧（比如把 MD5 换成 SHA-256），却仍然 pickle.loads payload，安全吗？为什么完整性校验救不了一个“会执行代码的解析器”？(3) 本地沙箱和服务端共享内核，隔离只是“够用级”。把同一个自定义工具从本地切到 E2B/Modal，信任边界这张图会变吗？哪些不变（去程 pickle、回程 JSON、帧校验）、哪些变（隔离强度、延迟、回程多包的 base64 或结构化 dict）？",
+                "en": "Use the “prison visitation window” metaphor to tell lesson 20's “trust boundary” as a whole, and think through three things: (1) Why can server→sandbox safely use pickle while sandbox→server must use json.loads only? Tie it to “the direction in which privilege widens” — what general rule lets you judge at a glance, in any cross-boundary scenario, whether “deserialization is safe here”? (2) The marker+length+MD5 frame handles “integrity” while the JSON encoding handles “security” — two different things, and PR #3343 only changed the latter. If someone strengthened only the frame (say, swapping MD5 for SHA-256) but still pickle.loads'd the payload, is that safe? Why can't an integrity check save you from “a parser that executes code”? (3) The local sandbox shares the kernel with the server, so its isolation is only “good enough.” If you move the same custom tool from local to E2B/Modal, does the trust-boundary diagram change? What stays the same (inbound pickle, return JSON, the frame check) and what changes (isolation strength, latency, the return's extra base64 or structured dict)?",
+            },
+        ],
+    },
 }
 
 
