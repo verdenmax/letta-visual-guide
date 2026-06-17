@@ -451,5 +451,23 @@ data[<span class="st">"tools"</span>][-<span class="nb">1</span>][<span class="s
 data[<span class="st">"thinking"</span>] = {<span class="st">"type"</span>: <span class="st">"enabled"</span>, <span class="st">"budget_tokens"</span>: budget}
 data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 </pre></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>上一课那纸契约，<strong>红利正是在这一课兑现</strong>的。每家 provider 的"怪脾气"都被隔离进两个方法——<span class="mono">build</span> 改请求、<span class="mono">convert</span> 改响应，循环之上一无所知。</p>
+<p>最妙的怪癖是"把内心独白塞成工具参数"：对没有原生推理的模型，Letta 强制每次工具调用都把一个 <span class="mono">thinking</span> 字符串排成<strong>第一个参数</strong>，于是模型"先想后调"，再在响应里把它抽回助手消息——硬是从一个"只会调函数"的模型里挤出了思维链。</p>
+<p>而 <span class="mono">put_inner_thoughts_in_kwargs</span> 会<strong>自动翻转</strong>：原生推理模型（o1/gpt-5/Claude-4）→ 关，用它们真的 thinking；普通工具调用模型 → 开，模拟一个。同一个抽象，对两类模型给出恰好相反的处理。</p>
+<p>同一招 MemGPT 内心独白，就这样在一整座 provider 动物园里活了下来。而第 23 课的本地路径，还会用<strong>语法约束</strong>把它再实现一遍——那是后话。</p>
+</div>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">llm_api/openai_client.py::OpenAIClient</span>——<span class="mono">_prepare_client_kwargs</span> 把 <span class="mono">base_url</span> 设成 endpoint；外加 8 个子类（Azure/Baseten/Deepseek/Fireworks/Groq/Together/XAI/ZAI）。</p>
+<p><span class="mono">llm_api/anthropic_client.py::AnthropicClient</span>——cache_control / extended thinking / batch；它自身又是 <span class="mono">BedrockClient</span> / <span class="mono">MiniMaxClient</span> 的基类。</p>
+<p><span class="mono">llm_api/helpers.py::add_inner_thoughts_to_functions</span> 与 <span class="mono">unpack_inner_thoughts_from_kwargs</span>——注入与拆回内心独白。</p>
+<p><span class="mono">settings.py::INNER_THOUGHTS_KWARG</span> 是键名 <span class="mono">"thinking"</span>；<span class="mono">llm_api/google_vertex_client.py</span> 则把 thinking 追加在<strong>最后</strong>。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>注入函数叫 <span class="mono">add_inner_thoughts_to_functions</span>（复数 functions），<strong>不是</strong> <span class="mono">add_inner_thoughts_to_function_call</span>。</p>
+<p>键名 <span class="mono">INNER_THOUGHTS_KWARG="thinking"</span> 在 <span class="mono">settings.py</span>，<strong>不在</strong> <span class="mono">constants.py</span>（那儿只放描述文字）。</p>
+<p><strong>Google 是反例</strong>：它把 <span class="mono">thinking</span> 追加在<strong>最后</strong>，不是最前——别想当然以为各家都排第一。</p>
+<p><span class="mono">AnthropicClient</span> 自己<strong>也是</strong>复用基类（Bedrock/MiniMax 继承它）；而 <span class="mono">OpenAIClient</span> 的显式子类是 <strong>8 个</strong>，不是 12。</p>
+</div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
