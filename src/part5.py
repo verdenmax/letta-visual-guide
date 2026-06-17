@@ -1446,5 +1446,39 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <p><strong>Misconception 3: thinking the frame was added by #3343.</strong> The <span class="mono">marker+length+MD5</span> frame <strong>already existed</strong>; #3343 only changed the payload encoding (pickle→JSON).</p>
 <p><strong>Misconception 4: trusting the docstring and variable names.</strong> The docstring of <span class="mono">generate_execution_script</span> says "base64-encode/pickle the result," and a variable carries <span class="mono">_pkl</span> — both are <strong>legacy</strong>; what is actually carried is JSON.</p>
 </div>
+<h2>Dig a little deeper</h2>
+<p>The four drawers below answer, respectively, "why cut the boundary this way," "whom the frame really defends against," "which lines #3343 changed," and "how the local venv runs." If you want the fine detail, expand them one by one.</p>
+<details class="accordion"><summary>① Why is the trust boundary cut this way?</summary><div class="acc-body">
+<p>There is just one core idea: <span class="mono">pickle.loads</span> runs arbitrary code during deserialization. So "may I pickle.loads this" is equivalent to "do I trust the source of these bytes."</p>
+<p>The server→sandbox <span class="mono">agent_state</span> is <span class="mono">pickle.dumps</span>'d by the server itself; the source is trusted, and the sandbox only loads it — risk flows to the low-trust side, no problem. The sandbox→server output comes from unfamiliar code; the source is untrusted, so it can only be <span class="mono">json.loads</span>'d.</p>
+<p>Another angle: trust is not "do I believe this data looks right" but "do I trust whoever made it." pickle is dangerous precisely because it mixes "data" and "executable code" — when the source is trusted this mix is convenient (it restores complex objects directly), and when the source is untrusted it becomes a bomb.</p>
+</div></details>
+<details class="accordion"><summary>② What does marker+length+MD5 defend against?</summary><div class="acc-body">
+<p>It defends against "the result channel being polluted." Anyone can write to the sandbox's stdout: debug prints, exception stacks, even a forged marker plus a fake result.</p>
+<p>So the three layers each do their job: <span class="mono">marker</span> locates the start of the real payload amid the noise; <span class="mono">length</span> slices the payload precisely, avoiding being misled by trailing noise; <span class="mono">MD5</span> compares the checksum, and on truncation or tampering it does <span class="mono">raise Exception("Function ran, but output is corrupted.")</span>.</p>
+<p>One more detail: the <span class="mono">marker</span> is a uuid5-generated 16 bytes, almost impossible for user output to hit by accident and hard to "guess" maliciously, so the "locate" step itself carries a touch of anti-forgery.</p>
+<p>Someone may ask: isn't MD5 insecure? Here it only catches <strong>accidental corruption</strong> and does not resist cryptographic attacks — what truly blocks malice is the rule "json.loads only, never pickle.loads"; MD5 is merely a cheap integrity snapshot.</p>
+</div></details>
+<details class="accordion"><summary>③ What exactly did PR #3343 change?</summary><div class="acc-body">
+<p>It changed just one thing: switching the sandbox→server <strong>payload encoding</strong> from pickle to JSON, so the server's read-back goes from <span class="mono">pickle.loads</span> to <span class="mono">json.loads</span>, and the RCE surface is eliminated.</p>
+<p>What it did not change: the marker+length+MD5 frame (already there), and server→sandbox still pickling <span class="mono">agent_state</span> (the intentional trusted direction). Also <span class="mono">safe_pickle.py::safe_pickle_dumps</span> serves only modal_sandbox_v2, adding a 10MB/depth-50 anti-crash guardrail, not an anti-malice one.</p>
+<p>One sentence to separate two things: the frame handles <strong>integrity</strong> (the result was not corrupted), and the encoding format handles <strong>security</strong> (reading it does not execute code). #3343 touched the latter; the former was there from the start.</p>
+<p>For intuition: before the fix the server side was <span class="mono">pickle.loads(sandbox bytes)</span>, after it is <span class="mono">json.loads(sandbox bytes)</span>. Both read untrusted input, but the former can be deserialization-triggered into an RCE while the latter at most fails to parse — that is how big the difference is.</p>
+</div></details>
+<details class="accordion"><summary>④ How does the local venv run? How do E2B/Modal differ?</summary><div class="acc-body">
+<p>Local <span class="mono">AsyncToolSandboxLocal</span>: on demand <span class="mono">venv.create(with_pip=True)</span> builds or reuses a virtual environment, <span class="mono">pip install -r</span> installs dependencies, the script is written to a temporary <span class="mono">.py</span>, and <span class="mono">asyncio.create_subprocess_exec</span> spawns a subprocess to run it, with the timeout being <span class="mono">tool_sandbox_timeout</span> (default 180s).</p>
+<p>The differences are only in the outer layer: E2B wraps the return in an extra base64 layer; Modal returns a structured dict. But the "generate script + trust boundary + frame check" backbone is identical across all three sandboxes.</p>
+<p>Precisely because the local sandbox shares the kernel with the server, its isolation is "good enough" rather than a "strong guarantee": it can block accidents and most mishaps, but to run fully untrusted code you should switch to the container-level isolation of E2B or Modal.</p>
+<p>What happens when the timeout hits? The subprocess is killed and this call is treated as a failure, without dragging the server down. The temporary script file is cleaned up after use, while the venv can be reused, saving the cost of rebuilding the environment each time.</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>A custom tool is untrusted code, run in a sandbox (<span class="mono">local / E2B / Modal</span>, one of three by <span class="mono">SandboxType</span>).</li>
+<li><strong>server→sandbox = pickle</strong> (trusted, passing <span class="mono">agent_state</span>); <strong>sandbox→server = JSON</strong> (untrusted) + a <span class="mono">marker+length+MD5</span> frame.</li>
+<li><strong>Never <span class="mono">pickle.loads</span> the sandbox output</strong> — that is exactly the fix in PR #3343 (commit <span class="mono">1131535</span>).</li>
+<li>The <span class="mono">.j2</span> template is unreferenced in v0.16.8; the real script lives in <span class="mono">_render_sandbox_code</span>; the docstring and the <span class="mono">_pkl</span> naming are legacy.</li>
+<li>One word to remember it all: <strong>trust = direction</strong>.</li>
+</ul>
+</div>
 <!--ENMORE-->
 """}
