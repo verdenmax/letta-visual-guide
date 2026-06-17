@@ -1536,3 +1536,5 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
 </div>
 """,
 }
+
+LESSON_16 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}

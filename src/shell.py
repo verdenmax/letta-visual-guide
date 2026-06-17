@@ -76,6 +76,8 @@ PAGES = [
      "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
     ("15-heartbeat-to-no-heartbeat.html", "从 heartbeat 到无 heartbeat", "From heartbeat to no-heartbeat",
      "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
+    ("16-tool-rules.html", "工具规则 Tool Rules", "Tool rules",
+     "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
 ]
 
 
@@ -544,6 +546,8 @@ SUBTITLES = {
                              "one step = one LLM call + tool exec; loop while tools are called; up to 50 steps"),
     "15-heartbeat-to-no-heartbeat.html": ("MemGPT 的 request_heartbeat 链式 · V3 为什么拿掉它 · 前后对比",
                                           "MemGPT's request_heartbeat chaining; why V3 drops it; before/after"),
+    "16-tool-rules.html": ("9 种规则 · ToolRulesSolver 算合法下一步 · 违规＝合成错误不执行",
+                           "9 rule types; the solver computes the legal next set; a violation becomes a synthetic error"),
 }
 
 
