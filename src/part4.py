@@ -785,5 +785,230 @@ LESSON_14 = {
   </ul>
 </div>
 """,
-    "en": r"""<p>stub</p>""",
+    "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Last lesson we stood at the factory door: a "save file" called <strong>AgentState</strong> is handed in, <span class="mono">AgentLoop.load</span> reads the <span class="mono">agent_type</span> column, and picks the engine that should run this time — on the default line, the pick is the third-generation <strong>LettaAgentV3</strong>. But the factory only "picks"; it never says how the engine actually <strong>turns</strong>.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+This lesson lifts the lid on the V3 engine. There's no magic inside, just a plain <strong>for loop</strong>: call the model once → execute tools → ask "keep going?" → run it again, up to 50 times. And the criterion behind that "keep going?" is counterintuitively simple — it doesn't read whether the model "feels like continuing," only whether the model <strong>called a tool</strong> this round. Finish this lesson and you hold the whole truth of how an agent "runs."</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture V3's loop as a worker on an assembly line.</strong> A conveyor belt runs in front of the worker: each part that arrives (one step) gets one thing done — read the blueprint, fit it on, then look up to check "is there more work behind it." More work → fit the next one; none → hand the station back to you (the user). But the worker has one iron rule: <strong>at most 50 a day</strong>, and at the limit they must clock out, so there's no endless overtime. The neatest bit is how they judge "is there more": not by asking "do I still feel like it," but by checking "did I just <strong>reach for a tool</strong> this round" — reached for one, and the sentence isn't finished, the job isn't done, so take another lap; this round only talked and touched no tool, so it's wrapping up, hand the mic back to you. The whole line turns like this: <strong>grab work → do work → check if there's a next piece → at most 50, then off shift.</strong>
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>One line for this lesson: <span class="mono">step()</span> is a budgeted for loop, and each lap drains one <span class="mono">_step</span>.</strong> The skeleton of <span class="mono">step()</span> (<span class="mono">letta_agent_v3.py::step</span>) is just <span class="mono">for i in range(max_steps)</span>, where <span class="mono">max_steps</span> defaults to <span class="mono">DEFAULT_MAX_STEPS = 50</span>; each lap drains one <span class="mono">_step</span> async generator (<span class="mono">async for chunk</span>), and when the loop ends it returns <strong>one</strong> <span class="mono">LettaResponse</span>. A single <span class="mono">_step</span> does three things: <strong>one LLM call, tool execution, and persisting the result</strong> (get valid tools → refresh messages → call the model → <span class="mono">_handle_ai_response</span> → persist → yield). Whether to step again is settled by <span class="mono">_decide_continuation</span>, whose rule fits in one sentence — "no tool call → end, tool call → continue" — plus a few hard overrides (terminal tool / required-before-exit / hitting 50 steps / needs approval). Remember these three things — <strong>the for loop, one _step, the continuation rule</strong> — and V3's loop is fully taken apart.
+</div>
+
+<h2>step(): a budgeted for loop</h2>
+<p>Start with the outermost layer. Many people imagine the "agent loop" is some intricate state machine, but the skeleton of <span class="mono">step()</span> (<span class="mono">letta_agent_v3.py::step</span>) is surprisingly plain: just one <span class="mono">for i in range(max_steps)</span>. Each lap calls a <span class="mono">_step</span> and drains the messages it yields into a list; when the loop finishes, it packs that list into one <span class="mono">LettaResponse</span> and returns it.</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">The default for <span class="mono">max_steps</span> lives in <span class="mono">constants.py::DEFAULT_MAX_STEPS = 50</span>. This "budget" is the loop's <strong>safety rope</strong> — a later section is devoted to what exactly it guards against.</span></div>
+
+<p>The real work each lap is <span class="mono">self._step(...)</span>, an <strong>async generator</strong>. <span class="mono">step()</span> uses <span class="mono">async for chunk in response</span> to drain it piece by piece, appending each chunk (a <span class="mono">LettaMessage</span>) to the result list. Once it's drained, it glances at the <span class="mono">self.should_continue</span> switch: true → on to the next lap, false → <span class="mono">break</span>.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Enter lap i</h4><p>Still within budget (<span class="mono">i &lt; 50</span>)? run; exhausted, exit.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Run one _step</h4><p>One LLM call + tool execution; <span class="mono">async for</span> drains its messages into the list.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>should_continue?</h4><p>Did this round call a tool? This switch is written by <span class="mono">_decide_continuation</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Yes / No</h4><p>Yes → back to the top for another lap; No → <span class="mono">break</span> out of the loop.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>i == 49 fallback</h4><p>Ran the last lap with no stop reason set → stamp <span class="mono">max_steps</span>.</p></div></div>
+</div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">That <span class="mono">should_continue</span> switch isn't computed by <span class="mono">step()</span> itself — it's written inside <span class="mono">_step</span> (more precisely, <span class="mono">_handle_ai_response</span> computes the triple <span class="mono">(new messages, should_continue, stop_reason)</span> all at once). <span class="mono">step()</span> only <strong>reads</strong> the switch.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">step main loop (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">step</span>(self, input_messages, max_steps=DEFAULT_MAX_STEPS, ...) -> LettaResponse:
+    msgs = []
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(max_steps):          <span class="cm"># budget: at most 50 laps</span>
+        response = self.<span class="fn">_step</span>(...)        <span class="cm"># one LLM + tool, async generator</span>
+        <span class="kw">async for</span> chunk <span class="kw">in</span> response:    <span class="cm"># drain the messages this lap yields</span>
+            msgs.<span class="fn">append</span>(chunk)
+        <span class="kw">if not</span> self.should_continue:      <span class="cm"># the switch _step wrote</span>
+            <span class="kw">break</span>                         <span class="cm"># no tool call -> wrap up</span>
+        <span class="kw">if</span> i == max_steps - 1 <span class="kw">and</span> self.stop_reason <span class="kw">is None</span>:
+            self.stop_reason = <span class="fn">LettaStopReason</span>(StopReasonType.max_steps)
+    <span class="cm"># after the loop: no stop reason set -> default end_turn, then pack into one response</span>
+    <span class="kw">return</span> <span class="fn">LettaResponse</span>(messages=msgs, stop_reason=self.stop_reason <span class="kw">or</span> end_turn)
+</pre></div>
+
+<p>Two bits of cleanup after the loop are worth remembering. First, if it reaches the last lap (<span class="mono">i == max_steps - 1</span>) with no stop reason ever set, <span class="mono">step()</span> actively stamps a <span class="mono">StopReasonType.max_steps</span> — the "budget exhausted" marker. Second, after the whole loop, if there's still no stop reason at all, it defaults to <span class="mono">StopReasonType.end_turn</span> (a normal finish).</p>
+
+<h2>One _step: LLM call + tool execution + persist</h2>
+<p>With the outer layer unpacked, let's drill into each lap's <span class="mono">_step</span> (<span class="mono">letta_agent_v3.py::_step</span>). The source spells out its role plainly — "one LLM call and tool execution" — the async generator that all the public methods (<span class="mono">step</span> / <span class="mono">stream</span>) funnel into. A single <span class="mono">_step</span> does exactly three things: <strong>call the model once, execute tools, and persist the result.</strong></p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Valid tools + force?</h4><p><span class="mono">_get_valid_tools()</span>, then ask <span class="mono">tool_rules_solver.should_force_tool_call()</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Refresh messages</h4><p><span class="mono">_refresh_messages</span> wipes the stale inner monologue; <strong>doesn't rebuild the system prompt</strong> (keeps the prefix cache).</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Call the LLM</h4><p><span class="mono">llm_adapter.invoke_llm(...)</span>, wrapped in an "overflow → compact → retry" layer.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>_handle_ai_response</h4><p>Validate and execute tools, compute <span class="mono">(new messages, should_continue, stop_reason)</span>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Persist</h4><p><span class="mono">_checkpoint_messages</span> writes this step's messages to the DB — <strong>persist first, then stream</strong>.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>yield</h4><p>Hand the messages chunk by chunk to the outer <span class="mono">step()</span> to append.</p></div></div>
+</div>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">Step 2's "don't rebuild the system prompt" is a performance detail: the system prompt is the frontmost, most stable segment of the message list, and keeping it unchanged lets the model server's <strong>prefix cache</strong> (lessons 5, 9) hit. The system prompt is only rebuilt <strong>after compaction or a reset</strong>.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">_step skeleton (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">_step</span>(self, messages, ...):        <span class="cm"># async generator: one LLM + tool</span>
+    valid_tools = <span class="kw">await</span> self.<span class="fn">_get_valid_tools</span>()
+    force = self.tool_rules_solver.<span class="fn">should_force_tool_call</span>()
+    messages = <span class="kw">await</span> self.<span class="fn">_refresh_messages</span>(messages)  <span class="cm"># wipe monologue, don't rebuild system prompt</span>
+    <span class="kw">while True</span>:                            <span class="cm"># overflow -> compact -> retry</span>
+        <span class="kw">try</span>:
+            <span class="kw">async for</span> chunk <span class="kw">in</span> llm_adapter.<span class="fn">invoke_llm</span>(messages, valid_tools):
+                <span class="kw">yield</span> chunk
+            <span class="kw">break</span>
+        <span class="kw">except</span> ContextWindowExceededError:   <span class="cm"># the compaction from lesson 12</span>
+            messages = <span class="kw">await</span> self.<span class="fn">compact</span>(...)
+            <span class="kw">await</span> self.<span class="fn">rebuild_system_prompt_async</span>()
+    new_messages, self.should_continue, self.stop_reason = \
+        <span class="kw">await</span> self.<span class="fn">_handle_ai_response</span>(tool_calls, valid_tools, ...)
+    <span class="kw">await</span> self.<span class="fn">_checkpoint_messages</span>(...)        <span class="cm"># persistence before streaming</span>
+    <span class="kw">for</span> m <span class="kw">in</span> new_messages:
+        <span class="kw">yield</span> m
+</pre></div>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Burn step 5's source comment in — "<strong>persistence needs to happen before streaming</strong>, to minimize chances of the agent getting into an inconsistent state." A dedicated accordion below explains why it matters so much.</span></div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">🐹</span><span class="lab">step 3/50</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🔁</span><span class="lab">Call a tool this round?</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🛞</span><span class="bubble">Did → one more lap!</span>
+    <span class="emoji">🛑</span><span class="bubble">Didn't → brake, stop.</span>
+  </div>
+  <div class="cap">The odometer on the hamster wheel reads 3/50: as long as this lap reached for a tool, pedal one more; come back empty-handed and the brakes go on</div>
+</div>
+
+<h2>Continue or stop: _decide_continuation makes the call</h2>
+<p>Now for the lesson's crux: on what basis does the loop decide to "take one more step" or "wrap up"? The answer is in <span class="mono">_decide_continuation</span> (<span class="mono">letta_agent_v3.py::_decide_continuation</span>). Its docstring writes the rule as two lines, plain to the point of being counterintuitive: <strong>1. Did not call a tool? Loop ends. 2. Called a tool? Loop continues.</strong></p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">Where's the counterintuition? It doesn't <strong>look</strong> at whether the model said "I want to continue." It recognizes one objective fact — whether the model <strong>issued a tool call</strong> this round. Called one → there's follow-up to do (after executing the tool, the model must see the result); didn't → the model is replying directly, so hand the mic back to the user.</span></div>
+
+<p>Why must "called a tool" mean "continue"? Because a tool call is a <strong>two-stage</strong> action: the model first says "I'll call <span class="mono">search</span>," the system executes <span class="mono">search</span> and gets a result, and that result must then be <strong>fed back</strong> to the model so it can carry on. So whenever a round has a tool call, the loop must take one more lap to digest the result — which is the real meaning of "no heartbeats" in <span class="mono">letta_v1_agent</span>'s comment: it doesn't rely on the model raising its own hand for a heartbeat, only on the objective signal of "did it call a tool."</p>
+
+<div class="flow">
+  <div class="node hl"><div class="nt">Did this round call a tool?</div><div class="nd">_decide_continuation's only crux</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">No · no tool call</div><div class="nd">A "required-before-exit" tool still uncalled? yes → continue; no → stop end_turn</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Yes · called a tool</div><div class="nd">A "terminal tool"? yes → stop tool_rule; no → continue</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Hard overrides</div><div class="nd">Already step 50? → stop max_steps</div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">_decide_continuation (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">_decide_continuation</span>(self, agent_state, tool_call_name,
+                         tool_rule_violated, tool_rules_solver, is_final_step, finish_reason=None):
+    <span class="cm"># rule: no tool -> end; tool -> continue (plus a few hard overrides)</span>
+    <span class="kw">if</span> tool_call_name <span class="kw">is None</span>:                  <span class="cm"># no tool call this round</span>
+        uncalled = tool_rules_solver.<span class="fn">get_uncalled_required_tools</span>(...)
+        <span class="kw">if</span> uncalled <span class="kw">and not</span> is_final_step:
+            <span class="kw">return</span> <span class="nb">True</span>, nudge, <span class="nb">None</span>           <span class="cm"># required-before-exit remains -> continue + nudge</span>
+        <span class="kw">if</span> finish_reason == <span class="st">"length"</span>:
+            <span class="kw">return</span> <span class="nb">False</span>, <span class="nb">None</span>, <span class="fn">stop</span>(max_tokens_exceeded)
+        <span class="kw">return</span> <span class="nb">False</span>, <span class="nb">None</span>, <span class="fn">stop</span>(end_turn)      <span class="cm"># normal finish</span>
+    <span class="kw">else</span>:                                       <span class="cm"># a tool was called this round</span>
+        <span class="kw">if</span> tool_rule_violated:
+            <span class="kw">return</span> <span class="nb">True</span>, nudge, <span class="nb">None</span>           <span class="cm"># violation continues too (with a correction nudge)</span>
+        tool_rules_solver.<span class="fn">register_tool_call</span>(tool_call_name)
+        <span class="kw">if</span> tool_rules_solver.<span class="fn">is_terminal_tool</span>(tool_call_name):
+            <span class="kw">return</span> <span class="nb">False</span>, <span class="nb">None</span>, <span class="fn">stop</span>(tool_rule)   <span class="cm"># terminal tool -> stop</span>
+        <span class="kw">if</span> is_final_step:
+            <span class="kw">return</span> <span class="nb">False</span>, <span class="nb">None</span>, <span class="fn">stop</span>(max_steps)   <span class="cm"># reached step 50 -> stop</span>
+        <span class="kw">return</span> <span class="nb">True</span>, nudge, <span class="nb">None</span>               <span class="cm"># otherwise continue</span>
+</pre></div>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">A few <strong>hard overrides</strong> hide here, don't miss them: even though the rule says "no tool → end," as long as a <span class="mono">required_before_exit</span> (must be called at least once before exit) tool is still uncalled, the loop is forced to continue and nudges the model to call it; conversely, even if a tool was called, hitting a "terminal tool" or "step 50" forces a stop. <strong>The rule is the skeleton, the overrides are the patches.</strong></span></div>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Four anchors, one through-line.</strong> The outer loop is <span class="mono">letta_agent_v3.py::step</span> (<span class="mono">for i in range(max_steps)</span>, returns a <span class="mono">LettaResponse</span>); each lap's <span class="mono">letta_agent_v3.py::_step</span> is the "one LLM + tool + persist" async generator; tool validation and execution, plus that continuation triple, live in <span class="mono">letta_agent_v3.py::_handle_ai_response</span>; the continuation criterion is in <span class="mono">letta_agent_v3.py::_decide_continuation</span>. Add two constant-level anchors: the budget <span class="mono">constants.py::DEFAULT_MAX_STEPS = 50</span>, and the stop reason <span class="mono">letta/schemas/letta_stop_reason.py::StopReasonType</span>. Strung into one line: <strong><span class="mono">step</span> turns the laps, <span class="mono">_step</span> does the work, <span class="mono">_handle_ai_response</span> settles the accounts, <span class="mono">_decide_continuation</span> makes the call, and hitting the budget stamps <span class="mono">max_steps</span>.</strong>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 Design spark</div>
+  <strong>"Agent" sounds mystical, but in code it's a budgeted for loop: call the model → run a tool → ask "keep going?" → repeat, up to 50 times.</strong> And that "keep going?" criterion is counterintuitively simple — it doesn't look at whether the model "said it wants to continue," only at whether the model "<strong>called a tool</strong>" this round: called one → the work isn't done, continue; didn't → time to hand the mic back to the user, end. This is the essence of "no heartbeats" in <span class="mono">letta_v1_agent</span>'s comment: the previous generation needed the model to raise its hand for a "heartbeat" in the parameters to step again (lesson 15 goes deep), while V3 drops that whole layer and trusts a single objective signal. One more engineering detail is the key to "recoverability": <strong>persist first, then stream</strong> (<span class="mono">_checkpoint_messages</span>'s comment plainly says "persistence needs to happen before streaming"). Even if the process crashes mid-token, this step's messages are already written into <span class="mono">AgentState</span> — the next load resumes right where it left off (echoing lesson 13's "save file"). <strong>A plain loop, an objective criterion, and the persist-before-stream discipline — those three together are the whole secret of V3's steadiness.</strong>
+</div>
+
+<h2>Reasons to stop: StopReasonType</h2>
+<p>Every time the loop stops, it stamps a "stop reason" — <span class="mono">StopReasonType</span> (<span class="mono">letta/schemas/letta_stop_reason.py</span>, a string enum). It's more than a human-facing label: <span class="mono">LettaStopReason.run_status</span> maps the stop reason to this run's <strong>final status</strong> (<span class="mono">completed / failed / cancelled</span>), deciding whether the caller sees "finished cleanly" or "something errored."</p>
+
+<p>The two most common stop reasons match the loop's two normal exits: <span class="mono">end_turn</span> (the model called no tool this round and hands the mic back) and <span class="mono">max_steps</span> (the 50-step budget cap was reached). Note — <span class="mono">max_steps</span> maps to <strong>completed</strong>, not failed: hitting the cap is "clocking out on schedule," not a crash.</p>
+
+<table class="t">
+  <tr><th>StopReasonType</th><th>When it fires</th><th>run_status</th></tr>
+  <tr><td class="mono">end_turn</td><td>no tool this round, normal finish</td><td>completed</td></tr>
+  <tr><td class="mono">tool_rule</td><td>a "terminal tool" was called (lesson 16)</td><td>completed</td></tr>
+  <tr><td class="mono">max_steps</td><td>ran the 50-step budget cap</td><td>completed</td></tr>
+  <tr><td class="mono">requires_approval</td><td>a tool needs human approval, paused for it</td><td>completed</td></tr>
+  <tr><td class="mono">max_tokens_exceeded</td><td>model truncated by length this round (<span class="mono">finish_reason=length</span>)</td><td>failed</td></tr>
+  <tr><td class="mono">cancelled</td><td>the run was cancelled from outside</td><td>cancelled</td></tr>
+  <tr><td class="mono">error / llm_api_error / …</td><td>model error, illegal tool, invalid response, etc.</td><td>failed</td></tr>
+</table>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">The easiest way to hold the stop reasons is in three piles by <span class="mono">run_status</span>: the <strong>completed</strong> pile is all "normal clock-out" — <span class="mono">end_turn / max_steps / tool_rule / requires_approval</span>; the <strong>failed</strong> pile is "something went wrong" — <span class="mono">error / invalid_tool_call / max_tokens_exceeded …</span>; <strong>cancelled</strong> stands alone. The cap counting as completed is the most counterintuitive — remember it.</span></div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfalls</div>
+  <strong>Don't treat <span class="mono">step()</span> as a streaming interface.</strong> <span class="mono">step()</span> (<span class="mono">letta_agent_v3.py::step</span>) does not spit tokens to the frontend as it runs — internally it drains each <span class="mono">_step</span> generator, gathers the messages into a list, and after the loop returns <strong>one <span class="mono">LettaResponse</span></strong> (the full response). The thing that actually "streams tokens" is a separate method, <span class="mono">stream(...)</span>; don't conflate the two. The common illusion: seeing <span class="mono">async for ... yield</span> inside <span class="mono">_step</span> makes you think the whole <span class="mono">step()</span> streams — but that <span class="mono">yield</span> is only <span class="mono">_step</span>'s <strong>internal pipe</strong> handing messages to <span class="mono">step()</span>, which then appends them to a list rather than forwarding them to the client. One line to close: <strong><span class="mono">_step</span>'s yield is "internal relay," <span class="mono">stream()</span> is "broadcasting live to the outside," and <span class="mono">step()</span> is "record it, then deliver the finished cut."</strong>
+</div>
+
+<h2>Digging a little deeper</h2>
+
+<details class="accordion"><summary>Why "persist first, then stream"?</summary><div class="acc-body">
+<p><strong>Example:</strong> a user asks a question, the model calls a tool and is mid-stream on its reply, and the process suddenly crashes. With "stream first, persist later," this half-finished work is all lost, and redoing it might double-charge or send two emails.</p>
+<p><strong>Why it's designed this way:</strong> V3 nails the order inside <span class="mono">_step</span> to "first <span class="mono">_checkpoint_messages</span> to persist, then <span class="mono">yield</span> to stream." The source comment puts it verbatim — "persistence needs to happen before streaming, to minimize chances of the agent getting into an inconsistent state." So even if streaming dies halfway, this step's messages are already in <span class="mono">AgentState</span>, the next load resumes, and the state never gets dirtied.</p>
+<p><strong>Where in the source:</strong> the <span class="mono">_checkpoint_messages</span> call near the end of <span class="mono">letta_agent_v3.py::_step</span>; the save itself is lesson 13's <span class="mono">AgentState</span>.</p>
+<p><strong>What's the alternative:</strong> stream-then-persist — lower latency, but a crash loses the state and may duplicate side effects. Letta picked "steady" over "fast."</p>
+</div></details>
+
+<details class="accordion"><summary>What does <span class="mono">max_steps = 50</span> actually guard against?</summary><div class="acc-body">
+<p><strong>Example:</strong> the model falls into a "call a tool → see the result → call the same tool again → …" self-loop and can't stop. With no cap, it would burn tokens forever and hold the request hostage forever.</p>
+<p><strong>Why it's designed this way:</strong> <span class="mono">DEFAULT_MAX_STEPS = 50</span> (<span class="mono">constants.py</span>) is the fuse fitted on the loop. Run a full 50 laps without a natural finish and <span class="mono">step()</span> actively stamps <span class="mono">StopReasonType.max_steps</span> and exits. The key part — this stop reason maps to a <span class="mono">run_status</span> of <strong>completed</strong>, not failed: clocking out on schedule is expected protection, not an error.</p>
+<p><strong>Where in the source:</strong> the <span class="mono">i == max_steps - 1</span> fallback in <span class="mono">letta_agent_v3.py::step</span>; the mapping is in <span class="mono">letta_stop_reason.py::LettaStopReason.run_status</span>.</p>
+<p><strong>What's the alternative:</strong> set no cap — one runaway agent could drag down the service and burn the whole budget. 50 is the "enough, but not out of control" engineering compromise.</p>
+</div></details>
+
+<details class="accordion"><summary>What's that "overflow → compact → retry" layer inside <span class="mono">_step</span> for?</summary><div class="acc-body">
+<p><strong>Example:</strong> messages keep piling up, and this round's feed to the model overflows the context window, so the LLM raises <span class="mono">ContextWindowExceededError</span> outright.</p>
+<p><strong>Why it's designed this way:</strong> <span class="mono">_step</span> wraps <span class="mono">invoke_llm</span> in a retry loop: the moment it catches <span class="mono">ContextWindowExceededError</span>, it calls <span class="mono">self.compact(...)</span> to squeeze the history down (exactly lesson 12's compaction), rebuilds the system prompt, and retries the call. So "window pressure" gets quietly digested inside the loop, and the outer <span class="mono">step()</span> barely notices.</p>
+<p><strong>Where in the source:</strong> the <span class="mono">except ContextWindowExceededError</span> branch of <span class="mono">letta_agent_v3.py::_step</span>; the compaction logic is in <span class="mono">services/summarizer/compact.py::compact_messages</span> (lesson 12).</p>
+<p><strong>What's the alternative:</strong> error straight out to the user — a poor experience. Wiring compaction into the loop, letting the agent "catch its breath and continue," is the smoother fix.</p>
+</div></details>
+
+<details class="accordion"><summary>The model calls several tools in one round (in parallel) — how does the loop count that?</summary><div class="acc-body">
+<p><strong>Example:</strong> the model issues 3 tool calls at once (in parallel). Each tool runs its own "continue or not" check — could some say stop while others say continue, and clash?</p>
+<p><strong>Why it's designed this way:</strong> <span class="mono">_handle_ai_response</span> handles single and parallel tool calls uniformly: validate each, execute, then run <span class="mono">_decide_continuation</span> for each. But as long as nobody in the batch trips a hard stop like a "terminal tool (<span class="mono">tool_rule</span>)" or "step 50 (<span class="mono">max_steps</span>)," it forces <span class="mono">aggregate_continue = True</span> — that is, parallel calls <strong>continue one more lap by default</strong>, so the model can come back and summarize the several tools' results into one passage.</p>
+<p><strong>Where in the source:</strong> the aggregate-continuation part of <span class="mono">letta_agent_v3.py::_handle_ai_response</span> (the <span class="mono">has_terminal</span> / <span class="mono">is_max_steps</span> checks).</p>
+<p><strong>What's the alternative:</strong> stop the moment any tool says stop — but then the model never gets to tell the user the parallel results. Continuing by default is the more intuitive choice.</p>
+</div></details>
+
+<h2>Next stop</h2>
+<p>This lesson took the V3 engine apart to the bottom: <span class="mono">step()</span> is a budgeted for loop, one <span class="mono">_step</span> does three things (call the model, run tools, persist), continuation is settled by <span class="mono">_decide_continuation</span> with "did it call a tool" in a single stroke, and on stopping it stamps a <span class="mono">StopReasonType</span>. Weld those three things into your head and an agent "running" stops being mysterious.</p>
+
+<p>But one comparison stayed unopened: the previous generation, V2, didn't continue based on "did it call a tool," but on the model raising its hand for a "heartbeat" in the parameters (<span class="mono">request_heartbeat</span>). The next lesson (15) is all about this contrast — why MemGPT needed heartbeats back then, and why V3 dares to cut them. Further on, lesson 16 unpacks the <span class="mono">tool_rules</span> (terminal / required / approval) that <span class="mono">_decide_continuation</span> kept pointing at but never detailed.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">Take one line away: <strong><span class="mono">step()</span> is a budgeted for loop, one <span class="mono">_step</span> = call the model + run the tool + persist, and continuation only looks at "did this round call a tool."</strong> Hold these three sentences and the rest of Part 4's loop details all hang back onto them.</span></div>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>step() = a budgeted for loop</strong>: <span class="mono">for i in range(max_steps)</span>, <span class="mono">DEFAULT_MAX_STEPS = 50</span>; each lap drains one <span class="mono">_step</span>, and the loop ends by returning <strong>one</strong> <span class="mono">LettaResponse</span>.</li>
+    <li><strong>one _step = three things</strong>: one LLM call + tool execution + persist (get valid tools → refresh messages → call the model → <span class="mono">_handle_ai_response</span> → <span class="mono">_checkpoint_messages</span> → yield).</li>
+    <li><strong>the continuation rule</strong> (<span class="mono">_decide_continuation</span>): no tool call → end (<span class="mono">end_turn</span>); tool call → continue. Hard overrides: terminal tool → stop <span class="mono">tool_rule</span>, required-before-exit → continue, step 50 → stop <span class="mono">max_steps</span>, needs approval → <span class="mono">requires_approval</span>.</li>
+    <li><strong>persist before stream</strong>: <span class="mono">_checkpoint_messages</span>'s comment "persistence needs to happen before streaming" guarantees a mid-way crash can still resume from the save (echoing lesson 13).</li>
+    <li><strong>overflow → compact → retry</strong>: the LLM call in <span class="mono">_step</span> is wrapped in <span class="mono">except ContextWindowExceededError → compact → retry</span> (continuing lesson 12).</li>
+    <li><strong>step() doesn't stream</strong>: it returns a <span class="mono">LettaResponse</span>; streaming is a separate <span class="mono">stream()</span>.</li>
+    <li><strong>source</strong>: <span class="mono">letta_agent_v3.py::step / _step / _handle_ai_response / _decide_continuation</span>, <span class="mono">constants.py::DEFAULT_MAX_STEPS</span>, <span class="mono">letta_stop_reason.py::StopReasonType</span>.</li>
+  </ul>
+</div>
+""",
 }
