@@ -30,4 +30,5 @@ CONTENT = {
     "17-tool-as-function.html": part5.LESSON_17,
     "18-schema-without-executing.html": part5.LESSON_18,
     "19-tool-dispatch-and-mcp.html": part5.LESSON_19,
+    "20-tool-sandbox-security.html": part5.LESSON_20,
 }

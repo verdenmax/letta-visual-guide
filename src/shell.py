@@ -84,6 +84,8 @@ PAGES = [
      "第五部分 · 工具系统", "Part 5 · The tool system"),
     ("19-tool-dispatch-and-mcp.html", "工具分发与执行（含 MCP）", "Tool dispatch & execution (incl. MCP)",
      "第五部分 · 工具系统", "Part 5 · The tool system"),
+    ("20-tool-sandbox-security.html", "自定义工具沙箱与安全修复", "The tool sandbox & a security fix",
+     "第五部分 · 工具系统", "Part 5 · The tool system"),
 ]
 
 
@@ -560,6 +562,8 @@ SUBTITLES = {
                                          "derive_openai_json_schema; static AST parsing; TypeScript"),
     "19-tool-dispatch-and-mcp.html": ("ToolType · 工厂分发 · core/builtin/files/mcp/sandbox · MCP",
                                       "ToolType; factory dispatch; core/builtin/files/mcp/sandbox; MCP"),
+    "20-tool-sandbox-security.html": ("local/E2B/Modal · 信任边界 · pickle vs JSON · marker+长度+MD5",
+                                      "local/E2B/Modal; the trust boundary; pickle vs JSON; marker+length+MD5"),
 }
 
 

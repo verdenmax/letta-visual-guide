@@ -1150,3 +1150,5 @@ LESSON_19 = {"zh": r"""
 <p>Strung together: the model picks a tool (Lessons 17 and 18 gave it a schema) → the loop calls it (Lesson 14) → the factory dispatches by <span class="mono">ToolType</span> → each executor runs its own way. And a custom tool is handed by default to <span class="mono">SandboxToolExecutor</span>, that is, thrown into the sandbox. But how exactly does the sandbox run, and on what grounds does it dare run a stranger's code? That is Lesson 20, the close of Part 5.</p>
 <div class="note tip"><span class="ni">🧷</span><span class="nx">In one line: this lesson took "running a tool" from a single black-box line and broke it into five crisp links — "type → factory → entry → executor → result." Next lesson we burrow into the most dangerous link of all — the sandbox.</span></div>
 """}
+
+LESSON_20 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}
