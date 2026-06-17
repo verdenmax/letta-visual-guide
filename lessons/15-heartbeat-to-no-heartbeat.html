@@ -589,7 +589,80 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li><strong>源码</strong>：<span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>、<span class="mono">agent.py::_handle_ai_response / step</span>、<span class="mono">local_llm/function_parser.py::insert_heartbeat</span>、<span class="mono">letta_agent_v3.py::_get_valid_tools</span>、<span class="mono">constants.py</span> 心跳常量。</li>
   </ul>
 </div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 老机制（元老 Agent / V2）里的 request_heartbeat 到底是个什么参数？它被加到哪些工具上？</div>
+  <ol class="opts">
+    <li>一个整数参数，表示模型还想再走多少步</li>
+    <li>一个必填的布尔参数，由 runtime_override_tool_json_schema 动态加到每个非终止工具上；模型想续步就得设 true</li>
+    <li>一个可选的字符串参数，只加到 send_message 这类终止工具上</li>
+    <li>一个由框架自动填好的只读字段，模型无法设置</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。request_heartbeat 是老机制在 tool_parser_helper.py::runtime_override_tool_json_schema 里动态注入的布尔参数：只加给非终止工具（send_message 这类终止工具被排除），而且进 required（必填）。于是模型每调一个普通工具都得表态——设 true 才续步，false（默认）就收尾。它不是可选的、不是字符串、不是步数计数器，也不是只读字段；恰恰相反，它把“要不要继续”的决定权显式交到了模型手里。</div></div></div>
+  </details>
 </div>
+<div class="quiz">
+  <div class="qn">2. 老机制里，模型把 request_heartbeat 设成 true 之后，框架靠什么把这一圈续下去？工具报错时又会怎样？</div>
+  <ol class="opts">
+    <li>框架把 request_heartbeat 透传给工具函数，由工具自己决定要不要续</li>
+    <li>框架重启整个 step() 循环，从第 0 步重新跑</li>
+    <li>框架直接把工具结果当成 assistant 消息追加，不需要任何额外消息</li>
+    <li>框架注入一条 role=user 的“心跳”消息（REQ_HEARTBEAT_MESSAGE，对用户隐藏）把控制权还给模型并 continue；工具报错时即便没要心跳，也会自动注入 FUNC_FAILED_HEARTBEAT_MESSAGE 续一圈</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。解析在 agent.py::_handle_ai_response（pop 出标志、把字符串 "true" 归一成布尔），链式在 agent.py::step：function_failed 为真 → 注入 FUNC_FAILED_HEARTBEAT_MESSAGE 并 continue；否则 heartbeat_request 为真 → 注入 REQ_HEARTBEAT_MESSAGE 并 continue；都不满足 → break。这两条消息都带 NON_USER_MSG_PREFIX 前缀、角色是 user 但对用户隐藏。“报错”那条排在心跳判断之前，所以哪怕模型没要心跳，失败也会自动续一圈让它补救。框架并不会把心跳标志透传给工具（恰恰要先 pop 掉），也不会从头重启循环。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. V3（letta_v1_agent）不再用心跳，那它靠什么决定要不要再走一步？又怎么处理模型硬塞进来的 request_heartbeat？</div>
+  <ol class="opts">
+    <li>还是看 request_heartbeat，只是把默认值从 false 改成了 true</li>
+    <li>看模型生成文本里有没有出现“继续”二字</li>
+    <li>靠 _decide_continuation：“这一轮调了工具就继续，没调就停”；_get_valid_tools 传 request_heartbeat=False 压根不加这个参数，_handle_ai_response 还会 args.pop(REQUEST_HEARTBEAT_PARAM, None) 把残留默默丢掉</li>
+    <li>每一步都无脑续，直到撞上 token 上限才停</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。V3 的 _get_valid_tools 调 runtime_override_tool_json_schema 时传 request_heartbeat=False（注释 "NOTE: difference for v3"），工具 schema 里根本没有这个参数。续步判据回到第 14 课的 _decide_continuation：调了工具 → 继续（工具调用是两段式的，结果得喂回模型），没调 → 停。就算某个旧 prompt 硬塞一个心跳参数，_handle_ai_response 也用 args.pop(REQUEST_HEARTBEAT_PARAM, None) 丢掉它，绝不让残留干扰判据。它既不靠默认 true、也不扫文本关键词，更不是无脑续到 token 上限。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. V3 删掉 request_heartbeat，最大的收益是消灭了哪一整类 bug？老机制原本又是用什么给这类 bug 打补丁的？</div>
+  <ol class="opts">
+    <li>消灭“上下文窗口溢出”这类 bug；老机制靠压缩历史兜底</li>
+    <li>消灭“工具执行超时”这类 bug；老机制靠加大超时时间兜底</li>
+    <li>消灭“并行工具调用结果冲突”这类 bug；老机制靠串行化工具兜底</li>
+    <li>消灭“模型忘了设 request_heartbeat=true → agent 在调完工具后直接静默冻住”这一类 bug；老机制靠 local_llm 里的 insert_heartbeat 给本地模型兜底（issue #601）</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。把“要不要继续”押在模型自觉上很脆弱：模型一旦忘了设 request_heartbeat=true，工具跑完没人续步，agent 就在用户说完话后静默冻住。这正是 insert_heartbeat（local_llm/function_parser.py）存在的理由——本地模型常忘设（issue #601），于是“上一条是真用户消息”且“这是非 send_message 工具调用”时，强行补 request_heartbeat=True。V3 把判据换成“调了工具就继续”，这一整类“模型忘了设”的 bug 随之消失，补丁也不必存在。上下文溢出、工具超时、并行冲突是另外的问题，与删心跳无关。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. 关于“哪几代靠心跳续步”，下面哪个说法是对的？</div>
+  <ol class="opts">
+    <li>元老 Agent 和第二代 V2 都还在用心跳（V2 的 _get_valid_tools 传 True，_handle_ai_response 里 continue_stepping = request_heartbeat），只有第三代 V3 把它彻底删掉</li>
+    <li>心跳是被全盘否定的旧设计，V2 和 V3 都已经不用了</li>
+    <li>只有元老 Agent 用心跳，V2 和 V3 都改用了 _decide_continuation</li>
+    <li>三代都在用心跳，V3 只是把常量名换了一个</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。别把“心跳”当成被否定的旧设计——同代的 V2 依然在用。letta_agent_v2.py::_get_valid_tools 传 request_heartbeat=True，其 _handle_ai_response 里 continue_stepping = request_heartbeat，续步判据仍由模型的心跳标志驱动。只有 V3（letta_v1_agent，注释 "no heartbeats or forced tool calls"）才把心跳整套拿掉、改用 _decide_continuation。所以不是“V2/V3 都不用”，不是“只有 Agent 用”，更不是“三代都用、只换名字”。一参之差（_get_valid_tools 传 True 还是 False）正是 V2 与 V3 的分水岭。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用“对讲机”这个比喻，把第 15 课从“心跳续步”到“调了工具就继续”的演化串成一个完整故事，并想三件事：(1) 老机制为什么要让模型在参数里举手要心跳（request_heartbeat=true）？把“要不要继续”交给模型，灵活在哪、脆弱在哪？(2) insert_heartbeat 这块给本地模型打的补丁（issue #601），和 V3“从根上不依赖模型自觉”的思路，本质区别在哪？为什么说“补丁盖症状、V3 治根因”？(3) V3 既然觉得心跳多余，为什么同代的 V2 还留着它？从“兼容旧设计”和“演化节奏”的角度想想，删一个看似冗余的参数为什么也得分代、分步来做。</li>
+  </ul>
+</div>
+</div></div>
   <div class="lang-en">
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
 Last lesson, while taking the V3 loop apart, we hit a counterintuitive criterion: whether to step again <strong>doesn't read whether the model wants to continue, only whether this round called a tool</strong>. That left a loose thread — what exactly did the "no heartbeats" in <span class="mono">letta_v1_agent</span>'s comment take away? This lesson settles that account.</p>
@@ -847,7 +920,80 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li><strong>Source</strong>: <span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>, <span class="mono">agent.py::_handle_ai_response / step</span>, <span class="mono">local_llm/function_parser.py::insert_heartbeat</span>, <span class="mono">letta_agent_v3.py::_get_valid_tools</span>, <span class="mono">constants.py</span> heartbeat constants.</li>
   </ul>
 </div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. In the old mechanism (the elder Agent / V2), what kind of parameter is request_heartbeat, and which tools does it get added to?</div>
+  <ol class="opts">
+    <li>An integer param saying how many more steps the model wants to take</li>
+    <li>A required boolean param that runtime_override_tool_json_schema dynamically adds to every non-terminal tool; the model must set it true to step again</li>
+    <li>An optional string param added only to terminal tools like send_message</li>
+    <li>A read-only field auto-filled by the framework that the model cannot set</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. request_heartbeat is a boolean the old mechanism injects dynamically in tool_parser_helper.py::runtime_override_tool_json_schema: it's added only to non-terminal tools (terminal tools like send_message are excluded) and put into required. So on every ordinary tool call the model must declare — set true to continue, false (the default) to wrap up. It is not optional, not a string, not a step counter, and not read-only; on the contrary, it hands the “continue or not” decision explicitly to the model.</div></div></div>
+  </details>
 </div>
+<div class="quiz">
+  <div class="qn">2. In the old mechanism, once the model sets request_heartbeat to true, how does the framework keep the lap going? And what happens when a tool fails?</div>
+  <ol class="opts">
+    <li>The framework passes request_heartbeat through to the tool function and lets the tool decide whether to continue</li>
+    <li>The framework restarts the whole step() loop, rerunning from step 0</li>
+    <li>The framework just appends the tool result as an assistant message, needing no extra message</li>
+    <li>The framework injects a role=user “heartbeat” message (REQ_HEARTBEAT_MESSAGE, hidden from the user) to hand control back and continue; on tool failure it auto-injects FUNC_FAILED_HEARTBEAT_MESSAGE for one more lap even without a requested heartbeat</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Parsing is in agent.py::_handle_ai_response (pop the flag, normalize the string "true" to a bool); chaining is in agent.py::step: if function_failed → inject FUNC_FAILED_HEARTBEAT_MESSAGE and continue; elif heartbeat_request → inject REQ_HEARTBEAT_MESSAGE and continue; else break. Both messages carry the NON_USER_MSG_PREFIX prefix and have role=user but are hidden from the user. The “failure” branch sits before the heartbeat check, so even without a requested heartbeat a failure auto-continues one lap for recovery. The framework does not pass the heartbeat flag through to the tool (it pops it out first), nor does it restart the loop from scratch.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. V3 (letta_v1_agent) no longer uses heartbeats — so how does it decide whether to take another step, and how does it handle a request_heartbeat the model jams in?</div>
+  <ol class="opts">
+    <li>It still reads request_heartbeat, just flips the default from false to true</li>
+    <li>It scans the model's generated text for the word “continue”</li>
+    <li>Via _decide_continuation: “called a tool this round → continue, didn't → stop”; _get_valid_tools passes request_heartbeat=False so the param isn't added at all, and _handle_ai_response does args.pop(REQUEST_HEARTBEAT_PARAM, None) to quietly drop any leftover</li>
+    <li>It blindly continues every step until it hits the token cap</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. V3's _get_valid_tools passes request_heartbeat=False to runtime_override_tool_json_schema (comment "NOTE: difference for v3"), so the tool schema has no such param. Continuation falls back to lesson 14's _decide_continuation: called a tool → continue (a tool call is two-stage, the result must be fed back to the model); didn't → stop. Even if some old prompt jams in a heartbeat param, _handle_ai_response drops it with args.pop(REQUEST_HEARTBEAT_PARAM, None), never letting a leftover disturb the criterion. It neither relies on a true default, nor scans text for a keyword, nor blindly continues to the token cap.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. Deleting request_heartbeat, what whole bug-class does V3 eliminate as its biggest win? And what did the old mechanism use to patch that bug-class?</div>
+  <ol class="opts">
+    <li>Eliminates the “context-window overflow” bug-class; the old mechanism patched it by compacting history</li>
+    <li>Eliminates the “tool execution timeout” bug-class; the old mechanism patched it by raising the timeout</li>
+    <li>Eliminates the “parallel tool-call result conflict” bug-class; the old mechanism patched it by serializing tools</li>
+    <li>Eliminates the “model forgot to set request_heartbeat=true → the agent freezes silent after calling a tool” bug-class; the old mechanism backed local models up with insert_heartbeat in local_llm (issue #601)</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Pinning “continue or not” on the model's conscientiousness is fragile: the moment the model forgets to set request_heartbeat=true, the tool finishes, nobody steps again, and the agent freezes silent right after the user speaks. That is exactly why insert_heartbeat (local_llm/function_parser.py) exists — local models often forget (issue #601), so when “the previous message is a real user message” and “this is a non-send_message tool call,” it forces in request_heartbeat=True. V3 swaps the criterion to “called a tool → continue,” so the whole “model forgot to set it” bug-class vanishes and the patch needn't exist. Context overflow, tool timeouts, and parallel conflicts are separate issues, unrelated to deleting heartbeats.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. About “which generations continue via heartbeats,” which statement is correct?</div>
+  <ol class="opts">
+    <li>Both the elder Agent and the second-gen V2 still use heartbeats (V2's _get_valid_tools passes True, and continue_stepping = request_heartbeat in _handle_ai_response); only the third-gen V3 removes it entirely</li>
+    <li>Heartbeats are a wholly rejected old design that both V2 and V3 have dropped</li>
+    <li>Only the elder Agent uses heartbeats; both V2 and V3 switched to _decide_continuation</li>
+    <li>All three generations use heartbeats; V3 merely renamed a constant</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Don't treat “heartbeats” as a rejected old design — the same-era V2 still uses them. letta_agent_v2.py::_get_valid_tools passes request_heartbeat=True, and continue_stepping = request_heartbeat in its _handle_ai_response, so continuation is still driven by the model's heartbeat flag. Only V3 (letta_v1_agent, comment "no heartbeats or forced tool calls") removes the whole heartbeat machinery and switches to _decide_continuation. So it's not “neither V2 nor V3,” not “only Agent,” and not “all three with just a rename.” One param's difference (_get_valid_tools passing True vs False) is the watershed between V2 and V3.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Using the “walkie-talkie” metaphor, weave lesson 15's evolution from “heartbeat-driven continuation” to “called a tool → continue” into one coherent story, and think through three things: (1) why did the old mechanism make the model raise its hand for a heartbeat (request_heartbeat=true) in the parameters? Handing “continue or not” to the model — where's the flexibility, where's the fragility? (2) What's the essential difference between the insert_heartbeat patch for local models (issue #601) and V3's “stop depending on the model's conscientiousness at the root”? Why say “a patch covers the symptom, V3 cures the root cause”? (3) If V3 deems heartbeats redundant, why does the same-era V2 still keep them? Thinking in terms of “compatibility with the old design” and “the pace of evolution,” why must even deleting a seemingly redundant parameter be done generation by generation, step by step?</li>
+  </ul>
+</div>
+</div></div>
   <div class="footnav"><a class="prev" href="14-v3-step-loop.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">V3 步进循环</span><span class="lang-en">The V3 step loop</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
