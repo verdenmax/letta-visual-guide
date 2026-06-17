@@ -363,4 +363,35 @@ LESSON_21 = {"zh": r"""
 """}
 
 
-LESSON_22 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}
+LESSON_22 = {"zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">上一课我们把"统一契约"立在了纸面上：一个工厂按类型选 client，三方法把差异收敛成 OpenAI 形状。可纸面平整，不等于底下风平浪静——<strong>各家 LLM 的脾气其实大不相同</strong>：Anthropic 要你贴 <span class="mono">cache_control</span> 缓存标记、Google 连字段名都另起一套、有的模型干脆没有原生推理能力。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课要回答的就是：这些五花八门的怪癖，到底<strong>怎么被一个个关进各自的 client 子类里</strong>——关到第 13 到 16 课那套执行循环之上、对它们一无所知、也根本无需知道。这是统一契约真正开始"兑现红利"的一课。</p>
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>想象一个演员，<strong>一张脸</strong>，按不同场次戴上不同面具登台。那张脸，就是上一课的 <span class="mono">OpenAIClient</span>；而一个个面具，就是各家 provider 的子类。</p>
+<p>妙处在于：<strong>换面具不用换脸</strong>。大多数子类要做的，只是把面具上某一处改一改——通常就是换个 <span class="mono">base_url</span>，顶多再顺手抹掉或补上一两个字段。</p>
+<p>于是同一张脸，戴上 Groq 的面具就去演 Groq，戴上 xAI 的面具就去演 xAI。台下的循环始终只看到"那个演员"，至于这场他戴的是哪张面具，循环全程不关心。</p>
+<p>这条类比藏着本课的主张：<strong>怪癖不该摊在循环里到处都是，而该被收进各自的面具</strong>——也就是子类那两个被重写的方法里。</p>
+</div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>怪癖只藏在两个方法里，循环之上永远是同一种形状</strong>。</p>
+<p>先看复用有多狠：<span class="mono">OpenAIClient</span> 一个类，被 <strong>8 个显式子类</strong>外加默认 <span class="mono">case _</span> 共同复用，诀窍只是换一个 <span class="mono">base_url</span>——同一套 OpenAI SDK，指向不同 URL 就接上不同的家。</p>
+<p>再看怪癖关在哪：子类<strong>只重写两个方法</strong>——<span class="mono">build_request_data</span>（出门前改请求）与 <span class="mono">convert_response_to_chat_completion</span>（回来后改响应），常常是先 <span class="mono">super()</span> 拿到 OpenAI 形状、再就地改几笔。</p>
+<p>本课最妙的一手怪招，是把<strong>内心独白硬塞成工具的第一个参数</strong> <span class="mono">thinking</span>，响应时再 <span class="mono">unpack</span> 抽回消息正文；外加 Anthropic 独有的 cache / thinking / batch 三件套。这几样，就是下面要逐个拆开的对象。</p>
+</div>
+<h2>OpenAIClient：一个类服务多家</h2>
+<p>先看最省事的那条路——大量 provider 根本不需要新写 client，它们直接复用 <span class="mono">OpenAIClient</span>。把整条继承谱系画出来，三大家族一目了然。</p>
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">抽象基类</span><span class="name">LLMClientBase</span></div>
+    <div class="ld">定义三方法契约（上一课）。下面三大家族都从它派生，各自实现一套"出门改请求、回来改响应"。</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">OpenAI 家族</span><span class="name">OpenAIClient ← 8 个子类</span></div>
+    <div class="ld">Azure / Baseten / Deepseek / Fireworks / Groq / Together / XAI / ZAI 都继承它；<span class="mono">openrouter</span> 与默认 <span class="mono">case _</span> 干脆直接复用它本身。</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">Anthropic 家族</span><span class="name">AnthropicClient ← Bedrock / MiniMax</span></div>
+    <div class="ld">它自己<strong>也是</strong>一个复用基类：<span class="mono">BedrockClient</span> 与 <span class="mono">MiniMaxClient</span> 继承它，再各改各的怪癖。</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">Google 家族</span><span class="name">GoogleVertexClient ← GoogleAIClient</span></div>
+    <div class="ld"><span class="mono">GoogleAIClient</span> 继承 <span class="mono">GoogleVertexClient</span>；字段名、角色名、内心独白的位置，都另起一套。</div></div>
+</div>
+<p>看这棵树就懂了：真正"从零写"的只有三个家族基类，其余全是站在它们肩膀上的薄薄一层子类。OpenAI 家族尤其夸张——一个基类背后挂着 8 个子类，还兜着所有没列名的 provider。</p>
+<div class="cellgroup"><div class="cg-cap"><b>OpenAIClient 的 8 个显式子类</b></div><div class="cells"><span class="cell hl">AzureClient</span><span class="sep">·</span><span class="cell">BasetenClient</span><span class="sep">·</span><span class="cell">DeepseekClient</span><span class="sep">·</span><span class="cell">FireworksClient</span><span class="sep">·</span><span class="cell">GroqClient</span><span class="sep">·</span><span class="cell">TogetherClient</span><span class="sep">·</span><span class="cell">XAIClient</span><span class="sep">·</span><span class="cell">ZAIClient</span></div></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">一个类服务多家的诀窍：<span class="mono">OpenAIClient._prepare_client_kwargs</span> 只把 <span class="mono">base_url</span> 设成 <span class="mono">llm_config.model_endpoint</span>——同一套 OpenAI SDK，换个 URL 就接上一家。约 <strong>19/25</strong> 的 <span class="mono">ProviderType</span> 最终落到 <span class="mono">OpenAIClient</span> 或其子类，仅 6 种不用（anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax）。</span></div>
+<!--ZHMORE-->
+""", "en": r"""<p>stub</p>"""}
