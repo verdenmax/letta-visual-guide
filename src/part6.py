@@ -241,5 +241,52 @@ LESSON_21 = {"zh": r"""
 </table>
 <p>Why do so many providers land in that default bucket? Because most of them are already compatible with OpenAI's interface — local inference frameworks (ollama, vllm, lmstudio…) almost all expose an "OpenAI-compatible" endpoint, so Letta only has to send the request to a different <span class="mono">model_endpoint</span>, and the same <span class="mono">OpenAIClient</span> can serve a whole crowd of them.</p>
 <p>Look at that dozen-odd <span class="mono">case</span>s from another angle: they are really an "exceptions list" — only providers whose behaviour genuinely differs from OpenAI need a separate entry, and the rest are all handled as "OpenAI-compatible" by default. The shorter the list, the more universal the standard.</p>
+<h2>The three-method contract</h2>
+<p>Once a client is chosen, the real work is done by the three methods it inherits from <span class="mono">LLMClientBase</span>. Lined up vertically, they form a smooth three-step pipeline: assemble the request → send the request → convert the shape.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>build_request_data</h4><p>Assemble the messages, tools and config into the request body <strong>this provider</strong> understands. A synchronous method that returns a dict.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>request_async</h4><p>Send the request body off and get back <strong>this provider's</strong> raw response. An async method that returns a dict.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>convert_response_to_chat_completion</h4><p>Translate the raw response <strong>into the OpenAI shape</strong> — a ChatCompletionResponse. An async method.</p></div></div>
+</div>
+<p>Who strings the three steps together? <span class="mono">send_llm_request</span> — its name carries no <span class="mono">async</span>, yet it is <strong>actually an async method</strong>. It calls the three methods in order and hands any exception thrown by any step to <span class="mono">handle_llm_error</span> as the catch-all.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/llm_client_base.py</span><span class="ln">the three methods + send_llm_request orchestration (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">LLMClientBase</span>:
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">def</span> <span class="fn">build_request_data</span>(self, agent_type, messages, llm_config, tools, ...) -&gt; dict: ...
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">async def</span> <span class="fn">request_async</span>(self, request_data, llm_config) -&gt; dict: ...
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">async def</span> <span class="fn">convert_response_to_chat_completion</span>(self, response_data, ...) -&gt; ChatCompletionResponse: ...
+
+    <span class="kw">async def</span> <span class="fn">send_llm_request</span>(self, ...):           <span class="cm"># orchestration: string the three steps</span>
+        data = self.<span class="fn">build_request_data</span>(...)
+        <span class="kw">try</span>:    resp = <span class="kw">await</span> self.<span class="fn">request_async</span>(data, llm_config)
+        <span class="kw">except</span> Exception <span class="kw">as</span> e: <span class="kw">raise</span> self.<span class="fn">handle_llm_error</span>(e, llm_config)
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">convert_response_to_chat_completion</span>(resp, ...)
+</pre></div>
+<div class="note tip"><span class="ni">💡</span><span class="nx">"Three methods" is a <strong>teaching simplification</strong>. <span class="mono">LLMClientBase</span> actually has 8 abstract methods; the other 5 are <span class="mono">request</span> (sync) / <span class="mono">request_embeddings</span> / <span class="mono">stream_async</span> / <span class="mono">is_reasoning_model</span> / <span class="mono">handle_llm_error</span>. This lesson grabs only the "data shape" through-line.</span></div>
+<p>Notice the division of labour in this pipeline: step 1 knows "what format this provider wants", step 3 knows "what format this provider replies in". <strong>All provider differences are locked into these two end steps</strong>, while the sending and orchestration in the middle are shared by every provider.</p>
+<p>This is where the abstract base class earns its keep: it cuts "the part that varies" apart from "the part that stays fixed". What varies is how the request body is assembled and how the response is parsed; what stays fixed is the skeleton "assemble first, then send, then convert, and map errors into one unified exception". To onboard a new provider, you only fill in those two varying methods.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Watch the sync/async split across the three methods: <span class="mono">build_request_data</span> is pure assembly and touches no network, so it is <strong>synchronous</strong>; the network-waiting <span class="mono">request_async</span>, and the <span class="mono">convert</span> that then processes the response, are both <strong>async</strong>.</span></div>
+<h2>The OpenAI shape = the universal intermediate format</h2>
+<p>The most critical of the three methods is the third. Whether the layer below is Anthropic's content blocks, Google's <span class="mono">functionCall</span>, or a stretch of plain text spat out by a local model, <span class="mono">convert_*</span> collapses it into one and the same type — <span class="mono">ChatCompletionResponse</span>.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/openai/chat_completion_response.py</span><span class="ln">the universal intermediate format (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">ChatCompletionResponse</span>(BaseModel):    <span class="cm"># whichever provider, it all converts to this</span>
+    id: str
+    choices: List[Choice]                  <span class="cm"># Choice(message, finish_reason, ...)</span>
+    created: int
+    model: Optional[str]
+    usage: UsageStatistics
+    object: Literal[<span class="st">"chat.completion"</span>] = <span class="st">"chat.completion"</span>
+</pre></div>
+<p>With this unified exit, the loop from Lesson 14 can safely <strong>read only fixed fields</strong>: take the message and tool calls from <span class="mono">choices</span>, take the token usage from <span class="mono">usage</span>, never first asking "which provider replied this time".</p>
+<p>A note on streaming: <span class="mono">stream_async</span> returns the OpenAI SDK's <span class="mono">AsyncStream[ChatCompletionChunk]</span> — even the "generate-as-you-go" chunk format is collapsed onto OpenAI's set as well.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Think of <span class="mono">convert_*</span> as the interpreter's final step: whatever arrived earlier — nested JSON, or plain text laced with markers — is at this step transcribed into the same standard form, and whoever fetches it downstream sees the very same layout.</span></div>
+<div class="cute"><div class="row"><span class="emoji">🔌🔌🔌</span><span class="lab">each provider's response</span><span class="arrow">→</span><span class="emoji">🟢</span><span class="bubble">one unified socket</span></div><div class="cap">differently shaped plugs → adapter → one unified socket (the OpenAI shape): the loop reads only this one</div></div>
+<h2>What exactly sits inside the unified shape</h2>
+<p>Since the whole system communicates through <span class="mono">ChatCompletionResponse</span>, it is worth a minute to see clearly its most critical cells — because the loop advances precisely by reading these few cells.</p>
+<div class="cellgroup"><div class="cg-cap"><b>the cells the loop reads most</b></div><div class="cells"><span class="cell hl">choices[].message</span><span class="sep">·</span><span class="cell">choices[].finish_reason</span><span class="sep">·</span><span class="cell">usage.total_tokens</span><span class="sep">·</span><span class="cell">model</span><span class="sep">·</span><span class="cell">id</span></div></div>
+<p>Of these, <span class="mono">message</span> holds the assistant reply and the tool calls, and the loop in Lesson 14 decides "whether to run another step" exactly from it; <span class="mono">usage</span> in turn feeds the context-pressure statistics, echoing the compaction decision from Lesson 12. However strange a provider's raw response, as long as these cells are filled in faithfully, the loop above runs as usual.</p>
+<p>Conversely, this is also the acceptance test set for every new client: as long as your <span class="mono">convert_*</span> fills these cells correctly and completely, you are wired in; fill them incompletely, and the loop gives itself away the instant it reaches for a field.</p>
 <!--ENMORE-->
 """}
