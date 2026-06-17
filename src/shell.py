@@ -90,6 +90,8 @@ PAGES = [
      "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
     ("22-provider-quirks.html", "provider 怪癖的隔离", "Isolating provider quirks",
      "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
+    ("23-local-models-gbnf.html", "本地模型与 GBNF 受限解码", "Local models & GBNF constrained decoding",
+     "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
 ]
 
 
@@ -572,6 +574,8 @@ SUBTITLES = {
                                   "the LLMClient.create factory; the 3 methods; the OpenAI shape as the universal format"),
     "22-provider-quirks.html": ("OpenAIClient 复用 · Anthropic cache/thinking/batch · 内心独白注入为参数",
                                 "OpenAIClient reuse; Anthropic cache/thinking/batch; inner thoughts as a tool arg"),
+    "23-local-models-gbnf.html": ("chat_completion_proxy · GBNF 约束 JSON · wrapper · 经典老路径",
+                                  "chat_completion_proxy; GBNF-constrained JSON; wrappers; the classic legacy path"),
 }
 
 

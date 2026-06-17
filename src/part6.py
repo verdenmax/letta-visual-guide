@@ -696,3 +696,10 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <p>Carrying this lesson's two intuitions forward makes the next one smoother: <strong>differences cage into subclasses, and thinking can be constructed</strong>. Next lesson you'll see, when a model can't even "call a tool", how Letta teaches it from scratch with a grammar.</p>
 
 """}
+
+LESSON_23 = {
+    "zh": r"""
+<!--ZHMORE-->
+""",
+    "en": r"""<p>stub</p>""",
+}

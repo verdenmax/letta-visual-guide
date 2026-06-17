@@ -34,4 +34,5 @@ CONTENT = {
     "20-tool-sandbox-security.html": part5.LESSON_20,
     "21-provider-contract.html": part6.LESSON_21,
     "22-provider-quirks.html": part6.LESSON_22,
+    "23-local-models-gbnf.html": part6.LESSON_23,
 }
