@@ -99,5 +99,25 @@ LESSON_17 = {"zh": r"""
 <p>所以一句含糊或缺失的参数描述，会<strong>直接降低</strong>模型用对工具的概率。这是功能问题，不是代码风格问题。Letta 索性把它升级成"编译期错误"：任一参数缺描述，<span class="mono">generate_schema</span> 当场 <span class="mono">raise ValueError</span>，工具压根建不出来，逼你把话说清楚。</p>
 <p>一句话记住：<strong>给模型写 docstring，而不是给同事写</strong>。这正好回扣第 4 课——工具是 agent 与世界的接口，而接口的质量，就压在这几行描述上。</p>
 </div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<ul>
+<li><strong>函数级描述可以缺，参数描述不能缺。</strong>整个工具没写一句话的总描述？没关系，会回退成 <span class="mono">"No description available"</span>。但<strong>每个参数</strong>必须有描述（否则 <span class="mono">ValueError</span>）和类型注解（否则 <span class="mono">TypeError</span>）。</li>
+<li><strong>不是所有类型都支持。</strong>带参数的 <span class="mono">Dict[k,v]</span> 会 <span class="mono">ValueError</span>，一般的 <span class="mono">Union</span> 会 <span class="mono">NotImplementedError</span>。需要结构化入参时，改用 Pydantic <span class="mono">BaseModel</span>。</li>
+<li><strong>self / agent_state 是保留参数。</strong>它们属于 <span class="mono">TOOL_RESERVED_KWARGS</span>，会被直接跳过，<strong>不进</strong> schema——模型看不到、也不用填。</li>
+<li><strong>request_heartbeat 不在这里加。</strong>它不是由 <span class="mono">generate_schema</span> 注入的，而是运行时另行附加（见第 15 课）。别在 docstring 里手写它。</li>
+</ul>
+</div>
+<h2>再挖深一点</h2>
+<p>上面是主线。下面四个抽屉，专门给想抠细节的你——每个都按"示例 / 为什么 / 源码"展开。不想深究可以直接跳到本课要点。</p>
+<details class="accordion"><summary>① 为什么说 docstring 是"契约"，而不只是注释？</summary><div class="acc-body">
+<p><strong>示例：</strong>你把 <span class="mono">message</span> 的描述删掉，函数照样能跑、单元测试照过，但这个工具<strong>注册不进 Letta</strong>。</p>
+<p><strong>为什么：</strong>因为模型从头到尾<strong>只见 schema、不见代码</strong>。代码注释写得再好，进不了 schema 就等于不存在；而 schema 的参数描述只能来自 docstring。docstring 因此从"可有可无的注释"升级成"必须履行的契约"。</p>
+<p><strong>源码：</strong><span class="mono">letta/functions/schema_generator.py::generate_schema</span> 在循环里逐个参数取描述，取不到就 <span class="mono">raise ValueError</span>，把违约挡在构建阶段。</p>
+</div></details>
+<details class="accordion"><summary>② 类型映射的边界在哪？Dict / Union 为什么不行？</summary><div class="acc-body">
+<p><strong>示例：</strong><span class="mono">Optional[str]</span> 会被解包成 <span class="mono">string</span> 并移出 required；但 <span class="mono">Dict[str, int]</span> 直接报错，<span class="mono">Union[int, str]</span> 也报错。</p>
+<p><strong>为什么：</strong>JSON schema 需要明确、可校验的结构。带键值类型的 <span class="mono">Dict</span> 和任意 <span class="mono">Union</span> 难以无歧义地表达，于是 Letta 选择"宁可报错也不猜"。要传结构化对象，就定义一个 Pydantic <span class="mono">BaseModel</span>。</p>
+<p><strong>源码：</strong><span class="mono">letta/functions/schema_generator.py::type_to_json_schema_type</span> 手写处理各分支；遇到 <span class="mono">BaseModel</span> 时调用其 <span class="mono">model_json_schema()</span> 得到嵌套 object。</p>
+</div></details>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
