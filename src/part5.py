@@ -389,4 +389,30 @@ LESSON_17 = {"zh": r"""
 
 """}
 
-LESSON_18 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}
+LESSON_18 = {"zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 17 课有一个悄悄藏起来的前提：我们<strong>已经握着一个 Python 函数对象</strong>，可以直接 <span class="mono">inspect.signature</span> 读它的签名。可现实里，用户注册自定义工具时，递给服务器的往往不是函数对象，而是<strong>一段源码字符串</strong>。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">于是冒出一个棘手的要求：要在<strong>绝不运行这段代码</strong>的前提下，照样产出它的 JSON schema。既要"读懂"这段陌生代码的形状，又一行都不能跑——这才是本课真正的难点。</p>
+
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>想象你在仓库验收一批陌生的电子产品。最稳妥的办法不是<strong>拆封、通电、试用</strong>——万一里头是"诈弹"呢？而是<strong>不拆封就验货</strong>：只读包装外印的"成分表 / 规格参数"，照着这些信息建档入库。</p>
+<p>给 schema 派生器读源码，就是这种"读规格不通电"：只看函数的<strong>签名与 docstring</strong>（外印的规格），绝不 <span class="mono">import</span> 运行它（通电试用）。这段代码是用户上传的，谁也不知道它通电后会做什么。</p>
+</div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>Letta 的答案是 <span class="mono">letta/functions/functions.py::derive_openai_json_schema(source_code, name=None)</span>。它的套路只有三步：先用<strong>纯 AST 解析</strong>把源码读成语法树，再据此造一个 <span class="mono">MockFunction</span>（只带 <span class="mono">__name__ / __doc__ / __signature__</span> 三件套），最后把这个"假函数"喂给<strong>第 17 课里那个一模一样的</strong> <span class="mono">generate_schema</span>。</p>
+<p>全程<strong>绝不 <span class="mono">exec</span>、绝不 <span class="mono">import</span></strong> 用户代码。要看懂这套魔术，得回答三个问题：</p>
+<ul>
+<li>为什么<strong>不能</strong>直接 <span class="mono">import</span> 这段源码？</li>
+<li><span class="mono">MockFunction</span> 凭什么能<strong>骗过 <span class="mono">inspect</span></strong>？</li>
+<li>AST 究竟<strong>静态读</strong>到了哪些东西？</li>
+</ul>
+</div>
+
+<h2>为什么不能直接 import</h2>
+<p>最直觉的做法是 <span class="mono">import</span> 用户模块、再 <span class="mono">inspect</span> 里面的函数。可这条路有致命问题：<span class="mono">import</span> 会执行模块的<strong>顶层代码</strong>。用户源码里只要在函数定义之外写一行 <span class="mono">os.system(...)</span>，导入的那一刻就在你的服务器上跑起来了——这是教科书级的<strong>远程代码执行（RCE）</strong>。</p>
+<div class="cols">
+<div class="col"><h4>❌ import + inspect</h4><p>把源码当模块加载，会<strong>执行顶层代码</strong>。等于让陌生人在你服务器上跑任意命令，安全边界直接失守。</p></div>
+<div class="col"><h4>✅ ast.parse</h4><p>把源码解析成<strong>语法树</strong>，<strong>纯静态、只读不跑</strong>。语法树就是结构化的"代码长相"，读它不会触发任何副作用。</p></div>
+</div>
+<!--ZHMORE-->
+""", "en": r"""<p>stub</p>"""}
