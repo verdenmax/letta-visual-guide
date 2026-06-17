@@ -909,6 +909,100 @@ HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
 <p>provider 这一层讲透了，模型这头就算交代清楚。可一个 agent 要真正跑起来，它的状态、记忆、消息得<strong>存下来</strong>，还要包成一个能对外服务的进程。下一部分，第七部分就转入 server 与持久化——看 Letta 怎么把这一切落到数据库与服务端，让一个 agent 真正"活"过一次次重启。</p>
 """,
     "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Part 6 reaches its close. The first two lessons stood up the unified contract (Lesson 21), then caged each cloud provider's quirks into a subclass one by one (Lesson 22). But one hardest case stays untouched: a local model with <strong>no native function calling at all</strong>, one that can only "continue text" — how do you get it to call a tool?</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson reconstructs that classic MemGPT-era trick: first stuff the tool schema into the prompt as text, then use a <span class="mono">GBNF</span> grammar to <strong>constrain the decoder itself</strong>, so that while sampling the model literally cannot emit an illegal token — only legal JSON. One inoculation up front: this is a legacy path.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>This is a legacy path</strong>: modern local backends (ollama/vllm/lmstudio) go through Lesson 21's OpenAI-compatible <span class="mono">OpenAIClient</span>; GBNF constrained decoding only fires on the old <span class="mono">Agent</span> fallback path, and only for <span class="mono">llamacpp/koboldcpp/webui</span>. We cover "how it works, why it's classic", not "how things run by default today".</span></div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Grab the lesson in one line: <strong>for a model that can only continue text, use grammar to force out parseable JSON</strong>.</p>
+<p>Say it plainly up front — this is a <strong>historical / secondary path</strong>. Modern local backends (ollama / vllm / lmstudio) have long offered "OpenAI-compatible" endpoints, taking Lesson 21's default <span class="mono">case _ → OpenAIClient</span>, with no dedicated client at all.</p>
+<p>The GBNF route is reached only as a <strong>fallback</strong>: the old <span class="mono">agent.py::Agent</span>, after <span class="mono">LLMClient.create</span>, goes through <span class="mono">llm_api_tools.py::create</span>'s <span class="mono">else</span> (local) branch to call <span class="mono">chat_completion_proxy.py::get_chat_completion</span>.</p>
+<p>Its flow is a chain: pick a wrapper → (only if the name contains <span class="mono">grammar</span>) dynamically generate GBNF → the wrapper stuffs the function schema into <strong>prompt text</strong> → call the "bare completion" backend → parse the text <strong>back</strong> into <span class="mono">{function, params}</span> → heartbeat correction.</p>
+<p>Remember one line: <strong>schema into the prompt, grammar governs sampling, text parsed back into structure</strong>. These three steps are everything this lesson pries apart, ring by ring — and the whole secret of this old path.</p>
+</div>
+<div class="card analogy"><div class="tag">🔌 Real-life analogy</div>
+<p>Picture "adding function calling to a model that can only continue text" like this: in front of you sits a <strong>child who only finishes sentences</strong> — you hand over a line, he writes the next one along, with no idea what "calling a tool" even means.</p>
+<p>The first move is blunt: write down what the tool looks like and which parameters it takes as a <strong>manual copied straight into the question</strong>, then add "please output JSON in this format". That is the wrapper stuffing the schema into the prompt.</p>
+<p>But a reminder alone isn't safe — he might wander off-topic, or leave the JSON one bracket short. Hence the second move, the real masterstroke: lay a <strong>stencil plate</strong> over the paper, so the pen can only land in the cut-out slots and <strong>physically cannot</strong> write outside them.</p>
+<p>That plate is the <span class="mono">GBNF</span> grammar. It doesn't "persuade" the model to keep the format — it clamps the sampling directly: each step only allows grammar-legal tokens, so every stroke necessarily takes shape.</p>
+<p>Remember the division of labor: the first move lets the model <strong>"know"</strong> what to fill in, the second lets it <strong>"only"</strong> fill it in right — one soft, one hard. Without the second, the first is just a gentle prayer.</p>
+</div>
+<p>So this lesson really tells three interlocking things: <strong>how schema enters the prompt</strong>, <strong>how GBNF clamps sampling</strong>, and <strong>how text gets parsed back into structure</strong>. We pry them apart below — but first answer the one question most worth asking.</p>
+<p>One more word on origins: early MemGPT faced exactly a batch of open-source models with no tool API, and this "prompt + grammar" play was forced out back then. Reading it today feels more like reading a historical slice from when "function calling wasn't standardized yet".</p>
+<h2>Why Putting Schema in the Prompt Isn't Enough</h2>
+<p>Set "rely on the prompt's reminder alone" and "prompt plus a grammar clamp" side by side, and you see exactly where GBNF's value lies.</p>
+<div class="cols">
+  <div class="col"><h4>😬 Prompt reminder only</h4><p>The model will "most likely" follow the format, but it can still drop fields, truncate the JSON, even forget to call a function. The parser can only patch afterward, and fails outright when it can't. "Correct" is <strong>a probability</strong>.</p></div>
+  <div class="col"><h4>😌 Prompt + GBNF grammar</h4><p>Clamped at the sampling stage: each step can only choose a grammar-legal token, so the output is <strong>necessarily</strong> parseable JSON. "Parseable" no longer rides on luck — it is <strong>guaranteed</strong>.</p></div>
+</div>
+<p>This contrast is nearly the lesson's core: swap "hopefully the format is right" for <strong>"the sampler can only pick the right tokens"</strong>. Carry it downward and the purpose of every later step gets clearer.</p>
+<p>Concretely: you tell the model to output JSON, and it replies "Sure, I'll send that message for you now" — plain prose, not a single brace, and the parser can only stare.</p>
+<p>Even if it does output JSON, it might drop the final <span class="mono">}</span>, or misspell <span class="mono">inner_thoughts</span> as <span class="mono">inner_thought</span>. One character off, and <span class="mono">json.loads</span> blows up on the spot.</p>
+<h2>Walking Through the get_chat_completion Flow</h2>
+<p>Don't let the word "legacy" scare you off — precisely because it lays every step out in the open, hiding nothing, it becomes the best specimen for seeing "what function calling really is".</p>
+<p>This legacy path's conductor is <span class="mono">chat_completion_proxy.py::get_chat_completion</span>. Lay out what it does vertically and it's a smooth seven-step pipeline:</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Pick the wrapper</h4><p>Default is <span class="mono">ChatMLInnerMonologueWrapper</span>; you can also fetch one by name from <span class="mono">get_available_wrappers()</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Generate GBNF</h4><p><strong>Only when</strong> the wrapper name contains <span class="mono">grammar</span>, <span class="mono">generate_grammar_and_documentation</span> dynamically assembles the grammar — not by reading a static <span class="mono">.gbnf</span> file.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Schema into prompt</h4><p><span class="mono">chat_completion_to_prompt</span> writes the function schema into <strong>prompt text</strong>, so the bare model "sees" which tools exist.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Call bare completion</h4><p>By <span class="mono">endpoint_type</span>, hit a bare completion endpoint like <span class="mono">/completion</span>; the grammar is passed to only 4 backends.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Parse back to structure</h4><p><span class="mono">output_to_chat_completion_response</span> reads the returned text <strong>back</strong> into <span class="mono">{function, params}</span>.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>Heartbeat correction</h4><p><span class="mono">function_correction</span>, via <span class="mono">patch_function</span>, supplies <span class="mono">request_heartbeat</span> (callback to Lesson 15).</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>Unify the shape</h4><p>Finally wrap into Lesson 21's <span class="mono">ChatCompletionResponse</span> and hand back; downstream still reads only this one shape.</p></div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Note the <strong>only when</strong> in step 2: GBNF isn't generated by default — it needs <span class="mono">grammar</span> in the wrapper name. In other words, "constrained decoding" is a feature you must <strong>explicitly name</strong> to turn on, not this path's default setting.</span></div>
+<p>Below, drop this pipeline into a code skeleton. Note it has the same flavor as last lesson's three methods: <strong>assemble → send → convert</strong>, just with two locally specific steps added — "generate grammar" and "heartbeat correction".</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/chat_completion_proxy.py</span><span class="ln">get_chat_completion main flow (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">get_chat_completion</span>(model, messages, functions=<span class="kw">None</span>,
+                        wrapper=<span class="kw">None</span>, endpoint=<span class="kw">None</span>, endpoint_type=<span class="kw">None</span>,
+                        function_correction=<span class="kw">True</span>, ...) -&gt; ChatCompletionResponse:
+    <span class="cm"># 1) pick the wrapper (default ChatMLInnerMonologueWrapper)</span>
+    llm_wrapper = DEFAULT_WRAPPER() <span class="kw">if</span> wrapper <span class="kw">is</span> <span class="kw">None</span> <span class="kw">else</span> get_available_wrappers()[wrapper]
+
+    <span class="cm"># 2) only when the wrapper name contains "grammar" do we generate GBNF (no static .gbnf)</span>
+    grammar = <span class="kw">None</span>
+    <span class="kw">if</span> <span class="st">"grammar"</span> <span class="kw">in</span> (wrapper <span class="kw">or</span> <span class="st">""</span>):
+        grammar = <span class="fn">generate_grammar_and_documentation</span>(functions)
+
+    <span class="cm"># 3) the wrapper stuffs the function schema into prompt text</span>
+    prompt = llm_wrapper.<span class="fn">chat_completion_to_prompt</span>(messages, functions)
+
+    <span class="cm"># 4) call the bare completion backend by endpoint_type (only 4 backends really use grammar)</span>
+    result = <span class="fn">get_completion</span>(endpoint, endpoint_type, prompt, grammar=grammar)
+
+    <span class="cm"># 5) parse the text back into {function, params}</span>
+    chat_completion = llm_wrapper.<span class="fn">output_to_chat_completion_response</span>(result)
+
+    <span class="cm"># 6) local heartbeat correction (callback to Lesson 15)</span>
+    <span class="kw">if</span> function_correction:
+        chat_completion = <span class="fn">patch_function</span>(chat_completion)
+
+    <span class="kw">return</span> chat_completion   <span class="cm"># 7) already the unified ChatCompletionResponse shape</span>
+</pre></div>
+<p>Of the seven steps, only steps 2, 5, and 6 are truly "locally specific": generate grammar, read text back into structure, supply the heartbeat. The rest are essentially last lesson's old skeleton — <strong>assemble request → send request → convert shape</strong>.</p>
+<p>Glance once more at the endpoint step 4 hits: a "bare completion", like llamacpp's <span class="mono">/completion</span> or koboldcpp's <span class="mono">/api/v1/generate</span>. They only "keep writing on from this text".</p>
+<p>These endpoints have none of the ready-made message-and-tool structure of <span class="mono">/chat/completions</span>. Precisely because the backend is this "primitive", the earlier "schema into prompt, grammar clamps sampling, text parsed back" has any reason to exist — every bit of structure must be built by the proxy layer itself.</p>
+<h2>GBNF: Carving the JSON Shape into Grammar</h2>
+<p>So how does "clamping the sampling" actually clamp? The answer is GBNF — a GGML BNF grammar used by llama.cpp. Fed to the sampler, <strong>each step only allows grammar-legal tokens</strong>, so the output is necessarily parseable JSON.</p>
+<p>The skeleton it forces out looks like this: the outermost layer is a <span class="mono">function</span> name paired with a <span class="mono">params</span> object; and inside <span class="mono">params</span>, <strong>every branch is forced</strong> to write an <span class="mono">inner_thoughts</span> string first.</p>
+<div class="cellgroup"><div class="cg-cap"><b>A JSON skeleton forced out by one GBNF</b></div><div class="cells"><span class="cell hl">{</span><span class="sep">·</span><span class="cell">"function": &lt;name&gt;</span><span class="sep">·</span><span class="cell">"params":</span><span class="sep">·</span><span class="cell hl">inner_thoughts: string</span><span class="sep">·</span><span class="cell">request_heartbeat: bool</span><span class="sep">·</span><span class="cell">}</span></div></div>
+<p>Spend ten seconds on the BNF notation: <span class="mono">::=</span> reads as "is defined as", the bar <span class="mono">|</span> is "or", and the literals in quotes must appear verbatim. Rules reference rules, layer by layer, finally assembling into a grammar tree.</p>
+<p>Writing it as grammar rules is clearer. Below are a few key productions from the reference sample — but remember that opening comment: this is only <strong>boilerplate</strong>; at runtime it is dynamically generated.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/grammars/json_func_calls_with_inner_thoughts.gbnf</span><span class="ln">key productions (excerpt)</span></div>
+<pre><span class="cm"># reference sample: at runtime it is actually “dynamically generated”; this boilerplate hardcodes 8 MemGPT base tools</span>
+root               ::= Function
+Function           ::= SendMessage | ConversationSearch | ArchivalInsert | ...
+SendMessage        ::= "{" "\"function\":" "\"send_message\"" "," "\"params\":" SendMessageParams "}"
+SendMessageParams  ::= "{" InnerThoughtsParam "," "\"message\":" string "}"
+InnerThoughtsParam ::= "\"inner_thoughts\":" string     <span class="cm"># every branch is forced to carry it</span>
+<span class="cm"># memory-class tools' params force one more boolean:</span>
+HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
+</pre></div>
+<p>Read these few lines and you've read the whole trick: <span class="mono">root</span> can only expand into some <span class="mono">Function</span>, and each <span class="mono">Function</span> can only expand into a <span class="mono">params</span> object carrying <span class="mono">inner_thoughts</span>. The model samples down this tree with <strong>no path to an illegal shape</strong>.</p>
+<p>Those 8 branches aren't listed at random either — they're MemGPT's base tool set (send message, read/write archival and core memory, etc.). The sample hardcodes them only to demonstrate; in a real run, <span class="mono">Function</span>'s options are <strong>dynamically generated from the current agent's tool set</strong>.</p>
+<p>So the model has no "decision paralysis": at each position the grammar cuts its candidate set to the minimum, and it merely picks the highest-probability one among the legal options. Shape is set by grammar, content is filled by the model — the division is crystal clear.</p>
+<div class="cute"><div class="row"><span class="emoji">🔡🔣🔤</span><span class="lab">jumbled tokens</span><span class="arrow">→</span><span class="emoji">📐</span><span class="bubble">only legal JSON gets out</span></div><div class="cap">GBNF is like a stencil: a crowd of messy tokens want in, but only the legal { } -shaped JSON tokens can pass</div></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">That <span class="mono">inner_thoughts</span> field is no decoration: the grammar forces it into every branch, and on parse it's lifted from <span class="mono">params</span> into <span class="mono">message.content</span> — exactly the local version of Lesson 15's "inner monologue".</span></div>
+<p>This point is key: on the local path, <span class="mono">inner_thoughts</span> isn't written "voluntarily" by the model — it's <strong>hard-required</strong> by the grammar. That promotes Lesson 15's "inner monologue" convention from a prompt-level request to a grammar-level mandate.</p>
 <!--ENMORE-->
 """,
 }
