@@ -844,7 +844,50 @@ HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
   <div class="node"><div class="nt">get_chat_completion</div><div class="nd">GBNF 老路</div></div>
 </div>
 <div class="note info"><span class="ni">💡</span><span class="nx">对照记牢：现代本地（ollama/vllm/lmstudio）走 <span class="mono">LLMClient.create → OpenAIClient</span>（第 21 课默认 <span class="mono">case _</span>，无专属 client）；GBNF 这条路只在旧 <span class="mono">agent.py::Agent</span> 经 <span class="mono">llm_api_tools.py::create</span> 的 <span class="mono">else</span> 本地分支兜底时才被走到。</span></div>
-<!--ZHMORE-->
+<h2>再挖深一点</h2>
+<p>主线到这里就完整了。下面四个抽屉，专收你大概率会追问的细节——按兴趣展开即可，不展开也不影响对主线的理解。</p>
+<details class="accordion"><summary>GBNF 到底做了什么？</summary><div class="acc-body">
+<p>GBNF 是 llama.cpp 的一种 GGML BNF 语法。它不参与"理解"，只在<strong>采样那一步</strong>做一件事：把下一个 token 的候选集，裁剪到"语法此刻允许的"那些。</p>
+<p>于是模型每走一步都被语法牵着：该出 <span class="mono">{</span> 的位置只能出 <span class="mono">{</span>，该出字段名的位置只能出那几个名字。走到最后，整串输出<strong>必然</strong>是一棵合法的 JSON 树。</p>
+<p>这就是它最值钱的地方：把"可解析"从一个<strong>概率</strong>，变成了一个<strong>保证</strong>——顺带治好"忘了调函数 / JSON 断在半截"这两类老毛病。</p>
+</div></details>
+<details class="accordion"><summary>为什么说它是 legacy？</summary><div class="acc-body">
+<p>因为 OpenAI 兼容赢了。等到几乎每家 provider 都提供"OpenAI 形状"的工具 API，第 21 课那个默认 <span class="mono">case _ → OpenAIClient</span> 就能接住一大票本地后端，根本用不上语法戏法。</p>
+<p>代码里也有痕迹：<span class="mono">LLMClient.create</span> 里<strong>没有</strong>本地专属 client；<span class="mono">ProviderType</span> 枚举里也<strong>不再</strong>有 <span class="mono">llamacpp / koboldcpp / webui</span> 这些项，它们退到了 <span class="mono">local_llm</span> 这条老路里。</p>
+<p>所以本课讲的是"它当年怎么 work、为什么经典"，而不是"今天默认就这么跑"。</p>
+</div></details>
+<details class="accordion"><summary>不支持语法的后端怎么办？</summary><div class="acc-body">
+<p>只有 <span class="mono">koboldcpp / llamacpp / webui / webui-legacy</span> 这四个会真正吃 grammar。其余后端（ollama / vllm / lmstudio…）拿到 grammar 也直接丢掉。</p>
+<p>它们改靠两条腿走路：一是 wrapper 把格式要求写进提示，二是 <span class="mono">json_parser.py::clean_json</span> 在解析时<strong>容错修复</strong>那串文本。</p>
+<p>强调一遍：<span class="mono">clean_json</span> 是"尽力把脏 JSON 掰正"，<strong>不是</strong>"再喊模型生成一遍"。它治标不治本，但多数时候够用。</p>
+</div></details>
+<details class="accordion"><summary>wrapper 怎么"在裸 completion 上演 function calling"？</summary><div class="acc-body">
+<p>出去这一头：wrapper 用 <span class="mono">_compile_function_block</span> 把函数 schema（含 <span class="mono">inner_thoughts</span> 的描述）写进提示，并按模型家族（ChatML、Llama3…）套上对应模板，必要时还给 <span class="mono">first_message</span> 一点引导。</p>
+<p>回来这一头：把文本经 <span class="mono">clean_json</span> 读回 <span class="mono">{function, args}</span>，再把 <span class="mono">inner_thoughts</span> 从 params 提到 <span class="mono">content</span>。</p>
+<p>心跳也在这条路里补：<span class="mono">function_parser.py::insert_heartbeat</span> 给记忆类工具补上 <span class="mono">request_heartbeat</span>，正接回第 15 课那套"要不要再走一步"的判断。</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>别以为 GBNF 是现在本地模型的<strong>默认</strong>路径。它是 legacy；现代本地后端走第 21 课的 <span class="mono">OpenAIClient</span>。</p>
+<p>别以为运行时 GBNF 读的是某个静态 <span class="mono">.gbnf</span> 文件。它是<strong>动态生成</strong>的；<span class="mono">json_func_calls_with_inner_thoughts.gbnf</span> 只是参考样例。</p>
+<p>别以为所有本地后端都吃 grammar。只有 <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span> 四个生效，其余直接丢弃。</p>
+<p>别把 <span class="mono">clean_json</span> 当成"重采样重试"——它只是解析时的容错修复，掰不动就报错。</p>
+</div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><span class="mono">chat_completion_proxy.py::get_chat_completion</span> 是 legacy 总指挥：选 wrapper → 生成 GBNF → schema 进提示 → 调裸 completion → 解析回结构 → 心跳补正。</li>
+<li>GBNF 在<strong>采样级</strong>约束 token，让输出必然是可解析 JSON，并强制每个分支都带 <span class="mono">inner_thoughts</span>。</li>
+<li>语法只在 <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span> 生效；其余后端丢弃语法，靠 <span class="mono">clean_json</span> 容错修复。</li>
+<li>wrapper 是双向翻译机：<span class="mono">chat_completion_to_prompt</span> 把 schema 写出去，<span class="mono">output_to_chat_completion_response</span> 把文本读回来。</li>
+<li>这是 MemGPT 时代的经典老路；现代本地后端走第 21 课的 OpenAI 兼容 <span class="mono">OpenAIClient</span>。</li>
+</ul>
+</div>
+<h2>第六部分收官</h2>
+<p>三课走完，整个第六部分其实是一条很顺的线。把它收成一张图：</p>
+<div class="cellgroup"><div class="cg-cap"><b>第六部分收官：三课一条线</b></div><div class="cells"><span class="cell">21 立统一契约</span><span class="sep">·</span><span class="cell">22 隔离怪癖</span><span class="sep">·</span><span class="cell hl">23 本地 + GBNF</span></div></div>
+<p>一句话把三课缝起来：<strong>先立契约 → 再把怪癖关进笼子 → 最后连没有工具 API 的模型也想办法接上</strong>。</p>
+<p>它一头扣回第 21 课——之所以处处以 OpenAI 形状为目标，正因为它已是全行业的通用格式；一头扣回第 15 课——本地路上那个被语法逼出来的 <span class="mono">inner_thoughts</span> 与心跳，就是"内心独白 + 要不要再走一步"的同一套机制。</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">一句话收束整个第六部分：<strong>无论底下接的是云端大厂还是一个连工具 API 都没有的本地小模型，到了 agent 循环眼里，都只是同一种 OpenAI 形状的响应</strong>。这就是"provider 抽象"全部的野心。</span></div>
+<p>provider 这一层讲透了，模型这头就算交代清楚。可一个 agent 要真正跑起来，它的状态、记忆、消息得<strong>存下来</strong>，还要包成一个能对外服务的进程。下一部分，第七部分就转入 server 与持久化——看 Letta 怎么把这一切落到数据库与服务端。</p>
 """,
     "en": r"""<p>stub</p>""",
 }

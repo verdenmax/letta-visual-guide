@@ -333,7 +333,195 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <h1><span class="lang-zh">本地模型与 GBNF 受限解码</span><span class="lang-en">Local models &amp; GBNF constrained decoding</span></h1>
   </div>
   <div class="lang-zh">
-<!--ZHMORE-->
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第六部分走到收尾。前两课我们先立好了统一契约（第 21 课），又把各家云厂商的怪癖一个个关进子类（第 22 课）。可还剩一种最硬的情况没碰：一个连<strong>原生 function calling 都没有</strong>的本地模型，它只会"续写文本"，你要怎么让它去调一个工具？</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就来还原 MemGPT 时代那个经典戏法：先把工具的 schema 当成文本塞进提示，再用一套 <span class="mono">GBNF</span> 语法去<strong>约束解码器本身</strong>，让模型采样时压根吐不出非法 token、只能吐出合法 JSON。先打个预防针——这是一条 legacy 老路径。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>这是 legacy 路径</strong>：现代本地后端（ollama/vllm/lmstudio）走第 21 课的 OpenAI 兼容 <span class="mono">OpenAIClient</span>；GBNF 受限解码只在旧 <span class="mono">Agent</span> 兜底路径、且仅 <span class="mono">llamacpp/koboldcpp/webui</span> 生效。讲的是"它怎么 work、为什么经典"，不是"现在默认这么跑"。</span></div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>给只会续写的模型，用语法逼出可解析的 JSON</strong>。</p>
+<p>先把话说在前头——这是一条<strong>历史 / 次要路径</strong>。现代本地后端（ollama / vllm / lmstudio）早就提供"OpenAI 兼容"端点，走的是第 21 课那个默认 <span class="mono">case _ → OpenAIClient</span>，根本没有专属 client。</p>
+<p>GBNF 这条路只在<strong>兜底</strong>时才被走到：旧的 <span class="mono">agent.py::Agent</span> 在 <span class="mono">LLMClient.create</span> 之后，经 <span class="mono">llm_api_tools.py::create</span> 的 <span class="mono">else</span>（本地）分支，调到 <span class="mono">chat_completion_proxy.py::get_chat_completion</span>。</p>
+<p>它的流程是一条链：选 wrapper →（名字带 <span class="mono">grammar</span> 才）动态生成 GBNF → wrapper 把函数 schema 塞进<strong>提示文本</strong> → 调"裸 completion"后端 → 把文本<strong>解析回</strong> <span class="mono">{function, params}</span> → 心跳补正。</p>
+<p>记住一句话：<strong>schema 进提示，语法管采样，文本再解析回结构</strong>。这就是本课要逐环拆开的全部。</p>
+</div>
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>把"给只会续写的模型加上 function calling"想象成这样：你面前是一个<strong>只会接话的小孩</strong>，你递一句，他就顺着往下写一句，他压根不懂什么叫"调用工具"。</p>
+<p>第一招很直白：把工具长什么样、有哪些参数，<strong>写成说明书直接抄进题面</strong>，再叮嘱一句"请照这个格式输出 JSON"。这就是 wrapper 把 schema 塞进提示。</p>
+<p>可光靠叮嘱不保险——他可能写跑题、JSON 还少个括号。于是有了第二招，也是真正的妙手：给他一张<strong>镂空钢板</strong>盖在纸上，笔只能落进挖空的格子里，<strong>物理上写不出</strong>格子外的字。</p>
+<p>这张钢板，就是 <span class="mono">GBNF</span> 语法。它不"劝"模型守格式，而是直接卡住采样：每一步只允许语法合法的 token，于是落笔必然成形。</p>
+</div>
+<p>所以本课其实就讲三件环环相扣的事：<strong>schema 怎么进提示</strong>、<strong>GBNF 怎么卡住采样</strong>、<strong>文本又怎么被解析回结构</strong>。下面逐个拆开，但先回答一个最该问的问题。</p>
+<h2>为什么光把 schema 写进提示还不够</h2>
+<p>把"只靠提示叮嘱"和"提示再加语法卡死"两个世界并排摆出来，最能看清 GBNF 的价值到底在哪。</p>
+<div class="cols">
+  <div class="col"><h4>😬 只靠提示叮嘱</h4><p>模型"大概率"会照格式来，但仍可能漏字段、JSON 被截断、甚至忘了调函数。解析端只能事后修补，修不动就直接失败。"对不对"是<strong>一个概率</strong>。</p></div>
+  <div class="col"><h4>😌 提示 + GBNF 语法</h4><p>采样阶段就被卡死：每一步只能选语法合法的 token，输出<strong>必然</strong>是可解析的 JSON。"可解析"不再靠运气，而是<strong>被保证</strong>。</p></div>
+</div>
+<p>这一对照几乎就是本课的核心：<strong>把"但愿格式没错"换成"采样器只能选对的 token"</strong>。带着这个对照往下看，后面每一步的用意都会更清楚。</p>
+<h2>走一遍 get_chat_completion 的流程</h2>
+<p>这条 legacy 路的总指挥是 <span class="mono">chat_completion_proxy.py::get_chat_completion</span>。把它干的事竖排开看，是一条很顺的七步流水线：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>选 wrapper</h4><p>默认是 <span class="mono">ChatMLInnerMonologueWrapper</span>；也可以按名字从 <span class="mono">get_available_wrappers()</span> 里取一个。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>生成 GBNF</h4><p><strong>仅当</strong> wrapper 名字含 <span class="mono">grammar</span> 时，<span class="mono">generate_grammar_and_documentation</span> 动态拼出语法——不是去读静态 <span class="mono">.gbnf</span> 文件。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>schema 进提示</h4><p><span class="mono">chat_completion_to_prompt</span> 把函数 schema 写进<strong>提示文本</strong>，让裸模型"看见"有哪些工具。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>调裸 completion</h4><p>按 <span class="mono">endpoint_type</span> 打到 <span class="mono">/completion</span> 这类裸补全端点；grammar 只会传给 4 个后端。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>解析回结构</h4><p><span class="mono">output_to_chat_completion_response</span> 把吐回的文本<strong>读回</strong> <span class="mono">{function, params}</span>。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>心跳补正</h4><p><span class="mono">function_correction</span> 经 <span class="mono">patch_function</span> 补上 <span class="mono">request_heartbeat</span>（回扣第 15 课）。</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>统一形状</h4><p>最后包成第 21 课那个 <span class="mono">ChatCompletionResponse</span> 交回，下游照旧只读这一种形状。</p></div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">留意第 2 步那个 <strong>仅当</strong>：GBNF 不是默认就生成的，要 wrapper 名字里带 <span class="mono">grammar</span>。换句话说，"受限解码"是要你<strong>显式点名</strong>才开的特性，不是这条路的默认配置。</span></div>
+<p>下面把这条流水线落成代码骨架。注意它和上一课三方法的味道一致：<strong>组 → 发 → 转</strong>，只是这里多了"生成语法"和"心跳补正"两道本地特有的工序。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/chat_completion_proxy.py</span><span class="ln">get_chat_completion 主流程（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">get_chat_completion</span>(model, messages, functions=<span class="kw">None</span>,
+                        wrapper=<span class="kw">None</span>, endpoint=<span class="kw">None</span>, endpoint_type=<span class="kw">None</span>,
+                        function_correction=<span class="kw">True</span>, ...) -&gt; ChatCompletionResponse:
+    <span class="cm"># 1) 选 wrapper（默认 ChatMLInnerMonologueWrapper）</span>
+    llm_wrapper = DEFAULT_WRAPPER() <span class="kw">if</span> wrapper <span class="kw">is</span> <span class="kw">None</span> <span class="kw">else</span> get_available_wrappers()[wrapper]
+
+    <span class="cm"># 2) 仅当 wrapper 名字含 "grammar" 才动态生成 GBNF（不读静态 .gbnf）</span>
+    grammar = <span class="kw">None</span>
+    <span class="kw">if</span> <span class="st">"grammar"</span> <span class="kw">in</span> (wrapper <span class="kw">or</span> <span class="st">""</span>):
+        grammar = <span class="fn">generate_grammar_and_documentation</span>(functions)
+
+    <span class="cm"># 3) wrapper 把函数 schema 塞进提示文本</span>
+    prompt = llm_wrapper.<span class="fn">chat_completion_to_prompt</span>(messages, functions)
+
+    <span class="cm"># 4) 按 endpoint_type 调裸 completion 后端（grammar 只有 4 个后端会真正用）</span>
+    result = <span class="fn">get_completion</span>(endpoint, endpoint_type, prompt, grammar=grammar)
+
+    <span class="cm"># 5) 把文本解析回 {function, params}</span>
+    chat_completion = llm_wrapper.<span class="fn">output_to_chat_completion_response</span>(result)
+
+    <span class="cm"># 6) 本地心跳补正（回扣第 15 课）</span>
+    <span class="kw">if</span> function_correction:
+        chat_completion = <span class="fn">patch_function</span>(chat_completion)
+
+    <span class="kw">return</span> chat_completion   <span class="cm"># 7) 已是 ChatCompletionResponse 统一形状</span>
+</pre></div>
+<p>七步里，真正"本地特有"的只有第 2、5、6 三步：生成语法、把文本读回结构、补心跳。其余几步，本质上就是上一课"组请求 → 发请求 → 转形状"那条老骨架。</p>
+<h2>GBNF：把 JSON 形状刻进语法</h2>
+<p>那么"卡住采样"具体怎么卡？答案是 <span class="mono">GBNF</span>——llama.cpp 用的一种 GGML BNF 语法。它被喂给采样器，<strong>每一步只允许语法合法的 token</strong>，于是输出必然是可解析的 JSON。</p>
+<p>它强制出来的骨架长这样：最外层是一个 <span class="mono">function</span> 名，配一个 <span class="mono">params</span> 对象；而 <span class="mono">params</span> 里<strong>每个分支都被逼着</strong>先写一个 <span class="mono">inner_thoughts</span> 字符串。</p>
+<div class="cellgroup"><div class="cg-cap"><b>一条 GBNF 强制出来的 JSON 骨架</b></div><div class="cells"><span class="cell hl">{</span><span class="sep">·</span><span class="cell">"function": &lt;name&gt;</span><span class="sep">·</span><span class="cell">"params":</span><span class="sep">·</span><span class="cell hl">inner_thoughts: string</span><span class="sep">·</span><span class="cell">request_heartbeat: bool</span><span class="sep">·</span><span class="cell">}</span></div></div>
+<p>把它写成语法规则会更清楚。下面是参考样例里的几条关键产生式——但记住开头那句注释：这只是<strong>样板</strong>，运行时是动态生成的。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/grammars/json_func_calls_with_inner_thoughts.gbnf</span><span class="ln">关键产生式（节选）</span></div>
+<pre><span class="cm"># 参考样例：运行时其实是“动态生成”的，这份样板硬编码了 8 个 MemGPT 基础工具</span>
+root               ::= Function
+Function           ::= SendMessage | ConversationSearch | ArchivalInsert | ...
+SendMessage        ::= "{" "\"function\":" "\"send_message\"" "," "\"params\":" SendMessageParams "}"
+SendMessageParams  ::= "{" InnerThoughtsParam "," "\"message\":" string "}"
+InnerThoughtsParam ::= "\"inner_thoughts\":" string     <span class="cm"># 每个分支都被强制带上</span>
+<span class="cm"># 记忆类工具的 params 还会再强制一个布尔：</span>
+HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
+</pre></div>
+<p>读懂这几行，就读懂了整个戏法：<span class="mono">root</span> 只能展开成某个 <span class="mono">Function</span>，每个 <span class="mono">Function</span> 又只能展开成一个带 <span class="mono">inner_thoughts</span> 的 <span class="mono">params</span> 对象。模型沿着这棵树往下采样，<strong>无路可走到非法形状</strong>。</p>
+<div class="cute"><div class="row"><span class="emoji">🔡🔣🔤</span><span class="lab">乱挤的 token</span><span class="arrow">→</span><span class="emoji">📐</span><span class="bubble">只放合法 JSON 出去</span></div><div class="cap">GBNF 像一张镂空模板：一堆乱七八糟的 token 想挤进来，只有 { } 形状的合法 JSON token 能通过</div></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">那个 <span class="mono">inner_thoughts</span> 字段不是摆设：它被语法逼着出现在每个分支里，解析时再从 <span class="mono">params</span> 提到 <span class="mono">message.content</span>，正是第 15 课"内心独白"的本地版来源。</span></div>
+<h2>并不是所有后端都吃这套语法</h2>
+<p>这里有个最容易被忽略的限制：GBNF 受限解码<strong>只有四个后端</strong>真正生效。其余本地后端拿到 grammar 也会把它<strong>丢掉</strong>，改靠别的办法保证 JSON。</p>
+<table class="t">
+<tr><th>后端</th><th>grammar</th><th>靠什么保证 JSON</th></tr>
+<tr><td class="mono">llamacpp / koboldcpp / webui / webui-legacy</td><td>传入 grammar</td><td>受限解码：输出<strong>必然</strong>可解析</td></tr>
+<tr><td class="mono">ollama / vllm / lmstudio …</td><td>丢弃 grammar</td><td>靠提示格式 + <span class="mono">clean_json</span> 容错修复</td></tr>
+</table>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">别把 <span class="mono">clean_json</span> 当成"重采样 / 重试"。它是 <span class="mono">json_parser.py::clean_json</span> 的<strong>容错修复</strong>：尽力把模型吐的脏文本掰成合法 JSON，实在掰不动就报错——而不是再喊模型重生成一遍。</span></div>
+<p>所以同一条 legacy 路，对四个语法后端是"<strong>采样级</strong>的硬保证"，对其余后端则退化成"<strong>解析级</strong>的尽力修复"。前者治本，后者治标。</p>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>这其实是 MemGPT 最初的魔法，也是对"function calling"一次漂亮的重新理解。</p>
+<p>在 OpenAI 的工具 API 还没一统江湖之前，你要怎么让一个只会"续写文本"的模型去调用函数？</p>
+<p>第一步好想：把函数 schema 当文本塞进提示，请它输出 JSON。难的是第二步——用 <strong>GBNF 语法去约束解码器本身</strong>，让模型在采样时<strong>压根吐不出</strong>任何非法 token，只能吐出一个合法的 <span class="mono">{"function":…, "params":{"inner_thoughts":…}}</span>。</p>
+<p>受限解码把"<strong>但愿</strong>格式对了"换成"采样器<strong>只能</strong>挑语法合法的 token"——可解析性，从概率升级成了保证。</p>
+<p>这也正是它后来变成 legacy 的原因：等到每家 provider 都会说 OpenAI 的工具 API（第 21 课那个通用形状），兼容后端就不再需要这套语法戏法了。</p>
+<p>但它仍是 Letta 拿到可靠结构化输出的<strong>观念源头</strong>。一头呼应第 21 课（OpenAI 形状赢了），一头呼应第 15 课（inner_thoughts 与心跳）。</p>
+</div>
+<h2>wrapper：在裸 completion 上"演"出 function calling</h2>
+<p>语法管住了"吐什么形状"，那"把工具讲给模型听"和"把文本读回结构"这两头，归谁管？归 wrapper。它的抽象基类是 <span class="mono">wrapper_base.py::LLMChatCompletionWrapper</span>，只有两个方法。</p>
+<p>一头 <span class="mono">chat_completion_to_prompt</span> 把函数 schema（连同 <span class="mono">inner_thoughts</span> 的说明）<strong>写进提示</strong>；另一头 <span class="mono">output_to_chat_completion_response</span> 把模型吐回的文本<strong>解析回</strong> <span class="mono">{function, args}</span>。</p>
+<p>选哪个 wrapper，由 <span class="mono">utils.py::get_available_wrappers()</span> 决定：名字含 <span class="mono">grammar</span> 就顺手建语法，含 <span class="mono">noforce</span> 就把 <span class="mono">inner_thoughts</span> 放到顶层。默认那个是 <span class="mono">ChatMLInnerMonologueWrapper</span>。</p>
+<p>下面看"解析回结构"这一头的骨架——它就是上面 <span class="mono">clean_json</span> 容错修复真正被调用的地方。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/llm_chat_completion_wrappers/chatml.py</span><span class="ln">output_to_chat_completion_response（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">output_to_chat_completion_response</span>(self, raw_llm_output) -&gt; ChatCompletionResponse:
+    <span class="cm"># 1) 先把脏文本掰成 JSON（容错修复，不是重采样）</span>
+    data = <span class="fn">clean_json</span>(raw_llm_output)
+
+    <span class="cm"># 2) 取出 function 名与 params</span>
+    function_name = data[<span class="st">"function"</span>]
+    function_params = data[<span class="st">"params"</span>]
+
+    <span class="cm"># 3) 把 inner_thoughts 从 params 提升到 message.content（回扣第 15 课）</span>
+    inner_thoughts = function_params.pop(<span class="st">"inner_thoughts"</span>, <span class="kw">None</span>)
+
+    message = {
+        <span class="st">"role"</span>: <span class="st">"assistant"</span>,
+        <span class="st">"content"</span>: inner_thoughts,
+        <span class="st">"function_call"</span>: {<span class="st">"name"</span>: function_name,
+                          <span class="st">"arguments"</span>: json.<span class="fn">dumps</span>(function_params)},
+    }
+    <span class="kw">return</span> <span class="fn">ChatCompletionResponse</span>(choices=[Choice(message=message)])
+</pre></div>
+<p>看清这三步，就看清了 wrapper 的本质：它是一台<strong>双向翻译机</strong>——出去时把工具写成人话塞进提示，回来时把人话读回成 <span class="mono">function_call</span>。模型自始至终只在"续写文本"。</p>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">local_llm/chat_completion_proxy.py::get_chat_completion</span>——legacy 总指挥，串起七步。</p>
+<p><span class="mono">local_llm/grammars/gbnf_grammar_generator.py::generate_grammar_and_documentation</span>——运行时动态生成 GBNF。</p>
+<p><span class="mono">llm_chat_completion_wrappers/wrapper_base.py::LLMChatCompletionWrapper</span>——抽象基类，两个方法。</p>
+<p><span class="mono">llm_chat_completion_wrappers/chatml.py::ChatMLInnerMonologueWrapper</span>——默认 wrapper（<span class="mono">DEFAULT_WRAPPER</span>）。</p>
+<p><span class="mono">local_llm/function_parser.py::insert_heartbeat</span> 与 <span class="mono">patch_function</span>——本地心跳补正（回扣第 15 课）。</p>
+</div>
+<h2>今天它还在哪条路上</h2>
+<p>把"现代"和"legacy"两条路并排画出来，就不会再把它们搞混。现代本地后端根本不碰下面这条链：</p>
+<div class="flow">
+  <div class="node"><div class="nt">agent.py::Agent</div><div class="nd">旧执行体</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">llm_api_tools.py::create</div><div class="nd">老 create 函数</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">else 本地分支</div><div class="nd">非云厂商兜底</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">get_chat_completion</div><div class="nd">GBNF 老路</div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">对照记牢：现代本地（ollama/vllm/lmstudio）走 <span class="mono">LLMClient.create → OpenAIClient</span>（第 21 课默认 <span class="mono">case _</span>，无专属 client）；GBNF 这条路只在旧 <span class="mono">agent.py::Agent</span> 经 <span class="mono">llm_api_tools.py::create</span> 的 <span class="mono">else</span> 本地分支兜底时才被走到。</span></div>
+<h2>再挖深一点</h2>
+<p>主线到这里就完整了。下面四个抽屉，专收你大概率会追问的细节——按兴趣展开即可，不展开也不影响对主线的理解。</p>
+<details class="accordion"><summary>GBNF 到底做了什么？</summary><div class="acc-body">
+<p>GBNF 是 llama.cpp 的一种 GGML BNF 语法。它不参与"理解"，只在<strong>采样那一步</strong>做一件事：把下一个 token 的候选集，裁剪到"语法此刻允许的"那些。</p>
+<p>于是模型每走一步都被语法牵着：该出 <span class="mono">{</span> 的位置只能出 <span class="mono">{</span>，该出字段名的位置只能出那几个名字。走到最后，整串输出<strong>必然</strong>是一棵合法的 JSON 树。</p>
+<p>这就是它最值钱的地方：把"可解析"从一个<strong>概率</strong>，变成了一个<strong>保证</strong>——顺带治好"忘了调函数 / JSON 断在半截"这两类老毛病。</p>
+</div></details>
+<details class="accordion"><summary>为什么说它是 legacy？</summary><div class="acc-body">
+<p>因为 OpenAI 兼容赢了。等到几乎每家 provider 都提供"OpenAI 形状"的工具 API，第 21 课那个默认 <span class="mono">case _ → OpenAIClient</span> 就能接住一大票本地后端，根本用不上语法戏法。</p>
+<p>代码里也有痕迹：<span class="mono">LLMClient.create</span> 里<strong>没有</strong>本地专属 client；<span class="mono">ProviderType</span> 枚举里也<strong>不再</strong>有 <span class="mono">llamacpp / koboldcpp / webui</span> 这些项，它们退到了 <span class="mono">local_llm</span> 这条老路里。</p>
+<p>所以本课讲的是"它当年怎么 work、为什么经典"，而不是"今天默认就这么跑"。</p>
+</div></details>
+<details class="accordion"><summary>不支持语法的后端怎么办？</summary><div class="acc-body">
+<p>只有 <span class="mono">koboldcpp / llamacpp / webui / webui-legacy</span> 这四个会真正吃 grammar。其余后端（ollama / vllm / lmstudio…）拿到 grammar 也直接丢掉。</p>
+<p>它们改靠两条腿走路：一是 wrapper 把格式要求写进提示，二是 <span class="mono">json_parser.py::clean_json</span> 在解析时<strong>容错修复</strong>那串文本。</p>
+<p>强调一遍：<span class="mono">clean_json</span> 是"尽力把脏 JSON 掰正"，<strong>不是</strong>"再喊模型生成一遍"。它治标不治本，但多数时候够用。</p>
+</div></details>
+<details class="accordion"><summary>wrapper 怎么"在裸 completion 上演 function calling"？</summary><div class="acc-body">
+<p>出去这一头：wrapper 用 <span class="mono">_compile_function_block</span> 把函数 schema（含 <span class="mono">inner_thoughts</span> 的描述）写进提示，并按模型家族（ChatML、Llama3…）套上对应模板，必要时还给 <span class="mono">first_message</span> 一点引导。</p>
+<p>回来这一头：把文本经 <span class="mono">clean_json</span> 读回 <span class="mono">{function, args}</span>，再把 <span class="mono">inner_thoughts</span> 从 params 提到 <span class="mono">content</span>。</p>
+<p>心跳也在这条路里补：<span class="mono">function_parser.py::insert_heartbeat</span> 给记忆类工具补上 <span class="mono">request_heartbeat</span>，正接回第 15 课那套"要不要再走一步"的判断。</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>别以为 GBNF 是现在本地模型的<strong>默认</strong>路径。它是 legacy；现代本地后端走第 21 课的 <span class="mono">OpenAIClient</span>。</p>
+<p>别以为运行时 GBNF 读的是某个静态 <span class="mono">.gbnf</span> 文件。它是<strong>动态生成</strong>的；<span class="mono">json_func_calls_with_inner_thoughts.gbnf</span> 只是参考样例。</p>
+<p>别以为所有本地后端都吃 grammar。只有 <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span> 四个生效，其余直接丢弃。</p>
+<p>别把 <span class="mono">clean_json</span> 当成"重采样重试"——它只是解析时的容错修复，掰不动就报错。</p>
+</div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><span class="mono">chat_completion_proxy.py::get_chat_completion</span> 是 legacy 总指挥：选 wrapper → 生成 GBNF → schema 进提示 → 调裸 completion → 解析回结构 → 心跳补正。</li>
+<li>GBNF 在<strong>采样级</strong>约束 token，让输出必然是可解析 JSON，并强制每个分支都带 <span class="mono">inner_thoughts</span>。</li>
+<li>语法只在 <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span> 生效；其余后端丢弃语法，靠 <span class="mono">clean_json</span> 容错修复。</li>
+<li>wrapper 是双向翻译机：<span class="mono">chat_completion_to_prompt</span> 把 schema 写出去，<span class="mono">output_to_chat_completion_response</span> 把文本读回来。</li>
+<li>这是 MemGPT 时代的经典老路；现代本地后端走第 21 课的 OpenAI 兼容 <span class="mono">OpenAIClient</span>。</li>
+</ul>
+</div>
+<h2>第六部分收官</h2>
+<p>三课走完，整个第六部分其实是一条很顺的线。把它收成一张图：</p>
+<div class="cellgroup"><div class="cg-cap"><b>第六部分收官：三课一条线</b></div><div class="cells"><span class="cell">21 立统一契约</span><span class="sep">·</span><span class="cell">22 隔离怪癖</span><span class="sep">·</span><span class="cell hl">23 本地 + GBNF</span></div></div>
+<p>一句话把三课缝起来：<strong>先立契约 → 再把怪癖关进笼子 → 最后连没有工具 API 的模型也想办法接上</strong>。</p>
+<p>它一头扣回第 21 课——之所以处处以 OpenAI 形状为目标，正因为它已是全行业的通用格式；一头扣回第 15 课——本地路上那个被语法逼出来的 <span class="mono">inner_thoughts</span> 与心跳，就是"内心独白 + 要不要再走一步"的同一套机制。</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">一句话收束整个第六部分：<strong>无论底下接的是云端大厂还是一个连工具 API 都没有的本地小模型，到了 agent 循环眼里，都只是同一种 OpenAI 形状的响应</strong>。这就是"provider 抽象"全部的野心。</span></div>
+<p>provider 这一层讲透了，模型这头就算交代清楚。可一个 agent 要真正跑起来，它的状态、记忆、消息得<strong>存下来</strong>，还要包成一个能对外服务的进程。下一部分，第七部分就转入 server 与持久化——看 Letta 怎么把这一切落到数据库与服务端。</p>
 </div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="22-provider-quirks.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">provider 怪癖的隔离</span><span class="lang-en">Isolating provider quirks</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
