@@ -1546,7 +1546,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
 LESSON_16 = {
     "zh": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-第 14 课拆 V3 循环时，<span class="mono">_decide_continuation</span> 反复去问三个神秘判官——<span class="mono">is_terminal_tool</span>、<span class="mono">has_children_tools</span>、<span class="mono">is_continue_tool</span>；第 15 课结尾又留了一句话：这些"工具规则"到底是谁在背后掌舵，留到第 16 课讲。这一课，就把这笔账还清。</p>
+第 14 课拆 V3 循环时，<span class="mono">_decide_continuation</span> 里闪过一个判官 <span class="mono">is_terminal_tool</span>，第 15 课又点出另两个——<span class="mono">has_children_tools</span>、<span class="mono">is_continue_tool</span>；第 15 课结尾还留了一句话：这些"工具规则"到底是谁在背后掌舵，留到第 16 课讲。这一课，就把这笔账还清。</p>
 
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">
 这是<strong>第四部分的收尾课</strong>，主题只有一句：把"agent 该怎么用工具"从<strong>模型的自觉</strong>，变成一台<strong>声明式、可强制执行</strong>的状态机。三件事带走：9 种规则类型、一个每步<strong>现算</strong>"合法下一步"的求解器，以及最妙的一招——模型若挑了非法工具，框架<strong>不执行它</strong>，而是合成一条错误喂回去让它自己改。</p>
@@ -1670,7 +1670,7 @@ LESSON_16 = {
 
 <p>判定这一步发生在 <span class="mono">letta_agent_v3.py::_handle_ai_response</span>：它先算 <span class="mono">tool_rule_violated = name not in valid_tool_names</span>。若违规，就<strong>跳过执行</strong>，转而调 <span class="mono">_build_rule_violation_result</span> 造一条"假装是工具返回"的错误消息。模型读到这条消息，就明白自己挑错了、该从哪几个里重挑。</p>
 
-<div class="note info"><span class="ni">👉</span><span class="nx">一个值得玩味的分工：那句 <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span> 的错误字符串，是在 <strong>agent 这一层</strong>（<span class="mono">agents/helpers.py</span>）拼出来的，<strong>不在 solver 里</strong>。solver 只通过 <span class="mono">guess_rule_violation</span> 额外<strong>供一句提示</strong>（猜猜你大概违反了哪条规则），拼装与回喂是 agent 的活。职责切得很干净：solver 管"算合法集"，agent 管"违规了怎么向模型解释"。</span></div>
+<div class="note info"><span class="ni">👉</span><span class="nx">一个值得玩味的分工：那句 <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span> 的错误字符串，是在 <strong>agent 这一层</strong>（<span class="mono">agents/helpers.py</span>）拼出来的，<strong>不在 solver 里</strong>。solver 只通过 <span class="mono">guess_rule_violation</span> 额外<strong>供一组提示</strong>（猜猜你大概违反了哪条规则），拼装与回喂是 agent 的活。职责切得很干净：solver 管"算合法集"，agent 管"违规了怎么向模型解释"。</span></div>
 
 <div class="codefile">
   <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/helpers.py</span><span class="ln">_build_rule_violation_result：违规合成一条错误（简化）</span></div>
@@ -1822,7 +1822,7 @@ LESSON_16 = {
 """,
     "en": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
-When lesson 14 took the V3 loop apart, <span class="mono">_decide_continuation</span> kept consulting three mysterious judges — <span class="mono">is_terminal_tool</span>, <span class="mono">has_children_tools</span>, <span class="mono">is_continue_tool</span>; and lesson 15 left a dangling promise: who exactly steers these "tool rules" from behind, to be told in lesson 16. This lesson settles that account.</p>
+When lesson 14 took the V3 loop apart, <span class="mono">_decide_continuation</span> flashed one judge — <span class="mono">is_terminal_tool</span> — and lesson 15 named two more — <span class="mono">has_children_tools</span>, <span class="mono">is_continue_tool</span>; lesson 15 also left a dangling promise: who exactly steers these "tool rules" from behind, to be told in lesson 16. This lesson settles that account.</p>
 
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">
 This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how an agent should use tools" from the <strong>model's conscientiousness</strong> into a <strong>declarative, enforceable</strong> state machine. Three takeaways: 9 rule types, a solver that computes the "legal next step" <strong>fresh</strong> each step, and the cleverest move — if the model picks an illegal tool, the framework <strong>does not execute it</strong> but synthesizes an error and feeds it back for the model to fix itself.</p>
@@ -2049,7 +2049,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
 <p><strong>Example:</strong> the model ignores the constraint and picks an illegal tool. A bare <span class="mono">raise</span> would crash the whole step, and the user sees a baffling error.</p>
 <p><strong>Why designed this way:</strong> <span class="mono">_build_rule_violation_result</span> turns a violation into a <span class="mono">status="error"</span> tool return — its content is <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span>. Reading that "return," the model knows it picked wrong and which few to re-pick from. The loop isn't interrupted; the model self-corrects.</p>
 <p><strong>Connecting to lesson 14:</strong> a violation <strong>still counts as "a tool was called this round"</strong> — so <span class="mono">_decide_continuation</span> rules "called a tool → continue," the loop takes another lap, and the model gets its chance to correct. That's the backing behind lesson 14's minimalist loop daring to be minimal.</p>
-<p><strong>Where in source:</strong> <span class="mono">agents/helpers.py::_build_rule_violation_result</span>; the solver only supplies a one-line hint via <span class="mono">guess_rule_violation</span>.</p>
+<p><strong>Where in source:</strong> <span class="mono">agents/helpers.py::_build_rule_violation_result</span>; the solver only supplies hints via <span class="mono">guess_rule_violation</span>.</p>
 </div></details>
 
 <details class="accordion"><summary>The full <span class="mono">requires_approval</span> flow (continuing lesson 14's stop reasons)</summary><div class="acc-body">
