@@ -424,5 +424,32 @@ LESSON_22 = {"zh": r"""
             f[<span class="st">"parameters"</span>][<span class="st">"required"</span>].<span class="fn">insert</span>(<span class="nb">0</span>, inner_thoughts_key)   <span class="cm"># required 也排最前</span>
 </pre></div>
 <div class="note info"><span class="ni">💡</span><span class="nx">键名 <span class="mono">INNER_THOUGHTS_KWARG = "thinking"</span> 定义在 <span class="mono">letta/settings.py</span>（<strong>不在</strong> <span class="mono">constants.py</span>，那里放的是描述文字）。反向拆解走 <span class="mono">helpers.py::unpack_inner_thoughts_from_kwargs</span>：从 tool_call 的参数里 <span class="mono">pop</span> 出 <span class="mono">thinking</span>，再塞回 <span class="mono">message.content</span>。</span></div>
+<div class="cute"><div class="row"><span class="emoji">🎭🎭🎭</span><span class="lab">三张面具</span><span class="arrow">→</span><span class="emoji">🙂</span><span class="bubble">同一张脸</span></div><div class="cap">同一个 OpenAIClient，只换 base_url / 几个字段，就服务一堆供应商</div></div>
+<h2>开关：模拟推理 vs 原生推理</h2>
+<p>注入这招并不是对所有模型都开。有的模型本来就会推理，再塞一个假的 <span class="mono">thinking</span> 反而画蛇添足。于是 <span class="mono">LLMConfig.put_inner_thoughts_in_kwargs</span> 这个开关会<strong>自动翻转</strong>。</p>
+<div class="cellgroup"><div class="cg-cap"><b>put_inner_thoughts_in_kwargs 怎么翻转</b></div><div class="cells"><span class="cell hl">原生推理 (o1/gpt-5/Claude-4) → False</span><span class="sep">·</span><span class="cell">普通工具调用 → True（模拟一个）</span></div></div>
+<p>翻转规则其实就一句话：<strong>模型自带推理就关、只会调函数就开</strong>。两边并排看更清楚。</p>
+<div class="cols">
+  <div class="col"><h4>🧠 原生推理 → 关</h4><p>o1 / o3 / gpt-5、Claude 3.7/4、ZAI GLM 这类自带推理的模型，<span class="mono">=False</span>：直接用它们真正的 thinking，不必再注入假参数。</p></div>
+  <div class="col"><h4>🎭 普通工具调用 → 开</h4><p>只会调函数、不会先思考的模型，<span class="mono">=True</span>：注入一个 <span class="mono">thinking</span> 参数，给它模拟出一段思维链。</p></div>
+</div>
+<div class="note tip"><span class="ni">💡</span><span class="nx">为什么非要排<strong>第一个</strong>？因为参数是按顺序生成的——把 <span class="mono">thinking</span> 放最前，等于强迫模型"<strong>先写一段推理，再填结构化参数</strong>"。顺序一换，先想后调这件事就落了空。</span></div>
+<h2>Anthropic 三大怪癖</h2>
+<p>Anthropic 是少数没法靠 <span class="mono">OpenAIClient</span> 糊弄过去的家族，它有三样很扎眼的怪癖，全被关在 <span class="mono">AnthropicClient</span> 里。先用一张表把它们摆开。</p>
+<table class="t">
+<tr><th>怪癖</th><th>做法</th><th>作用 / 注意</th></tr>
+<tr><td class="mono">cache_control</td><td>给最后一个 tool、system 末块、messages 末消息末块各盖一个 <span class="mono">{"type":"ephemeral"}</span></td><td>增量提示缓存：重复前缀命中就省钱省延迟</td></tr>
+<tr><td class="mono">extended thinking</td><td><span class="mono">data["thinking"]={"type":"enabled","budget_tokens":…}</span> 或 adaptive</td><td>开 thinking 时必须 <span class="mono">temperature=1.0</span></td></tr>
+<tr><td class="mono">batch</td><td><span class="mono">send_llm_batch_request_async → client.beta.messages.batches.create</span></td><td>唯一覆盖基类批量方法的 client，其余仍抛 NotImplementedError</td></tr>
+<tr><td>内容块</td><td>响应里的 <span class="mono">text / tool_use / thinking</span> 三类块</td><td>转成 OpenAI 的 <span class="mono">tool_calls</span> / <span class="mono">reasoning_content</span> 形状</td></tr>
+</table>
+<p>三样里 <span class="mono">batch</span> 尤其特别：基类把批量方法留成一个 <span class="mono">NotImplementedError</span>，只有 <span class="mono">AnthropicClient</span> 真接了线。而 <span class="mono">cache_control</span> 是 Anthropic 计费模型独有的优化——把稳定不变的前缀标成可缓存，下次命中就不再重复计费。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/anthropic_client.py</span><span class="ln">cache_control 与 extended thinking（简化）</span></div>
+<pre><span class="cm"># 提示缓存：给最后一个 tool 盖个 ephemeral 戳，命中就省钱省延迟</span>
+data[<span class="st">"tools"</span>][-<span class="nb">1</span>][<span class="st">"cache_control"</span>] = {<span class="st">"type"</span>: <span class="st">"ephemeral"</span>}
+<span class="cm"># 扩展思考：开 thinking 时温度必须为 1</span>
+data[<span class="st">"thinking"</span>] = {<span class="st">"type"</span>: <span class="st">"enabled"</span>, <span class="st">"budget_tokens"</span>: budget}
+data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
+</pre></div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
