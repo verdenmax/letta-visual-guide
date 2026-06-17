@@ -1811,6 +1811,121 @@ QUIZZES = {
             },
         ],
     },
+    "21-provider-contract.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "LLMClient.create 这个工厂，到底是按什么来挑选具体的 client 类的？",
+                    "en": "What does the LLMClient.create factory actually use to pick the concrete client class?",
+                },
+                "opts": [
+                    {"zh": "按 llm_config.model_endpoint_type——它是一个 ProviderType 字符串，被传进 create 后用 match/case 匹配；正因为 ProviderType(str, Enum) 本质是字符串，才能直接拿来 match",
+                     "en": "By llm_config.model_endpoint_type — a ProviderType string that is passed into create and matched with match/case; because ProviderType(str, Enum) is essentially a string, it can be matched directly"},
+                    {"zh": "按整个 LLMConfig 对象做结构匹配，比对里面所有字段后再决定 client",
+                     "en": "By structurally matching the whole LLMConfig object, comparing all its fields before deciding the client"},
+                    {"zh": "按 model 字段（比如 gpt-4o、claude-3-5-sonnet）的名字前缀来判断",
+                     "en": "By the name prefix of the model field (e.g. gpt-4o, claude-3-5-sonnet)"},
+                    {"zh": "按 model_endpoint 这个 URL 的域名（比如 api.openai.com）来路由",
+                     "en": "By the domain of the model_endpoint URL (e.g. api.openai.com)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "工厂分派只认一个字段：model_endpoint_type。循环把它从 llm_config 里取出来、传进 LLMClient.create，里面对 provider_type 做 match/case 命中具体 client 类。关键细节：ProviderType 是 (str, Enum)，本质就是字符串，所以能直接 match。它分派的不是整个 LLMConfig 对象，也不是 model 名字或 model_endpoint 的 URL——把这些搞混，会以为“换个模型名就换 client”，但实际只有 endpoint 类型才驱动分派。",
+                    "en": "The factory dispatches on a single field: model_endpoint_type. The loop pulls it out of llm_config and passes it into LLMClient.create, which runs match/case on provider_type to hit a concrete client class. Key detail: ProviderType is (str, Enum) — essentially a string — so it can be matched directly. It does not dispatch on the whole LLMConfig object, nor on the model name, nor on the model_endpoint URL — confusing these makes you think “change the model name and you change the client”, when in reality only the endpoint type drives the dispatch.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "openai、ollama、vllm 这些 provider 在 match/case 里大多没有自己的 case 分支。一个 model_endpoint_type 为 ollama 的请求会被分派给哪个 client？",
+                    "en": "Providers like openai, ollama and vllm mostly have no case branch of their own in the match/case. Which client does a request with model_endpoint_type = ollama get dispatched to?",
+                },
+                "opts": [
+                    {"zh": "默认的 OpenAIClient——它们统一落到 case _ 兜底分支。这些本地/兼容端点大多提供“OpenAI 兼容”接口，所以同一个 OpenAIClient 只要把请求发到不同的 model_endpoint，就能伺候它们一大票",
+                     "en": "The default OpenAIClient — they all fall into the case _ catch-all. These local/compatible endpoints mostly expose an “OpenAI-compatible” interface, so the same OpenAIClient can serve a whole crowd of them just by sending the request to a different model_endpoint"},
+                    {"zh": "没有匹配的 client，create 会抛 NotImplementedError，必须先注册一个 OllamaClient",
+                     "en": "No matching client; create raises NotImplementedError, and you must first register an OllamaClient"},
+                    {"zh": "一个专门的 OllamaClient——每个 provider 名字都对应一个独立的 client 子类",
+                     "en": "A dedicated OllamaClient — every provider name maps to its own separate client subclass"},
+                    {"zh": "由 LLMConfig.provider_category 二次路由到本地推理专用的 LocalClient",
+                     "en": "A secondary route via LLMConfig.provider_category sends it to a local-inference-only LocalClient"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "没被显式列出 ≠ 没人管。match/case 的最后一档 case _ 兜底返回 OpenAIClient，于是 openai/ollama/vllm/lmstudio… 全都落到它头上。原因是这些端点大多本就提供“OpenAI 兼容”接口，Letta 只需把请求发到不同的 model_endpoint，同一个 OpenAIClient 就能复用。所以那十几个显式 case 其实是一份“例外名单”——只有行为真跟 OpenAI 不一样的家才单列。它不会抛错，也不是每个名字配一个子类。",
+                    "en": "Not listed explicitly ≠ unhandled. The final arm of the match/case, case _, falls back to OpenAIClient, so openai/ollama/vllm/lmstudio… all land on it. The reason is that these endpoints mostly already expose an “OpenAI-compatible” interface, so Letta only has to send the request to a different model_endpoint and the same OpenAIClient is reused. So the dozen-odd explicit cases are really an “exceptions list” — only providers whose behaviour genuinely differs from OpenAI get a separate entry. It does not raise, and it is not one subclass per name.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "三方法 build_request_data / request_async / convert_response_to_chat_completion 里，哪一个负责把“各家五花八门的原始响应”收敛成统一的 ChatCompletionResponse？",
+                    "en": "Among the three methods build_request_data / request_async / convert_response_to_chat_completion, which one collapses “each provider's wildly varied raw response” into the unified ChatCompletionResponse?",
+                },
+                "opts": [
+                    {"zh": "convert_response_to_chat_completion——它是个 async 方法，把这一家的原始响应翻译成 OpenAI 形状的 ChatCompletionResponse；不管底层是 Anthropic 内容块、Google functionCall 还是纯文本，都收敛成同一个类型",
+                     "en": "convert_response_to_chat_completion — an async method that translates this provider's raw response into an OpenAI-shaped ChatCompletionResponse; whether the layer below is Anthropic content blocks, Google functionCall or plain text, all collapse into the same type"},
+                    {"zh": "build_request_data——它在组请求时就顺手把响应格式也统一好了",
+                     "en": "build_request_data — while assembling the request it also unifies the response format in passing"},
+                    {"zh": "request_async——它发请求时直接要求各家返回 ChatCompletionResponse 格式",
+                     "en": "request_async — when sending the request it directly demands every provider return the ChatCompletionResponse format"},
+                    {"zh": "send_llm_request——编排方法自己做格式转换，三方法只管收发",
+                     "en": "send_llm_request — the orchestration method does the format conversion itself, while the three methods only send and receive"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "收敛形状的是第三个方法 convert_response_to_chat_completion（async）。流水线分工很清楚：build_request_data（同步）知道“这家要什么格式”、request_async（async）只负责发出去并拿回原始 dict、convert 才把原始响应翻成 OpenAI 形状的 ChatCompletionResponse。build 管入口格式、不碰响应；request_async 拿回的是还没统一的原始响应；send_llm_request 只是把三步串起来并兜异常，转换工作委托给 convert。所有 provider 差异都被关进 build 和 convert 这首尾两步。",
+                    "en": "The shape-collapsing one is the third method, convert_response_to_chat_completion (async). The pipeline's division of labour is clear: build_request_data (sync) knows “what format this provider wants”, request_async (async) only sends it off and returns the raw dict, and convert is what translates the raw response into an OpenAI-shaped ChatCompletionResponse. build governs the inbound format and never touches the response; request_async returns the still-un-unified raw response; send_llm_request merely strings the three steps together and catches exceptions, delegating the conversion to convert. All provider differences are locked into the two end steps, build and convert.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "把一个 agent 的 model_endpoint_type 从 groq 改成 anthropic（或本地 ollama），第 14 课那套执行循环的代码需要跟着改吗？为什么？",
+                    "en": "If you change an agent's model_endpoint_type from groq to anthropic (or local ollama), does the execution loop from Lesson 14 need code changes? Why?",
+                },
+                "opts": [
+                    {"zh": "不需要，一行都不用改。循环只递出一个请求、收回一个 ChatCompletionResponse，“这次是哪家”被彻底挡在工厂和三方法里；换 provider 只是换 client 当“主语”，出口形状完全一样，循环全程无感",
+                     "en": "No — not a single line. The loop only hands out one request and collects back one ChatCompletionResponse; “which provider this time” is walled off inside the factory and the three methods. Switching providers only changes which client is the “subject”; the exit shape is identical, and the loop feels nothing"},
+                    {"zh": "需要，得在循环里加 if model_endpoint_type 为 anthropic 的分支来解析 Anthropic 的内容块",
+                     "en": "Yes — you must add an if-model_endpoint_type-is-anthropic branch in the loop to parse Anthropic's content blocks"},
+                    {"zh": "需要，因为 Anthropic 的 token 用量字段名和 OpenAI 不同，循环取 usage 的代码要改",
+                     "en": "Yes — because Anthropic's token-usage field names differ from OpenAI's, the loop's usage-reading code must change"},
+                    {"zh": "不需要改代码，但要手动调用 convert_* 把响应先转一遍，循环才能读",
+                     "en": "No code change, but you must manually call convert_* to convert the response first before the loop can read it"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "循环看不到底下是哪家——这正是统一契约最直接的红利。从循环视角，它永远只递出一个请求、收回一个 ChatCompletionResponse；换 groq→anthropic→ollama，变的只是三方法里的“主语”（哪个 client），出口形状一字不差，循环代码零改动。Anthropic 的内容块、不同的用量字段，都在该 client 的 build/convert 里被抹平了，不会冒进循环。convert_* 也由 send_llm_request 自动调用、无需手动。一个调试直觉：若循环里出现“if 是不是 anthropic”，多半是抽象漏了。",
+                    "en": "The loop cannot see which provider sits below — that is the most direct dividend of a unified contract. From the loop's view it always hands out one request and collects back one ChatCompletionResponse; switching groq→anthropic→ollama only changes the “subject” inside the three methods (which client), while the exit shape is identical and the loop code changes by zero. Anthropic's content blocks and its different usage fields are all smoothed over inside that client's build/convert and never surface in the loop. convert_* is also called automatically by send_llm_request, not by hand. A debugging instinct: if an “if is_anthropic” appears in the loop, the abstraction has probably leaked.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "本课反复说的“三方法契约”，是 LLMClientBase 的完整抽象方法集合吗？",
+                    "en": "Is the “three-method contract” this lesson keeps citing the complete set of abstract methods on LLMClientBase?",
+                },
+                "opts": [
+                    {"zh": "不是。“三方法”是教学化简——LLMClientBase 实际有 8 个 @abstractmethod，另外 5 个是 request（同步）、request_embeddings、stream_async、is_reasoning_model、handle_llm_error；本课只抓 build/request_async/convert 这条“数据形状”主线",
+                     "en": "No. “Three methods” is a teaching simplification — LLMClientBase actually has 8 @abstractmethod, the other 5 being request (sync), request_embeddings, stream_async, is_reasoning_model and handle_llm_error; this lesson grabs only the build/request_async/convert “data shape” through-line"},
+                    {"zh": "是的，LLMClientBase 恰好只有这 3 个抽象方法，子类实现完就能用",
+                     "en": "Yes — LLMClientBase has exactly these 3 abstract methods, and a subclass is usable once it implements them"},
+                    {"zh": "不是，实际只有 2 个抽象方法（build 和 convert），request_async 是基类提供的具体实现",
+                     "en": "No — there are really only 2 abstract methods (build and convert); request_async is a concrete implementation the base class provides"},
+                    {"zh": "不是，共有 12 个抽象方法，多出来的还包括 stream（同步流式）、count_tokens 等",
+                     "en": "No — there are 12 abstract methods in total, the extras also including stream (sync streaming), count_tokens and so on"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "“三方法”是刻意的教学化简。LLMClientBase 实际声明了 8 个 @abstractmethod：本课主线的 build_request_data / request_async / convert_response_to_chat_completion，加上同步版 request、向量嵌入 request_embeddings、流式 stream_async、推理模型判断 is_reasoning_model、统一错误处理 handle_llm_error。本课只挑那三个，因为它们合起来回答“一次普通对话请求怎么从各家格式收敛成统一形状”。正因为这 8 个都标了 @abstractmethod，子类漏实现任何一个，实例化时就会报错。不是 2 个，也不是 12 个。",
+                    "en": "“Three methods” is a deliberate teaching simplification. LLMClientBase actually declares 8 @abstractmethod: this lesson's main-thread build_request_data / request_async / convert_response_to_chat_completion, plus the synchronous request, the vector-embedding request_embeddings, the streaming stream_async, the reasoning-model check is_reasoning_model, and the unified error handling handle_llm_error. The lesson picks only those three because together they answer “how a plain chat request collapses from each provider's format into one unified shape”. Because all 8 are tagged @abstractmethod, a subclass that misses any one errors out at instantiation. It is neither 2 nor 12.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课的“联合国同声传译”比喻，把第 21 课的“供应商契约”完整讲一遍，并想透三件事：(1) 工厂分派只认 model_endpoint_type 这一个字段（一个 ProviderType 字符串），而不是整个 LLMConfig 对象、也不是 model 名字。为什么“用一个稳定的小字段当路由键”比“比对一大堆字段”更健壮？把它和“加一家供应商、循环零改动”联系起来——什么样的通用设计原则，能让你在任何插件式架构里一眼看出“该拿什么当分派键”？(2) 三方法把 provider 差异全锁进 build（入口格式）和 convert（出口格式）这首尾两步，中间的发送与编排是所有家共用的。如果有人图省事，把“解析 Anthropic 内容块”的逻辑写进了第 14 课的循环里，短期能跑，长期会埋下什么债？为什么说“循环里出现 if 是不是 anthropic”就是抽象漏了的信号？(3) Letta 干脆把 OpenAI 形状设成默认假设（case _ → OpenAIClient），用“也许不完美但人人都懂”换“加 provider 不改循环、加模块不问 provider”。这笔交易的代价是什么（和 OpenAI 形状绑得更紧）？如果哪天出现一个真正更好的新标准，这套抽象帮你把迁移成本压在了哪一层、而不会扩散到记忆/工具/压缩这些模块？",
+                "en": "Use this lesson's “UN simultaneous interpretation” metaphor to tell lesson 21's “provider contract” as a whole, and think through three things: (1) The factory dispatches on the single field model_endpoint_type (a ProviderType string), not the whole LLMConfig object and not the model name. Why is “using one stable small field as the routing key” more robust than “comparing a pile of fields”? Tie it to “add a provider, change the loop by zero lines” — what general design principle lets you tell at a glance, in any plug-in architecture, “what to use as the dispatch key”? (2) The three methods lock all provider differences into build (inbound format) and convert (outbound format), while the sending and orchestration in the middle are shared by everyone. If someone took a shortcut and wrote “parse Anthropic content blocks” logic into the Lesson 14 loop, it would run short-term — what debt does it bury long-term? Why is “an if is_anthropic appearing in the loop” a signal that the abstraction has leaked? (3) Letta simply makes the OpenAI shape the default assumption (case _ → OpenAIClient), trading “perhaps imperfect but understood by everyone” for “add a provider without changing the loop, add a module without asking about the provider”. What is the cost of this trade (binding more tightly to the OpenAI shape)? If a genuinely better new standard appeared one day, which single layer does this abstraction confine the migration cost to, so that it does not spread into the memory/tools/compaction modules?",
+            },
+        ],
+    },
 }
 
 
