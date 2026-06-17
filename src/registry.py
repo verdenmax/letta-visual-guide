@@ -28,4 +28,5 @@ CONTENT = {
     "15-heartbeat-to-no-heartbeat.html": part4.LESSON_15,
     "16-tool-rules.html": part4.LESSON_16,
     "17-tool-as-function.html": part5.LESSON_17,
+    "18-schema-without-executing.html": part5.LESSON_18,
 }

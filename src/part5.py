@@ -388,3 +388,5 @@ LESSON_17 = {"zh": r"""
 <p>One last teaser. From start to finish this lesson assumed one premise: <strong>we already hold a function object</strong> whose signature <span class="mono">inspect</span> can read. But in reality, users often upload <strong>a string of source code</strong> to register a custom tool. The server then faces a thorny requirement: it must still produce the schema while <strong>never running that code</strong>. How does it pull that off? That's exactly the topic of <strong>Lesson 18</strong>.</p>
 
 """}
+
+LESSON_18 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}

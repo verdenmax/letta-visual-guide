@@ -80,6 +80,8 @@ PAGES = [
      "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
     ("17-tool-as-function.html", "工具即 Python 函数 + docstring", "A tool is a Python function + docstring",
      "第五部分 · 工具系统", "Part 5 · The tool system"),
+    ("18-schema-without-executing.html", "不执行就生成 schema", "Deriving the schema without executing",
+     "第五部分 · 工具系统", "Part 5 · The tool system"),
 ]
 
 
@@ -552,6 +554,8 @@ SUBTITLES = {
                            "9 rule types; the solver computes the legal next set; a violation becomes a synthetic error"),
     "17-tool-as-function.html": ("generate_schema · docstring 是 API 契约 · 类型映射",
                                  "generate_schema; the docstring is the API contract; type mapping"),
+    "18-schema-without-executing.html": ("derive_openai_json_schema · AST 静态解析 · TypeScript",
+                                         "derive_openai_json_schema; static AST parsing; TypeScript"),
 }
 
 
