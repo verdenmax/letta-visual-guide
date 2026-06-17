@@ -590,5 +590,52 @@ LESSON_18 = {"zh": r"""
 </div>
 
 <p>Why is "never run it" a non-negotiable red line? Because Letta is a <strong>multi-tenant</strong> service: one process may run many users' tools at once. If a single piece of uploaded code oversteps at import time, the victim is not just its own session but the whole server and everyone's data on it. Keeping execution firmly in your own hands is the survival baseline for such a platform.</p>
+<h2>Why you can't just import</h2>
+<p>The most intuitive approach is to <span class="mono">import</span> the user's module and then <span class="mono">inspect</span> the function inside. But this path has a fatal flaw: <span class="mono">import</span> executes the module's <strong>top-level code</strong>. If the user's source has a single line like <span class="mono">os.system(...)</span> outside any function definition, it runs on your server the instant you import it — a textbook case of <strong>remote code execution (RCE)</strong>.</p>
+<div class="cols">
+<div class="col"><h4>❌ import + inspect</h4><p>Loading the source as a module <strong>executes top-level code</strong>. That's like letting a stranger run arbitrary commands on your server — the security boundary falls immediately.</p></div>
+<div class="col"><h4>✅ ast.parse</h4><p>Parsing the source into a <strong>syntax tree</strong> is <strong>purely static, read-only, never run</strong>. A syntax tree is just the structured "shape" of the code; reading it triggers no side effects.</p></div>
+</div>
+<p>To spell out "top-level code": it means statements <strong>outside</strong> any function definition that run the instant the module is loaded — importing a third-party library, reading an environment variable, firing a network request, all happen at load time. An attacker only has to put malicious logic at the top level (or even hide it inside a decorator or a default-argument expression), and your <span class="mono">import</span> presses the execute button for them.</p>
+<p>By contrast, <span class="mono">ast.parse</span> follows a different timeline: it analyzes the source as <strong>text</strong> and produces a syntax tree describing "what the code looks like." The tree records "a function is defined here, this is its name, these are its parameters, here are the annotations," but <strong>no step executes</strong> any of those statements. Read as a tree, even the most dangerous code is just data.</p>
+<table class="t">
+<tr><th>Dimension</th><th>import + inspect</th><th>ast.parse (Letta's choice)</th></tr>
+<tr><td class="mono">Runs the code?</td><td>Yes — top-level statements run at once</td><td>No — only builds a syntax tree</td></tr>
+<tr><td class="mono">Security risk</td><td>Arbitrary code execution (RCE)</td><td>No side effects, pure read-only</td></tr>
+<tr><td class="mono">What you can get</td><td>A real function object and real signature</td><td>Node info: function name, parameters, annotations, docstring</td></tr>
+<tr><td class="mono">Fate of bad code</td><td>Already ran — no undo</td><td>At worst a syntax error, raises LettaToolCreateError</td></tr>
+</table>
+<p>Someone might push back: can't I drop the code into a restricted sandbox first and then import it? You can, but the cost and risk are far higher — you must maintain the sandbox, restrict system calls, and still bear the escape risk. For the small matter of "just getting a schema," it isn't worth wielding such a heavy weapon. If "reading" can solve it, don't "run" it.</p>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">user source</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="lab">AST reads, never runs</span><span class="arrow">→</span><span class="emoji">📜</span><span class="bubble">I read you, but never run you</span></div><div class="cap">The deriver only "reads" the shape of the code and translates it into a schema, never letting a single line of that code run.</div></div>
+<h2>The pipeline: pure AST + reusing generate_schema</h2>
+<div class="flow">
+<div class="node"><div class="nt">source_code</div><div class="nd">the source string a user uploaded</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">ast.parse (no run)</div><div class="nd">parsed into a syntax tree, purely static</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">_parse_function_from_source</div><div class="nd">pulls signature and docstring from the tree</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">MockFunction</div><div class="nd">a fake function carrying only the trio</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">generate_schema</div><div class="nd">the very same generator from Lesson 17</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">JSON schema</div><div class="nd">the tool contract the model can read</div></div>
+</div>
+<p>The cleverest part of this pipeline is that the <span class="mono">generate_schema</span> at the end is <strong>word-for-word identical</strong> to Lesson 17's. Native tools take "function object → generate_schema"; uploaded tools take "source → MockFunction → generate_schema" — the two paths <strong>converge on the same generator</strong> at the final step, so the schemas come out perfectly consistent.</p>
+<p>Don't read "reuse" as laziness — it is a deliberate <strong>single source of truth</strong>: the rules for generating a schema have exactly one implementation across the whole codebase. Whether a tool is platform-built-in or written and uploaded on the spot, once it reaches <span class="mono">generate_schema</span> the type mapping, docstring parsing, and reserved-parameter filtering are identical, so the weird bug of "built-in and uploaded tools have different schema conventions" can never appear.</p>
+<p>Zoom in on the third step above, <span class="mono">_parse_function_from_source</span>, and inside it are four clean little moves:</p>
+<div class="vflow">
+<div class="step"><div class="num">1</div><div class="sc"><h4>ast.parse(src)</h4><p>Parse the source string into a syntax tree; invalid syntax raises <span class="mono">LettaToolCreateError</span> on the spot.</p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>Pick the function node</h4><p>Walk <span class="mono">tree.body</span> and take the <strong>last</strong> <span class="mono">FunctionDef</span> as the tool body.</p></div></div>
+<div class="step"><div class="num">3</div><div class="sc"><h4>Rebuild the Signature</h4><p>Read each parameter's annotation, take literal defaults via <span class="mono">ast.literal_eval</span>, and assemble an <span class="mono">inspect.Signature</span>.</p></div></div>
+<div class="step"><div class="num">4</div><div class="sc"><h4>Wrap in MockFunction</h4><p>Stuff the function name, docstring, and rebuilt signature into the fake function and hand it back up.</p></div></div>
+</div>
+<p>Step one's <span class="mono">ast.parse</span> doubles as a "gatekeeper": if the source has a syntax error, the parsing stage raises <span class="mono">LettaToolCreateError</span> and keeps bad code out of creation entirely. Note it checks <strong>syntax only, not semantics</strong> — parse into a tree and it passes; whether the tool runs correctly is a worry for the later execution stage.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">derivation entry (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">derive_openai_json_schema</span>(source_code: str, name=<span class="kw">None</span>):
+    mock = <span class="fn">_parse_function_from_source</span>(source_code, name)  <span class="cm"># pure AST, never exec</span>
+    <span class="kw">return</span> <span class="fn">generate_schema</span>(mock, name=name)            <span class="cm"># reuse Lesson 17's generator</span>
+</pre></div>
+<p>Keep this main thread in mind: the deriver <strong>rewrites none</strong> of the schema-generation logic. Its job is to "translate" a piece of source into an input that <span class="mono">generate_schema</span> will accept; the thing that actually generates the schema is still Lesson 17's machine. One fewer implementation means one fewer place that can drift out of sync with another.</p>
 <!--ENMORE-->
 """}
