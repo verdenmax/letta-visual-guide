@@ -86,6 +86,8 @@ PAGES = [
      "第五部分 · 工具系统", "Part 5 · The tool system"),
     ("20-tool-sandbox-security.html", "自定义工具沙箱与安全修复", "The tool sandbox & a security fix",
      "第五部分 · 工具系统", "Part 5 · The tool system"),
+    ("21-provider-contract.html", "统一 provider 三方法契约", "The unified provider contract",
+     "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
 ]
 
 
@@ -564,6 +566,8 @@ SUBTITLES = {
                                       "ToolType; factory dispatch; core/builtin/files/mcp/sandbox; MCP"),
     "20-tool-sandbox-security.html": ("local/E2B/Modal · 信任边界 · pickle vs JSON · marker+长度+MD5",
                                       "local/E2B/Modal; the trust boundary; pickle vs JSON; marker+length+MD5"),
+    "21-provider-contract.html": ("LLMClient.create 工厂 · 三方法 · OpenAI 形状作通用中间格式",
+                                  "the LLMClient.create factory; the 3 methods; the OpenAI shape as the universal format"),
 }
 
 
