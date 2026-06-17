@@ -1166,5 +1166,32 @@ LESSON_20 = {"zh": r"""
 <p>沙箱内外只有两条数据通道，方向相反、信任也相反。<strong>server→sandbox</strong> 走 <span class="mono">pickle</span>（受信：服务端把自己造的 <span class="mono">agent_state</span> 序列化进去）；<strong>sandbox→server</strong> 走 <span class="mono">JSON</span>（不可信：<strong>绝不 <span class="mono">pickle.loads</span></strong>），并加 <span class="mono">marker+长度+MD5</span> 帧来校验完整性。</p>
 <p>这张<strong>信任边界图</strong>就是本课的全部。而 PR #3343 正是一次把回程通道从 pickle 改成 JSON 的真实安全修复——它把这条边界从"差不多安全"变成"焊死"。</p>
 </div>
+<h2>沙箱三选一：代码到底在哪跑</h2>
+<p>一个自定义工具被执行前，Letta 先决定"在哪跑"。这不是随机的，而是一条短路式的判定链：先看工具自己的偏好，再看全局配置，最后兜底到本地。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>看 tool.metadata</h4><p>若工具显式标了 <span class="mono">sandbox=="modal"</span> 且 Modal 已启用 → 用 <strong>Modal</strong>（云端容器，强隔离）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>看全局配置</h4><p>否则查 <span class="mono">ToolSettings.sandbox_type</span>：若配了 <span class="mono">e2b_api_key</span> → 用 <strong>E2B</strong>（云端微沙箱）。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>兜底本地</h4><p>都没有 → <strong>Local</strong>：在本机建一个隔离 venv，用子进程跑。开发期最常见。</p></div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">类型定义在 <span class="mono">schemas/enums.py::SandboxType</span>（<span class="mono">E2B / MODAL / LOCAL</span>）；选择逻辑落在 <span class="mono">sandbox_tool_executor.py</span>，全局开关是 <span class="mono">settings.py::ToolSettings.sandbox_type</span>。关键点是：无论选哪个，下面这套"生成脚本 + 信任边界 + 帧校验"的玩法<strong>三种沙箱完全一致</strong>，差别只在外层容器。</span></div>
+<h2>生成的沙箱脚本：把工具包起来跑</h2>
+<p>沙箱不会"直接调用"用户函数。服务端会<strong>现拼一段 Python 脚本</strong>，把所有需要的东西内联进去，再让沙箱整段执行。这段脚本由 <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span> 拼出来。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>解出 agent_state</h4><p><span class="mono">pickle.loads(...)</span> 还原服务端传进来的 <span class="mono">agent_state</span>（受信方向）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>内联参数</h4><p>每个调用参数按 <span class="mono">repr()</span> 写成字面量，<strong>不是 pickle</strong>。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>内联用户源码</h4><p>把工具的 <span class="mono">source_code</span> 逐字粘进来，定义出函数本体。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>调用 + 打包</h4><p><span class="mono">_function_result = tool(...)</span>，再把结果 + <span class="mono">agent_state</span> 打成 JSON。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>加帧写 stdout</h4><p>前面缀上 <span class="mono">marker+长度+MD5</span>，写进标准输出，等服务端来读。</p></div></div>
+</div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/base.py</span><span class="ln">_render_sandbox_code（简化骨架）</span></div>
+<pre><span class="cm"># 服务端把 agent_state pickle 进脚本，沙箱里 loads（受信方向）</span>
+agent_state = pickle.<span class="fn">loads</span>(<span class="nb">b"..."</span>)
+x = <span class="st">"&lt;内联字面量&gt;"</span>            <span class="cm"># 参数按 repr() 内联，不是 pickle</span>
+<span class="cm"># &lt;用户工具源码逐字内联&gt;</span>
+_function_result = <span class="fn">my_tool</span>(x, agent_state=agent_state)
+payload = _letta_json.<span class="fn">dumps</span>({<span class="st">"results"</span>: _function_result,
+    <span class="st">"agent_state"</span>: agent_state.<span class="fn">model_dump</span>(mode=<span class="st">"json"</span>)}).<span class="fn">encode</span>()  <span class="cm"># JSON，不是 pickle</span>
+sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn">pack</span>(<span class="st">"&gt;I"</span>, len(payload)) + md5_hex + payload)
+</pre></div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
