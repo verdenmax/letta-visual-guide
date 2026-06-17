@@ -33,4 +33,5 @@ CONTENT = {
     "19-tool-dispatch-and-mcp.html": part5.LESSON_19,
     "20-tool-sandbox-security.html": part5.LESSON_20,
     "21-provider-contract.html": part6.LESSON_21,
+    "22-provider-quirks.html": part6.LESSON_22,
 }

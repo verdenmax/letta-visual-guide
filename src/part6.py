@@ -361,3 +361,6 @@ LESSON_21 = {"zh": r"""
 <div class="note info"><span class="ni">💡</span><span class="nx">Close the lesson in one line: <strong>the endpoint type picks the client, the three methods collapse the differences into the OpenAI shape, and the loop knows only this one</strong>. These three clauses are the very foundation on which all the "quirk isolation" in the next two lessons rests.</span></div>
 <p>The contract is now on paper, but the providers' "quirks" have not vanished with it — Anthropic's prompt caching, Google's request format, force-injecting an inner monologue into a model with no native reasoning… where exactly are these differences hidden, and how do they avoid polluting the loop above? The next lesson, Lesson 22, takes up "isolating provider quirks".</p>
 """}
+
+
+LESSON_22 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}
