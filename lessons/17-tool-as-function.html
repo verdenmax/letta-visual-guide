@@ -343,6 +343,12 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>一句话抓住本课：<strong>工具 = 函数</strong>。Letta 在 <span class="mono">letta/functions/schema_generator.py::generate_schema</span> 里，用 <span class="mono">inspect.signature</span> 读出函数的参数与类型注解，再用 <span class="mono">docstring_parser</span>（按 Google 风格）解析 docstring，把两者拼成一份 OpenAI 兼容的 JSON schema。模型只认这份 schema。</p>
 <p>所以这一课其实在讲三件环环相扣的事：① schema 是<strong>怎么生成</strong>的；② docstring 为什么是一份<strong>硬契约</strong>（写不全工具就建不出来）；③ Python 类型<strong>怎么映射</strong>成 JSON schema 类型。把这三点串起来，你就懂了"工具"在 Letta 里的真身。</p>
 </div>
+<p>在动手看代码前，先建立一个核心对照：同一个工具，<strong>你</strong>和<strong>模型</strong>看到的是两样完全不同的东西。你面对的是有逻辑、有实现的函数；模型面对的只是一张抽象的"接口卡片"。</p>
+<div class="cols">
+  <div class="col"><h4>👩‍💻 你写的（给人看）</h4><p>完整的 Python 函数：参数、类型注解、docstring，以及真正干活的<strong>函数体</strong>。你关心它怎么实现、会不会出错、返回什么。</p></div>
+  <div class="col"><h4>🤖 模型看到的（给机器读）</h4><p>一份 JSON schema：只有名字、一句描述、每个参数的类型与说明。<strong>函数体被完全抹掉</strong>，模型既看不到实现，也无从知道你内部怎么处理。</p></div>
+</div>
+<p>这条"分界线"贯穿全课：左边是实现细节，右边是对外契约。<span class="mono">generate_schema</span> 干的活，就是把左边<strong>提炼</strong>成右边。理解了这一点，后面所有规则——为什么参数必须有描述、为什么类型有限制——都会变得顺理成章。</p>
 <h2>工具就是一个 Python 函数</h2>
 <p>先看一个真实的基础工具——<span class="mono">send_message</span>，它来自 <span class="mono">letta/functions/function_sets/base.py</span>。这就是 agent 用来"说话"的工具。注意它没有任何特殊基类、没有装饰器，就是一个再普通不过的方法。它身上唯一"特殊"的东西，是那段写得规规矩矩的 Google 风 docstring。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/base.py</span><span class="ln">一个基础工具的样子</span></div>
@@ -356,6 +362,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <span class="st">    &quot;&quot;&quot;</span>
 </pre></div>
 <p>关键点在 <span class="mono">Args:</span> 段：里面对 <span class="mono">message</span> 写的那句"Message contents. All unicode…"，<strong>就是模型将来看到的参数说明</strong>。函数体长什么样、返回什么，模型一概不知；它能依据的只有这段描述。</p>
+<p>为什么 Letta 不搞一套"工具基类"或装饰器，偏要用裸函数？因为这样<strong>门槛最低</strong>：任何一个普通函数——你写的、第三方库里的、临时拼的——只要 docstring 规范，就能直接变成工具。用<strong>约定</strong>代替了<strong>配置</strong>。</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Google 风 docstring 的三段式很重要：开头一句是<strong>函数总描述</strong>，<span class="mono">Args:</span> 段逐个写<strong>参数描述</strong>，<span class="mono">Returns:</span> 段写返回值。其中只有"总描述"和"每个参数描述"会进 schema；<span class="mono">Returns:</span> 主要是给人看的。</span></div>
+<p>所以你写 docstring 时，真正"对模型生效"的就两处：第一句，和 <span class="mono">Args:</span> 里的每一行。把力气花在这两处，远比纠结 <span class="mono">Returns:</span> 的措辞更划算。</p>
 <h2>从函数到 schema：generate_schema</h2>
 <div class="flow">
   <div class="node"><div class="nt">Python 函数</div><div class="nd">签名 + docstring</div></div>
@@ -379,6 +388,8 @@ html[data-lang="zh"] .lang-en { display: none !important; }
             required.append(p.name)
 </pre></div>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">这段循环藏着两道"质检关卡"：参数<strong>没有描述</strong>就 <span class="mono">raise ValueError</span>；参数<strong>缺类型注解</strong>则在 <span class="mono">type_to_json_schema_type</span> 里抛 <span class="mono">TypeError</span>。换句话说，docstring 写不全，工具根本建不出来。</span></div>
+<p>把这段循环"读慢一点"：它<strong>逐个参数</strong>走一遍，每个参数都过同样四步——跳过保留名、取描述、定类型、判必填。任何一步出问题，构建就此中止，错误会一路抛到注册工具的调用方。</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">注意 <span class="mono">name=None</span> 这个参数：不显式传名字时，schema 的 <span class="mono">name</span> 默认取 <span class="mono">function.__name__</span>，也就是函数名本身。所以给函数起个好名字，等于给工具起了个好"菜名"，模型一看名字就能猜个八九不离十。</span></div>
 <p>那这台机器最终"吐"出来的成品长什么样？下面就是 <span class="mono">send_message</span> 经 <span class="mono">generate_schema</span> 处理后得到的 JSON schema。对照前面的函数：函数名变成 <span class="mono">name</span>，docstring 第一句变成 <span class="mono">description</span>，参数 <span class="mono">message</span> 连同它的描述进了 <span class="mono">properties</span>，因为没有默认值又被列进 <span class="mono">required</span>。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">生成结果 · JSON schema</span><span class="ln">模型真正看到的东西</span></div>
 <pre>{
@@ -397,6 +408,16 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 }
 </pre></div>
 <div class="note tip"><span class="ni">👉</span><span class="nx">把这份 JSON 和最前面那段 Python 对照着看：你会发现里面<strong>每一个字</strong>都来自函数签名或 docstring，没有一处是凭空多出来的。这就是"docstring 即说明书"的字面含义。</span></div>
+<p>不管工具多复杂，生成出的 schema 永远是同一副"骨架"。把它拆开看，就这么几个固定零件：</p>
+<div class="cellgroup"><div class="cg-cap"><b>一份工具 schema 的解剖</b></div>
+<div class="cells">
+<span class="cell hl">name</span><span class="sep">·</span>
+<span class="cell hl">description</span><span class="sep">·</span>
+<span class="cell">parameters.type = object</span><span class="sep">·</span>
+<span class="cell">properties（逐参数：type + description）</span><span class="sep">·</span>
+<span class="cell">required（必填参数名列表）</span>
+</div></div>
+<p>蓝色高亮的 <span class="mono">name</span> 和 <span class="mono">description</span> 来自函数名与第一句 docstring；<span class="mono">properties</span> 里每个参数对应一组"类型 + 描述"；<span class="mono">required</span> 则是必填判定链的产物。记住这副骨架，你看任何工具的 schema 都不会迷路。</p>
 <h2>类型怎么映射</h2>
 <p>schema 里每个参数都得有个 <span class="mono">type</span>，这一步由 <span class="mono">type_to_json_schema_type</span> 完成：它把 Python 的类型注解<strong>手写</strong>地翻译成 JSON schema 类型。这张映射表就是工具能接受哪些参数类型的边界——表里没有的，要么被解包、要么直接报错。</p>
 <table class="t">
@@ -412,12 +433,16 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <tr><td class="mono">Dict[k,v]</td><td class="mono">✗</td><td>带参字典 → ValueError</td></tr>
 <tr><td class="mono">Union[...]</td><td class="mono">✗</td><td>一般 Union → NotImplementedError</td></tr>
 </table>
+<p>这张表里最值得记住的是三类"特殊待遇"。<span class="mono">Optional[X]</span> 会被<strong>解包</strong>：schema 里类型就是 <span class="mono">X</span>，但该参数自动变成可选。<span class="mono">List[X]</span> 映射成 <span class="mono">array</span> 并带上 <span class="mono">items</span> 描述元素类型。<span class="mono">Literal</span> 则变成 <span class="mono">enum</span>，把可选值直接写进 schema，等于告诉模型"只能从这几个里挑"。</p>
+<div class="note tip"><span class="ni">💡</span><span class="nx">想传一个结构化对象（比如一组配置项）？别用 <span class="mono">Dict</span>，定义一个 Pydantic <span class="mono">BaseModel</span>。<span class="mono">type_to_json_schema_type</span> 会调它的 <span class="mono">model_json_schema()</span>，把字段、类型、必填关系<strong>嵌套</strong>进工具 schema——既结构清晰，又能被模型正确理解。</span></div>
 <p>注意 <span class="mono">Optional[X]</span> 这一行很特别：它不只是映射类型，还会影响"该参数是否必填"。这就引出了 <span class="mono">required</span> 的判定逻辑——一个参数到底进不进 <span class="mono">required</span>，走的是下面这条小决策链。</p>
 <div class="vflow">
   <div class="step"><div class="num">1</div><div class="sc"><h4>有默认值吗？</h4><p>若该参数在签名里写了默认值（<span class="mono">p.default</span> 不为空）→ <strong>可选</strong>，不进 required。</p></div></div>
   <div class="step"><div class="num">2</div><div class="sc"><h4>是 Optional[X] 吗？</h4><p>没有默认值，但类型是 <span class="mono">Optional[X]</span>（即 <span class="mono">is_optional</span> 为真）→ <strong>可选</strong>，不进 required。</p></div></div>
   <div class="step"><div class="num">3</div><div class="sc"><h4>否则</h4><p>既无默认值、又不是 Optional → <strong>进 required</strong>，模型调用时必须提供。</p></div></div>
 </div>
+<p>别小看 <span class="mono">required</span> 这份清单——它直接左右模型的行为。被列进 required 的参数，模型调用时<strong>必须</strong>给出；留在外面的，它可以省略。所以"哪些必填"既是正确性约束，也是对模型的提示。</p>
+<div class="note tip"><span class="ni">✅</span><span class="nx">一个实用习惯：凡是"缺了就没法干活"的参数，别给默认值、也别标 <span class="mono">Optional</span>，让它进 required；凡是"锦上添花"的参数，给个默认值或用 <span class="mono">Optional</span>，让模型可以不填。这条边界，决定了工具好不好用。</span></div>
 <div class="cute"><div class="row">
   <span class="emoji">📝</span><span class="lab">docstring</span>
   <span class="emoji">🔧</span><span class="lab">函数</span>
@@ -431,6 +456,13 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>所以一句含糊或缺失的参数描述，会<strong>直接降低</strong>模型用对工具的概率。这是功能问题，不是代码风格问题。Letta 索性把它升级成"编译期错误"：任一参数缺描述，<span class="mono">generate_schema</span> 当场 <span class="mono">raise ValueError</span>，工具压根建不出来，逼你把话说清楚。</p>
 <p>一句话记住：<strong>给模型写 docstring，而不是给同事写</strong>。这正好回扣第 4 课——工具是 agent 与世界的接口，而接口的质量，就压在这几行描述上。</p>
 </div>
+<h2>好 docstring vs 坏 docstring</h2>
+<p>抽象的话讲多了，不如看个对比。同一个"发邮件"工具，两种写法，对模型的效果天差地别：</p>
+<div class="cols">
+  <div class="col"><h4>🙁 含糊的写法</h4><p><span class="mono">to (str): 收件人。</span> 模型只知道要传个字符串，但该填邮箱、姓名、还是用户 ID？它只能猜，猜错就发错人。</p></div>
+  <div class="col"><h4>🙂 清楚的写法</h4><p><span class="mono">to (str): 收件人的完整邮箱地址，如 alice@example.com。</span> 模型一眼就懂格式和示例，几乎不会填错。</p></div>
+</div>
+<p>注意：两种写法<strong>代码一模一样</strong>，函数体一字没改，差别只在 docstring。这正是为什么说参数描述是"功能"而非"风格"——它实打实地改变了模型用对工具的概率。一句好描述，胜过事后无数次纠错。</p>
 <div class="card warn"><div class="tag">⚠️ 常见误区</div>
 <ul>
 <li><strong>函数级描述可以缺，参数描述不能缺。</strong>整个工具没写一句话的总描述？没关系，会回退成 <span class="mono">"No description available"</span>。但<strong>每个参数</strong>必须有描述（否则 <span class="mono">ValueError</span>）和类型注解（否则 <span class="mono">TypeError</span>）。</li>
