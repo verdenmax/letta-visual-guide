@@ -1006,6 +1006,121 @@ QUIZZES = {
             },
         ],
     },
+    "14-v3-step-loop.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "V3 循环里，一次 _step（letta_agent_v3.py::_step）到底做哪三件事？",
+                    "en": "In the V3 loop, what three things does a single _step (letta_agent_v3.py::_step) actually do?",
+                },
+                "opts": [
+                    {"zh": "调一次 LLM、执行工具、把结果落库（拿有效工具 → 刷新消息 → 调模型 → _handle_ai_response → _checkpoint_messages → yield）",
+                     "en": "One LLM call, tool execution, and persisting the result (get valid tools → refresh messages → call the model → _handle_ai_response → _checkpoint_messages → yield)"},
+                    {"zh": "只调一次 LLM，工具执行和落库都甩给外层 step() 去做",
+                     "en": "Only one LLM call; it hands tool execution and persistence off to the outer step()"},
+                    {"zh": "把整个 50 步循环一次跑完，再一次性返回所有消息",
+                     "en": "Run the whole 50-step loop in one go, then return all messages at once"},
+                    {"zh": "重建系统提示、压缩历史、再把整张存档写回数据库",
+                     "en": "Rebuild the system prompt, compact history, then write the whole save back to the DB"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "_step 的源码定位就是“一次 LLM 调用与工具执行”，它是个异步生成器：拿有效工具并问要不要强制 → _refresh_messages（不重建系统提示，保住 prefix cache）→ invoke_llm（外裹“撑爆就压缩重试”）→ _handle_ai_response 校验并执行工具、算出续步三元组 → _checkpoint_messages 落库（“持久化要在流式之前”）→ yield。工具执行与落库都在 _step 内部，不是甩给 step()；跑满 50 步是外层 step() 的 for 循环干的，不是一次 _step；重建系统提示只在压缩 / 重置后才发生，不是每个 _step 的常规动作。",
+                    "en": "The source pins _step as “one LLM call and tool execution” — an async generator: get valid tools and check whether to force a call → _refresh_messages (no system-prompt rebuild, preserving the prefix cache) → invoke_llm (wrapped in “overflow → compact → retry”) → _handle_ai_response validates and executes tools and computes the continuation triple → _checkpoint_messages persists (“persistence needs to happen before streaming”) → yield. Tool execution and persistence both live inside _step, not handed to step(); running all 50 steps is the outer step()'s for loop, not one _step; rebuilding the system prompt only happens after compaction / reset, not on every _step.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "_decide_continuation 怎么判断“还要不要再走一步”？它最核心的判据是什么？",
+                    "en": "How does _decide_continuation decide “take one more step or not”? What is its core criterion?",
+                },
+                "opts": [
+                    {"zh": "只看模型这一轮有没有调工具：调了 → 继续；没调 → 结束（end_turn）。再叠加几条硬覆盖",
+                     "en": "It only looks at whether the model called a tool this round: called → continue; didn't → end (end_turn). Plus a few hard overrides"},
+                    {"zh": "看模型有没有在参数里举手要“心跳”（request_heartbeat）",
+                     "en": "It checks whether the model raised its hand for a “heartbeat” in the parameters (request_heartbeat)"},
+                    {"zh": "看模型生成的文本里有没有出现“继续”这个词",
+                     "en": "It scans the model's generated text for the word “continue”"},
+                    {"zh": "看这一轮用了多少 token，超过一半预算就停",
+                     "en": "It watches how many tokens this round used and stops past half the budget"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "_decide_continuation 的文档字符串把规则写成两条：没调工具 → 循环结束；调了工具 → 循环继续。它不看模型“想不想继续”，只认“有没有发起工具调用”这个客观信号——因为工具调用是两段式的，执行完得把结果喂回模型，所以必须再转一圈。硬覆盖：没调但还有 required_before_exit 没调 → 继续；终止工具 → 停 tool_rule；第 50 步 → 停 max_steps。靠 request_heartbeat 续步是上一代 V2 的做法，正是 V3 砍掉的“心跳”（第 15 课）；扫文本关键词、看 token 用量都不是它的判据。",
+                    "en": "_decide_continuation's docstring states the rule in two lines: no tool call → loop ends; tool call → loop continues. It doesn't read whether the model “wants to continue,” only the objective signal “did it issue a tool call” — because a tool call is two-stage, the result must be fed back to the model, so one more lap is required. Hard overrides: no call but a required_before_exit tool remains → continue; terminal tool → stop tool_rule; step 50 → stop max_steps. Continuing via request_heartbeat is the previous-gen V2 approach — exactly the “heartbeat” V3 dropped (lesson 15); scanning text for a keyword or watching token usage are not its criteria.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "step() 的预算上限 max_steps 默认是多少？这个默认值写在哪里？",
+                    "en": "What is the default budget cap max_steps for step(), and where is that default defined?",
+                },
+                "opts": [
+                    {"zh": "50 —— 写在 constants.py::DEFAULT_MAX_STEPS",
+                     "en": "50 — defined in constants.py::DEFAULT_MAX_STEPS"},
+                    {"zh": "10 —— 硬编码在 letta_agent_v3.py 的 step 函数体里",
+                     "en": "10 — hard-coded in the body of step in letta_agent_v3.py"},
+                    {"zh": "100 —— 由 llm_config 的上下文窗口大小推算出来",
+                     "en": "100 — derived from llm_config's context-window size"},
+                    {"zh": "没有默认值，每次调用 step() 都必须显式传入",
+                     "en": "There is no default; every step() call must pass it explicitly"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "DEFAULT_MAX_STEPS = 50 定义在 constants.py，step(input_messages, max_steps=DEFAULT_MAX_STEPS) 用它当默认值。这个“预算”是循环的安全绳：跑满 50 圈还没自然收尾，step() 就主动盖 StopReasonType.max_steps 退出。它是个常量、不随上下文窗口大小变化；也不必显式传入——不传就是 50。",
+                    "en": "DEFAULT_MAX_STEPS = 50 is defined in constants.py, and step(input_messages, max_steps=DEFAULT_MAX_STEPS) uses it as the default. This “budget” is the loop's safety rope: run a full 50 laps without a natural finish and step() actively stamps StopReasonType.max_steps and exits. It's a constant, not derived from the context-window size; nor must it be passed explicitly — omit it and you get 50.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "循环跑满 50 步上限而退出时，会盖上哪个停因？它映射的 run_status 是什么？",
+                    "en": "When the loop exits because it hit the 50-step cap, which stop reason is stamped, and what run_status does it map to?",
+                },
+                "opts": [
+                    {"zh": "max_steps，且映射成 completed（到点下班是预期内的保护，不算失败）",
+                     "en": "max_steps, and it maps to completed (clocking out on schedule is expected protection, not a failure)"},
+                    {"zh": "max_steps，但映射成 failed（撞上限算出错）",
+                     "en": "max_steps, but it maps to failed (hitting the cap counts as an error)"},
+                    {"zh": "end_turn，映射成 completed",
+                     "en": "end_turn, mapping to completed"},
+                    {"zh": "max_tokens_exceeded，映射成 failed",
+                     "en": "max_tokens_exceeded, mapping to failed"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "step() 里到了 i == max_steps - 1 还没人设停因，就主动盖 StopReasonType.max_steps。反直觉的关键：LettaStopReason.run_status 把 max_steps 归到 completed（和 end_turn / tool_rule / requires_approval 同堆），不是 failed——撞上限是“按规矩到点下班”的保护，不当成崩溃。end_turn 是“没调工具的正常收尾”，不是撞上限；max_tokens_exceeded 是模型这轮因 finish_reason=length 被截断才映射 failed，与 50 步上限无关。",
+                    "en": "In step(), when i == max_steps - 1 and no stop reason is set yet, it actively stamps StopReasonType.max_steps. The counterintuitive key: LettaStopReason.run_status puts max_steps in the completed pile (alongside end_turn / tool_rule / requires_approval), not failed — hitting the cap is “clocking out on schedule” protection, not a crash. end_turn is the “no-tool-call normal finish,” not the cap; max_tokens_exceeded maps to failed only for a length-truncated round (finish_reason=length), unrelated to the 50-step cap.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "step() 是边跑边把 token 流式吐给前端的吗？它最终返回什么？",
+                    "en": "Does step() stream tokens to the frontend as it runs, and what does it ultimately return?",
+                },
+                "opts": [
+                    {"zh": "不流式：它把每个 _step 抽干、攒进列表，循环结束统一返回一个 LettaResponse；真正流式的是另一个 stream()",
+                     "en": "It doesn't stream: it drains each _step into a list and returns one LettaResponse when the loop ends; the real streaming is a separate stream()"},
+                    {"zh": "流式：_step 里有 async for ... yield，所以整个 step() 就是在对外直播",
+                     "en": "It streams: _step has async for ... yield, so the whole step() is broadcasting live"},
+                    {"zh": "流式：step() 每跑完一步就把该步消息直接转发给客户端",
+                     "en": "It streams: step() forwards each step's messages straight to the client as it finishes"},
+                    {"zh": "既不流式也不返回消息，只返回一个 LettaUsageStatistics 用量统计",
+                     "en": "It neither streams nor returns messages; it only returns a LettaUsageStatistics usage object"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "step() 不是流式接口：它在内部把每个 _step 生成器抽干、append 进一个列表，循环结束后统一返回一个完整的 LettaResponse。_step 里的 async for ... yield 只是“内部传话”——把消息交给 step() 去 append，不是转发给客户端。真正“对外直播”的是另一个方法 stream(...)，别和 step() 混为一谈。返回 LettaUsageStatistics 的是同步老祖 Agent.step（第 13 课），V2 / V3 的 step 返回的是 LettaResponse。",
+                    "en": "step() is not a streaming interface: internally it drains each _step generator, appends to a list, and after the loop returns one complete LettaResponse. The async for ... yield inside _step is just an “internal relay” — handing messages to step() to append, not forwarding to the client. The real “live broadcast” is a separate method, stream(...); don't conflate it with step(). Returning LettaUsageStatistics is the synchronous elder Agent.step (lesson 13); V2 / V3's step returns a LettaResponse.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“带预算的流水线工人”这个比喻，把第 14 课的 V3 循环串成一个完整故事，并想三件事：(1) 续步判据为什么敢只看“这轮有没有调工具”，而不像上一代那样让模型在参数里举手要心跳（request_heartbeat）？“客观信号驱动”相比“模型自报”各有什么利弊？(2) 为什么 _step 要把顺序定死成“先 _checkpoint_messages 落库、再 yield 流式”？设想进程在吐字吐到一半时崩了，这个顺序到底救回了什么？(3) max_steps = 50 这根安全绳防的到底是什么？为什么撞上它映射的是 completed 而不是 failed？",
+                "en": "Using the metaphor of a “budgeted assembly-line worker,” weave lesson 14's V3 loop into one coherent story, and think through three things: (1) why dare to base continuation on just “did this round call a tool,” instead of having the model raise its hand for a heartbeat (request_heartbeat) like the previous generation? What are the trade-offs of an “objective-signal-driven” loop versus the model “self-reporting”? (2) Why does _step nail the order to “first _checkpoint_messages to persist, then yield to stream”? Imagine the process crashing mid-token — what exactly does this order save? (3) What does the max_steps = 50 safety rope actually guard against, and why does hitting it map to completed rather than failed?",
+            },
+        ],
+    },
 }
 
 
