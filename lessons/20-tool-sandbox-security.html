@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>20 · 自定义工具沙箱与安全修复 / The tool sandbox &amp; a security fix - Letta 图解教程</title>
+<meta name="description" content="第五部分 · 工具系统｜自定义工具沙箱与安全修复 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="20 · 自定义工具沙箱与安全修复 / The tool sandbox &amp; a security fix - Letta 图解教程">
+<meta property="og:description" content="第五部分 · 工具系统｜自定义工具沙箱与安全修复 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="20 · 自定义工具沙箱与安全修复 / The tool sandbox &amp; a security fix - Letta 图解教程">
+<meta name="twitter:description" content="第五部分 · 工具系统｜自定义工具沙箱与安全修复 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第五部分 · 工具系统</span><span class="lang-en">Part 5 · The tool system</span></span>
+    <span class="pill">20 / 20</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第五部分 · 工具系统</span><span class="lang-en">Part 5 · The tool system</span></div>
+    <h1><span class="lang-zh">自定义工具沙箱与安全修复</span><span class="lang-en">The tool sandbox &amp; a security fix</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 19 课结尾留了个悬念：一个自定义工具——用户自己写的 Python 源码——默认会被交给 <span class="mono">SandboxToolExecutor</span>，也就是"扔进沙箱"。可沙箱凭什么敢跑一段陌生人的代码？跑完之后，又该怎么把结果安全地收回服务端？</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这是第五部分的收尾，也是整套工具系统"安全观"的落点。我们要把一张<strong>信任边界图</strong>画清楚：哪段路可以"放心传"、哪段路"必须验真"，以及一次真实的安全修复（PR #3343）如何把这条边界焊死。</p>
+
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>把沙箱想成监狱的探视窗。你（服务端）要递东西<strong>进去</strong>——那是你自己的物品，可以直接递原物。因为风险方向是"往里走"：东西进了高墙，再危险也跑不到你这边。</p>
+<p>可对方（沙箱里跑的陌生代码）从里面递<strong>出来</strong>的任何包裹，你绝不能伸手直接接管。必须隔着玻璃、过安检、核对封条——因为你根本不知道里面是糖果还是刀片。</p>
+<p>这一课全部的安全感，就压在这条朴素规矩上：<strong>往里递可以是原物，往外收必须过安检</strong>。剩下的工程，只是把"原物"翻译成 <span class="mono">pickle</span>、把"安检"翻译成 <span class="mono">JSON</span> 加一层校验而已。</p>
+<p>这条规矩看着简单，却常被违反：很多"沙箱"只盯着把代码关进去，却忘了"收结果"这一步同样跨越边界。真正的安全，恰恰藏在你<strong>怎么把东西拿出来</strong>。</p>
+</div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>记住一句话就够了：<strong>自定义工具是不可信代码</strong>。它不在主进程里跑，而是被丢进一个沙箱——本地 venv、E2B 或 Modal，由 <span class="mono">SandboxType</span> 三选一。</p>
+<p>沙箱内外只有两条数据通道，方向相反、信任也相反。<strong>server→sandbox</strong> 走 <span class="mono">pickle</span>（受信：服务端把自己造的 <span class="mono">agent_state</span> 序列化进去）；<strong>sandbox→server</strong> 走 <span class="mono">JSON</span>（不可信：<strong>绝不 <span class="mono">pickle.loads</span></strong>），并加 <span class="mono">marker+长度+MD5</span> 帧来校验完整性。</p>
+<p>这张<strong>信任边界图</strong>就是本课的全部。而 PR #3343 正是一次把回程通道从 pickle 改成 JSON 的真实安全修复——它把这条边界从"差不多安全"变成"焊死"。</p>
+<p>再强调一遍方向感：数据从服务端流向沙箱时，权限是在<strong>收窄</strong>（进了低信任区），所以 pickle 安全；数据从沙箱流回服务端时，权限在<strong>放大</strong>（回到高信任区），所以必须只用 JSON。把"权限放大的方向"当成红线，整张图就记住了。</p>
+</div>
+<h2>沙箱三选一：代码到底在哪跑</h2>
+<p>一个自定义工具被执行前，Letta 先决定"在哪跑"。这不是随机的，而是一条短路式的判定链：先看工具自己的偏好，再看全局配置，最后兜底到本地。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>看 tool.metadata</h4><p>若工具显式标了 <span class="mono">sandbox=="modal"</span> 且 Modal 已启用 → 用 <strong>Modal</strong>（云端容器，强隔离）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>看全局配置</h4><p>否则查 <span class="mono">ToolSettings.sandbox_type</span>：若配了 <span class="mono">e2b_api_key</span> → 用 <strong>E2B</strong>（云端微沙箱）。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>兜底本地</h4><p>都没有 → <strong>Local</strong>：在本机建一个隔离 venv，用子进程跑。开发期最常见。</p></div></div>
+</div>
+<p>三种沙箱不是冗余，而是<strong>隔离强度与部署成本的权衡</strong>。本地 venv 零依赖、最快，但和服务端共享内核，隔离最弱；E2B、Modal 把代码送进云端独立容器，隔离强，但要联网和配额。所以同一段工具，开发期可能跑在本地，生产期被切到 Modal——这正是"在哪跑"必须可配置的原因。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">类型定义在 <span class="mono">schemas/enums.py::SandboxType</span>（<span class="mono">E2B / MODAL / LOCAL</span>）；选择逻辑落在 <span class="mono">sandbox_tool_executor.py</span>，全局开关是 <span class="mono">settings.py::ToolSettings.sandbox_type</span>。关键点是：无论选哪个，下面这套"生成脚本 + 信任边界 + 帧校验"的玩法<strong>三种沙箱完全一致</strong>，差别只在外层容器。</span></div>
+<p>顺便提一句配置：<span class="mono">LocalSandboxConfig</span> 还能调 <span class="mono">sandbox_dir</span>、<span class="mono">use_venv</span>、<span class="mono">venv_name</span>、<span class="mono">pip_requirements</span> 等，决定本地沙箱具体怎么落地。但这些都是"怎么跑"的旋钮，不改"信谁"的边界。</p>
+<h2>生成的沙箱脚本：把工具包起来跑</h2>
+<p>沙箱不会"直接调用"用户函数。服务端会<strong>现拼一段 Python 脚本</strong>，把所有需要的东西内联进去，再让沙箱整段执行。这段脚本由 <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span> 拼出来。</p>
+<p>这种"现拼脚本"的做法有个好处：服务端对沙箱里要发生的一切<strong>完全掌控</strong>——传什么、调用什么、怎么打包结果，全写死在脚本里，沙箱只是个老老实实的执行器。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>解出 agent_state</h4><p><span class="mono">pickle.loads(...)</span> 还原服务端传进来的 <span class="mono">agent_state</span>（受信方向）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>内联参数</h4><p>每个调用参数按 <span class="mono">repr()</span> 写成字面量，<strong>不是 pickle</strong>。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>内联用户源码</h4><p>把工具的 <span class="mono">source_code</span> 逐字粘进来，定义出函数本体。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>调用 + 打包</h4><p><span class="mono">_function_result = tool(...)</span>，再把结果 + <span class="mono">agent_state</span> 打成 JSON。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>加帧写 stdout</h4><p>前面缀上 <span class="mono">marker+长度+MD5</span>，写进标准输出，等服务端来读。</p></div></div>
+</div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/base.py</span><span class="ln">_render_sandbox_code（简化骨架）</span></div>
+<pre><span class="cm"># 服务端把 agent_state pickle 进脚本，沙箱里 loads（受信方向）</span>
+agent_state = pickle.<span class="fn">loads</span>(<span class="nb">b"..."</span>)
+x = <span class="st">"&lt;内联字面量&gt;"</span>            <span class="cm"># 参数按 repr() 内联，不是 pickle</span>
+<span class="cm"># &lt;用户工具源码逐字内联&gt;</span>
+_function_result = <span class="fn">my_tool</span>(x, agent_state=agent_state)
+payload = _letta_json.<span class="fn">dumps</span>({<span class="st">"results"</span>: _function_result,
+    <span class="st">"agent_state"</span>: agent_state.<span class="fn">model_dump</span>(mode=<span class="st">"json"</span>)}).<span class="fn">encode</span>()  <span class="cm"># JSON，不是 pickle</span>
+sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn">pack</span>(<span class="st">"&gt;I"</span>, len(payload)) + md5_hex + payload)
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">为什么把<strong>源码逐字内联</strong>、而不是 import 用户模块？因为沙箱里根本没有那个模块——工具源码只存在数据库里。内联后脚本自包含，沙箱只要一个干净解释器就能跑。脚本里还会用 <span class="mono">coerce_dict_args_by_annotations(...)</span> 按注解把参数强转成正确类型，避免字符串和数字错配。</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">agent_state</span> 走 <span class="mono">pickle.dumps</span>（服务端造、沙箱 <span class="mono">loads</span>）；但<strong>调用参数是内联字面量（<span class="mono">repr()</span>），不是 pickle</strong>。整段脚本里，只有 <span class="mono">agent_state</span> 这一项用到了 pickle——这个区分后面会反复用到。</span></div>
+
+<h2>信任边界：方向决定序列化</h2>
+<p>现在把两条通道并排放。<strong>同一份脚本，两个方向用了两种序列化</strong>——这不是随意，而是信任在说话。</p>
+<div class="cols">
+  <div class="col"><h4>⬇️ server → sandbox</h4><p>用 <span class="mono">pickle</span> 传 <span class="mono">agent_state</span>。<strong>受信</strong>：是服务端 pickle 自己造的对象，沙箱只负责 loads。权限往低信任侧流，没有"反序列化不可信输入"的问题。</p></div>
+  <div class="col"><h4>⬆️ sandbox → server</h4><p>只用 <span class="mono">JSON</span> + <span class="mono">marker+长度+MD5</span>。<strong>不可信</strong>：沙箱刚跑完任意用户代码，它的 stdout 绝不能 <span class="mono">pickle.loads</span>，只能当数据读。</p></div>
+</div>
+<p>为什么向下可以 pickle？因为被反序列化的对象是<strong>服务端自己造的</strong>，沙箱拿到的是数据、不是攻击面；就算沙箱想搞鬼，它也改不了"已经 pickle 进去的字节"。</p>
+<p>为什么向上必须 JSON？因为 <span class="mono">pickle.loads</span> 会在反序列化时<strong>执行任意代码</strong>。沙箱里跑的是陌生人的工具，它的输出天然可疑——用 <span class="mono">json.loads</span> 读，最坏也只是拿到一坨假数据，而不是被 RCE。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">一个反直觉点：受信方向用 pickle 不是"将就"，而是<strong>主动选择</strong>——它能一次性还原 <span class="mono">agent_state</span> 这种复杂对象，省去手写序列化。pickle 本身不是坏人，把它用在不可信方向才是。</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">举个具体攻击：恶意工具在 <span class="mono">return</span> 时不返回普通 dict，而是返回一个带 <span class="mono">__reduce__</span> 的对象。若服务端用 <span class="mono">pickle.loads</span> 读它，反序列化的瞬间就执行攻击者指定的命令——服务端沦陷。改成 <span class="mono">json.loads</span> 后，这种对象根本无法表达，攻击面被结构性消除。</span></div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">⬇️ pickle</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">自己人，放行</span></div>
+<div class="row"><span class="emoji">🔐</span><span class="lab">⬆️ JSON</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">外人，过安检 MD5</span></div>
+<div class="cap">信任＝方向：能 pickle.loads 你自己造的数据；绝不 pickle.loads 跨过不可信边界回来的数据。</div></div>
+
+<h2>回程帧：marker + 长度 + MD5</h2>
+<p>沙箱的 stdout 是一条嘈杂的河：用户代码可能 print 调试信息、可能抛异常栈、甚至可能故意打一个<strong>假结果</strong>。所以真正的结果不是"整段 stdout"，而是被一段帧<strong>圈起来</strong>的那一小块。</p>
+<table class="t">
+  <tr><th>字段</th><th>大小</th><th>作用</th></tr>
+  <tr><td class="mono">MARKER</td><td class="mono">16 字节</td><td>uuid5 生成的定位锚，在噪声里标出"真结果从这里开始"</td></tr>
+  <tr><td class="mono">LENGTH</td><td class="mono">4 字节 '&gt;I'</td><td>big-endian 无符号整数，告诉你 payload 有多长，好精确切片</td></tr>
+  <tr><td class="mono">MD5</td><td class="mono">32 字节 hex</td><td>payload 的校验和，抓篡改与截断</td></tr>
+  <tr><td class="mono">JSON_PAYLOAD</td><td class="mono">LENGTH 字节</td><td>真正的结果：工具返回值 + agent_state 的 JSON</td></tr>
+</table>
+<div class="cellgroup"><div class="cg-cap"><b>stdout 帧布局</b></div><div class="cells"><span class="cell hl">MARKER(16)</span><span class="sep">·</span><span class="cell">LENGTH(4)</span><span class="sep">·</span><span class="cell">MD5(32)</span><span class="sep">·</span><span class="cell">JSON_PAYLOAD</span></div></div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/local_sandbox.py</span><span class="ln">parse_out_function_results_markers（简化）</span></div>
+<pre>pos = data.<span class="fn">find</span>(MARKER)                       <span class="cm"># 在嘈杂 stdout 里定位真结果</span>
+length = struct.<span class="fn">unpack</span>(<span class="st">"&gt;I"</span>, data[p:p+<span class="nb">4</span>])[<span class="nb">0</span>]
+payload = data[start : start+length]
+<span class="kw">if</span> hashlib.<span class="fn">md5</span>(payload).<span class="fn">hexdigest</span>() != checksum:
+    <span class="kw">raise</span> <span class="fn">Exception</span>(<span class="st">"Function ran, but output is corrupted."</span>)
+result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON，绝不 pickle.loads</span>
+agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic 重水合</span>
+</pre></div>
+<p>你可能会问：为什么用 stdout 这种"脏"通道，而不开一条干净的返回管道？因为沙箱的边界本质是一个<strong>进程</strong>，进程之间最通用、最不挑运行时的桥就是标准输出。代价是 stdout 里混着一切，于是必须靠帧把"真结果"从噪声里捞出来。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">这套帧防的是什么？用户工具能往 stdout 打<strong>任何东西</strong>，包括一个伪造的结果或假 marker。marker 圈出真 payload，长度做精确切片，MD5 抓篡改/截断——三层叠起来，服务端才敢说"我读到的就是工具真正返回的那一份"。</span></div>
+<p>顺序也有讲究：<strong>先比 MD5、再 <span class="mono">json.loads</span></strong>。若先解析、出错了再说，攻击者就有机会用畸形 JSON 去触发解析器的边角行为；先校验完整性，等于把"可疑输入"挡在解析之前。</p>
+<h2>PR #3343：把 pickle 换成 JSON</h2>
+<p>帧校验一直都在，但有一处老漏洞：早期回程 payload 是 <strong>pickle</strong> 编码的，服务端读回来时会 <span class="mono">pickle.loads</span>。这等于对"刚跑完任意用户代码的沙箱输出"做反序列化——一个干净利落的<strong>服务端 RCE</strong>。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">PR #3343 · commit 1131535</span></div>
+<pre><span class="cm"># 旧（有漏洞）：服务端对沙箱 stdout 直接 pickle.loads -> 服务端 RCE</span>
+<span class="cm">- result = pickle.loads(text)</span>
+<span class="cm"># 新（已修复）：只 json.loads，绝不执行代码</span>
+<span class="cm">+ result = json.loads(payload)</span>
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">注意分寸：<span class="mono">marker+长度+MD5</span> 帧<strong>早于 #3343 就存在</strong>。#3343 只把 sandbox→server 的 <strong>payload 编码</strong>从 pickle 换成 JSON；server→sandbox 仍然 pickle <span class="mono">agent_state</span>——那是有意保留的受信方向，不是漏改。</span></div>
+<p>这条修复的价值不在代码量，而在<strong>思路</strong>：序列化格式的选择本身就是一道安全闸。把 pickle 留给"我造的、往低信任侧流"的数据，把 JSON 留给"别人造的、往高信任侧回"的数据——这条规矩一旦内化，类似的 RCE 在设计阶段就被挡住，而不必等事后修补。</p>
+
+<h2>把回程在脑子里走一遍</h2>
+<p>抽象讲完，拿个具体例子收一收。假设用户写了个 <span class="mono">get_weather(city)</span> 工具，模型在某一步决定调用它、参数是 <span class="mono">city="上海"</span>。从这一刻起，发生的事是这样的。</p>
+<p>服务端先把当前 <span class="mono">agent_state</span> 用 <span class="mono">pickle.dumps</span> 成一段字节，连同 <span class="mono">city</span> 的字面量、用户那段 <span class="mono">get_weather</span> 源码，一起拼进一份临时脚本。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">这一步就能看清区分：<span class="mono">agent_state</span> 是 pickle 字节，而 <span class="mono">city</span> 只是脚本里一个内联的字符串字面量 <span class="mono">"上海"</span>。同一份脚本，两种"塞数据进去"的方式，对应两种信任。</span></div>
+<p>脚本被丢进沙箱执行：沙箱里 <span class="mono">pickle.loads</span> 还原 <span class="mono">agent_state</span>、跑 <span class="mono">get_weather("上海")</span>、拿到返回值，再把"返回值 + 更新后的 agent_state"打成 JSON，前面缀上 marker、长度、MD5，整包写进 stdout。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">这里是全课的转折点：从下一步起，所有数据都<strong>跨过了不可信边界</strong>。沙箱刚执行完一段我们无法预先信任的代码，它写出来的每个字节，都得当"外人递出的包裹"来对待。</span></div>
+<p>服务端读回 stdout：先用 marker 定位、按长度切片、比对 MD5——任何一步不符，就判定结果损坏、直接抛错。校验通过后，<strong>只</strong>对 payload 做 <span class="mono">json.loads</span>。</p>
+<p>最后用 <span class="mono">AgentState.model_validate</span> 把状态重新水合成对象。全程没有任何一行对沙箱输出做 <span class="mono">pickle.loads</span>——这就是整条旅程的安全保证：往里是 pickle、往外是 JSON，边界两侧泾渭分明。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">把这趟旅程压缩成一句话：<strong>数据下行用 pickle、上行用 JSON，中间隔着一道 marker+长度+MD5 的安检门</strong>。记住这句，等于记住了整课。</span></div>
+
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>一句话收束：<strong>你信任哪个方向，决定你用哪种序列化。</strong></p>
+<p><span class="mono">pickle.loads</span> 能在反序列化时执行任意代码，于是规则被砍到极简：<strong>可以 pickle.loads 你自己造的数据</strong>（server→sandbox，权限往下流进低信任沙箱，没风险）；<strong>绝不 pickle.loads 跨过不可信边界回来的数据</strong>（sandbox→server，刚跑完任意用户代码，只能当 JSON 读）。</p>
+<p>PR #3343 修的正是这个：旧代码 <span class="mono">pickle.loads</span> 沙箱 stdout——服务端 RCE；改成 <span class="mono">json.loads</span> 就堵死了。而 <span class="mono">marker+长度+MD5</span> 是另一层——完整性层：用户工具能打假结果，marker 圈真 payload、MD5 抓篡改。</p>
+<p>安全被化简成一个词：<strong>信任＝方向</strong>。这也收口了整条工具链：第 18 课"不跑代码就读它" → 第 19 课"自定义→沙箱" → 第 20 课"连沙箱的输出也不可信"。</p>
+<p>顺着这条线还能预判别处：只要看到"反序列化不可信来源"，就该立刻警觉；只要确认"数据是自己造、往低信任侧送"，就可以放心用高表达力的格式。这套直觉，远不止用在沙箱上，它几乎是所有跨边界通信的底色。</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p>生成脚本：<span class="mono">tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script</span> 与 <span class="mono">_render_sandbox_code</span>。本地执行：<span class="mono">local_sandbox.py::AsyncToolSandboxLocal</span>（建/复用 venv、子进程、超时）。</p>
+<p>回读校验：<span class="mono">local_sandbox.py::parse_out_function_results_markers</span> 找 marker、切长度、比 MD5；再交 <span class="mono">helpers/tool_parser_helper.py::parse_stdout_best_effort</span> 做 <span class="mono">json.loads</span> + <span class="mono">AgentState.model_validate</span>。</p>
+<p>类型与安全：沙箱类型在 <span class="mono">schemas/enums.py::SandboxType</span>；本次安全修复是 PR #3343（commit <span class="mono">1131535</span>）。</p>
+<p>顺带一提，<span class="mono">local_sandbox.py</span> 里还藏着 venv 复用、依赖安装、超时控制等工程细节；它们不影响信任边界这条主线，却决定了本地沙箱跑得快不快、稳不稳。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p><strong>误区一：以为脚本由 <span class="mono">.j2</span> 模板渲染。</strong> <span class="mono">letta/templates/sandbox_code_file.py.j2</span> 在 v0.16.8 <strong>未被任何 .py 引用</strong>，只能当对照参考；真实脚本由 <span class="mono">_render_sandbox_code</span> 拼字符串。</p>
+<p><strong>误区二：以为参数也走 pickle。</strong> 参数是<strong>内联字面量</strong>（<span class="mono">repr()</span>），整段脚本里只有 <span class="mono">agent_state</span> 一项走 pickle。</p>
+<p><strong>误区三：以为帧是 #3343 加的。</strong> <span class="mono">marker+长度+MD5</span> 帧<strong>早就存在</strong>，#3343 只改了 payload 编码（pickle→JSON）。</p>
+<p><strong>误区四：信 docstring 和变量名。</strong> <span class="mono">generate_execution_script</span> 的 docstring 写着"base64-encode/pickle the result"、变量名带 <span class="mono">_pkl</span>——都是<strong>遗留</strong>，实际装的是 JSON。</p>
+</div>
+<h2>再挖深一点</h2>
+<p>下面四个抽屉，分别回答"为什么这样切边界""帧到底防谁""#3343 改了哪一段""本地 venv 怎么跑"。想细抠的同学可以逐个展开。</p>
+<details class="accordion"><summary>① 信任边界为什么这样切？</summary><div class="acc-body">
+<p>核心只有一条：<span class="mono">pickle.loads</span> 会在反序列化时执行任意代码。所以"能不能 pickle.loads"等价于"我信不信这段字节的来源"。</p>
+<p>server→sandbox 的 <span class="mono">agent_state</span> 是服务端自己 <span class="mono">pickle.dumps</span> 的，来源可信，沙箱只 loads——风险往低信任侧流，没问题。sandbox→server 的输出来自陌生代码，来源不可信，所以只能 <span class="mono">json.loads</span>。</p>
+<p>再换个角度：信任不是"信不信这段数据长得对"，而是"信不信造它的人"。pickle 危险，恰恰因为它把"数据"和"可执行代码"混在一起——来源可信时这种混合很方便（能直接还原复杂对象），来源不可信时它就成了炸弹。</p>
+</div></details>
+<details class="accordion"><summary>② marker+长度+MD5 防的是什么？</summary><div class="acc-body">
+<p>防的是"结果通道被污染"。沙箱的 stdout 谁都能写：调试 print、异常栈、甚至一个伪造的 marker 加假结果。</p>
+<p>于是三层各司其职：<span class="mono">marker</span> 在噪声里定位真 payload 的起点；<span class="mono">length</span> 精确切出 payload，避免被尾部噪声带偏；<span class="mono">MD5</span> 比对校验和，一旦被截断或篡改就 <span class="mono">raise Exception("Function ran, but output is corrupted.")</span>。</p>
+<p>还有个细节：<span class="mono">marker</span> 是 uuid5 生成的 16 字节，几乎不可能被用户输出意外撞上，也很难被恶意"猜中"，于是"定位"这一步本身就带了一点防伪意味。</p>
+<p>有人会问：MD5 不是不安全吗？这里它只用来抓<strong>意外损坏</strong>，并不抗密码学攻击——真正挡恶意的是"只 json.loads、绝不 pickle.loads"那条规矩，MD5 只是完整性的廉价快照。</p>
+</div></details>
+<details class="accordion"><summary>③ PR #3343 到底改了什么？</summary><div class="acc-body">
+<p>只改了一件事：把 sandbox→server 的 <strong>payload 编码</strong>从 pickle 换成 JSON，于是服务端读回来时从 <span class="mono">pickle.loads</span> 变成 <span class="mono">json.loads</span>，RCE 面被消除。</p>
+<p>没改的：marker+长度+MD5 帧（本就存在）、server→sandbox 仍 pickle <span class="mono">agent_state</span>（有意的受信方向）。另外 <span class="mono">safe_pickle.py::safe_pickle_dumps</span> 只服务于 modal_sandbox_v2，加的是 10MB/深度 50 的防崩溃护栏，并非防恶意。</p>
+<p>一句话区分两件事：帧负责<strong>完整性</strong>（结果没被改坏），编码格式负责<strong>安全性</strong>（读它不会执行代码）。#3343 动的是后者，前者从一开始就在。</p>
+<p>想直观点：修复前服务端这端是 <span class="mono">pickle.loads(沙箱字节)</span>，修复后是 <span class="mono">json.loads(沙箱字节)</span>。同样在读不可信输入，前者能被反序列化触发 RCE，后者最多解析失败——差别就这么大。</p>
+</div></details>
+<details class="accordion"><summary>④ 本地 venv 怎么跑？E2B/Modal 有何不同？</summary><div class="acc-body">
+<p>本地 <span class="mono">AsyncToolSandboxLocal</span>：按需 <span class="mono">venv.create(with_pip=True)</span> 建或复用虚拟环境、<span class="mono">pip install -r</span> 装依赖，脚本写临时 <span class="mono">.py</span>，用 <span class="mono">asyncio.create_subprocess_exec</span> 起子进程跑，超时是 <span class="mono">tool_sandbox_timeout</span>（默认 180s）。</p>
+<p>差异只在外层：E2B 回程会多包一层 base64；Modal 返回的是结构化 dict。但"生成脚本 + 信任边界 + 帧校验"这套主干，在三种沙箱里是一致的。</p>
+<p>也正因为本地沙箱与服务端共享内核，它的隔离是"够用级"而非"强保证"：能挡住误伤和大多数意外，但要跑完全不可信的代码，应切到 E2B 或 Modal 的容器级隔离。</p>
+<p>超时到了会怎样？子进程被杀、本次调用按失败处理，不会把服务端拖死。临时脚本文件用完即清，venv 则可复用，省去每次重新建环境的开销。</p>
+</div></details>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>自定义工具是不可信代码，跑在沙箱里（<span class="mono">local / E2B / Modal</span>，由 <span class="mono">SandboxType</span> 三选一）。</li>
+<li><strong>server→sandbox = pickle</strong>（受信，传 <span class="mono">agent_state</span>）；<strong>sandbox→server = JSON</strong>（不可信）+ <span class="mono">marker+长度+MD5</span> 帧。</li>
+<li><strong>绝不 <span class="mono">pickle.loads</span> 沙箱输出</strong>——这正是 PR #3343（commit <span class="mono">1131535</span>）的修复。</li>
+<li><span class="mono">.j2</span> 模板在 v0.16.8 未被引用，真实脚本在 <span class="mono">_render_sandbox_code</span>；docstring 与 <span class="mono">_pkl</span> 命名是遗留。</li>
+<li>一个词记住全部：<strong>信任＝方向</strong>。</li>
+</ul>
+</div>
+
+<h2>第五部分收尾：定义 → 派生 → 分发 → 隔离执行</h2>
+<p>第五部分到这里走完。把四课串成一条线，工具系统的全貌就清楚了：从"一个普通 Python 函数"到"安全地跑完一段陌生代码"，每一步都在回答一个具体问题。</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 5 · 一条线</b></div><div class="cells"><span class="cell">17 函数+docstring→schema</span><span class="sep">·</span><span class="cell">18 不跑就派生</span><span class="sep">·</span><span class="cell">19 按类型分发执行</span><span class="sep">·</span><span class="cell hl">20 沙箱隔离+信任边界</span></div></div>
+<p>一句话串起来：<strong>定义 → 派生 → 分发 → 隔离执行</strong>。第 17 课把函数变成 schema，第 18 课不执行就派生出 schema，第 19 课按 <span class="mono">ToolType</span> 分发给执行器，第 20 课处理最危险的一类——自定义代码——并画清它运行时的信任边界。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">它还回指前两课：第 20 课"连沙箱输出也不可信"，与第 18 课"不执行就读它"是同一种警惕；而第 19 课结尾那次"自定义→沙箱"的 handoff，正是在这一课被兑现。</span></div>
+<p>拉远看，这也是整份《Letta 可视化指南》在工具这块的全部野心：不堆砌 API，而是把"一个普通函数怎么变成模型能安全调用的能力"这条链，从头到尾讲透——定义它、派生它的接口、按类型分发它、再隔离地执行它。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">如果你只带走一张图，就带"信任＝方向"这张：它不仅解释了沙箱，也是一切"跨信任边界传数据"问题的通用解法——无论对面是沙箱、第三方服务，还是另一个不受控的进程。</span></div>
+<p>下一站是<strong>第六部分 · LLM Provider 抽象</strong>：工具讲完了，我们回到更上游的问题——Letta 怎么用一套统一接口，把 OpenAI、Anthropic 等不同厂商的模型，接进同一个 agent 循环。</p>
+</div>
+  <div class="lang-en"><p>stub</p></div>
+  <div class="footnav"><a class="prev" href="19-tool-dispatch-and-mcp.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">工具分发与执行（含 MCP）</span><span class="lang-en">Tool dispatch &amp; execution (incl. MCP)</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

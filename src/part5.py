@@ -1160,11 +1160,13 @@ LESSON_20 = {"zh": r"""
 <p>把沙箱想成监狱的探视窗。你（服务端）要递东西<strong>进去</strong>——那是你自己的物品，可以直接递原物。因为风险方向是"往里走"：东西进了高墙，再危险也跑不到你这边。</p>
 <p>可对方（沙箱里跑的陌生代码）从里面递<strong>出来</strong>的任何包裹，你绝不能伸手直接接管。必须隔着玻璃、过安检、核对封条——因为你根本不知道里面是糖果还是刀片。</p>
 <p>这一课全部的安全感，就压在这条朴素规矩上：<strong>往里递可以是原物，往外收必须过安检</strong>。剩下的工程，只是把"原物"翻译成 <span class="mono">pickle</span>、把"安检"翻译成 <span class="mono">JSON</span> 加一层校验而已。</p>
+<p>这条规矩看着简单，却常被违反：很多"沙箱"只盯着把代码关进去，却忘了"收结果"这一步同样跨越边界。真正的安全，恰恰藏在你<strong>怎么把东西拿出来</strong>。</p>
 </div>
 <div class="card macro"><div class="tag">🌍 宏观理解</div>
 <p>记住一句话就够了：<strong>自定义工具是不可信代码</strong>。它不在主进程里跑，而是被丢进一个沙箱——本地 venv、E2B 或 Modal，由 <span class="mono">SandboxType</span> 三选一。</p>
 <p>沙箱内外只有两条数据通道，方向相反、信任也相反。<strong>server→sandbox</strong> 走 <span class="mono">pickle</span>（受信：服务端把自己造的 <span class="mono">agent_state</span> 序列化进去）；<strong>sandbox→server</strong> 走 <span class="mono">JSON</span>（不可信：<strong>绝不 <span class="mono">pickle.loads</span></strong>），并加 <span class="mono">marker+长度+MD5</span> 帧来校验完整性。</p>
 <p>这张<strong>信任边界图</strong>就是本课的全部。而 PR #3343 正是一次把回程通道从 pickle 改成 JSON 的真实安全修复——它把这条边界从"差不多安全"变成"焊死"。</p>
+<p>再强调一遍方向感：数据从服务端流向沙箱时，权限是在<strong>收窄</strong>（进了低信任区），所以 pickle 安全；数据从沙箱流回服务端时，权限在<strong>放大</strong>（回到高信任区），所以必须只用 JSON。把"权限放大的方向"当成红线，整张图就记住了。</p>
 </div>
 <h2>沙箱三选一：代码到底在哪跑</h2>
 <p>一个自定义工具被执行前，Letta 先决定"在哪跑"。这不是随机的，而是一条短路式的判定链：先看工具自己的偏好，再看全局配置，最后兜底到本地。</p>
@@ -1173,9 +1175,12 @@ LESSON_20 = {"zh": r"""
   <div class="step"><div class="num">2</div><div class="sc"><h4>看全局配置</h4><p>否则查 <span class="mono">ToolSettings.sandbox_type</span>：若配了 <span class="mono">e2b_api_key</span> → 用 <strong>E2B</strong>（云端微沙箱）。</p></div></div>
   <div class="step"><div class="num">3</div><div class="sc"><h4>兜底本地</h4><p>都没有 → <strong>Local</strong>：在本机建一个隔离 venv，用子进程跑。开发期最常见。</p></div></div>
 </div>
+<p>三种沙箱不是冗余，而是<strong>隔离强度与部署成本的权衡</strong>。本地 venv 零依赖、最快，但和服务端共享内核，隔离最弱；E2B、Modal 把代码送进云端独立容器，隔离强，但要联网和配额。所以同一段工具，开发期可能跑在本地，生产期被切到 Modal——这正是"在哪跑"必须可配置的原因。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">类型定义在 <span class="mono">schemas/enums.py::SandboxType</span>（<span class="mono">E2B / MODAL / LOCAL</span>）；选择逻辑落在 <span class="mono">sandbox_tool_executor.py</span>，全局开关是 <span class="mono">settings.py::ToolSettings.sandbox_type</span>。关键点是：无论选哪个，下面这套"生成脚本 + 信任边界 + 帧校验"的玩法<strong>三种沙箱完全一致</strong>，差别只在外层容器。</span></div>
+<p>顺便提一句配置：<span class="mono">LocalSandboxConfig</span> 还能调 <span class="mono">sandbox_dir</span>、<span class="mono">use_venv</span>、<span class="mono">venv_name</span>、<span class="mono">pip_requirements</span> 等，决定本地沙箱具体怎么落地。但这些都是"怎么跑"的旋钮，不改"信谁"的边界。</p>
 <h2>生成的沙箱脚本：把工具包起来跑</h2>
 <p>沙箱不会"直接调用"用户函数。服务端会<strong>现拼一段 Python 脚本</strong>，把所有需要的东西内联进去，再让沙箱整段执行。这段脚本由 <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span> 拼出来。</p>
+<p>这种"现拼脚本"的做法有个好处：服务端对沙箱里要发生的一切<strong>完全掌控</strong>——传什么、调用什么、怎么打包结果，全写死在脚本里，沙箱只是个老老实实的执行器。</p>
 <div class="vflow">
   <div class="step"><div class="num">1</div><div class="sc"><h4>解出 agent_state</h4><p><span class="mono">pickle.loads(...)</span> 还原服务端传进来的 <span class="mono">agent_state</span>（受信方向）。</p></div></div>
   <div class="step"><div class="num">2</div><div class="sc"><h4>内联参数</h4><p>每个调用参数按 <span class="mono">repr()</span> 写成字面量，<strong>不是 pickle</strong>。</p></div></div>
@@ -1193,6 +1198,7 @@ payload = _letta_json.<span class="fn">dumps</span>({<span class="st">"results"<
     <span class="st">"agent_state"</span>: agent_state.<span class="fn">model_dump</span>(mode=<span class="st">"json"</span>)}).<span class="fn">encode</span>()  <span class="cm"># JSON，不是 pickle</span>
 sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn">pack</span>(<span class="st">"&gt;I"</span>, len(payload)) + md5_hex + payload)
 </pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">为什么把<strong>源码逐字内联</strong>、而不是 import 用户模块？因为沙箱里根本没有那个模块——工具源码只存在数据库里。内联后脚本自包含，沙箱只要一个干净解释器就能跑。脚本里还会用 <span class="mono">coerce_dict_args_by_annotations(...)</span> 按注解把参数强转成正确类型，避免字符串和数字错配。</span></div>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">agent_state</span> 走 <span class="mono">pickle.dumps</span>（服务端造、沙箱 <span class="mono">loads</span>）；但<strong>调用参数是内联字面量（<span class="mono">repr()</span>），不是 pickle</strong>。整段脚本里，只有 <span class="mono">agent_state</span> 这一项用到了 pickle——这个区分后面会反复用到。</span></div>
 
 <h2>信任边界：方向决定序列化</h2>
@@ -1203,6 +1209,8 @@ sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn"
 </div>
 <p>为什么向下可以 pickle？因为被反序列化的对象是<strong>服务端自己造的</strong>，沙箱拿到的是数据、不是攻击面；就算沙箱想搞鬼，它也改不了"已经 pickle 进去的字节"。</p>
 <p>为什么向上必须 JSON？因为 <span class="mono">pickle.loads</span> 会在反序列化时<strong>执行任意代码</strong>。沙箱里跑的是陌生人的工具，它的输出天然可疑——用 <span class="mono">json.loads</span> 读，最坏也只是拿到一坨假数据，而不是被 RCE。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">一个反直觉点：受信方向用 pickle 不是"将就"，而是<strong>主动选择</strong>——它能一次性还原 <span class="mono">agent_state</span> 这种复杂对象，省去手写序列化。pickle 本身不是坏人，把它用在不可信方向才是。</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">举个具体攻击：恶意工具在 <span class="mono">return</span> 时不返回普通 dict，而是返回一个带 <span class="mono">__reduce__</span> 的对象。若服务端用 <span class="mono">pickle.loads</span> 读它，反序列化的瞬间就执行攻击者指定的命令——服务端沦陷。改成 <span class="mono">json.loads</span> 后，这种对象根本无法表达，攻击面被结构性消除。</span></div>
 <div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">⬇️ pickle</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">自己人，放行</span></div>
 <div class="row"><span class="emoji">🔐</span><span class="lab">⬆️ JSON</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">外人，过安检 MD5</span></div>
 <div class="cap">信任＝方向：能 pickle.loads 你自己造的数据；绝不 pickle.loads 跨过不可信边界回来的数据。</div></div>
@@ -1226,7 +1234,9 @@ payload = data[start : start+length]
 result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON，绝不 pickle.loads</span>
 agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic 重水合</span>
 </pre></div>
+<p>你可能会问：为什么用 stdout 这种"脏"通道，而不开一条干净的返回管道？因为沙箱的边界本质是一个<strong>进程</strong>，进程之间最通用、最不挑运行时的桥就是标准输出。代价是 stdout 里混着一切，于是必须靠帧把"真结果"从噪声里捞出来。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">这套帧防的是什么？用户工具能往 stdout 打<strong>任何东西</strong>，包括一个伪造的结果或假 marker。marker 圈出真 payload，长度做精确切片，MD5 抓篡改/截断——三层叠起来，服务端才敢说"我读到的就是工具真正返回的那一份"。</span></div>
+<p>顺序也有讲究：<strong>先比 MD5、再 <span class="mono">json.loads</span></strong>。若先解析、出错了再说，攻击者就有机会用畸形 JSON 去触发解析器的边角行为；先校验完整性，等于把"可疑输入"挡在解析之前。</p>
 <h2>PR #3343：把 pickle 换成 JSON</h2>
 <p>帧校验一直都在，但有一处老漏洞：早期回程 payload 是 <strong>pickle</strong> 编码的，服务端读回来时会 <span class="mono">pickle.loads</span>。这等于对"刚跑完任意用户代码的沙箱输出"做反序列化——一个干净利落的<strong>服务端 RCE</strong>。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">PR #3343 · commit 1131535</span></div>
@@ -1236,17 +1246,31 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <span class="cm">+ result = json.loads(payload)</span>
 </pre></div>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">注意分寸：<span class="mono">marker+长度+MD5</span> 帧<strong>早于 #3343 就存在</strong>。#3343 只把 sandbox→server 的 <strong>payload 编码</strong>从 pickle 换成 JSON；server→sandbox 仍然 pickle <span class="mono">agent_state</span>——那是有意保留的受信方向，不是漏改。</span></div>
+<p>这条修复的价值不在代码量，而在<strong>思路</strong>：序列化格式的选择本身就是一道安全闸。把 pickle 留给"我造的、往低信任侧流"的数据，把 JSON 留给"别人造的、往高信任侧回"的数据——这条规矩一旦内化，类似的 RCE 在设计阶段就被挡住，而不必等事后修补。</p>
+
+<h2>把回程在脑子里走一遍</h2>
+<p>抽象讲完，拿个具体例子收一收。假设用户写了个 <span class="mono">get_weather(city)</span> 工具，模型在某一步决定调用它、参数是 <span class="mono">city="上海"</span>。从这一刻起，发生的事是这样的。</p>
+<p>服务端先把当前 <span class="mono">agent_state</span> 用 <span class="mono">pickle.dumps</span> 成一段字节，连同 <span class="mono">city</span> 的字面量、用户那段 <span class="mono">get_weather</span> 源码，一起拼进一份临时脚本。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">这一步就能看清区分：<span class="mono">agent_state</span> 是 pickle 字节，而 <span class="mono">city</span> 只是脚本里一个内联的字符串字面量 <span class="mono">"上海"</span>。同一份脚本，两种"塞数据进去"的方式，对应两种信任。</span></div>
+<p>脚本被丢进沙箱执行：沙箱里 <span class="mono">pickle.loads</span> 还原 <span class="mono">agent_state</span>、跑 <span class="mono">get_weather("上海")</span>、拿到返回值，再把"返回值 + 更新后的 agent_state"打成 JSON，前面缀上 marker、长度、MD5，整包写进 stdout。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">这里是全课的转折点：从下一步起，所有数据都<strong>跨过了不可信边界</strong>。沙箱刚执行完一段我们无法预先信任的代码，它写出来的每个字节，都得当"外人递出的包裹"来对待。</span></div>
+<p>服务端读回 stdout：先用 marker 定位、按长度切片、比对 MD5——任何一步不符，就判定结果损坏、直接抛错。校验通过后，<strong>只</strong>对 payload 做 <span class="mono">json.loads</span>。</p>
+<p>最后用 <span class="mono">AgentState.model_validate</span> 把状态重新水合成对象。全程没有任何一行对沙箱输出做 <span class="mono">pickle.loads</span>——这就是整条旅程的安全保证：往里是 pickle、往外是 JSON，边界两侧泾渭分明。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">把这趟旅程压缩成一句话：<strong>数据下行用 pickle、上行用 JSON，中间隔着一道 marker+长度+MD5 的安检门</strong>。记住这句，等于记住了整课。</span></div>
+
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p>一句话收束：<strong>你信任哪个方向，决定你用哪种序列化。</strong></p>
 <p><span class="mono">pickle.loads</span> 能在反序列化时执行任意代码，于是规则被砍到极简：<strong>可以 pickle.loads 你自己造的数据</strong>（server→sandbox，权限往下流进低信任沙箱，没风险）；<strong>绝不 pickle.loads 跨过不可信边界回来的数据</strong>（sandbox→server，刚跑完任意用户代码，只能当 JSON 读）。</p>
 <p>PR #3343 修的正是这个：旧代码 <span class="mono">pickle.loads</span> 沙箱 stdout——服务端 RCE；改成 <span class="mono">json.loads</span> 就堵死了。而 <span class="mono">marker+长度+MD5</span> 是另一层——完整性层：用户工具能打假结果，marker 圈真 payload、MD5 抓篡改。</p>
 <p>安全被化简成一个词：<strong>信任＝方向</strong>。这也收口了整条工具链：第 18 课"不跑代码就读它" → 第 19 课"自定义→沙箱" → 第 20 课"连沙箱的输出也不可信"。</p>
+<p>顺着这条线还能预判别处：只要看到"反序列化不可信来源"，就该立刻警觉；只要确认"数据是自己造、往低信任侧送"，就可以放心用高表达力的格式。这套直觉，远不止用在沙箱上，它几乎是所有跨边界通信的底色。</p>
 </div>
 
 <div class="card detail"><div class="tag">🔬 落到代码</div>
 <p>生成脚本：<span class="mono">tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script</span> 与 <span class="mono">_render_sandbox_code</span>。本地执行：<span class="mono">local_sandbox.py::AsyncToolSandboxLocal</span>（建/复用 venv、子进程、超时）。</p>
 <p>回读校验：<span class="mono">local_sandbox.py::parse_out_function_results_markers</span> 找 marker、切长度、比 MD5；再交 <span class="mono">helpers/tool_parser_helper.py::parse_stdout_best_effort</span> 做 <span class="mono">json.loads</span> + <span class="mono">AgentState.model_validate</span>。</p>
 <p>类型与安全：沙箱类型在 <span class="mono">schemas/enums.py::SandboxType</span>；本次安全修复是 PR #3343（commit <span class="mono">1131535</span>）。</p>
+<p>顺带一提，<span class="mono">local_sandbox.py</span> 里还藏着 venv 复用、依赖安装、超时控制等工程细节；它们不影响信任边界这条主线，却决定了本地沙箱跑得快不快、稳不稳。</p>
 </div>
 <div class="card warn"><div class="tag">⚠️ 常见误区</div>
 <p><strong>误区一：以为脚本由 <span class="mono">.j2</span> 模板渲染。</strong> <span class="mono">letta/templates/sandbox_code_file.py.j2</span> 在 v0.16.8 <strong>未被任何 .py 引用</strong>，只能当对照参考；真实脚本由 <span class="mono">_render_sandbox_code</span> 拼字符串。</p>
@@ -1259,18 +1283,42 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <details class="accordion"><summary>① 信任边界为什么这样切？</summary><div class="acc-body">
 <p>核心只有一条：<span class="mono">pickle.loads</span> 会在反序列化时执行任意代码。所以"能不能 pickle.loads"等价于"我信不信这段字节的来源"。</p>
 <p>server→sandbox 的 <span class="mono">agent_state</span> 是服务端自己 <span class="mono">pickle.dumps</span> 的，来源可信，沙箱只 loads——风险往低信任侧流，没问题。sandbox→server 的输出来自陌生代码，来源不可信，所以只能 <span class="mono">json.loads</span>。</p>
+<p>再换个角度：信任不是"信不信这段数据长得对"，而是"信不信造它的人"。pickle 危险，恰恰因为它把"数据"和"可执行代码"混在一起——来源可信时这种混合很方便（能直接还原复杂对象），来源不可信时它就成了炸弹。</p>
 </div></details>
 <details class="accordion"><summary>② marker+长度+MD5 防的是什么？</summary><div class="acc-body">
 <p>防的是"结果通道被污染"。沙箱的 stdout 谁都能写：调试 print、异常栈、甚至一个伪造的 marker 加假结果。</p>
 <p>于是三层各司其职：<span class="mono">marker</span> 在噪声里定位真 payload 的起点；<span class="mono">length</span> 精确切出 payload，避免被尾部噪声带偏；<span class="mono">MD5</span> 比对校验和，一旦被截断或篡改就 <span class="mono">raise Exception("Function ran, but output is corrupted.")</span>。</p>
+<p>还有个细节：<span class="mono">marker</span> 是 uuid5 生成的 16 字节，几乎不可能被用户输出意外撞上，也很难被恶意"猜中"，于是"定位"这一步本身就带了一点防伪意味。</p>
+<p>有人会问：MD5 不是不安全吗？这里它只用来抓<strong>意外损坏</strong>，并不抗密码学攻击——真正挡恶意的是"只 json.loads、绝不 pickle.loads"那条规矩，MD5 只是完整性的廉价快照。</p>
 </div></details>
 <details class="accordion"><summary>③ PR #3343 到底改了什么？</summary><div class="acc-body">
 <p>只改了一件事：把 sandbox→server 的 <strong>payload 编码</strong>从 pickle 换成 JSON，于是服务端读回来时从 <span class="mono">pickle.loads</span> 变成 <span class="mono">json.loads</span>，RCE 面被消除。</p>
 <p>没改的：marker+长度+MD5 帧（本就存在）、server→sandbox 仍 pickle <span class="mono">agent_state</span>（有意的受信方向）。另外 <span class="mono">safe_pickle.py::safe_pickle_dumps</span> 只服务于 modal_sandbox_v2，加的是 10MB/深度 50 的防崩溃护栏，并非防恶意。</p>
+<p>一句话区分两件事：帧负责<strong>完整性</strong>（结果没被改坏），编码格式负责<strong>安全性</strong>（读它不会执行代码）。#3343 动的是后者，前者从一开始就在。</p>
+<p>想直观点：修复前服务端这端是 <span class="mono">pickle.loads(沙箱字节)</span>，修复后是 <span class="mono">json.loads(沙箱字节)</span>。同样在读不可信输入，前者能被反序列化触发 RCE，后者最多解析失败——差别就这么大。</p>
 </div></details>
 <details class="accordion"><summary>④ 本地 venv 怎么跑？E2B/Modal 有何不同？</summary><div class="acc-body">
 <p>本地 <span class="mono">AsyncToolSandboxLocal</span>：按需 <span class="mono">venv.create(with_pip=True)</span> 建或复用虚拟环境、<span class="mono">pip install -r</span> 装依赖，脚本写临时 <span class="mono">.py</span>，用 <span class="mono">asyncio.create_subprocess_exec</span> 起子进程跑，超时是 <span class="mono">tool_sandbox_timeout</span>（默认 180s）。</p>
 <p>差异只在外层：E2B 回程会多包一层 base64；Modal 返回的是结构化 dict。但"生成脚本 + 信任边界 + 帧校验"这套主干，在三种沙箱里是一致的。</p>
+<p>也正因为本地沙箱与服务端共享内核，它的隔离是"够用级"而非"强保证"：能挡住误伤和大多数意外，但要跑完全不可信的代码，应切到 E2B 或 Modal 的容器级隔离。</p>
+<p>超时到了会怎样？子进程被杀、本次调用按失败处理，不会把服务端拖死。临时脚本文件用完即清，venv 则可复用，省去每次重新建环境的开销。</p>
 </div></details>
-<!--ZHMORE-->
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>自定义工具是不可信代码，跑在沙箱里（<span class="mono">local / E2B / Modal</span>，由 <span class="mono">SandboxType</span> 三选一）。</li>
+<li><strong>server→sandbox = pickle</strong>（受信，传 <span class="mono">agent_state</span>）；<strong>sandbox→server = JSON</strong>（不可信）+ <span class="mono">marker+长度+MD5</span> 帧。</li>
+<li><strong>绝不 <span class="mono">pickle.loads</span> 沙箱输出</strong>——这正是 PR #3343（commit <span class="mono">1131535</span>）的修复。</li>
+<li><span class="mono">.j2</span> 模板在 v0.16.8 未被引用，真实脚本在 <span class="mono">_render_sandbox_code</span>；docstring 与 <span class="mono">_pkl</span> 命名是遗留。</li>
+<li>一个词记住全部：<strong>信任＝方向</strong>。</li>
+</ul>
+</div>
+
+<h2>第五部分收尾：定义 → 派生 → 分发 → 隔离执行</h2>
+<p>第五部分到这里走完。把四课串成一条线，工具系统的全貌就清楚了：从"一个普通 Python 函数"到"安全地跑完一段陌生代码"，每一步都在回答一个具体问题。</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 5 · 一条线</b></div><div class="cells"><span class="cell">17 函数+docstring→schema</span><span class="sep">·</span><span class="cell">18 不跑就派生</span><span class="sep">·</span><span class="cell">19 按类型分发执行</span><span class="sep">·</span><span class="cell hl">20 沙箱隔离+信任边界</span></div></div>
+<p>一句话串起来：<strong>定义 → 派生 → 分发 → 隔离执行</strong>。第 17 课把函数变成 schema，第 18 课不执行就派生出 schema，第 19 课按 <span class="mono">ToolType</span> 分发给执行器，第 20 课处理最危险的一类——自定义代码——并画清它运行时的信任边界。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">它还回指前两课：第 20 课"连沙箱输出也不可信"，与第 18 课"不执行就读它"是同一种警惕；而第 19 课结尾那次"自定义→沙箱"的 handoff，正是在这一课被兑现。</span></div>
+<p>拉远看，这也是整份《Letta 可视化指南》在工具这块的全部野心：不堆砌 API，而是把"一个普通函数怎么变成模型能安全调用的能力"这条链，从头到尾讲透——定义它、派生它的接口、按类型分发它、再隔离地执行它。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">如果你只带走一张图，就带"信任＝方向"这张：它不仅解释了沙箱，也是一切"跨信任边界传数据"问题的通用解法——无论对面是沙箱、第三方服务，还是另一个不受控的进程。</span></div>
+<p>下一站是<strong>第六部分 · LLM Provider 抽象</strong>：工具讲完了，我们回到更上游的问题——Letta 怎么用一套统一接口，把 OpenAI、Anthropic 等不同厂商的模型，接进同一个 agent 循环。</p>
 """, "en": r"""<p>stub</p>"""}
