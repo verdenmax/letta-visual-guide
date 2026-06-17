@@ -477,7 +477,7 @@ HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
 <p>这台翻译机最妙的地方，是它把"会不会 function calling"这个能力，从模型身上<strong>挪到了外面</strong>。模型还是那个只会续写的模型，本事是 proxy 这层替它"接"上去的。</p>
 <div class="card detail"><div class="tag">🔬 落到代码</div>
 <p><span class="mono">local_llm/chat_completion_proxy.py::get_chat_completion</span>——legacy 总指挥，串起七步。</p>
-<p><span class="mono">local_llm/grammars/gbnf_grammar_generator.py::generate_grammar_and_documentation</span>——运行时动态生成 GBNF。</p>
+<p><span class="mono">chat_completion_proxy.py::generate_grammar_and_documentation</span>——运行时动态生成 GBNF（底层调 <span class="mono">grammars/gbnf_grammar_generator.py::generate_gbnf_grammar_and_documentation</span>）。</p>
 <p><span class="mono">llm_chat_completion_wrappers/wrapper_base.py::LLMChatCompletionWrapper</span>——抽象基类，两个方法。</p>
 <p><span class="mono">llm_chat_completion_wrappers/chatml.py::ChatMLInnerMonologueWrapper</span>——默认 wrapper（<span class="mono">DEFAULT_WRAPPER</span>）。</p>
 <p><span class="mono">local_llm/function_parser.py::insert_heartbeat</span> 与 <span class="mono">patch_function</span>——本地心跳补正（回扣第 15 课）。</p>
@@ -760,7 +760,7 @@ HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
 <p>The translator's slickest part is moving the "can it do function calling" capability <strong>off the model and outside</strong>. The model is still the same continue-only model; the skill is "wired on" for it by the proxy layer.</p>
 <div class="card detail"><div class="tag">🔬 Down to the code</div>
 <p><span class="mono">local_llm/chat_completion_proxy.py::get_chat_completion</span> — the legacy conductor, stringing the seven steps.</p>
-<p><span class="mono">local_llm/grammars/gbnf_grammar_generator.py::generate_grammar_and_documentation</span> — dynamically generates GBNF at runtime.</p>
+<p><span class="mono">chat_completion_proxy.py::generate_grammar_and_documentation</span> — dynamically generates GBNF at runtime (delegating to <span class="mono">grammars/gbnf_grammar_generator.py::generate_gbnf_grammar_and_documentation</span>).</p>
 <p><span class="mono">llm_chat_completion_wrappers/wrapper_base.py::LLMChatCompletionWrapper</span> — the abstract base, two methods.</p>
 <p><span class="mono">llm_chat_completion_wrappers/chatml.py::ChatMLInnerMonologueWrapper</span> — the default wrapper (<span class="mono">DEFAULT_WRAPPER</span>).</p>
 <p><span class="mono">local_llm/function_parser.py::insert_heartbeat</span> and <span class="mono">patch_function</span> — local heartbeat correction (callback to Lesson 15).</p>
