@@ -393,5 +393,36 @@ LESSON_22 = {"zh": r"""
 <p>看这棵树就懂了：真正"从零写"的只有三个家族基类，其余全是站在它们肩膀上的薄薄一层子类。OpenAI 家族尤其夸张——一个基类背后挂着 8 个子类，还兜着所有没列名的 provider。</p>
 <div class="cellgroup"><div class="cg-cap"><b>OpenAIClient 的 8 个显式子类</b></div><div class="cells"><span class="cell hl">AzureClient</span><span class="sep">·</span><span class="cell">BasetenClient</span><span class="sep">·</span><span class="cell">DeepseekClient</span><span class="sep">·</span><span class="cell">FireworksClient</span><span class="sep">·</span><span class="cell">GroqClient</span><span class="sep">·</span><span class="cell">TogetherClient</span><span class="sep">·</span><span class="cell">XAIClient</span><span class="sep">·</span><span class="cell">ZAIClient</span></div></div>
 <div class="note info"><span class="ni">💡</span><span class="nx">一个类服务多家的诀窍：<span class="mono">OpenAIClient._prepare_client_kwargs</span> 只把 <span class="mono">base_url</span> 设成 <span class="mono">llm_config.model_endpoint</span>——同一套 OpenAI SDK，换个 URL 就接上一家。约 <strong>19/25</strong> 的 <span class="mono">ProviderType</span> 最终落到 <span class="mono">OpenAIClient</span> 或其子类，仅 6 种不用（anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax）。</span></div>
+<h2>子类只改两个方法</h2>
+<p>那 8 个子类里头到底写了什么？答案出奇地短：<strong>大多只动两个方法</strong>。下面这个 <span class="mono">XAIClient</span> 就是典型——先调 <span class="mono">super()</span> 拿到标准 OpenAI 请求，再只针对自家某个模型删掉两个惩罚字段。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/xai_client.py</span><span class="ln">一个子类只在 super() 之后改字段（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">XAIClient</span>(OpenAIClient):
+    <span class="kw">def</span> <span class="fn">build_request_data</span>(self, ...):
+        data = <span class="kw">super</span>().<span class="fn">build_request_data</span>(...)     <span class="cm"># 先拿 OpenAI 形状的请求</span>
+        <span class="kw">if</span> <span class="st">"grok-3-mini-"</span> <span class="kw">in</span> model:           <span class="cm"># 只关这家的怪癖</span>
+            data.<span class="fn">pop</span>(<span class="st">"presence_penalty"</span>, <span class="kw">None</span>)
+            data.<span class="fn">pop</span>(<span class="st">"frequency_penalty"</span>, <span class="kw">None</span>)
+        <span class="kw">return</span> data
+</pre></div>
+<p>换个子类，套路一模一样，只是改的字段不同：<span class="mono">GroqClient</span> 会把 <span class="mono">tool_choice</span> 强制设成 <span class="mono">required</span>，逼模型每步必须调一个工具。改哪一笔因家而异，但"先 super、再就地改"这条骨架始终不变。</p>
+<div class="note tip"><span class="ni">💡</span><span class="nx">共性模式记一句：<strong>怪癖只关在 <span class="mono">build_request_data</span> 与 <span class="mono">convert_response_to_chat_completion</span> 这两处</strong>。<span class="mono">send_llm_request_async</span> 之上的那段循环，无论底下是 xAI 还是 Groq，看到的永远是同一个统一的 <span class="mono">ChatCompletionResponse</span>。</span></div>
+<h2>核心怪招：把内心独白塞成工具参数</h2>
+<p>现在拆本课最精彩的一招。很多模型只会"调函数"，并不会先吐一段思考。Letta 偏要它们<strong>先想后调</strong>——办法是把一个叫 <span class="mono">thinking</span> 的字符串，硬塞成每个工具的<strong>第一个参数</strong>。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>注入</h4><p><span class="mono">add_inner_thoughts_to_functions</span> 把 <span class="mono">thinking</span> 加成每个工具的第一个 property，并排进 <span class="mono">required</span> 的最前面。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>生成</h4><p>模型按 schema 顺序填参数，于是<strong>先写 thinking</strong>、再写真正的业务参数——思考被"逼"在了动作之前。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>拆回</h4><p>响应里 <span class="mono">unpack_inner_thoughts_from_kwargs</span> 把 <span class="mono">thinking</span> 从工具参数里 pop 出来，塞进 <span class="mono">message.content</span>。</p></div></div>
+</div>
+<p>于是一个"只会调函数"的模型，被硬生生挤出了一条思维链：思考成了参数的一部分，模型不得不先写出来。等响应回来，这段思考又被抽回助手消息正文——对下游而言，就跟模型"本来就会想"一模一样。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/helpers.py</span><span class="ln">把内心独白排成第一个参数（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">add_inner_thoughts_to_functions</span>(functions, inner_thoughts_key, ..., put_inner_thoughts_first=<span class="kw">True</span>):
+    <span class="kw">for</span> f <span class="kw">in</span> functions:
+        new_props = OrderedDict()
+        <span class="kw">if</span> put_inner_thoughts_first:
+            new_props[inner_thoughts_key] = {<span class="st">"type"</span>: <span class="st">"string"</span>, ...}   <span class="cm"># thinking 放第一个</span>
+            new_props.<span class="fn">update</span>(f[<span class="st">"parameters"</span>][<span class="st">"properties"</span>])
+            f[<span class="st">"parameters"</span>][<span class="st">"required"</span>].<span class="fn">insert</span>(<span class="nb">0</span>, inner_thoughts_key)   <span class="cm"># required 也排最前</span>
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">键名 <span class="mono">INNER_THOUGHTS_KWARG = "thinking"</span> 定义在 <span class="mono">letta/settings.py</span>（<strong>不在</strong> <span class="mono">constants.py</span>，那里放的是描述文字）。反向拆解走 <span class="mono">helpers.py::unpack_inner_thoughts_from_kwargs</span>：从 tool_call 的参数里 <span class="mono">pop</span> 出 <span class="mono">thinking</span>，再塞回 <span class="mono">message.content</span>。</span></div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
