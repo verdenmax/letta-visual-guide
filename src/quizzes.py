@@ -912,6 +912,445 @@ QUIZZES = {
             },
         ],
     },
+    "13-agent-state-and-loop.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "AgentLoop.load 是个工厂：同一张存档进来，它靠什么决定这次返回哪个 agent 引擎（V2 还是 V3）？",
+                    "en": "AgentLoop.load is a factory: the same save comes in — what does it use to decide which agent engine (V2 or V3) to return this time?",
+                },
+                "opts": [
+                    {"zh": "读存档里的 agent_state.agent_type 这一个字段当钥匙——整个分派只看它",
+                     "en": "It reads the single field agent_state.agent_type as the key — the whole dispatch looks only at that"},
+                    {"zh": "看当前上下文用了多少 token，超过阈值就改用 V3",
+                     "en": "It looks at how many tokens the current context uses; above a threshold it switches to V3"},
+                    {"zh": "随机挑一个，反正两代接口一样",
+                     "en": "It picks one at random, since both generations share the same interface"},
+                    {"zh": "看 actor（发起请求的用户）的权限等级来决定",
+                     "en": "It decides based on the permission level of the actor (the requesting user)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "AgentLoop.load(agent_state, actor) 只把 agent_state.agent_type 当分派键：letta_v1_agent / sleeptime_agent → LettaAgentV3，其余 → LettaAgentV2（额外开了 sleeptime + 组才走 SleeptimeMultiAgent）。token 用量是第 12 课压缩要管的事，与选引擎无关；actor 只用于权限与归属校验，不参与选类；两代虽都继承 BaseAgentV2、接口一致，但绝不是随机挑。",
+                    "en": "AgentLoop.load(agent_state, actor) uses only agent_state.agent_type as the dispatch key: letta_v1_agent / sleeptime_agent → LettaAgentV3, everything else → LettaAgentV2 (sleeptime + group additionally goes to SleeptimeMultiAgent). Token usage is Lesson 12's compaction concern, unrelated to engine choice; actor is only for permission/ownership checks, not class selection; both generations subclass BaseAgentV2 and share an interface, but selection is never random.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你想让一个新 agent 跑第三代实现 LettaAgentV3。该把 agent_type 设成哪个枚举值？",
+                    "en": "You want a new agent to run the third-generation implementation LettaAgentV3. Which enum value should you set agent_type to?",
+                },
+                "opts": [
+                    {"zh": "letta_v1_agent —— 它就是触发 V3 的值（也是新建 agent 的默认值）；注意“类叫 V3、枚举叫 v1”的错位",
+                     "en": "letta_v1_agent — it's the value that triggers V3 (and the default for new agents); note the “class is V3, enum is v1” mismatch"},
+                    {"zh": "letta_agent_v3 —— 跟类名对齐的那个",
+                     "en": "letta_agent_v3 — the one aligned with the class name"},
+                    {"zh": "letta_v3_agent",
+                     "en": "letta_v3_agent"},
+                    {"zh": "memgpt_v2_agent —— 数字最大的那个",
+                     "en": "memgpt_v2_agent — the one with the biggest number"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "AgentType 里根本没有 letta_agent_v3 或 letta_v3_agent 这种值——照着类名去猜枚举必然落空。触发 LettaAgentV3 的是 letta_v1_agent（也是 CreateAgent.agent_type 的默认值）：“V3”说的是代码第三次重写循环，“v1”说的是 Letta v1 的设计（砍掉心跳与强制工具调用），V3 的代码实现的正是 v1 的设计。memgpt_v2_agent 走的是 V2。",
+                    "en": "AgentType has no letta_agent_v3 or letta_v3_agent value at all — guessing the enum from the class name always fails. What triggers LettaAgentV3 is letta_v1_agent (also the default of CreateAgent.agent_type): “V3” means the third code rewrite of the loop, “v1” means the Letta v1 design (dropping heartbeats and forced tool calls), and the V3 code implements exactly that v1 design. memgpt_v2_agent runs V2.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "AgentState 里，哪个字段决定了“下一轮喂给模型的在窗对话消息有哪些”？",
+                    "en": "In AgentState, which field determines “which in-window conversation messages are fed to the model next round”?",
+                },
+                "opts": [
+                    {"zh": "message_ids —— 一串在窗消息的 id（指针）；正文留在 recall 表里，要用再捞",
+                     "en": "message_ids — a list of in-window message ids (pointers); the text stays in the recall table, fetched when needed"},
+                    {"zh": "blocks —— 核心记忆块里装着完整对话历史",
+                     "en": "blocks — the core memory blocks hold the full conversation history"},
+                    {"zh": "system —— 系统提示里内联了所有历史消息",
+                     "en": "system — the system prompt inlines all historical messages"},
+                    {"zh": "memory —— 它是专门存对话正文的字段",
+                     "en": "memory — it's the field dedicated to storing conversation text"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "message_ids 是“在窗消息的 id 列表”（第 11 课），存的是指针而非正文——这正体现存档“只放指针 + 配置、不放海量正文”的取舍，真正的消息正文在 recall 数据库表里。blocks 是核心记忆块（人设 / 用户 / 自定义，第 8 课），不是对话历史；system 是系统提示；memory 只是 blocks 的废弃别名。",
+                    "en": "message_ids is the “list of in-window message ids” (Lesson 11), storing pointers not text — embodying the save's trade-off of “pointers + config, not bulk text,” with the actual message text in the recall DB table. blocks are core memory blocks (persona / human / custom, Lesson 8), not conversation history; system is the system prompt; memory is merely the deprecated alias of blocks.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "把 AgentState 叫做“存档”，是怎么呼应第 6 课“有状态 vs 无状态”的？",
+                    "en": "Calling AgentState a “save file” — how does that echo Lesson 6's “stateful vs stateless”?",
+                },
+                "opts": [
+                    {"zh": "服务器自己不留记忆：每个请求都把整张存档从数据库水合出来、跑一轮、再写回——所以同一 agent 能在任意进程 / 机器上“读档续玩”",
+                     "en": "The server keeps no memory of its own: every request hydrates the whole save from the DB, runs a round, and writes it back — so the same agent can “load and resume” on any process / machine"},
+                    {"zh": "服务器把每个 agent 的状态常驻在内存对象里，所以一换机器就会丢",
+                     "en": "The server keeps each agent's state in a long-lived in-memory object, so switching machines loses it"},
+                    {"zh": "LLM 自己有状态、会记住上一轮，所以根本不需要存档",
+                     "en": "The LLM is itself stateful and remembers the last round, so no save is needed at all"},
+                    {"zh": "存档只是个缓存，真相一直在模型权重里",
+                     "en": "The save is just a cache; the truth always lives in the model weights"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "第 6 课的要点：LLM 无状态，Letta 把 agent 的状态外化成一张可序列化、可落库的存档。每个请求的固定三拍是“水合 → 跑 → 写回”：现从 ORM 行读出 AgentState，跑完把新消息 / 改动写回库。引擎对象每轮现装现扔、自己不留状态，状态全在存档里——所以同一 agent 能在任意进程 / 机器续跑。常驻内存、“LLM 自己记得”、“真相在权重里”都与这套无状态架构相悖。",
+                    "en": "Lesson 6's point: the LLM is stateless, so Letta externalizes the agent's state into a serializable, persistable save file. Every request's fixed three-beat is “hydrate → run → write back”: read AgentState fresh from the ORM row, then persist new messages / edits back. The engine object is assembled and discarded each round and keeps no state — all state lives in the save — so the same agent resumes on any process / machine. Long-lived memory, “the LLM remembers,” and “truth in the weights” all contradict this stateless architecture.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“游戏存档 + 工厂选引擎”这两个比喻，把第 13 课串成一个完整故事，并想三件事：(1) 为什么要让一个工厂（AgentLoop.load）按 agent_type 选实现，而不是在每个调用点写 if/else？把它和“将来新增一种 agent”连起来说。(2) 类名是 LettaAgentV3、枚举名却是 letta_v1_agent——这种“名字记录历史、行为写在代码里”的错位，会给读代码的人埋下哪些坑？你会怎么避免被带偏？(3) 既然引擎每个请求现装现扔、状态全在存档里，这对“同一 agent 能在任意机器续跑”意味着什么？再把它接回第 6 课的无状态设计。",
+                "en": "Using the two metaphors “game save file + factory picks the engine,” weave Lesson 13 into one coherent story, and think through three things: (1) why have a factory (AgentLoop.load) pick the implementation by agent_type instead of writing if/else at every call site? Connect it to “adding a new agent kind later.” (2) The class is named LettaAgentV3 yet the enum is letta_v1_agent — what traps does this “name records history, behavior lives in code” mismatch set for readers, and how would you avoid being misled? (3) Since the engine is assembled and discarded each request with all state in the save, what does that mean for “the same agent resuming on any machine”? Tie it back to Lesson 6's stateless design.",
+            },
+        ],
+    },
+    "14-v3-step-loop.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "V3 循环里，一次 _step（letta_agent_v3.py::_step）到底做哪三件事？",
+                    "en": "In the V3 loop, what three things does a single _step (letta_agent_v3.py::_step) actually do?",
+                },
+                "opts": [
+                    {"zh": "调一次 LLM、执行工具、把结果落库（拿有效工具 → 刷新消息 → 调模型 → _handle_ai_response → _checkpoint_messages → yield）",
+                     "en": "One LLM call, tool execution, and persisting the result (get valid tools → refresh messages → call the model → _handle_ai_response → _checkpoint_messages → yield)"},
+                    {"zh": "只调一次 LLM，工具执行和落库都甩给外层 step() 去做",
+                     "en": "Only one LLM call; it hands tool execution and persistence off to the outer step()"},
+                    {"zh": "把整个 50 步循环一次跑完，再一次性返回所有消息",
+                     "en": "Run the whole 50-step loop in one go, then return all messages at once"},
+                    {"zh": "重建系统提示、压缩历史、再把整张存档写回数据库",
+                     "en": "Rebuild the system prompt, compact history, then write the whole save back to the DB"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "_step 的源码定位就是“一次 LLM 调用与工具执行”，它是个异步生成器：拿有效工具并问要不要强制 → _refresh_messages（不重建系统提示，保住 prefix cache）→ invoke_llm（外裹“撑爆就压缩重试”）→ _handle_ai_response 校验并执行工具、算出续步三元组 → _checkpoint_messages 落库（“持久化要在流式之前”）→ yield。工具执行与落库都在 _step 内部，不是甩给 step()；跑满 50 步是外层 step() 的 for 循环干的，不是一次 _step；重建系统提示只在压缩 / 重置后才发生，不是每个 _step 的常规动作。",
+                    "en": "The source pins _step as “one LLM call and tool execution” — an async generator: get valid tools and check whether to force a call → _refresh_messages (no system-prompt rebuild, preserving the prefix cache) → invoke_llm (wrapped in “overflow → compact → retry”) → _handle_ai_response validates and executes tools and computes the continuation triple → _checkpoint_messages persists (“persistence needs to happen before streaming”) → yield. Tool execution and persistence both live inside _step, not handed to step(); running all 50 steps is the outer step()'s for loop, not one _step; rebuilding the system prompt only happens after compaction / reset, not on every _step.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "_decide_continuation 怎么判断“还要不要再走一步”？它最核心的判据是什么？",
+                    "en": "How does _decide_continuation decide “take one more step or not”? What is its core criterion?",
+                },
+                "opts": [
+                    {"zh": "只看模型这一轮有没有调工具：调了 → 继续；没调 → 结束（end_turn）。再叠加几条硬覆盖",
+                     "en": "It only looks at whether the model called a tool this round: called → continue; didn't → end (end_turn). Plus a few hard overrides"},
+                    {"zh": "看模型有没有在参数里举手要“心跳”（request_heartbeat）",
+                     "en": "It checks whether the model raised its hand for a “heartbeat” in the parameters (request_heartbeat)"},
+                    {"zh": "看模型生成的文本里有没有出现“继续”这个词",
+                     "en": "It scans the model's generated text for the word “continue”"},
+                    {"zh": "看这一轮用了多少 token，超过一半预算就停",
+                     "en": "It watches how many tokens this round used and stops past half the budget"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "_decide_continuation 的文档字符串把规则写成两条：没调工具 → 循环结束；调了工具 → 循环继续。它不看模型“想不想继续”，只认“有没有发起工具调用”这个客观信号——因为工具调用是两段式的，执行完得把结果喂回模型，所以必须再转一圈。硬覆盖：没调但还有 required_before_exit 没调 → 继续；终止工具 → 停 tool_rule；第 50 步 → 停 max_steps。靠 request_heartbeat 续步是上一代 V2 的做法，正是 V3 砍掉的“心跳”（第 15 课）；扫文本关键词、看 token 用量都不是它的判据。",
+                    "en": "_decide_continuation's docstring states the rule in two lines: no tool call → loop ends; tool call → loop continues. It doesn't read whether the model “wants to continue,” only the objective signal “did it issue a tool call” — because a tool call is two-stage, the result must be fed back to the model, so one more lap is required. Hard overrides: no call but a required_before_exit tool remains → continue; terminal tool → stop tool_rule; step 50 → stop max_steps. Continuing via request_heartbeat is the previous-gen V2 approach — exactly the “heartbeat” V3 dropped (lesson 15); scanning text for a keyword or watching token usage are not its criteria.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "step() 的预算上限 max_steps 默认是多少？这个默认值写在哪里？",
+                    "en": "What is the default budget cap max_steps for step(), and where is that default defined?",
+                },
+                "opts": [
+                    {"zh": "50 —— 写在 constants.py::DEFAULT_MAX_STEPS",
+                     "en": "50 — defined in constants.py::DEFAULT_MAX_STEPS"},
+                    {"zh": "10 —— 硬编码在 letta_agent_v3.py 的 step 函数体里",
+                     "en": "10 — hard-coded in the body of step in letta_agent_v3.py"},
+                    {"zh": "100 —— 由 llm_config 的上下文窗口大小推算出来",
+                     "en": "100 — derived from llm_config's context-window size"},
+                    {"zh": "没有默认值，每次调用 step() 都必须显式传入",
+                     "en": "There is no default; every step() call must pass it explicitly"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "DEFAULT_MAX_STEPS = 50 定义在 constants.py，step(input_messages, max_steps=DEFAULT_MAX_STEPS) 用它当默认值。这个“预算”是循环的安全绳：跑满 50 圈还没自然收尾，step() 就主动盖 StopReasonType.max_steps 退出。它是个常量、不随上下文窗口大小变化；也不必显式传入——不传就是 50。",
+                    "en": "DEFAULT_MAX_STEPS = 50 is defined in constants.py, and step(input_messages, max_steps=DEFAULT_MAX_STEPS) uses it as the default. This “budget” is the loop's safety rope: run a full 50 laps without a natural finish and step() actively stamps StopReasonType.max_steps and exits. It's a constant, not derived from the context-window size; nor must it be passed explicitly — omit it and you get 50.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "循环跑满 50 步上限而退出时，会盖上哪个停因？它映射的 run_status 是什么？",
+                    "en": "When the loop exits because it hit the 50-step cap, which stop reason is stamped, and what run_status does it map to?",
+                },
+                "opts": [
+                    {"zh": "max_steps，且映射成 completed（到点下班是预期内的保护，不算失败）",
+                     "en": "max_steps, and it maps to completed (clocking out on schedule is expected protection, not a failure)"},
+                    {"zh": "max_steps，但映射成 failed（撞上限算出错）",
+                     "en": "max_steps, but it maps to failed (hitting the cap counts as an error)"},
+                    {"zh": "end_turn，映射成 completed",
+                     "en": "end_turn, mapping to completed"},
+                    {"zh": "max_tokens_exceeded，映射成 failed",
+                     "en": "max_tokens_exceeded, mapping to failed"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "step() 里到了 i == max_steps - 1 还没人设停因，就主动盖 StopReasonType.max_steps。反直觉的关键：LettaStopReason.run_status 把 max_steps 归到 completed（和 end_turn / tool_rule / requires_approval 同堆），不是 failed——撞上限是“按规矩到点下班”的保护，不当成崩溃。end_turn 是“没调工具的正常收尾”，不是撞上限；max_tokens_exceeded 是模型这轮因 finish_reason=length 被截断才映射 failed，与 50 步上限无关。",
+                    "en": "In step(), when i == max_steps - 1 and no stop reason is set yet, it actively stamps StopReasonType.max_steps. The counterintuitive key: LettaStopReason.run_status puts max_steps in the completed pile (alongside end_turn / tool_rule / requires_approval), not failed — hitting the cap is “clocking out on schedule” protection, not a crash. end_turn is the “no-tool-call normal finish,” not the cap; max_tokens_exceeded maps to failed only for a length-truncated round (finish_reason=length), unrelated to the 50-step cap.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "step() 是边跑边把 token 流式吐给前端的吗？它最终返回什么？",
+                    "en": "Does step() stream tokens to the frontend as it runs, and what does it ultimately return?",
+                },
+                "opts": [
+                    {"zh": "不流式：它把每个 _step 抽干、攒进列表，循环结束统一返回一个 LettaResponse；真正流式的是另一个 stream()",
+                     "en": "It doesn't stream: it drains each _step into a list and returns one LettaResponse when the loop ends; the real streaming is a separate stream()"},
+                    {"zh": "流式：_step 里有 async for ... yield，所以整个 step() 就是在对外直播",
+                     "en": "It streams: _step has async for ... yield, so the whole step() is broadcasting live"},
+                    {"zh": "流式：step() 每跑完一步就把该步消息直接转发给客户端",
+                     "en": "It streams: step() forwards each step's messages straight to the client as it finishes"},
+                    {"zh": "既不流式也不返回消息，只返回一个 LettaUsageStatistics 用量统计",
+                     "en": "It neither streams nor returns messages; it only returns a LettaUsageStatistics usage object"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "step() 不是流式接口：它在内部把每个 _step 生成器抽干、append 进一个列表，循环结束后统一返回一个完整的 LettaResponse。_step 里的 async for ... yield 只是“内部传话”——把消息交给 step() 去 append，不是转发给客户端。真正“对外直播”的是另一个方法 stream(...)，别和 step() 混为一谈。返回 LettaUsageStatistics 的是同步老祖 Agent.step（第 13 课），V2 / V3 的 step 返回的是 LettaResponse。",
+                    "en": "step() is not a streaming interface: internally it drains each _step generator, appends to a list, and after the loop returns one complete LettaResponse. The async for ... yield inside _step is just an “internal relay” — handing messages to step() to append, not forwarding to the client. The real “live broadcast” is a separate method, stream(...); don't conflate it with step(). Returning LettaUsageStatistics is the synchronous elder Agent.step (lesson 13); V2 / V3's step returns a LettaResponse.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“带预算的流水线工人”这个比喻，把第 14 课的 V3 循环串成一个完整故事，并想三件事：(1) 续步判据为什么敢只看“这轮有没有调工具”，而不像上一代那样让模型在参数里举手要心跳（request_heartbeat）？“客观信号驱动”相比“模型自报”各有什么利弊？(2) 为什么 _step 要把顺序定死成“先 _checkpoint_messages 落库、再 yield 流式”？设想进程在把这一步结果流式吐回去时崩了，这个顺序到底救回了什么？(3) max_steps = 50 这根安全绳防的到底是什么？为什么撞上它映射的是 completed 而不是 failed？",
+                "en": "Using the metaphor of a “budgeted assembly-line worker,” weave lesson 14's V3 loop into one coherent story, and think through three things: (1) why dare to base continuation on just “did this round call a tool,” instead of having the model raise its hand for a heartbeat (request_heartbeat) like the previous generation? What are the trade-offs of an “objective-signal-driven” loop versus the model “self-reporting”? (2) Why does _step nail the order to “first _checkpoint_messages to persist, then yield to stream”? Imagine the process crashing while streaming this step's results back — what exactly does this order save? (3) What does the max_steps = 50 safety rope actually guard against, and why does hitting it map to completed rather than failed?",
+            },
+        ],
+    },
+    "15-heartbeat-to-no-heartbeat.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "老机制（元老 Agent / V2）里的 request_heartbeat 到底是个什么参数？它被加到哪些工具上？",
+                    "en": "In the old mechanism (the elder Agent / V2), what kind of parameter is request_heartbeat, and which tools does it get added to?",
+                },
+                "opts": [
+                    {"zh": "一个必填的布尔参数，由 runtime_override_tool_json_schema 动态加到每个非终止工具上；模型想续步就得设 true",
+                     "en": "A required boolean param that runtime_override_tool_json_schema dynamically adds to every non-terminal tool; the model must set it true to step again"},
+                    {"zh": "一个可选的字符串参数，只加到 send_message 这类终止工具上",
+                     "en": "An optional string param added only to terminal tools like send_message"},
+                    {"zh": "一个整数参数，表示模型还想再走多少步",
+                     "en": "An integer param saying how many more steps the model wants to take"},
+                    {"zh": "一个由框架自动填好的只读字段，模型无法设置",
+                     "en": "A read-only field auto-filled by the framework that the model cannot set"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "request_heartbeat 是老机制在 tool_parser_helper.py::runtime_override_tool_json_schema 里动态注入的布尔参数：只加给非终止工具（send_message 这类终止工具被排除），而且进 required（必填）。于是模型每调一个普通工具都得表态——设 true 才续步，false（默认）就收尾。它不是可选的、不是字符串、不是步数计数器，也不是只读字段；恰恰相反，它把“要不要继续”的决定权显式交到了模型手里。",
+                    "en": "request_heartbeat is a boolean the old mechanism injects dynamically in tool_parser_helper.py::runtime_override_tool_json_schema: it's added only to non-terminal tools (terminal tools like send_message are excluded) and put into required. So on every ordinary tool call the model must declare — set true to continue, false (the default) to wrap up. It is not optional, not a string, not a step counter, and not read-only; on the contrary, it hands the “continue or not” decision explicitly to the model.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "老机制里，模型把 request_heartbeat 设成 true 之后，框架靠什么把这一圈续下去？工具报错时又会怎样？",
+                    "en": "In the old mechanism, once the model sets request_heartbeat to true, how does the framework keep the lap going? And what happens when a tool fails?",
+                },
+                "opts": [
+                    {"zh": "框架注入一条 role=user 的“心跳”消息（REQ_HEARTBEAT_MESSAGE，对用户隐藏）把控制权还给模型并 continue；工具报错时即便没要心跳，也会自动注入 FUNC_FAILED_HEARTBEAT_MESSAGE 续一圈",
+                     "en": "The framework injects a role=user “heartbeat” message (REQ_HEARTBEAT_MESSAGE, hidden from the user) to hand control back and continue; on tool failure it auto-injects FUNC_FAILED_HEARTBEAT_MESSAGE for one more lap even without a requested heartbeat"},
+                    {"zh": "框架直接把工具结果当成 assistant 消息追加，不需要任何额外消息",
+                     "en": "The framework just appends the tool result as an assistant message, needing no extra message"},
+                    {"zh": "框架重启整个 step() 循环，从第 0 步重新跑",
+                     "en": "The framework restarts the whole step() loop, rerunning from step 0"},
+                    {"zh": "框架把 request_heartbeat 透传给工具函数，由工具自己决定要不要续",
+                     "en": "The framework passes request_heartbeat through to the tool function and lets the tool decide whether to continue"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "解析在 agent.py::_handle_ai_response（pop 出标志、把字符串 \"true\" 归一成布尔），链式在 agent.py::step：function_failed 为真 → 注入 FUNC_FAILED_HEARTBEAT_MESSAGE 并 continue；否则 heartbeat_request 为真 → 注入 REQ_HEARTBEAT_MESSAGE 并 continue；都不满足 → break。这两条消息都带 NON_USER_MSG_PREFIX 前缀、角色是 user 但对用户隐藏。“报错”那条排在心跳判断之前，所以哪怕模型没要心跳，失败也会自动续一圈让它补救。框架并不会把心跳标志透传给工具（恰恰要先 pop 掉），也不会从头重启循环。",
+                    "en": "Parsing is in agent.py::_handle_ai_response (pop the flag, normalize the string \"true\" to a bool); chaining is in agent.py::step: if function_failed → inject FUNC_FAILED_HEARTBEAT_MESSAGE and continue; elif heartbeat_request → inject REQ_HEARTBEAT_MESSAGE and continue; else break. Both messages carry the NON_USER_MSG_PREFIX prefix and have role=user but are hidden from the user. The “failure” branch sits before the heartbeat check, so even without a requested heartbeat a failure auto-continues one lap for recovery. The framework does not pass the heartbeat flag through to the tool (it pops it out first), nor does it restart the loop from scratch.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "V3（letta_v1_agent）不再用心跳，那它靠什么决定要不要再走一步？又怎么处理模型硬塞进来的 request_heartbeat？",
+                    "en": "V3 (letta_v1_agent) no longer uses heartbeats — so how does it decide whether to take another step, and how does it handle a request_heartbeat the model jams in?",
+                },
+                "opts": [
+                    {"zh": "靠 _decide_continuation：“这一轮调了工具就继续，没调就停”；_get_valid_tools 传 request_heartbeat=False 压根不加这个参数，_handle_ai_response 还会 args.pop(REQUEST_HEARTBEAT_PARAM, None) 把残留默默丢掉",
+                     "en": "Via _decide_continuation: “called a tool this round → continue, didn't → stop”; _get_valid_tools passes request_heartbeat=False so the param isn't added at all, and _handle_ai_response does args.pop(REQUEST_HEARTBEAT_PARAM, None) to quietly drop any leftover"},
+                    {"zh": "还是看 request_heartbeat，只是把默认值从 false 改成了 true",
+                     "en": "It still reads request_heartbeat, just flips the default from false to true"},
+                    {"zh": "看模型生成文本里有没有出现“继续”二字",
+                     "en": "It scans the model's generated text for the word “continue”"},
+                    {"zh": "每一步都无脑续，直到撞上 token 上限才停",
+                     "en": "It blindly continues every step until it hits the token cap"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "V3 的 _get_valid_tools 调 runtime_override_tool_json_schema 时传 request_heartbeat=False（注释 \"NOTE: difference for v3\"），工具 schema 里根本没有这个参数。续步判据回到第 14 课的 _decide_continuation：调了工具 → 继续（工具调用是两段式的，结果得喂回模型），没调 → 停。就算某个旧 prompt 硬塞一个心跳参数，_handle_ai_response 也用 args.pop(REQUEST_HEARTBEAT_PARAM, None) 丢掉它，绝不让残留干扰判据。它既不靠默认 true、也不扫文本关键词，更不是无脑续到 token 上限。",
+                    "en": "V3's _get_valid_tools passes request_heartbeat=False to runtime_override_tool_json_schema (comment \"NOTE: difference for v3\"), so the tool schema has no such param. Continuation falls back to lesson 14's _decide_continuation: called a tool → continue (a tool call is two-stage, the result must be fed back to the model); didn't → stop. Even if some old prompt jams in a heartbeat param, _handle_ai_response drops it with args.pop(REQUEST_HEARTBEAT_PARAM, None), never letting a leftover disturb the criterion. It neither relies on a true default, nor scans text for a keyword, nor blindly continues to the token cap.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "V3 删掉 request_heartbeat，最大的收益是消灭了哪一整类 bug？老机制原本又是用什么给这类 bug 打补丁的？",
+                    "en": "Deleting request_heartbeat, what whole bug-class does V3 eliminate as its biggest win? And what did the old mechanism use to patch that bug-class?",
+                },
+                "opts": [
+                    {"zh": "消灭“模型忘了设 request_heartbeat=true → agent 在调完工具后直接静默冻住”这一类 bug；老机制靠 local_llm 里的 insert_heartbeat 给本地模型兜底（issue #601）",
+                     "en": "Eliminates the “model forgot to set request_heartbeat=true → the agent freezes silent after calling a tool” bug-class; the old mechanism backed local models up with insert_heartbeat in local_llm (issue #601)"},
+                    {"zh": "消灭“工具执行超时”这类 bug；老机制靠加大超时时间兜底",
+                     "en": "Eliminates the “tool execution timeout” bug-class; the old mechanism patched it by raising the timeout"},
+                    {"zh": "消灭“上下文窗口溢出”这类 bug；老机制靠压缩历史兜底",
+                     "en": "Eliminates the “context-window overflow” bug-class; the old mechanism patched it by compacting history"},
+                    {"zh": "消灭“并行工具调用结果冲突”这类 bug；老机制靠串行化工具兜底",
+                     "en": "Eliminates the “parallel tool-call result conflict” bug-class; the old mechanism patched it by serializing tools"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "把“要不要继续”押在模型自觉上很脆弱：模型一旦忘了设 request_heartbeat=true，工具跑完没人续步，agent 就在用户说完话后静默冻住。这正是 insert_heartbeat（local_llm/function_parser.py）存在的理由——本地模型常忘设（issue #601），于是“上一条是真用户消息”且“这是非 send_message 工具调用”时，强行补 request_heartbeat=True。V3 把判据换成“调了工具就继续”，这一整类“模型忘了设”的 bug 随之消失，补丁也不必存在。上下文溢出、工具超时、并行冲突是另外的问题，与删心跳无关。",
+                    "en": "Pinning “continue or not” on the model's conscientiousness is fragile: the moment the model forgets to set request_heartbeat=true, the tool finishes, nobody steps again, and the agent freezes silent right after the user speaks. That is exactly why insert_heartbeat (local_llm/function_parser.py) exists — local models often forget (issue #601), so when “the previous message is a real user message” and “this is a non-send_message tool call,” it forces in request_heartbeat=True. V3 swaps the criterion to “called a tool → continue,” so the whole “model forgot to set it” bug-class vanishes and the patch needn't exist. Context overflow, tool timeouts, and parallel conflicts are separate issues, unrelated to deleting heartbeats.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于“哪几代靠心跳续步”，下面哪个说法是对的？",
+                    "en": "About “which generations continue via heartbeats,” which statement is correct?",
+                },
+                "opts": [
+                    {"zh": "元老 Agent 和第二代 V2 都还在用心跳（V2 的 _get_valid_tools 传 True，_decide_continuation 里 continue_stepping = request_heartbeat），只有第三代 V3 把它彻底删掉",
+                     "en": "Both the elder Agent and the second-gen V2 still use heartbeats (V2's _get_valid_tools passes True, and continue_stepping = request_heartbeat in _decide_continuation); only the third-gen V3 removes it entirely"},
+                    {"zh": "心跳是被全盘否定的旧设计，V2 和 V3 都已经不用了",
+                     "en": "Heartbeats are a wholly rejected old design that both V2 and V3 have dropped"},
+                    {"zh": "只有元老 Agent 用心跳，V2 和 V3 都改用了 _decide_continuation",
+                     "en": "Only the elder Agent uses heartbeats; both V2 and V3 switched to _decide_continuation"},
+                    {"zh": "三代都在用心跳，V3 只是把常量名换了一个",
+                     "en": "All three generations use heartbeats; V3 merely renamed a constant"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "别把“心跳”当成被否定的旧设计——同代的 V2 依然在用。letta_agent_v2.py::_get_valid_tools 传 request_heartbeat=True，其 _decide_continuation 里 continue_stepping = request_heartbeat，续步判据仍由模型的心跳标志驱动。只有 V3（letta_v1_agent，注释 \"no heartbeats or forced tool calls\"）才把心跳整套拿掉——它重写 _decide_continuation，去掉该参数、默认继续。所以不是“V2/V3 都不用”，不是“只有 Agent 用”，更不是“三代都用、只换名字”。一参之差（_get_valid_tools 传 True 还是 False）正是 V2 与 V3 的分水岭。",
+                    "en": "Don't treat “heartbeats” as a rejected old design — the same-era V2 still uses them. letta_agent_v2.py::_get_valid_tools passes request_heartbeat=True, and continue_stepping = request_heartbeat in its _decide_continuation, so continuation is still driven by the model's heartbeat flag. Only V3 (letta_v1_agent, comment \"no heartbeats or forced tool calls\") removes the whole heartbeat machinery — it overrides _decide_continuation to drop that param and default to continue. So it's not “neither V2 nor V3,” not “only Agent,” and not “all three with just a rename.” One param's difference (_get_valid_tools passing True vs False) is the watershed between V2 and V3.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“对讲机”这个比喻，把第 15 课从“心跳续步”到“调了工具就继续”的演化串成一个完整故事，并想三件事：(1) 老机制为什么要让模型在参数里举手要心跳（request_heartbeat=true）？把“要不要继续”交给模型，灵活在哪、脆弱在哪？(2) insert_heartbeat 这块给本地模型打的补丁（issue #601），和 V3“从根上不依赖模型自觉”的思路，本质区别在哪？为什么说“补丁盖症状、V3 治根因”？(3) V3 既然觉得心跳多余，为什么同代的 V2 还留着它？从“兼容旧设计”和“演化节奏”的角度想想，删一个看似冗余的参数为什么也得分代、分步来做。",
+                "en": "Using the “walkie-talkie” metaphor, weave lesson 15's evolution from “heartbeat-driven continuation” to “called a tool → continue” into one coherent story, and think through three things: (1) why did the old mechanism make the model raise its hand for a heartbeat (request_heartbeat=true) in the parameters? Handing “continue or not” to the model — where's the flexibility, where's the fragility? (2) What's the essential difference between the insert_heartbeat patch for local models (issue #601) and V3's “stop depending on the model's conscientiousness at the root”? Why say “a patch covers the symptom, V3 cures the root cause”? (3) If V3 deems heartbeats redundant, why does the same-era V2 still keep them? Thinking in terms of “compatibility with the old design” and “the pace of evolution,” why must even deleting a seemingly redundant parameter be done generation by generation, step by step?",
+            },
+        ],
+    },
+    "16-tool-rules.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "agent 循环刚开始、还没调过任何工具时，是哪种工具规则能“强制”第一步只能调某个（些）特定工具？ToolRulesSolver 又是怎么处理它的？",
+                    "en": "At the very start of the agent loop, before any tool has been called, which tool rule can “force” the first step to call only a specific tool (or tools)? And how does ToolRulesSolver handle it?",
+                },
+                "opts": [
+                    {"zh": "run_first（子类 InitToolRule）；get_allowed_tool_names 一看 tool_call_history 为空且配了 init 规则，就直接返回 [r.tool_name for r in init_tool_rules]，别的规则一概不算",
+                     "en": "run_first (subclass InitToolRule); when get_allowed_tool_names sees an empty tool_call_history with init rules configured, it returns [r.tool_name for r in init_tool_rules] directly, ignoring every other rule"},
+                    {"zh": "exit_loop（TerminalToolRule）；它把第一步钉死在终止工具上",
+                     "en": "exit_loop (TerminalToolRule); it pins the first step onto the terminal tool"},
+                    {"zh": "constrain_child_tools（ChildToolRule）；首步只能调它列出的 children",
+                     "en": "constrain_child_tools (ChildToolRule); the first step may only call its listed children"},
+                    {"zh": "required_before_exit（RequiredBeforeExitToolRule）；它要求第一步必须是结算类工具",
+                     "en": "required_before_exit (RequiredBeforeExitToolRule); it requires the first step to be a settlement-type tool"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "run_first 对应子类 InitToolRule，是唯一“强制首步”的规则。get_allowed_tool_names 的第一条岔路就是：if not self.tool_call_history and self.init_tool_rules → return [r.tool_name for r in self.init_tool_rules]，首步直接锁定 init 工具、其他规则一律不参与。exit_loop 管的是“调到就停”（终点，不是起点），constrain_child_tools 约束的是“调完某父工具后的下一步”（要先有父调用），required_before_exit 只要求“退出前至少调一次”、并不限定它是第一步。别被子类名误导：枚举值是 run_first 而非 Init。",
+                    "en": "run_first maps to the subclass InitToolRule, the only “force the first step” rule. get_allowed_tool_names's first fork is exactly: if not self.tool_call_history and self.init_tool_rules → return [r.tool_name for r in self.init_tool_rules], locking the first step onto the init tools and excluding every other rule. exit_loop governs “called → stop” (the end, not the start), constrain_child_tools constrains “the next step after a given parent tool” (a parent call must come first), and required_before_exit only demands “at least one call before exit,” not that it be the first step. Don't be misled by the subclass name: the enum value is run_first, not Init.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "模型无视裁剪后的 schema，硬挑了一个不在合法集里的工具。框架会怎么处理这次调用？",
+                    "en": "The model ignores the trimmed schema and picks a tool that isn't in the legal set. How does the framework handle that call?",
+                },
+                "opts": [
+                    {"zh": "不执行该工具：_handle_ai_response 算出 tool_rule_violated = name not in valid_tool_names，转而调 _build_rule_violation_result 合成一条 status=\"error\" 的 [ToolConstraintError] 当作“工具返回”喂回模型，让它自纠",
+                     "en": "It doesn't execute the tool: _handle_ai_response computes tool_rule_violated = name not in valid_tool_names, then calls _build_rule_violation_result to synthesize a status=\"error\" [ToolConstraintError] as the “tool return” fed back to the model for self-correction"},
+                    {"zh": "照样执行该工具，只是在结果后面附一句警告，提醒模型下次别这么调",
+                     "en": "It runs the tool anyway, just appending a warning after the result to remind the model not to do it next time"},
+                    {"zh": "直接抛出异常、终止整个 step，让用户看到报错",
+                     "en": "It raises an exception outright, terminating the whole step so the user sees the error"},
+                    {"zh": "静默丢弃这次调用，既不执行也不回任何消息，直接进入下一步",
+                     "en": "It silently drops the call, neither executing nor returning any message, and moves straight to the next step"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "违规工具绝不执行。判定在 letta_agent_v3.py::_handle_ai_response：tool_rule_violated = name not in valid_tool_names；为真则跳过执行，改由 agents/helpers.py::_build_rule_violation_result 合成一条 ToolExecutionResult(status=\"error\", func_return=\"[ToolConstraintError] Cannot call X, valid tools include: [...]\")，当作那个工具的“返回值”喂回模型。它既不是“先执行再警告”，也不是直接 raise 崩掉 step（那样用户只会看到莫名其妙的报错），更不是静默丢弃——而是把违规变成一次“教学”，循环继续、给模型重挑的机会。错误字符串在 agent 层拼，solver 只通过 guess_rule_violation 供一句 hint。",
+                    "en": "A violating tool is never executed. The decision is in letta_agent_v3.py::_handle_ai_response: tool_rule_violated = name not in valid_tool_names; if true it skips execution and instead has agents/helpers.py::_build_rule_violation_result synthesize a ToolExecutionResult(status=\"error\", func_return=\"[ToolConstraintError] Cannot call X, valid tools include: [...]\") fed back as that tool's “return value.” It's neither “run then warn,” nor a bare raise that crashes the step (which would only show the user a baffling error), nor a silent drop — it turns the violation into a “lesson,” continuing the loop and giving the model a chance to re-pick. The error string is assembled in the agent layer; the solver only supplies a one-line hint via guess_rule_violation.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "ToolRulesSolver.get_allowed_tool_names 在算“这一步合法工具集”时，到底对哪些规则求交集来缩小工具集？",
+                    "en": "When ToolRulesSolver.get_allowed_tool_names computes “this step's legal tool set,” which rules does it actually intersect to shrink the tool set?",
+                },
+                "opts": [
+                    {"zh": "只对 child 类（Child/Conditional/MaxCount）+ parent 规则求交，再 & 可用工具；terminal / continue / required_before_exit / requires_approval 根本不进交集",
+                     "en": "Only the child family (Child/Conditional/MaxCount) + parent rules are intersected, then & available tools; terminal / continue / required_before_exit / requires_approval never enter the intersection"},
+                    {"zh": "对全部 9 种规则一视同仁地求交集",
+                     "en": "All 9 rule types are intersected, treated alike"},
+                    {"zh": "只对 terminal + required_before_exit 求交，因为它们决定循环能否结束",
+                     "en": "Only terminal + required_before_exit are intersected, since they decide whether the loop can end"},
+                    {"zh": "对 init + requires_approval 求交，其余规则在别处处理",
+                     "en": "init + requires_approval are intersected, with the rest handled elsewhere"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "缩小工具集只看 child + parent 两类。源码里 relevant = self.child_based_tool_rules + self.parent_tool_rules（child_based 桶含 Child/Conditional/MaxCount），对每条调 get_valid_tools 求交，再 & available。terminal / continue / required_before_exit / requires_approval 这几桶不参与交集——solver 文档字符串明说它们“在 agent 循环里生效，不用来限制工具”，它们的作用体现在 _decide_continuation 的续步/停止判断里。init 规则则走另一条岔路（首步强制），不在这步的交集里。所以“全部 9 种求交”或“terminal 参与缩集”都是典型记反。",
+                    "en": "Shrinking the tool set looks only at the child + parent families. In source, relevant = self.child_based_tool_rules + self.parent_tool_rules (the child_based bucket holds Child/Conditional/MaxCount); each rule's get_valid_tools is intersected, then & available. The terminal / continue / required_before_exit / requires_approval buckets don't join the intersection — the solver's docstring states they “apply in the agent loop, not to restrict tools,” and their effect shows up in _decide_continuation's continue/stop decision. The init rules take the other fork (first-step forcing), not this step's intersection. So “intersect all 9” or “terminal shrinks the set” are classic reversals.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "某工具配了 requires_approval。模型这一步要调它时，agent 循环会停下，停止原因（StopReasonType）记成什么？随后又发生什么？",
+                    "en": "A tool is configured with requires_approval. When the model goes to call it this step, the agent loop stops — what stop reason (StopReasonType) is recorded, and what happens next?",
+                },
+                "opts": [
+                    {"zh": "停止原因记 requires_approval：循环不执行该工具，持久化一条 create_approval_request_message_from_llm_response(...) 造的“审批请求”消息；人批准后下一次以 is_approval_response 进来，绕过违规检查放行",
+                     "en": "The stop reason is requires_approval: the loop doesn't execute the tool, persists an “approval request” message from create_approval_request_message_from_llm_response(...); after a human approves, the next entry comes in as an is_approval_response that bypasses the violation check and proceeds"},
+                    {"zh": "停止原因记 tool_rule，和终止工具一样，因为两者都让循环停下",
+                     "en": "The stop reason is tool_rule, same as a terminal tool, since both stop the loop"},
+                    {"zh": "停止原因记 max_steps：审批被当作“步数耗尽”处理",
+                     "en": "The stop reason is max_steps: approval is treated as “steps exhausted”"},
+                    {"zh": "不记停止原因，循环照常执行工具，只是事后发一封审批邮件",
+                     "en": "No stop reason is recorded; the loop runs the tool as usual and just sends an approval email afterward"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "命中 is_requires_approval_tool 时，循环停在 StopReasonType.requires_approval（不是 tool_rule，也不是 max_steps）。它不执行该工具，而是持久化一条由 create_approval_request_message_from_llm_response(...) 生成的“审批请求”消息，把控制权交给人。等批准后，下一次请求以 is_approval_response 进入，它绕过违规检查直接放行执行——这正对上第 14 课列的停止原因表，也接上第 15 课“工具规则可覆盖默认行为”。注意区分：终止工具 exit_loop 停在 tool_rule，requires_approval 停在 requires_approval，两者停止原因不同。",
+                    "en": "When is_requires_approval_tool hits, the loop stops at StopReasonType.requires_approval (not tool_rule, not max_steps). It doesn't execute the tool but persists an “approval request” message generated by create_approval_request_message_from_llm_response(...), handing control to a human. After approval, the next request enters as an is_approval_response that bypasses the violation check and proceeds — matching lesson 14's stop-reason table and connecting to lesson 15's “tool rules can override default behavior.” Note the distinction: a terminal tool (exit_loop) stops at tool_rule, while requires_approval stops at requires_approval — different stop reasons.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于 9 种 ToolRuleType 的“枚举值”和“子类名”，下面哪个说法是对的？",
+                    "en": "About the 9 ToolRuleType “enum values” and “subclass names,” which statement is correct?",
+                },
+                "opts": [
+                    {"zh": "枚举值是历史命名 run_first / exit_loop / constrain_child_tools 等，而子类才叫 InitToolRule / TerminalToolRule / ChildToolRule——别照子类名去猜枚举值",
+                     "en": "The enum values are legacy-named run_first / exit_loop / constrain_child_tools etc., while the subclasses are InitToolRule / TerminalToolRule / ChildToolRule — don't guess the enum value from the subclass name"},
+                    {"zh": "枚举值就是 Init / Terminal / Child，和子类名前缀完全一致",
+                     "en": "The enum values are Init / Terminal / Child, exactly matching the subclass name prefixes"},
+                    {"zh": "枚举值和子类名是同一个字符串，框架不区分二者",
+                     "en": "The enum value and the subclass name are the same string; the framework doesn't distinguish them"},
+                    {"zh": "根本没有枚举，规则全靠子类的 isinstance 判断，没有 type 字段",
+                     "en": "There's no enum at all; rules rely solely on isinstance of the subclass, with no type field"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这是最容易踩的命名坑。枚举 schemas/enums.py::ToolRuleType 用的是历史名：run_first / exit_loop / continue_loop / conditional / constrain_child_tools / max_count_per_step / parent_last_tool / required_before_exit / requires_approval。而子类（schemas/tool_rule.py）叫 InitToolRule / TerminalToolRule / ChildToolRule…，每个子类 pin 死一个 Literal type 字符串（如 InitToolRule.type == \"run_first\"）。所以枚举值不是 Init/Terminal/Child；type 字符串与子类名也不是同一个串；更不是“没有 type”——恰恰相反，正是这个 type 字段构成了 pydantic 的判别联合，让一串带 type 的 JSON 能各归各的子类。",
+                    "en": "This is the easiest naming trap. The enum schemas/enums.py::ToolRuleType uses legacy names: run_first / exit_loop / continue_loop / conditional / constrain_child_tools / max_count_per_step / parent_last_tool / required_before_exit / requires_approval. The subclasses (schemas/tool_rule.py) are InitToolRule / TerminalToolRule / ChildToolRule…, each pinning a Literal type string (e.g. InitToolRule.type == \"run_first\"). So the enum values are not Init/Terminal/Child; the type string and the subclass name aren't the same string; and it's not “no type” — on the contrary, that very type field forms pydantic's discriminated union, letting a string of JSON with a type field resolve to the right subclass.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“城市交通规则”这个比喻，把第 16 课的工具规则系统讲成一个完整故事，并想三件事：(1) 为什么要把“agent 该怎么用工具”从“模型的自觉”搬成“路口的硬件”（声明式、可强制）？事前裁 schema 和事后合成错误这“两道防线”各自防住了什么？只留一道行不行？(2) get_allowed_tool_names 为什么“只对 child + parent 求交”来缩工具集，而把 terminal / continue / required / approval 留给 _decide_continuation？“缩工具集”和“决定循环怎么走”为什么要拆成两件事？(3) Letta 故意不做“环/冲突检测”，只逐条 pydantic 校验。把这把“双刃剑”交给配置者，好处和风险各在哪？如果你要给一个真实 agent 配规则，你会怎么自查规则之间不打架？",
+                "en": "Using the “city traffic rules” metaphor, tell lesson 16's tool-rule system as one coherent story, and think through three things: (1) why move “how an agent should use tools” from “the model's conscientiousness” into “hardware at the junction” (declarative, enforceable)? What does each of the “two lines of defense” — trimming the schema beforehand and synthesizing an error afterward — guard against? Would keeping only one line do? (2) Why does get_allowed_tool_names “intersect only child + parent” to shrink the tool set, leaving terminal / continue / required / approval to _decide_continuation? Why split “shrink the tool set” and “decide how the loop proceeds” into two separate things? (3) Letta deliberately does no “cycle/conflict detection,” only per-rule pydantic validation. Handing this “double-edged sword” to the configurer — where are the benefits and the risks? If you were configuring rules for a real agent, how would you self-check that the rules don't clash?",
+            },
+        ],
+    },
 }
 
 

@@ -70,6 +70,14 @@ PAGES = [
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
     ("12-context-compaction.html", "上下文压缩与记忆压力", "Context compaction & memory pressure",
      "第三部分 · 记忆系统", "Part 3 · The memory system"),
+    ("13-agent-state-and-loop.html", "AgentState 与 AgentLoop 工厂", "AgentState & the AgentLoop factory",
+     "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
+    ("14-v3-step-loop.html", "V3 步进循环", "The V3 step loop",
+     "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
+    ("15-heartbeat-to-no-heartbeat.html", "从 heartbeat 到无 heartbeat", "From heartbeat to no-heartbeat",
+     "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
+    ("16-tool-rules.html", "工具规则 Tool Rules", "Tool rules",
+     "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
 ]
 
 
@@ -532,6 +540,14 @@ SUBTITLES = {
                               "Message; in-window message_ids; conversation_search; JSON envelopes"),
     "12-context-compaction.html": ("90% 阈值 · compact_messages · 滑窗摘要 · summary 消息 · 系统提示溢出",
                                    "the 90% threshold; compact_messages; sliding-window summary; the summary message; system-prompt overflow"),
+    "13-agent-state-and-loop.html": ("一个 agent 的'存档' · 工厂按类型选引擎 · 三代 agent",
+                                     "an agent's 'save file'; the factory picks an engine by type; three generations"),
+    "14-v3-step-loop.html": ("一次 step = 一次 LLM 调用 + 工具执行 · 调了工具就继续 · 最多 50 步",
+                             "one step = one LLM call + tool exec; loop while tools are called; up to 50 steps"),
+    "15-heartbeat-to-no-heartbeat.html": ("MemGPT 的 request_heartbeat 链式 · V3 为什么拿掉它 · 前后对比",
+                                          "MemGPT's request_heartbeat chaining; why V3 drops it; before/after"),
+    "16-tool-rules.html": ("9 种规则 · ToolRulesSolver 算合法下一步 · 违规＝合成错误不执行",
+                           "9 rule types; the solver computes the legal next set; a violation becomes a synthetic error"),
 }
 
 

@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>15 · 从 heartbeat 到无 heartbeat / From heartbeat to no-heartbeat - Letta 图解教程</title>
+<meta name="description" content="第四部分 · Agent 执行循环｜从 heartbeat 到无 heartbeat - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="15 · 从 heartbeat 到无 heartbeat / From heartbeat to no-heartbeat - Letta 图解教程">
+<meta property="og:description" content="第四部分 · Agent 执行循环｜从 heartbeat 到无 heartbeat - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="15 · 从 heartbeat 到无 heartbeat / From heartbeat to no-heartbeat - Letta 图解教程">
+<meta name="twitter:description" content="第四部分 · Agent 执行循环｜从 heartbeat 到无 heartbeat - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第四部分 · Agent 执行循环</span><span class="lang-en">Part 4 · The agent execution loop</span></span>
+    <span class="pill">15 / 16</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:93%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第四部分 · Agent 执行循环</span><span class="lang-en">Part 4 · The agent execution loop</span></div>
+    <h1><span class="lang-zh">从 heartbeat 到无 heartbeat</span><span class="lang-en">From heartbeat to no-heartbeat</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+上一课拆 V3 循环时，我们撞见一句反直觉的判据：续不续步，<strong>不看模型想不想继续，只看这一轮有没有调工具</strong>。当时埋了个悬念——<span class="mono">letta_v1_agent</span> 注释里那句 "no heartbeats"（无心跳）到底拿掉了什么？这一课就来还这笔账。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+这是一堂<strong>设计演化课</strong>。老的 MemGPT、元老 <span class="mono">Agent</span>、第二代 <span class="mono">LettaAgentV2</span> 都靠一个叫 <span class="mono">request_heartbeat</span> 的开关续步：模型得在工具调用里<strong>自己举手</strong>说"我还要继续"。第三代 V3 把这个开关整个删掉了。一删一留之间，藏着一条朴素的工程智慧——<strong>别把"要不要继续"这种关键决定，押在模型的自觉上。</strong></p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把两代机制想成两种对讲机。</strong>老机制是<strong>半双工对讲机</strong>：你每说完一句，必须主动加一句"完毕，请继续（over）"，对面才知道该接话；万一你忘了说这句"完毕"，线路就<strong>静默</strong>了——对面干等，你也以为在等对方，整条对话就卡死在那。新机制换了规矩：<strong>只要你还在往外递"工具单子"，线路就默认接着转</strong>，不必每次都喊"请继续"；什么时候你不再递单子、直接开口说话了，才算把话筒交还回去。老机制把"继续"的责任压在<strong>说话人记不记得喊口令</strong>上，新机制把它焊死在<strong>"有没有递单子"这个客观动作</strong>上——后者不会忘，也就不会卡死。说到底，靠谱的流水线不靠工人时时记得喊"完毕"，而靠传送带本身的机械确定性。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：老设计让<em>模型</em>决定"继续不继续"，V3 把这个决定收回给<em>框架</em>。</strong>老机制（<span class="mono">letta/agent.py</span> 的元老 <span class="mono">Agent</span>，以及 <span class="mono">LettaAgentV2</span>）给每个<strong>非终止工具</strong>都塞一个必填布尔参数 <span class="mono">request_heartbeat</span>；模型若想接着干，就得把它设成 <span class="mono">true</span>，框架随后注入一条"心跳"用户消息把控制权还给模型、续上一圈（<span class="mono">agent.py::_handle_ai_response</span> 读这个标志，<span class="mono">agent.py::step</span> 注入并续步）。工具<strong>报错</strong>时，框架还会自动补一条心跳，好让模型看见错误去补救。V3（<span class="mono">letta_agent_v3.py</span>）的洞见是：这个决定<strong>不该问模型</strong>——"这一轮调了工具"本身就是"还有后续"的可靠信号，于是 <span class="mono">_get_valid_tools</span> 传 <span class="mono">request_heartbeat=False</span>（注释 "NOTE: difference for v3"），续步判据回到上一课的 <span class="mono">_decide_continuation</span>。一个必填参数、一类心跳消息、一整类"模型忘了设"的 bug，就此一起消失。代价几乎为零——因为"调了工具"本就等价于"还要继续"，老机制那层让模型再确认一次的设计，从一开始就是冗余的。
+</div>
+
+<h2>旧设计：每个非终止工具都挂一个 request_heartbeat</h2>
+<p>先认清这个开关。老机制在把工具的 JSON schema 交给模型之前，会<strong>动态地</strong>给每个工具多塞一个参数 <span class="mono">request_heartbeat</span>（布尔值），并把它列进 <span class="mono">required</span>。注入逻辑在 <span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>，文档字符串写得很直白——"工具会被加上一个额外的 <span class="mono">request_heartbeat</span> 参数（终止工具除外）"。</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">这个参数的描述（<span class="mono">constants.py::REQUEST_HEARTBEAT_DESCRIPTION</span>）就是写给模型看的说明书：<strong>"若你想发后续消息或再调一个工具（把多个工具串起来），你必须把这个值设为 <span class="mono">True</span>；若设为 <span class="mono">False</span>（默认），执行链会在这次调用后立即结束。"</strong>——"继续"与否，明明白白交到了模型手里。</span></div>
+
+<p>注意两个"只"字：<strong>只加给非终止工具</strong>（<span class="mono">send_message</span> 这类终止工具被排除在外，它本就该结束这一轮），而且加进去就是<strong>必填的</strong>。于是模型每调一个普通工具，都被迫表态一次"我还继不继续"。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">工具原始 schema</div><div class="nd">只有工具自身的参数</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">runtime_override_tool_json_schema</div><div class="nd">改写工具 schema 的那道关</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">旧 · 加 request_heartbeat</div><div class="nd">bool，且进 required（终止工具除外）</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">V3 · 什么都不加</div><div class="nd">传 request_heartbeat=False</div></div>
+</div>
+
+<p>为什么 MemGPT 当初要这么设计？因为模型一次只产出"一段话"，而一个任务常要连着调好几个工具——先查核心记忆、再搜归档、最后才回话。模型需要一个口子告诉框架"我这段还没完，别急着把话筒还给用户"，<span class="mono">request_heartbeat=true</span> 就是这个口子。它和第 4 课的 ReAct、内心独白一脉相承：让模型<strong>显式</strong>说出"我还要再想一步、再做一步"。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">注入 request_heartbeat（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">runtime_override_tool_json_schema</span>(tool_list, response_format,
+                                      request_heartbeat=<span class="nb">True</span>, terminal_tools=<span class="kw">None</span>):
+    <span class="cm"># 文档：工具会被加上一个 request_heartbeat 参数（终止工具除外）</span>
+    terminal_tools = terminal_tools <span class="kw">or</span> <span class="fn">set</span>()
+    <span class="kw">for</span> tool_json <span class="kw">in</span> tool_list:
+        <span class="kw">if</span> request_heartbeat:
+            <span class="kw">if</span> tool_json[<span class="st">"name"</span>] <span class="kw">not in</span> terminal_tools:   <span class="cm"># 只加给非终止工具</span>
+                tool_json[<span class="st">"parameters"</span>][<span class="st">"properties"</span>][REQUEST_HEARTBEAT_PARAM] = {
+                    <span class="st">"type"</span>: <span class="st">"boolean"</span>,
+                    <span class="st">"description"</span>: REQUEST_HEARTBEAT_DESCRIPTION,
+                }
+                <span class="kw">if</span> REQUEST_HEARTBEAT_PARAM <span class="kw">not in</span> tool_json[<span class="st">"parameters"</span>][<span class="st">"required"</span>]:
+                    tool_json[<span class="st">"parameters"</span>][<span class="st">"required"</span>].<span class="fn">append</span>(REQUEST_HEARTBEAT_PARAM)  <span class="cm"># 必填</span>
+    <span class="kw">return</span> tool_list
+</pre></div>
+
+<h2>旧机制怎么续步：一条"心跳"消息链</h2>
+<p>参数有了，循环怎么用它续步？分三拍：模型在工具调用里带上 <span class="mono">request_heartbeat=true</span> → 框架执行完工具后，<strong>注入一条"心跳"用户消息</strong>把控制权交还模型 → 下一圈模型看着这条消息接着说。若带的是 <span class="mono">false</span>（或没带），就 <span class="mono">break</span>，把话筒还给真正的用户。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">这条"心跳"消息角色是 <span class="mono">role=user</span>，但它不是真用户发的——内容前缀是 <span class="mono">NON_USER_MSG_PREFIX</span>（"[This is an automated system message hidden from the user] "），对用户<strong>隐藏</strong>。常量见 <span class="mono">constants.py::REQ_HEARTBEAT_MESSAGE</span>。</span></div>
+
+<p>这里的关键和上一课同源：工具调用天生是<strong>两段式</strong>的——模型先说"我要调 <span class="mono">search</span>"，框架执行、拿到结果，还得把结果<strong>喂回</strong>模型让它接着说。所以"调了工具"本就意味着"还有下半场"。可老机制没有直接用上这个事实，而是<strong>多绕了一道</strong>：让模型在参数里再确认一次"我要继续"。V3 看穿了这道确认是多余的，才把它省掉。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>模型调工具</h4><p>带上 <span class="mono">request_heartbeat=true</span>，表示"我还要继续"。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>_handle_ai_response 读标志</h4><p><span class="mono">function_args.pop("request_heartbeat")</span>；字符串 "true" 归一成布尔。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>执行工具</h4><p>跑完拿结果；若<strong>报错</strong>，记下 <span class="mono">function_failed=True</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>step 注入心跳</h4><p><span class="mono">true</span> → 注入 <span class="mono">REQ_HEARTBEAT_MESSAGE</span>（role=user），<span class="mono">continue</span>。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>false → break</h4><p>没要心跳，跳出循环，收尾交还用户。</p></div></div>
+</div>
+
+<p>解析这一步发生在 <span class="mono">agent.py::Agent._handle_ai_response</span>：它把 <span class="mono">request_heartbeat</span> 从工具参数里 <span class="mono">pop</span> 出来，顺手处理"被序列化成字符串 'true'"的边角情况。工具规则还能<strong>覆盖</strong>这个标志——<span class="mono">has_children_tools</span> 强制 <span class="mono">True</span>、<span class="mono">is_terminal_tool</span> 强制 <span class="mono">False</span>、<span class="mono">is_continue_tool</span> 强制 <span class="mono">True</span>（这套规则留到第 16 课细讲）。</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">别记错落点：解析心跳标志的是 <span class="mono">Agent._handle_ai_response</span>，<strong>不是</strong> <span class="mono">inner_step</span>；真正"注入心跳消息、决定 continue/break"的是 <span class="mono">Agent.step</span>（它的文档字符串原话就是"在循环里处理基于心跳请求与函数失败的链式续步"）。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agent.py</span><span class="ln">老链式续步（_handle_ai_response + step，简化）</span></div>
+<pre><span class="cm"># _handle_ai_response：从工具参数里取出心跳标志</span>
+heartbeat_request = function_args.<span class="fn">pop</span>(<span class="st">"request_heartbeat"</span>, <span class="kw">None</span>)
+<span class="kw">if</span> <span class="fn">isinstance</span>(heartbeat_request, <span class="nb">str</span>) <span class="kw">and</span> heartbeat_request.<span class="fn">lower</span>() == <span class="st">"true"</span>:
+    heartbeat_request = <span class="nb">True</span>             <span class="cm"># "true" 字符串归一成布尔</span>
+
+<span class="cm"># step：根据标志决定续步还是收尾</span>
+<span class="kw">if</span> function_failed:                       <span class="cm"># 工具报错 -> 自动续，让模型看错误</span>
+    inject(<span class="fn">get_heartbeat</span>(FUNC_FAILED_HEARTBEAT_MESSAGE)); <span class="kw">continue</span>
+<span class="kw">elif</span> heartbeat_request:                   <span class="cm"># 模型要心跳 -> 续</span>
+    inject(<span class="fn">get_heartbeat</span>(REQ_HEARTBEAT_MESSAGE)); <span class="kw">continue</span>
+<span class="kw">else</span>:
+    <span class="kw">break</span>                                <span class="cm"># 没要心跳 -> 收尾，交还用户</span>
+</pre></div>
+
+<p>第 4 拍那条"工具报错就自动续"值得单独点出：哪怕模型<strong>没</strong>要心跳，只要工具执行<strong>失败</strong>，老机制也会强行注入一条 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span>，把控制权还给模型——好让它看见错误、有机会补救，而不是带着一个失败的工具调用就草草收场。</p>
+
+<div class="cellgroup">
+  <div class="cg-cap">老机制的两条"控制权交还"消息，都带 <b>NON_USER_MSG_PREFIX</b> 前缀、对用户隐藏</div>
+  <div class="cells">
+    <span class="lab">续步</span>
+    <span class="cell hl">REQ_HEARTBEAT_MESSAGE</span>
+    <span class="sep">·</span>
+    <span class="cell">模型设 true，归还控制权</span>
+  </div>
+  <div class="cells">
+    <span class="lab">报错</span>
+    <span class="cell hl">FUNC_FAILED_HEARTBEAT_MESSAGE</span>
+    <span class="sep">·</span>
+    <span class="cell">函数失败，归还控制权</span>
+  </div>
+  <div class="cells">
+    <span class="lab">前缀</span>
+    <span class="cell q">[This is an automated system message hidden from the user]</span>
+  </div>
+</div>
+
+<div class="cols">
+  <div class="col">
+    <h4>🕰️ 老机制（元老 Agent；V2 类似）</h4>
+    <p>schema 里有<strong>必填</strong>的 <span class="mono">request_heartbeat</span>。</p>
+    <p>模型设 <span class="mono">true</span> → 注入 <span class="mono">REQ_HEARTBEAT_MESSAGE</span>（role=user）→ 续。</p>
+    <p>工具报错 → 注入 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> → 续。</p>
+    <p class="mono" style="font-size:.82rem">继续 = 模型自己举手</p>
+  </div>
+  <div class="col">
+    <h4>🆕 V3（letta_v1_agent）</h4>
+    <p>schema 里<strong>根本不加</strong> <span class="mono">request_heartbeat</span>。</p>
+    <p><span class="mono">_decide_continuation</span>：这轮调了工具 → 续；没调 → 停。</p>
+    <p>就算模型硬塞一个心跳参数，也被 <span class="mono">args.pop(...)</span> 默默丢掉。</p>
+    <p class="mono" style="font-size:.82rem">继续 = 框架看"调没调工具"</p>
+  </div>
+</div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">💓</span><span class="lab">老 · 对讲机</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🤐</span><span class="bubble">忘喊"完毕，请继续" → 线路静默</span>
+    <span class="emoji">🔁</span><span class="bubble">只要还递工具单 → 线路照转</span>
+    <span class="lab">新 · 默认继续</span>
+  </div>
+  <div class="cap">老机制靠模型每次喊 "over, please continue"，忘了就卡死；新机制把"继续"焊在"调没调工具"上，不用喊也不会忘</div>
+</div>
+
+<h2>模型忘了设怎么办：insert_heartbeat 这块补丁</h2>
+<p>把"继续"的决定交给模型，灵活，却<strong>脆弱</strong>：模型只要忘了把 <span class="mono">request_heartbeat</span> 设成 <span class="mono">true</span>，agent 就会在用户刚说完话、它调了个工具之后<strong>直接冻住</strong>——工具执行完没人续步，对话凭空卡死。这正是 <span class="mono">insert_heartbeat</span> 存在的理由。</p>
+
+<p>这块补丁在 <span class="mono">local_llm/function_parser.py</span>，是给<strong>本地 LLM</strong> 兜底的。<span class="mono">heartbeat_correction</span> 会看两件事：上一条消息是不是<strong>真用户消息</strong>、这条新消息是不是一个<strong>非 <span class="mono">send_message</span></strong> 的工具调用（<span class="mono">NO_HEARTBEAT_FUNCS = ["send_message"]</span>）。两条都满足，就调 <span class="mono">insert_heartbeat</span> 把这次调用的参数里<strong>强行设上</strong> <span class="mono">request_heartbeat=True</span>。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>上一条是真用户消息？</h4><p>解析 <span class="mono">content.type == "user_message"</span>。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>新消息是非 send_message 工具调用？</h4><p><span class="mono">send_message</span> 本就该收尾，跳过。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>两条都满足 → 补心跳</h4><p><span class="mono">insert_heartbeat</span> 强设 <span class="mono">request_heartbeat=True</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>否则原样放行</h4><p>不该补的不动，避免误伤。</p></div></div>
+</div>
+
+<p>换句话说，<span class="mono">insert_heartbeat</span> 是在替模型"补一句它忘了说的 over"。它只在最容易卡死的那个节点出手——用户刚开口、模型却调了个非收尾工具——既救了场，又不会在本该收尾时画蛇添足。但这终究是<strong>打补丁</strong>：补丁能盖住症状，盖不住"把控制权押在模型自觉上"这个根因。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">这块补丁专为本地模型而生，缘起 <span class="mono">issue #601</span>（本地模型常忘设心跳 → agent 静默）。它甚至带着一个已知的笔误（<span class="mono">tool_call</span> 分支里把 <span class="mono">tool_calls</span> 写成了 <span class="mono">tools_calls</span>）——一个为"模型不靠谱"打的补丁，自己也不那么稳。这恰好反衬出 V3 的思路：与其层层打补丁，不如<strong>从根上不依赖模型的自觉</strong>。</span></div>
+
+<h2>V3 的洞见：把这个决定从模型手里收回</h2>
+<p>V3 的做法干脆利落：<span class="mono">_get_valid_tools</span> 调 <span class="mono">runtime_override_tool_json_schema</span> 时直接传 <span class="mono">request_heartbeat=False</span>，源码注释挑明——"NOTE: difference for v3（don't add request heartbeat）"。于是工具 schema 里<strong>压根没有</strong>这个参数，模型也就无从设它。</p>
+
+<p>那循环靠什么续步？靠上一课的 <span class="mono">_decide_continuation</span>：<strong>这一轮调了工具就继续，没调就停</strong>。"调了工具"这个客观动作，取代了"模型举手要心跳"这个主观表态——前者不会忘，于是"模型忘了设"这类 bug 整类消失。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">V3 还留了一手防御：就算模型（或某个旧 prompt）<strong>硬塞</strong>进来一个 <span class="mono">request_heartbeat</span>，<span class="mono">letta_agent_v3.py::_handle_ai_response</span> 也会用 <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM, None)</span> 把它<strong>默默丢掉</strong>，免得把一个无用参数透传给工具函数——何况 V3 的续步判据根本不看工具参数。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">V3 不注入心跳（_get_valid_tools / _handle_ai_response，简化）</span></div>
+<pre><span class="cm"># _get_valid_tools：传 False，不给工具加 request_heartbeat</span>
+allowed_tools = <span class="fn">runtime_override_tool_json_schema</span>(
+    tool_list=allowed_tools,
+    response_format=self.agent_state.response_format,
+    request_heartbeat=<span class="nb">False</span>,   <span class="cm"># NOTE: difference for v3（不加心跳）</span>
+    terminal_tools=terminal_tool_names,
+)
+
+<span class="cm"># _handle_ai_response：防御性地丢掉任何残留的心跳参数</span>
+args = <span class="fn">_safe_load_tool_call_str</span>(tc.function.arguments)
+args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None</span>)   <span class="cm"># 续步只看"调没调工具"</span>
+</pre></div>
+
+<p>可别以为"心跳"是被全盘否定的设计——同代的<strong>第二代 V2 依然在用</strong>。<span class="mono">letta_agent_v2.py::_get_valid_tools</span> 传的是 <span class="mono">request_heartbeat=True</span>，它的 <span class="mono">_decide_continuation</span> 里 <span class="mono">continue_stepping = request_heartbeat</span>，续步判据仍由模型的心跳标志驱动。只有 V3（<span class="mono">letta_v1_agent</span>，注释 "no heartbeats or forced tool calls"）才把它彻底拿掉。</p>
+
+<table class="t">
+  <tr><th>实现</th><th>给工具加 request_heartbeat？</th><th>靠什么续步</th></tr>
+  <tr><td class="mono">Agent（元老 / 同步）</td><td>加（必填，非终止工具）</td><td>模型设 true → 注入心跳</td></tr>
+  <tr><td class="mono">LettaAgentV2</td><td>加（<span class="mono">request_heartbeat=True</span>）</td><td><span class="mono">continue_stepping = request_heartbeat</span></td></tr>
+  <tr><td class="mono">LettaAgentV3</td><td><strong>不加</strong>（<span class="mono">=False</span>）</td><td><span class="mono">_decide_continuation</span>：调了工具就继续</td></tr>
+</table>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">还有个反方向的坑别踩：老机制里 <span class="mono">finish_reason == "length"</span>（模型因长度被截断）是直接 <span class="mono">raise RuntimeError</span> 的——它是个<strong>不可重试的错误</strong>，<strong>不是</strong>什么"心跳"。别把"截断"和"续步"搞混。</span></div>
+
+<p>退一步看，这次改动的内核是一句朴素的工程原则：<strong>能用客观信号判定的事，就别去问模型的主观意愿。</strong>"模型想不想继续"是主观的、会忘、会漂移；"这一轮有没有调工具"是客观的、可复现、不看模型脸色。把判据从前者换成后者，循环的行为立刻从"赌模型尽责"变成"按规矩办事"——这正是 agent 从"能跑"走向"可靠"的关键一步。</p>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>这是一堂"少即是多"的设计课：删掉一个参数，等于删掉一整类 bug。</strong>老机制把"我还要不要继续"这个决定交给<strong>模型</strong>——灵活，但脆弱：模型一旦忘了把 <span class="mono">request_heartbeat</span> 设成 <span class="mono">true</span>，agent 就在用户说完话后<strong>冻住</strong>。这正是 <span class="mono">insert_heartbeat</span> 这块补丁存在的原因（还专门为本地模型修过，见 <span class="mono">issue #601</span>）。V3 的洞见是：这个决定<strong>压根不该问模型</strong>——"这一轮调了工具"本身就是"还有后续要做"的可靠信号，那就让<strong>框架</strong>来拍板。于是一个必填参数、一类心跳提示消息、外加"模型忘了设"这一整类 bug，<strong>一起消失</strong>。把控制流从"靠模型自觉"拉回到"靠框架确定"，正是迈向可靠 agent 工程的一步经典操作——<strong>能不交给模型决定的，就别交给它。</strong>同样的哲学，你会在第 16 课的 <span class="mono">tool_rules</span> 里再遇到：把约束写进框架去强制执行，而不是寄望模型自觉遵守。
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>五个锚点，一条演化线。</strong>注入参数在 <span class="mono">services/helpers/tool_parser_helper.py::runtime_override_tool_json_schema</span>（给非终止工具加必填 <span class="mono">request_heartbeat</span>）；老的解析与链式在 <span class="mono">agent.py::Agent._handle_ai_response</span>（<span class="mono">pop</span> 出标志）与 <span class="mono">agent.py::Agent.step</span>（注入心跳、<span class="mono">continue</span>/<span class="mono">break</span>）；本地模型兜底在 <span class="mono">local_llm/function_parser.py::insert_heartbeat</span>；V3 的"不注入"在 <span class="mono">letta_agent_v3.py::_get_valid_tools</span>（<span class="mono">request_heartbeat=False</span>）；常量在 <span class="mono">constants.py</span>（<span class="mono">REQUEST_HEARTBEAT_PARAM / REQUEST_HEARTBEAT_DESCRIPTION / NON_USER_MSG_PREFIX / REQ_HEARTBEAT_MESSAGE / FUNC_FAILED_HEARTBEAT_MESSAGE</span>）。一句话串起来：<strong>schema 里塞参数、_handle_ai_response 读它、step 据它续步、insert_heartbeat 给本地模型兜底，到了 V3 这一串全删，只剩"调了工具就继续"。</strong>想顺藤摸瓜时，从 <span class="mono">constants.py</span> 里那几个心跳常量入手最快——谁还引用它们，谁就还在用心跳。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>四个别记错的点。</strong>其一，解析心跳标志的是 <span class="mono">Agent._handle_ai_response</span>，<strong>不是</strong> <span class="mono">inner_step</span>——注入与续步则在 <span class="mono">Agent.step</span>。其二，<span class="mono">request_heartbeat</span> 是<strong>必填</strong>的，而且<strong>只</strong>加给<strong>非终止工具</strong>（<span class="mono">send_message</span> 这类终止工具不加）。其三，别以为"心跳"是被否定的旧设计——<strong>V2 仍在用</strong>心跳续步，<strong>只有 V3</strong> 把它拿掉。其四，老机制里 <span class="mono">finish_reason == "length"</span> 是 <span class="mono">raise RuntimeError</span>（不可重试的错误），<strong>不是</strong>心跳，别混为一谈。
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary><span class="mono">request_heartbeat</span> 加在哪、为什么必填、为什么不加给终止工具？</summary><div class="acc-body">
+<p><strong>加在哪：</strong>在 <span class="mono">runtime_override_tool_json_schema</span> 这道"改写工具 schema"的关口，遍历每个工具，往它的 <span class="mono">parameters.properties</span> 里塞一个 <span class="mono">request_heartbeat: {type: boolean}</span>，并 <span class="mono">append</span> 进 <span class="mono">parameters.required</span>。</p>
+<p><strong>为什么必填：</strong>若它是可选的，模型很可能干脆不提它，"继续"就成了薛定谔状态。设成必填，逼模型每次调工具都<strong>明确表态</strong>——这是老设计把决定权交给模型的代价。</p>
+<p><strong>为什么不加给终止工具：</strong>终止工具（如 <span class="mono">send_message</span>）的语义本就是"这一轮到此为止"，再问它"要不要继续"自相矛盾。所以 <span class="mono">terminal_tools</span> 集合里的工具被显式跳过。</p>
+<p><strong>一个副作用：</strong>因为它进了 <span class="mono">required</span>，模型每次调普通工具都得带上这个参数——这也是为什么 <span class="mono">_handle_ai_response</span> 第一件事就是把它 <span class="mono">pop</span> 出来，免得它混进真正传给工具函数的实参里。</p>
+<p><strong>源码在哪：</strong><span class="mono">services/helpers/tool_parser_helper.py::runtime_override_tool_json_schema</span>。</p>
+</div></details>
+
+<details class="accordion"><summary>工具<strong>报错</strong>时那条"自动心跳"是干嘛的？</summary><div class="acc-body">
+<p><strong>示例：</strong>模型调了个查数据库的工具，工具抛了异常。如果就这么收场，模型根本不知道发生了什么，用户只会收到一句莫名其妙的沉默。</p>
+<p><strong>为什么这样设计：</strong>老机制在 <span class="mono">step</span> 里把"函数失败"排在心跳判断<strong>之前</strong>：只要 <span class="mono">function_failed</span> 为真，就算模型没要心跳，也强行注入一条 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> 续上一圈，让模型<strong>看见错误、有机会补救</strong>（换个参数重试，或向用户解释）。</p>
+<p><strong>一个连锁反应：</strong>正因为"报错也续步"，模型才能在下一圈换个参数重试同一个工具——这也是为什么第 14 课那道 <span class="mono">max_steps=50</span> 保险丝必须存在：万一模型反复失败、反复重试，总得有个上限兜住，免得无限烧 token。</p>
+<p><strong>源码在哪：</strong><span class="mono">agent.py::step</span> 的 <span class="mono">if function_failed: ... continue</span> 分支；常量 <span class="mono">constants.py::FUNC_FAILED_HEARTBEAT_MESSAGE</span>。</p>
+<p><strong>还有什么替代：</strong>报错即停——但模型没机会自愈，体验更差。老机制选了"出错也续一圈让模型救场"。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">insert_heartbeat</span> 和 issue #601 到底在补什么？</summary><div class="acc-body">
+<p><strong>示例：</strong>一个<strong>本地小模型</strong>跑 agent，用户问完问题，它调了个工具却忘了设 <span class="mono">request_heartbeat=true</span>。工具跑完没人续步，agent 当场静默——用户以为它死机了。</p>
+<p><strong>为什么这样设计：</strong>本地模型不如大厂模型"听话"，常漏设这个参数。<span class="mono">heartbeat_correction</span> 于是兜底：<strong>上一条是真用户消息</strong> 且 <strong>新消息是非 <span class="mono">send_message</span> 的工具调用</strong>时，就 <span class="mono">insert_heartbeat</span> 强行补上 <span class="mono">request_heartbeat=True</span>。这正是 <span class="mono">issue #601</span> 的修复。</p>
+<p><strong>源码在哪：</strong><span class="mono">local_llm/function_parser.py::insert_heartbeat / heartbeat_correction</span>；<span class="mono">NO_HEARTBEAT_FUNCS = ["send_message"]</span>。</p>
+<p><strong>还有什么替代：</strong>就是 V3 的路子——不依赖模型设标志，从根上让"调了工具"驱动续步，这块补丁也就不必存在了。</p>
+</div></details>
+
+<details class="accordion"><summary>V3 凭什么敢删掉心跳，V2 又为什么还留着？</summary><div class="acc-body">
+<p><strong>V3 凭什么敢删：</strong>因为它换了续步信号。老机制问"模型想不想继续"（主观、会忘），V3 改问"这一轮调没调工具"（客观、不会忘）——而"调了工具"本身就蕴含"还得把结果喂回模型"，天然等价于"要继续"。信号更可靠，心跳参数就成了多余。</p>
+<p><strong>V2 为什么还留：</strong>V2 是从老 MemGPT 循环平滑演进来的异步版，续步判据仍是 <span class="mono">continue_stepping = request_heartbeat</span>，<strong>为兼容旧设计</strong>而保留心跳。删除是 V3 才迈出的一步。</p>
+<p><strong>怎么记：</strong>看 <span class="mono">_get_valid_tools</span> 传的那个布尔——V2 传 <span class="mono">True</span>（加心跳），V3 传 <span class="mono">False</span>（不加）。一参之差，正是两代的分水岭。</p>
+<p><strong>一句话总结这条演化：</strong>从"模型举手要心跳"（元老 <span class="mono">Agent</span>）→ 异步化但仍保留心跳（<span class="mono">V2</span>）→ 彻底改用"调了工具就继续"（<span class="mono">V3</span>）。每一代都在把"继续"的决定权，从模型一点点挪回框架。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta_agent_v2.py::_get_valid_tools</span> vs <span class="mono">letta_agent_v3.py::_get_valid_tools</span>；续步见 <span class="mono">letta_agent_v3.py::_decide_continuation</span>（第 14 课）。</p>
+</div></details>
+
+<h2>下一站</h2>
+<p>这一课我们追了一条设计演化线：老的 MemGPT / 元老 <span class="mono">Agent</span> / V2 给每个非终止工具塞一个必填的 <span class="mono">request_heartbeat</span>，让模型自己举手续步；本地模型忘了设，就靠 <span class="mono">insert_heartbeat</span> 兜底。到了 V3，这一整套被"调了工具就继续"取代——参数、心跳消息，连同"模型忘了设"的 bug，一并删干净。</p>
+
+<p>这正好接回第 14 课那句 <span class="mono">_decide_continuation</span> 的判据，也呼应它注释里的 "no heartbeats"。而老机制里反复出现的"工具规则可以覆盖心跳标志"（<span class="mono">has_children_tools</span> / <span class="mono">is_terminal_tool</span> / <span class="mono">is_continue_tool</span>），正是下一课第 16 课的主角——<span class="mono">tool_rules</span>（终止 / 必调 / 审批）究竟怎么左右这个循环。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">一句话带走：<strong>老机制让模型设 <span class="mono">request_heartbeat=true</span> 来续步，V3 改成"调了工具就继续"，把这个决定从模型手里收回给框架——删一个参数，灭一类 bug。</strong></span></div>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>request_heartbeat 是什么</strong>：老机制给每个<strong>非终止工具</strong>加的一个<strong>必填</strong>布尔参数；模型设 <span class="mono">true</span> 才续步。注入在 <span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>。</li>
+    <li><strong>老机制怎么续步</strong>：模型设 <span class="mono">true</span> → 框架注入一条 <span class="mono">REQ_HEARTBEAT_MESSAGE</span>（<span class="mono">role=user</span>，对用户隐藏）→ 续；工具报错 → 注入 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> → 续；否则 <span class="mono">break</span>。解析在 <span class="mono">agent.py::_handle_ai_response</span>，链式在 <span class="mono">agent.py::step</span>。</li>
+    <li><strong>insert_heartbeat</strong>：本地模型常忘设标志（<span class="mono">issue #601</span>）→ 上一条是用户消息且这是非 <span class="mono">send_message</span> 工具调用时，强行补 <span class="mono">request_heartbeat=True</span>（<span class="mono">local_llm/function_parser.py</span>）。</li>
+    <li><strong>V3 拿掉它</strong>：<span class="mono">_get_valid_tools</span> 传 <span class="mono">request_heartbeat=False</span>（"NOTE: difference for v3"），续步改由 <span class="mono">_decide_continuation</span>"调了工具就继续"决定；还会 <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM)</span> 防御性丢弃残留。</li>
+    <li><strong>别记错</strong>：<strong>V2 仍用心跳</strong>（传 <span class="mono">True</span>），只有 V3 删；解析在 <span class="mono">_handle_ai_response</span> 不是 <span class="mono">inner_step</span>；老机制 <span class="mono">finish_reason=="length"</span> 是 <span class="mono">raise</span>，不是心跳。</li>
+    <li><strong>设计亮点</strong>：把"要不要继续"从"模型自觉"收回到"框架确定"——删一个参数，灭一类 bug。</li>
+    <li><strong>源码</strong>：<span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>、<span class="mono">agent.py::_handle_ai_response / step</span>、<span class="mono">local_llm/function_parser.py::insert_heartbeat</span>、<span class="mono">letta_agent_v3.py::_get_valid_tools</span>、<span class="mono">constants.py</span> 心跳常量。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 老机制（元老 Agent / V2）里的 request_heartbeat 到底是个什么参数？它被加到哪些工具上？</div>
+  <ol class="opts">
+    <li>一个整数参数，表示模型还想再走多少步</li>
+    <li>一个必填的布尔参数，由 runtime_override_tool_json_schema 动态加到每个非终止工具上；模型想续步就得设 true</li>
+    <li>一个可选的字符串参数，只加到 send_message 这类终止工具上</li>
+    <li>一个由框架自动填好的只读字段，模型无法设置</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。request_heartbeat 是老机制在 tool_parser_helper.py::runtime_override_tool_json_schema 里动态注入的布尔参数：只加给非终止工具（send_message 这类终止工具被排除），而且进 required（必填）。于是模型每调一个普通工具都得表态——设 true 才续步，false（默认）就收尾。它不是可选的、不是字符串、不是步数计数器，也不是只读字段；恰恰相反，它把“要不要继续”的决定权显式交到了模型手里。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 老机制里，模型把 request_heartbeat 设成 true 之后，框架靠什么把这一圈续下去？工具报错时又会怎样？</div>
+  <ol class="opts">
+    <li>框架把 request_heartbeat 透传给工具函数，由工具自己决定要不要续</li>
+    <li>框架重启整个 step() 循环，从第 0 步重新跑</li>
+    <li>框架直接把工具结果当成 assistant 消息追加，不需要任何额外消息</li>
+    <li>框架注入一条 role=user 的“心跳”消息（REQ_HEARTBEAT_MESSAGE，对用户隐藏）把控制权还给模型并 continue；工具报错时即便没要心跳，也会自动注入 FUNC_FAILED_HEARTBEAT_MESSAGE 续一圈</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。解析在 agent.py::_handle_ai_response（pop 出标志、把字符串 "true" 归一成布尔），链式在 agent.py::step：function_failed 为真 → 注入 FUNC_FAILED_HEARTBEAT_MESSAGE 并 continue；否则 heartbeat_request 为真 → 注入 REQ_HEARTBEAT_MESSAGE 并 continue；都不满足 → break。这两条消息都带 NON_USER_MSG_PREFIX 前缀、角色是 user 但对用户隐藏。“报错”那条排在心跳判断之前，所以哪怕模型没要心跳，失败也会自动续一圈让它补救。框架并不会把心跳标志透传给工具（恰恰要先 pop 掉），也不会从头重启循环。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. V3（letta_v1_agent）不再用心跳，那它靠什么决定要不要再走一步？又怎么处理模型硬塞进来的 request_heartbeat？</div>
+  <ol class="opts">
+    <li>还是看 request_heartbeat，只是把默认值从 false 改成了 true</li>
+    <li>看模型生成文本里有没有出现“继续”二字</li>
+    <li>靠 _decide_continuation：“这一轮调了工具就继续，没调就停”；_get_valid_tools 传 request_heartbeat=False 压根不加这个参数，_handle_ai_response 还会 args.pop(REQUEST_HEARTBEAT_PARAM, None) 把残留默默丢掉</li>
+    <li>每一步都无脑续，直到撞上 token 上限才停</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。V3 的 _get_valid_tools 调 runtime_override_tool_json_schema 时传 request_heartbeat=False（注释 "NOTE: difference for v3"），工具 schema 里根本没有这个参数。续步判据回到第 14 课的 _decide_continuation：调了工具 → 继续（工具调用是两段式的，结果得喂回模型），没调 → 停。就算某个旧 prompt 硬塞一个心跳参数，_handle_ai_response 也用 args.pop(REQUEST_HEARTBEAT_PARAM, None) 丢掉它，绝不让残留干扰判据。它既不靠默认 true、也不扫文本关键词，更不是无脑续到 token 上限。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. V3 删掉 request_heartbeat，最大的收益是消灭了哪一整类 bug？老机制原本又是用什么给这类 bug 打补丁的？</div>
+  <ol class="opts">
+    <li>消灭“上下文窗口溢出”这类 bug；老机制靠压缩历史兜底</li>
+    <li>消灭“工具执行超时”这类 bug；老机制靠加大超时时间兜底</li>
+    <li>消灭“并行工具调用结果冲突”这类 bug；老机制靠串行化工具兜底</li>
+    <li>消灭“模型忘了设 request_heartbeat=true → agent 在调完工具后直接静默冻住”这一类 bug；老机制靠 local_llm 里的 insert_heartbeat 给本地模型兜底（issue #601）</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。把“要不要继续”押在模型自觉上很脆弱：模型一旦忘了设 request_heartbeat=true，工具跑完没人续步，agent 就在用户说完话后静默冻住。这正是 insert_heartbeat（local_llm/function_parser.py）存在的理由——本地模型常忘设（issue #601），于是“上一条是真用户消息”且“这是非 send_message 工具调用”时，强行补 request_heartbeat=True。V3 把判据换成“调了工具就继续”，这一整类“模型忘了设”的 bug 随之消失，补丁也不必存在。上下文溢出、工具超时、并行冲突是另外的问题，与删心跳无关。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. 关于“哪几代靠心跳续步”，下面哪个说法是对的？</div>
+  <ol class="opts">
+    <li>元老 Agent 和第二代 V2 都还在用心跳（V2 的 _get_valid_tools 传 True，_decide_continuation 里 continue_stepping = request_heartbeat），只有第三代 V3 把它彻底删掉</li>
+    <li>心跳是被全盘否定的旧设计，V2 和 V3 都已经不用了</li>
+    <li>只有元老 Agent 用心跳，V2 和 V3 都改用了 _decide_continuation</li>
+    <li>三代都在用心跳，V3 只是把常量名换了一个</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。别把“心跳”当成被否定的旧设计——同代的 V2 依然在用。letta_agent_v2.py::_get_valid_tools 传 request_heartbeat=True，其 _decide_continuation 里 continue_stepping = request_heartbeat，续步判据仍由模型的心跳标志驱动。只有 V3（letta_v1_agent，注释 "no heartbeats or forced tool calls"）才把心跳整套拿掉——它重写 _decide_continuation，去掉该参数、默认继续。所以不是“V2/V3 都不用”，不是“只有 Agent 用”，更不是“三代都用、只换名字”。一参之差（_get_valid_tools 传 True 还是 False）正是 V2 与 V3 的分水岭。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用“对讲机”这个比喻，把第 15 课从“心跳续步”到“调了工具就继续”的演化串成一个完整故事，并想三件事：(1) 老机制为什么要让模型在参数里举手要心跳（request_heartbeat=true）？把“要不要继续”交给模型，灵活在哪、脆弱在哪？(2) insert_heartbeat 这块给本地模型打的补丁（issue #601），和 V3“从根上不依赖模型自觉”的思路，本质区别在哪？为什么说“补丁盖症状、V3 治根因”？(3) V3 既然觉得心跳多余，为什么同代的 V2 还留着它？从“兼容旧设计”和“演化节奏”的角度想想，删一个看似冗余的参数为什么也得分代、分步来做。</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+Last lesson, while taking the V3 loop apart, we hit a counterintuitive criterion: whether to step again <strong>doesn't read whether the model wants to continue, only whether this round called a tool</strong>. That left a loose thread — what exactly did the "no heartbeats" in <span class="mono">letta_v1_agent</span>'s comment take away? This lesson settles that account.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+This is a <strong>design-evolution lesson</strong>. Old MemGPT, the elder <span class="mono">Agent</span>, and the second-generation <span class="mono">LettaAgentV2</span> all step again via one switch called <span class="mono">request_heartbeat</span>: the model must <strong>raise its own hand</strong> inside a tool call to say "I want to keep going." The third generation, V3, deletes that switch entirely. Between cutting it and keeping it sits a plain piece of engineering wisdom — <strong>don't pin a decision as critical as "continue or not" on the model's conscientiousness.</strong></p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Picture the two generations as two kinds of walkie-talkie.</strong> The old one is a <strong>half-duplex walkie-talkie</strong>: every time you finish a sentence you must actively add "over, please continue," or the other side won't know it's their turn; forget that "over" and the line goes <strong>silent</strong> — they wait for you, you think you're waiting for them, and the whole conversation jams right there. The new one changes the rule: <strong>as long as you keep handing out "tool tickets," the line keeps turning by default</strong>, no need to shout "please continue" each time; only when you stop handing out tickets and speak directly do you hand the mic back. The old design rests "continue" on <strong>whether the speaker remembers the code word</strong>; the new one welds it to <strong>the objective act of "did you hand out a ticket"</strong> — the latter can't be forgotten, so it can't jam. In the end, a reliable line doesn't lean on the worker remembering to call "over" every time, but on the mechanical certainty of the belt itself.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>One line for this lesson: the old design lets the <em>model</em> decide "continue or not," and V3 takes that decision back for the <em>framework</em>.</strong> The old mechanism (the elder <span class="mono">Agent</span> in <span class="mono">letta/agent.py</span>, plus <span class="mono">LettaAgentV2</span>) stuffs every <strong>non-terminal tool</strong> with a required boolean param <span class="mono">request_heartbeat</span>; to keep working, the model must set it <span class="mono">true</span>, and the framework then injects a "heartbeat" user message to hand control back and take one more lap (<span class="mono">agent.py::_handle_ai_response</span> reads the flag, <span class="mono">agent.py::step</span> injects and continues). When a tool <strong>fails</strong>, the framework auto-adds a heartbeat too, so the model can see the error and recover. V3's (<span class="mono">letta_agent_v3.py</span>) insight: this decision <strong>shouldn't be asked of the model</strong> — "a tool was called this round" is itself a reliable signal of "there's follow-up," so <span class="mono">_get_valid_tools</span> passes <span class="mono">request_heartbeat=False</span> (comment "NOTE: difference for v3"), and continuation falls back to last lesson's <span class="mono">_decide_continuation</span>. One required param, one class of heartbeat message, and a whole bug-class of "the model forgot to set it" all vanish together. The cost is nearly zero — because "called a tool" already means "keep going," and that extra layer of making the model confirm once more was redundant from the start.
+</div>
+
+<h2>The old design: every non-terminal tool carries a request_heartbeat</h2>
+<p>First, get to know this switch. Before handing a tool's JSON schema to the model, the old mechanism <strong>dynamically</strong> stuffs one extra param into every tool — <span class="mono">request_heartbeat</span> (a boolean) — and lists it in <span class="mono">required</span>. The injection logic lives in <span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>, whose docstring says it plainly — "tools get an extra <span class="mono">request_heartbeat</span> parameter (except terminal tools)."</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">This parameter's description (<span class="mono">constants.py::REQUEST_HEARTBEAT_DESCRIPTION</span>) is the instruction sheet written for the model: <strong>"if you want to send a follow-up message or call another tool (chaining multiple tools together), you MUST set this to <span class="mono">True</span>; set it <span class="mono">False</span> (the default) and the execution chain ends immediately after this call."</strong> — whether to "continue" is placed squarely in the model's hands.</span></div>
+
+<p>Note two "only"s: it's <strong>added only to non-terminal tools</strong> (terminal tools like <span class="mono">send_message</span> are excluded — they're meant to end the round), and once added it's <strong>required</strong>. So every time the model calls an ordinary tool, it's forced to declare once more "do I continue or not."</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">Raw tool schema</div><div class="nd">only the tool's own parameters</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">runtime_override_tool_json_schema</div><div class="nd">the gate that rewrites the tool schema</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Old · add request_heartbeat</div><div class="nd">bool, and into required (except terminal tools)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">V3 · add nothing</div><div class="nd">passes request_heartbeat=False</div></div>
+</div>
+
+<p>Why did MemGPT design it this way? Because the model produces just "one passage" at a time, while a task often needs several tool calls in a row — check core memory, search archival, then finally reply. The model needs an outlet to tell the framework "this passage isn't done, don't rush the mic back to the user," and <span class="mono">request_heartbeat=true</span> is that outlet. It's of a piece with lesson 4's ReAct and inner monologue: let the model <strong>explicitly</strong> say "I want to think one more step, do one more step."</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">inject request_heartbeat (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">runtime_override_tool_json_schema</span>(tool_list, response_format,
+                                      request_heartbeat=<span class="nb">True</span>, terminal_tools=<span class="kw">None</span>):
+    <span class="cm"># docstring: tools get an extra request_heartbeat param (except terminal tools)</span>
+    terminal_tools = terminal_tools <span class="kw">or</span> <span class="fn">set</span>()
+    <span class="kw">for</span> tool_json <span class="kw">in</span> tool_list:
+        <span class="kw">if</span> request_heartbeat:
+            <span class="kw">if</span> tool_json[<span class="st">"name"</span>] <span class="kw">not in</span> terminal_tools:   <span class="cm"># only add to non-terminal tools</span>
+                tool_json[<span class="st">"parameters"</span>][<span class="st">"properties"</span>][REQUEST_HEARTBEAT_PARAM] = {
+                    <span class="st">"type"</span>: <span class="st">"boolean"</span>,
+                    <span class="st">"description"</span>: REQUEST_HEARTBEAT_DESCRIPTION,
+                }
+                <span class="kw">if</span> REQUEST_HEARTBEAT_PARAM <span class="kw">not in</span> tool_json[<span class="st">"parameters"</span>][<span class="st">"required"</span>]:
+                    tool_json[<span class="st">"parameters"</span>][<span class="st">"required"</span>].<span class="fn">append</span>(REQUEST_HEARTBEAT_PARAM)  <span class="cm"># required</span>
+    <span class="kw">return</span> tool_list
+</pre></div>
+
+<h2>How the old mechanism steps again: a "heartbeat" message chain</h2>
+<p>With the param in place, how does the loop use it to step again? In three beats: the model includes <span class="mono">request_heartbeat=true</span> in a tool call → after running the tool, the framework <strong>injects a "heartbeat" user message</strong> to hand control back to the model → next lap the model reads that message and carries on. If it's <span class="mono">false</span> (or absent), the loop <span class="mono">break</span>s and hands the mic back to the real user.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">This "heartbeat" message has <span class="mono">role=user</span>, but no real user sent it — its content is prefixed with <span class="mono">NON_USER_MSG_PREFIX</span> ("[This is an automated system message hidden from the user] ") and is <strong>hidden</strong> from the user. See the constant <span class="mono">constants.py::REQ_HEARTBEAT_MESSAGE</span>.</span></div>
+
+<p>The crux here shares a root with last lesson: a tool call is inherently <strong>two-stage</strong> — the model first says "I'll call <span class="mono">search</span>," the framework runs it, gets a result, and must <strong>feed that result back</strong> for the model to carry on. So "called a tool" already means "there's a second half." Yet the old mechanism didn't use that fact directly; it <strong>took an extra detour</strong>: making the model confirm once more, in the parameters, "I want to continue." V3 saw through that confirmation as redundant and dropped it.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Model calls a tool</h4><p>Includes <span class="mono">request_heartbeat=true</span>, signaling "I want to continue."</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>_handle_ai_response reads the flag</h4><p><span class="mono">function_args.pop("request_heartbeat")</span>; the string "true" is normalized to a bool.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Execute the tool</h4><p>Run it and get the result; if it <strong>fails</strong>, record <span class="mono">function_failed=True</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>step injects a heartbeat</h4><p><span class="mono">true</span> → inject <span class="mono">REQ_HEARTBEAT_MESSAGE</span> (role=user), <span class="mono">continue</span>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>false → break</h4><p>No heartbeat requested, break out of the loop, wrap up and hand back to the user.</p></div></div>
+</div>
+
+<p>This parsing step happens in <span class="mono">agent.py::Agent._handle_ai_response</span>: it <span class="mono">pop</span>s <span class="mono">request_heartbeat</span> out of the tool args and, along the way, handles the corner case of "serialized into the string 'true'." Tool rules can also <strong>override</strong> this flag — <span class="mono">has_children_tools</span> forces <span class="mono">True</span>, <span class="mono">is_terminal_tool</span> forces <span class="mono">False</span>, <span class="mono">is_continue_tool</span> forces <span class="mono">True</span> (that rule set is for lesson 16 to detail).</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't misplace it: the one parsing the heartbeat flag is <span class="mono">Agent._handle_ai_response</span>, <strong>not</strong> <span class="mono">inner_step</span>; the one actually "injecting the heartbeat message and deciding continue/break" is <span class="mono">Agent.step</span> (its docstring says verbatim it "handles heartbeat-request and function-failure based chaining within the loop").</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agent.py</span><span class="ln">old chained continuation (_handle_ai_response + step, simplified)</span></div>
+<pre><span class="cm"># _handle_ai_response: pull the heartbeat flag out of the tool args</span>
+heartbeat_request = function_args.<span class="fn">pop</span>(<span class="st">"request_heartbeat"</span>, <span class="kw">None</span>)
+<span class="kw">if</span> <span class="fn">isinstance</span>(heartbeat_request, <span class="nb">str</span>) <span class="kw">and</span> heartbeat_request.<span class="fn">lower</span>() == <span class="st">"true"</span>:
+    heartbeat_request = <span class="nb">True</span>             <span class="cm"># normalize the string "true" to a bool</span>
+
+<span class="cm"># step: use the flag to decide continue or wrap up</span>
+<span class="kw">if</span> function_failed:                       <span class="cm"># tool failed -> auto-continue so the model sees the error</span>
+    inject(<span class="fn">get_heartbeat</span>(FUNC_FAILED_HEARTBEAT_MESSAGE)); <span class="kw">continue</span>
+<span class="kw">elif</span> heartbeat_request:                   <span class="cm"># model asked for a heartbeat -> continue</span>
+    inject(<span class="fn">get_heartbeat</span>(REQ_HEARTBEAT_MESSAGE)); <span class="kw">continue</span>
+<span class="kw">else</span>:
+    <span class="kw">break</span>                                <span class="cm"># no heartbeat -> wrap up, hand back to the user</span>
+</pre></div>
+
+<p>Beat 4's "tool failed → auto-continue" deserves its own mention: even if the model <strong>didn't</strong> ask for a heartbeat, as long as a tool execution <strong>fails</strong>, the old mechanism force-injects a <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> to hand control back to the model — so it can see the error and get a chance to recover, rather than wrapping up hastily with a failed tool call in hand.</p>
+
+<div class="cellgroup">
+  <div class="cg-cap">The old mechanism's two "hand control back" messages both carry the <b>NON_USER_MSG_PREFIX</b> prefix and are hidden from the user</div>
+  <div class="cells">
+    <span class="lab">continue</span>
+    <span class="cell hl">REQ_HEARTBEAT_MESSAGE</span>
+    <span class="sep">·</span>
+    <span class="cell">model set true, return control</span>
+  </div>
+  <div class="cells">
+    <span class="lab">failure</span>
+    <span class="cell hl">FUNC_FAILED_HEARTBEAT_MESSAGE</span>
+    <span class="sep">·</span>
+    <span class="cell">function failed, return control</span>
+  </div>
+  <div class="cells">
+    <span class="lab">prefix</span>
+    <span class="cell q">[This is an automated system message hidden from the user]</span>
+  </div>
+</div>
+
+<div class="cols">
+  <div class="col">
+    <h4>🕰️ Old mechanism (elder Agent; V2 similar)</h4>
+    <p>The schema has a <strong>required</strong> <span class="mono">request_heartbeat</span>.</p>
+    <p>Model sets <span class="mono">true</span> → inject <span class="mono">REQ_HEARTBEAT_MESSAGE</span> (role=user) → continue.</p>
+    <p>Tool fails → inject <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> → continue.</p>
+    <p class="mono" style="font-size:.82rem">continue = the model raised its own hand</p>
+  </div>
+  <div class="col">
+    <h4>🆕 V3 (letta_v1_agent)</h4>
+    <p>The schema <strong>adds no</strong> <span class="mono">request_heartbeat</span> at all.</p>
+    <p><span class="mono">_decide_continuation</span>: called a tool this round → continue; didn't → stop.</p>
+    <p>Even if the model jams in a heartbeat param, <span class="mono">args.pop(...)</span> quietly drops it.</p>
+    <p class="mono" style="font-size:.82rem">continue = the framework checks "was a tool called"</p>
+  </div>
+</div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">💓</span><span class="lab">Old · walkie-talkie</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🤐</span><span class="bubble">Forgot "over, please continue" → line goes silent</span>
+    <span class="emoji">🔁</span><span class="bubble">Still handing out tool tickets → line keeps turning</span>
+    <span class="lab">New · continue by default</span>
+  </div>
+  <div class="cap">The old way leans on the model shouting "over, please continue" each time and jams when it forgets; the new way welds "continue" to "was a tool called," so nothing to shout and nothing to forget</div>
+</div>
+
+<h2>What if the model forgets: the insert_heartbeat patch</h2>
+<p>Handing the "continue" decision to the model is flexible, but <strong>fragile</strong>: the moment the model forgets to set <span class="mono">request_heartbeat</span> to <span class="mono">true</span>, the agent <strong>freezes</strong> right after the user has spoken and it called a tool — the tool finishes, nobody steps again, and the conversation jams out of nowhere. This is exactly why <span class="mono">insert_heartbeat</span> exists.</p>
+
+<p>This patch sits in <span class="mono">local_llm/function_parser.py</span> as a safety net for <strong>local LLMs</strong>. <span class="mono">heartbeat_correction</span> checks two things: whether the previous message is a <strong>real user message</strong>, and whether this new message is a <strong>non-<span class="mono">send_message</span></strong> tool call (<span class="mono">NO_HEARTBEAT_FUNCS = ["send_message"]</span>). If both hold, it calls <span class="mono">insert_heartbeat</span> to <strong>force-set</strong> <span class="mono">request_heartbeat=True</span> into this call's arguments.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Previous is a real user message?</h4><p>Parse <span class="mono">content.type == "user_message"</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>New message is a non-send_message tool call?</h4><p><span class="mono">send_message</span> is meant to wrap up, so skip it.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Both hold → add a heartbeat</h4><p><span class="mono">insert_heartbeat</span> force-sets <span class="mono">request_heartbeat=True</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Otherwise pass through</h4><p>Leave alone what shouldn't be patched, avoiding collateral damage.</p></div></div>
+</div>
+
+<p>In other words, <span class="mono">insert_heartbeat</span> adds, on the model's behalf, "the 'over' it forgot to say." It only steps in at the node most prone to jamming — the user just spoke, yet the model called a non-terminal tool — rescuing the situation without gilding the lily when it should wrap up. But this is, after all, a <strong>patch</strong>: it covers the symptom, not the root cause of "pinning control on the model's conscientiousness."</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">This patch was born for local models, originating from <span class="mono">issue #601</span> (local models often forget to set the heartbeat → the agent goes silent). It even carries a known typo (the <span class="mono">tool_call</span> branch writes <span class="mono">tools_calls</span> instead of <span class="mono">tool_calls</span>) — a patch for "the model is unreliable" that isn't all that steady itself. Which neatly throws V3's approach into relief: rather than patch layer upon layer, stop depending on the model's conscientiousness at the root.</span></div>
+
+<h2>V3's insight: take the decision back from the model</h2>
+<p>V3's move is clean and decisive: when <span class="mono">_get_valid_tools</span> calls <span class="mono">runtime_override_tool_json_schema</span>, it passes <span class="mono">request_heartbeat=False</span> outright, and the source comment spells it out — "NOTE: difference for v3 (don't add request heartbeat)." So the tool schema has no such param at all, and the model has no way to set it.</p>
+
+<p>Then what does the loop step on? On last lesson's <span class="mono">_decide_continuation</span>: <strong>called a tool this round → continue, didn't → stop</strong>. The objective act of "called a tool" replaces the subjective declaration of "the model raised its hand for a heartbeat" — the former can't be forgotten, so the whole bug-class of "the model forgot to set it" vanishes.</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">V3 keeps one defensive move too: even if the model (or some old prompt) <strong>jams in</strong> a <span class="mono">request_heartbeat</span>, <span class="mono">letta_agent_v3.py::_handle_ai_response</span> uses <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM, None)</span> to <strong>quietly drop it</strong>, so a stray flag is never passed through to the tool function — and V3's continuation criterion never reads tool args anyway.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">V3 injects no heartbeat (_get_valid_tools / _handle_ai_response, simplified)</span></div>
+<pre><span class="cm"># _get_valid_tools: pass False, don't add request_heartbeat to tools</span>
+allowed_tools = <span class="fn">runtime_override_tool_json_schema</span>(
+    tool_list=allowed_tools,
+    response_format=self.agent_state.response_format,
+    request_heartbeat=<span class="nb">False</span>,   <span class="cm"># NOTE: difference for v3 (no heartbeat added)</span>
+    terminal_tools=terminal_tool_names,
+)
+
+<span class="cm"># _handle_ai_response: defensively drop any leftover heartbeat param</span>
+args = <span class="fn">_safe_load_tool_call_str</span>(tc.function.arguments)
+args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None</span>)   <span class="cm"># continuation only looks at "was a tool called"</span>
+</pre></div>
+
+<p>Don't assume "heartbeats" are a wholly rejected design — the same-era second generation, <strong>V2, still uses them</strong>. <span class="mono">letta_agent_v2.py::_get_valid_tools</span> passes <span class="mono">request_heartbeat=True</span>, and in its <span class="mono">_decide_continuation</span>, <span class="mono">continue_stepping = request_heartbeat</span> — continuation is still driven by the model's heartbeat flag. Only V3 (<span class="mono">letta_v1_agent</span>, comment "no heartbeats or forced tool calls") removes it entirely.</p>
+
+<table class="t">
+  <tr><th>Implementation</th><th>Add request_heartbeat to tools?</th><th>What it steps on</th></tr>
+  <tr><td class="mono">Agent (elder / synchronous)</td><td>add (required, non-terminal tools)</td><td>model sets true → inject heartbeat</td></tr>
+  <tr><td class="mono">LettaAgentV2</td><td>add (<span class="mono">request_heartbeat=True</span>)</td><td><span class="mono">continue_stepping = request_heartbeat</span></td></tr>
+  <tr><td class="mono">LettaAgentV3</td><td><strong>don't add</strong> (<span class="mono">=False</span>)</td><td><span class="mono">_decide_continuation</span>: called a tool → continue</td></tr>
+</table>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">One more trap in the other direction: in the old mechanism, <span class="mono">finish_reason == "length"</span> (the model truncated by length) directly <span class="mono">raise</span>s a <span class="mono">RuntimeError</span> — it's a <strong>non-retryable error</strong>, <strong>not</strong> any kind of "heartbeat." Don't confuse "truncation" with "stepping again."</span></div>
+
+<p>Step back, and the core of this change is one plain engineering principle: <strong>what an objective signal can settle, don't ask the model's subjective will.</strong> "Does the model want to continue" is subjective, forgettable, drift-prone; "did this round call a tool" is objective, reproducible, indifferent to the model's mood. Swap the criterion from the former to the latter and the loop's behavior shifts at once from "betting on the model being dutiful" to "going by the rules" — exactly the key step in an agent moving from "runs" to "reliable."</p>
+
+<div class="card spark">
+  <div class="tag">💡 Design spark</div>
+  <strong>This is a "less is more" design lesson: delete one parameter, and you delete a whole bug-class.</strong> The old mechanism hands the "do I keep going" decision to the <strong>model</strong> — flexible, but fragile: once the model forgets to set <span class="mono">request_heartbeat</span> to <span class="mono">true</span>, the agent <strong>freezes</strong> right after the user speaks. This is exactly why the <span class="mono">insert_heartbeat</span> patch exists (and it was fixed specifically for local models, see <span class="mono">issue #601</span>). V3's insight: this decision <strong>shouldn't be asked of the model at all</strong> — "a tool was called this round" is itself a reliable signal of "there's follow-up to do," so let the <strong>framework</strong> make the call. So one required parameter, one class of heartbeat prompt message, plus the whole bug-class of "the model forgot to set it" all <strong>vanish together</strong>. Pulling control flow from "lean on the model's conscientiousness" back to "lean on the framework's certainty" is a classic move toward reliable agent engineering — <strong>whatever needn't be left to the model to decide, don't.</strong> You'll meet the same philosophy again in lesson 16's <span class="mono">tool_rules</span>: write constraints into the framework to enforce them, rather than hoping the model abides by them on its own.
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Five anchors, one evolution line.</strong> The param injection is in <span class="mono">services/helpers/tool_parser_helper.py::runtime_override_tool_json_schema</span> (adds a required <span class="mono">request_heartbeat</span> to non-terminal tools); the old parsing and chaining are in <span class="mono">agent.py::Agent._handle_ai_response</span> (<span class="mono">pop</span>s the flag) and <span class="mono">agent.py::Agent.step</span> (inject heartbeat, <span class="mono">continue</span>/<span class="mono">break</span>); the local-model safety net is <span class="mono">local_llm/function_parser.py::insert_heartbeat</span>; V3's "don't inject" is in <span class="mono">letta_agent_v3.py::_get_valid_tools</span> (<span class="mono">request_heartbeat=False</span>); the constants are in <span class="mono">constants.py</span> (<span class="mono">REQUEST_HEARTBEAT_PARAM / REQUEST_HEARTBEAT_DESCRIPTION / NON_USER_MSG_PREFIX / REQ_HEARTBEAT_MESSAGE / FUNC_FAILED_HEARTBEAT_MESSAGE</span>). Strung into one line: <strong>the schema stuffs in the param, _handle_ai_response reads it, step continues on it, insert_heartbeat backs up local models, and by V3 the whole chain is deleted, leaving only "called a tool → continue."</strong> When tracing the thread, start from those heartbeat constants in <span class="mono">constants.py</span> — whoever still references them is still using heartbeats.
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfalls</div>
+  <strong>Four points not to misremember.</strong> One: the one parsing the heartbeat flag is <span class="mono">Agent._handle_ai_response</span>, <strong>not</strong> <span class="mono">inner_step</span> — injection and continuation are in <span class="mono">Agent.step</span>. Two: <span class="mono">request_heartbeat</span> is <strong>required</strong>, and added <strong>only</strong> to <strong>non-terminal tools</strong> (terminal tools like <span class="mono">send_message</span> don't get it). Three: don't think "heartbeats" are a rejected old design — <strong>V2 still uses</strong> heartbeats to continue, <strong>only V3</strong> drops them. Four: in the old mechanism, <span class="mono">finish_reason == "length"</span> is a <span class="mono">raise RuntimeError</span> (a non-retryable error), <strong>not</strong> a heartbeat — don't lump them together.
+</div>
+
+<h2>Digging a little deeper</h2>
+
+<details class="accordion"><summary>Where is <span class="mono">request_heartbeat</span> added, why is it required, and why not on terminal tools?</summary><div class="acc-body">
+<p><strong>Where it's added:</strong> at <span class="mono">runtime_override_tool_json_schema</span>, the "rewrite the tool schema" gate, it walks every tool and stuffs a <span class="mono">request_heartbeat: {type: boolean}</span> into its <span class="mono">parameters.properties</span>, and <span class="mono">append</span>s it into <span class="mono">parameters.required</span>.</p>
+<p><strong>Why required:</strong> if it were optional, the model would likely just omit it, and "continue" would become a Schrödinger state. Making it required forces the model to <strong>declare explicitly</strong> on every tool call — the price of the old design handing the decision to the model.</p>
+<p><strong>Why not on terminal tools:</strong> a terminal tool (like <span class="mono">send_message</span>) means "this round ends here" by definition, so asking it "continue or not" is self-contradictory. Tools in the <span class="mono">terminal_tools</span> set are therefore explicitly skipped.</p>
+<p><strong>A side effect:</strong> because it's in <span class="mono">required</span>, the model must include this param on every ordinary tool call — which is why <span class="mono">_handle_ai_response</span>'s first move is to <span class="mono">pop</span> it out, lest it slip into the real arguments passed to the tool function.</p>
+<p><strong>Where in the source:</strong> <span class="mono">services/helpers/tool_parser_helper.py::runtime_override_tool_json_schema</span>.</p>
+</div></details>
+
+<details class="accordion"><summary>What is that "auto-heartbeat" on tool <strong>failure</strong> for?</summary><div class="acc-body">
+<p><strong>Example:</strong> the model called a database tool and the tool threw an exception. Wrap up right there and the model has no idea what happened, while the user gets nothing but a baffling silence.</p>
+<p><strong>Why it's designed this way:</strong> the old mechanism puts "function failed" <strong>before</strong> the heartbeat check in <span class="mono">step</span>: as long as <span class="mono">function_failed</span> is true, even without a requested heartbeat, it force-injects a <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> and takes one more lap, letting the model <strong>see the error and get a chance to recover</strong> (retry with different args, or explain to the user).</p>
+<p><strong>A knock-on effect:</strong> precisely because "failure also continues," the model can retry the same tool with different args next lap — which is also why lesson 14's <span class="mono">max_steps=50</span> fuse must exist: should the model fail and retry over and over, there has to be a ceiling to catch it before it burns tokens endlessly.</p>
+<p><strong>Where in the source:</strong> the <span class="mono">if function_failed: ... continue</span> branch in <span class="mono">agent.py::step</span>; the constant <span class="mono">constants.py::FUNC_FAILED_HEARTBEAT_MESSAGE</span>.</p>
+<p><strong>What's the alternative:</strong> stop on error — but then the model gets no chance to self-heal, a worse experience. The old mechanism chose "continue one lap on error to let the model rescue it."</p>
+</div></details>
+
+<details class="accordion"><summary>What exactly do <span class="mono">insert_heartbeat</span> and <span class="mono">issue #601</span> patch?</summary><div class="acc-body">
+<p><strong>Example:</strong> a <strong>small local model</strong> runs an agent; the user asks a question, it calls a tool but forgets to set <span class="mono">request_heartbeat=true</span>. The tool finishes, nobody steps again, and the agent goes silent on the spot — the user thinks it crashed.</p>
+<p><strong>Why it's designed this way:</strong> local models aren't as "obedient" as big-vendor models and often miss this param. So <span class="mono">heartbeat_correction</span> backs them up: when the <strong>previous message is a real user message</strong> and the <strong>new message is a non-<span class="mono">send_message</span> tool call</strong>, it calls <span class="mono">insert_heartbeat</span> to force in <span class="mono">request_heartbeat=True</span>. This is exactly the <span class="mono">issue #601</span> fix.</p>
+<p><strong>Where in the source:</strong> <span class="mono">local_llm/function_parser.py::insert_heartbeat / heartbeat_correction</span>; <span class="mono">NO_HEARTBEAT_FUNCS = ["send_message"]</span>.</p>
+<p><strong>What's the alternative:</strong> V3's path — don't depend on the model setting a flag; let "called a tool" drive continuation at the root, and this patch needn't exist at all.</p>
+</div></details>
+
+<details class="accordion"><summary>What lets V3 dare to delete heartbeats, and why does V2 keep them?</summary><div class="acc-body">
+<p><strong>What lets V3 dare to delete:</strong> it changed the continuation signal. The old mechanism asks "does the model want to continue" (subjective, forgettable); V3 asks "did this round call a tool" (objective, unforgettable) — and "called a tool" already entails "the result must be fed back to the model," naturally equivalent to "continue." A more reliable signal makes the heartbeat param redundant.</p>
+<p><strong>Why V2 keeps them:</strong> V2 is the async version that evolved smoothly from the old MemGPT loop, and its continuation criterion is still <span class="mono">continue_stepping = request_heartbeat</span>, keeping heartbeats <strong>for compatibility with the old design</strong>. Deleting them is a step only V3 took.</p>
+<p><strong>How to remember:</strong> look at the boolean <span class="mono">_get_valid_tools</span> passes — V2 passes <span class="mono">True</span> (add heartbeats), V3 passes <span class="mono">False</span> (don't). One param's difference is the watershed between the two generations.</p>
+<p><strong>One line for this evolution:</strong> from "the model raises its hand for a heartbeat" (the elder <span class="mono">Agent</span>) → made async but still keeping heartbeats (<span class="mono">V2</span>) → switched wholesale to "called a tool → continue" (<span class="mono">V3</span>). Each generation nudges the "continue" decision a little further back from the model to the framework.</p>
+<p><strong>Where in the source:</strong> <span class="mono">letta_agent_v2.py::_get_valid_tools</span> vs <span class="mono">letta_agent_v3.py::_get_valid_tools</span>; for continuation see <span class="mono">letta_agent_v3.py::_decide_continuation</span> (lesson 14).</p>
+</div></details>
+
+<h2>Next stop</h2>
+<p>This lesson chased one design-evolution line: old MemGPT / the elder <span class="mono">Agent</span> / V2 stuff every non-terminal tool with a required <span class="mono">request_heartbeat</span>, letting the model raise its own hand to step again; when a local model forgets, <span class="mono">insert_heartbeat</span> backs it up. By V3, the whole set is replaced by "called a tool → continue" — the param, the heartbeat messages, and the "model forgot to set it" bug, all swept away together.</p>
+
+<p>This loops right back to lesson 14's <span class="mono">_decide_continuation</span> criterion, and echoes the "no heartbeats" in its comment. And the recurring "tool rules can override the heartbeat flag" in the old mechanism (<span class="mono">has_children_tools / is_terminal_tool / is_continue_tool</span>) is exactly the star of the next lesson, lesson 16 — how <span class="mono">tool_rules</span> (terminal / required / approval) actually steer this loop.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">Take one line away: <strong>the old mechanism makes the model set <span class="mono">request_heartbeat=true</span> to step again; V3 switches to "called a tool → continue," taking that decision back from the model to the framework — delete one param, kill one bug-class.</strong></span></div>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>What request_heartbeat is</strong>: a <strong>required</strong> boolean param the old mechanism adds to every <strong>non-terminal tool</strong>; the model must set it <span class="mono">true</span> to step again. Injected in <span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>.</li>
+    <li><strong>How the old mechanism continues</strong>: model sets <span class="mono">true</span> → the framework injects a <span class="mono">REQ_HEARTBEAT_MESSAGE</span> (<span class="mono">role=user</span>, hidden from the user) → continue; tool fails → inject <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> → continue; otherwise <span class="mono">break</span>. Parsing is in <span class="mono">agent.py::_handle_ai_response</span>, chaining in <span class="mono">agent.py::step</span>.</li>
+    <li><strong>insert_heartbeat</strong>: local models often forget the flag (<span class="mono">issue #601</span>) → when the previous message is a user message and this is a non-<span class="mono">send_message</span> tool call, force in <span class="mono">request_heartbeat=True</span> (<span class="mono">local_llm/function_parser.py</span>).</li>
+    <li><strong>V3 removes it</strong>: <span class="mono">_get_valid_tools</span> passes <span class="mono">request_heartbeat=False</span> ("NOTE: difference for v3"), and continuation is decided by <span class="mono">_decide_continuation</span>'s "called a tool → continue"; it also <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM)</span> to defensively drop any leftover.</li>
+    <li><strong>Don't misremember</strong>: <strong>V2 still uses heartbeats</strong> (passes <span class="mono">True</span>), only V3 deletes them; parsing is in <span class="mono">_handle_ai_response</span>, not <span class="mono">inner_step</span>; the old mechanism's <span class="mono">finish_reason=="length"</span> is a <span class="mono">raise</span>, not a heartbeat.</li>
+    <li><strong>Design spark</strong>: pull "continue or not" from "the model's conscientiousness" back to "the framework's certainty" — delete one param, kill one bug-class.</li>
+    <li><strong>Source</strong>: <span class="mono">tool_parser_helper.py::runtime_override_tool_json_schema</span>, <span class="mono">agent.py::_handle_ai_response / step</span>, <span class="mono">local_llm/function_parser.py::insert_heartbeat</span>, <span class="mono">letta_agent_v3.py::_get_valid_tools</span>, <span class="mono">constants.py</span> heartbeat constants.</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. In the old mechanism (the elder Agent / V2), what kind of parameter is request_heartbeat, and which tools does it get added to?</div>
+  <ol class="opts">
+    <li>An integer param saying how many more steps the model wants to take</li>
+    <li>A required boolean param that runtime_override_tool_json_schema dynamically adds to every non-terminal tool; the model must set it true to step again</li>
+    <li>An optional string param added only to terminal tools like send_message</li>
+    <li>A read-only field auto-filled by the framework that the model cannot set</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. request_heartbeat is a boolean the old mechanism injects dynamically in tool_parser_helper.py::runtime_override_tool_json_schema: it's added only to non-terminal tools (terminal tools like send_message are excluded) and put into required. So on every ordinary tool call the model must declare — set true to continue, false (the default) to wrap up. It is not optional, not a string, not a step counter, and not read-only; on the contrary, it hands the “continue or not” decision explicitly to the model.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. In the old mechanism, once the model sets request_heartbeat to true, how does the framework keep the lap going? And what happens when a tool fails?</div>
+  <ol class="opts">
+    <li>The framework passes request_heartbeat through to the tool function and lets the tool decide whether to continue</li>
+    <li>The framework restarts the whole step() loop, rerunning from step 0</li>
+    <li>The framework just appends the tool result as an assistant message, needing no extra message</li>
+    <li>The framework injects a role=user “heartbeat” message (REQ_HEARTBEAT_MESSAGE, hidden from the user) to hand control back and continue; on tool failure it auto-injects FUNC_FAILED_HEARTBEAT_MESSAGE for one more lap even without a requested heartbeat</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Parsing is in agent.py::_handle_ai_response (pop the flag, normalize the string "true" to a bool); chaining is in agent.py::step: if function_failed → inject FUNC_FAILED_HEARTBEAT_MESSAGE and continue; elif heartbeat_request → inject REQ_HEARTBEAT_MESSAGE and continue; else break. Both messages carry the NON_USER_MSG_PREFIX prefix and have role=user but are hidden from the user. The “failure” branch sits before the heartbeat check, so even without a requested heartbeat a failure auto-continues one lap for recovery. The framework does not pass the heartbeat flag through to the tool (it pops it out first), nor does it restart the loop from scratch.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. V3 (letta_v1_agent) no longer uses heartbeats — so how does it decide whether to take another step, and how does it handle a request_heartbeat the model jams in?</div>
+  <ol class="opts">
+    <li>It still reads request_heartbeat, just flips the default from false to true</li>
+    <li>It scans the model's generated text for the word “continue”</li>
+    <li>Via _decide_continuation: “called a tool this round → continue, didn't → stop”; _get_valid_tools passes request_heartbeat=False so the param isn't added at all, and _handle_ai_response does args.pop(REQUEST_HEARTBEAT_PARAM, None) to quietly drop any leftover</li>
+    <li>It blindly continues every step until it hits the token cap</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. V3's _get_valid_tools passes request_heartbeat=False to runtime_override_tool_json_schema (comment "NOTE: difference for v3"), so the tool schema has no such param. Continuation falls back to lesson 14's _decide_continuation: called a tool → continue (a tool call is two-stage, the result must be fed back to the model); didn't → stop. Even if some old prompt jams in a heartbeat param, _handle_ai_response drops it with args.pop(REQUEST_HEARTBEAT_PARAM, None), never letting a leftover disturb the criterion. It neither relies on a true default, nor scans text for a keyword, nor blindly continues to the token cap.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. Deleting request_heartbeat, what whole bug-class does V3 eliminate as its biggest win? And what did the old mechanism use to patch that bug-class?</div>
+  <ol class="opts">
+    <li>Eliminates the “context-window overflow” bug-class; the old mechanism patched it by compacting history</li>
+    <li>Eliminates the “tool execution timeout” bug-class; the old mechanism patched it by raising the timeout</li>
+    <li>Eliminates the “parallel tool-call result conflict” bug-class; the old mechanism patched it by serializing tools</li>
+    <li>Eliminates the “model forgot to set request_heartbeat=true → the agent freezes silent after calling a tool” bug-class; the old mechanism backed local models up with insert_heartbeat in local_llm (issue #601)</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Pinning “continue or not” on the model's conscientiousness is fragile: the moment the model forgets to set request_heartbeat=true, the tool finishes, nobody steps again, and the agent freezes silent right after the user speaks. That is exactly why insert_heartbeat (local_llm/function_parser.py) exists — local models often forget (issue #601), so when “the previous message is a real user message” and “this is a non-send_message tool call,” it forces in request_heartbeat=True. V3 swaps the criterion to “called a tool → continue,” so the whole “model forgot to set it” bug-class vanishes and the patch needn't exist. Context overflow, tool timeouts, and parallel conflicts are separate issues, unrelated to deleting heartbeats.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. About “which generations continue via heartbeats,” which statement is correct?</div>
+  <ol class="opts">
+    <li>Both the elder Agent and the second-gen V2 still use heartbeats (V2's _get_valid_tools passes True, and continue_stepping = request_heartbeat in _decide_continuation); only the third-gen V3 removes it entirely</li>
+    <li>Heartbeats are a wholly rejected old design that both V2 and V3 have dropped</li>
+    <li>Only the elder Agent uses heartbeats; both V2 and V3 switched to _decide_continuation</li>
+    <li>All three generations use heartbeats; V3 merely renamed a constant</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Don't treat “heartbeats” as a rejected old design — the same-era V2 still uses them. letta_agent_v2.py::_get_valid_tools passes request_heartbeat=True, and continue_stepping = request_heartbeat in its _decide_continuation, so continuation is still driven by the model's heartbeat flag. Only V3 (letta_v1_agent, comment "no heartbeats or forced tool calls") removes the whole heartbeat machinery — it overrides _decide_continuation to drop that param and default to continue. So it's not “neither V2 nor V3,” not “only Agent,” and not “all three with just a rename.” One param's difference (_get_valid_tools passing True vs False) is the watershed between V2 and V3.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Using the “walkie-talkie” metaphor, weave lesson 15's evolution from “heartbeat-driven continuation” to “called a tool → continue” into one coherent story, and think through three things: (1) why did the old mechanism make the model raise its hand for a heartbeat (request_heartbeat=true) in the parameters? Handing “continue or not” to the model — where's the flexibility, where's the fragility? (2) What's the essential difference between the insert_heartbeat patch for local models (issue #601) and V3's “stop depending on the model's conscientiousness at the root”? Why say “a patch covers the symptom, V3 cures the root cause”? (3) If V3 deems heartbeats redundant, why does the same-era V2 still keep them? Thinking in terms of “compatibility with the old design” and “the pace of evolution,” why must even deleting a seemingly redundant parameter be done generation by generation, step by step?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="14-v3-step-loop.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">V3 步进循环</span><span class="lang-en">The V3 step loop</span></div></a><a class="next" href="16-tool-rules.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">工具规则 Tool Rules</span><span class="lang-en">Tool rules</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

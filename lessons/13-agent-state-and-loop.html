@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>13 · AgentState 与 AgentLoop 工厂 / AgentState &amp; the AgentLoop factory - Letta 图解教程</title>
+<meta name="description" content="第四部分 · Agent 执行循环｜AgentState 与 AgentLoop 工厂 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="13 · AgentState 与 AgentLoop 工厂 / AgentState &amp; the AgentLoop factory - Letta 图解教程">
+<meta property="og:description" content="第四部分 · Agent 执行循环｜AgentState 与 AgentLoop 工厂 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="13 · AgentState 与 AgentLoop 工厂 / AgentState &amp; the AgentLoop factory - Letta 图解教程">
+<meta name="twitter:description" content="第四部分 · Agent 执行循环｜AgentState 与 AgentLoop 工厂 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第四部分 · Agent 执行循环</span><span class="lang-en">Part 4 · The agent execution loop</span></span>
+    <span class="pill">13 / 16</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:81%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第四部分 · Agent 执行循环</span><span class="lang-en">Part 4 · The agent execution loop</span></div>
+    <h1><span class="lang-zh">AgentState 与 AgentLoop 工厂</span><span class="lang-en">AgentState &amp; the AgentLoop factory</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+第三部分我们把 Letta 的"记忆"拆透了——三层记忆、记忆块、自我编辑、压缩。但记忆只是<strong>原料</strong>：真正让 agent "跑起来"的，是一圈一圈的<strong>执行循环</strong>。第四部分就来拆这个循环，而这一课是它的地图。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+循环从哪儿开始？答案是两样东西：一份叫 <strong>AgentState</strong> 的"存档"，和一个叫 <strong>AgentLoop.load</strong> 的"工厂"。存档装着重建 agent 所需的一切；工厂读存档上的 <span class="mono">agent_type</span>，决定这次该用哪个引擎来跑。这一课不深挖任何一个引擎的内部——那留给后三课；它只负责把"起点"摆正。读完，你就拿到了 14–16 课的地图。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把 AgentState 想成一张游戏存档，把 AgentLoop 想成一座工厂。</strong>游戏存档（save file）记下你的等级、装备、所在地图——读档就能在任何一台机器上接着玩。AgentState 就是 agent 的存档：身份、记忆、在窗消息、工具，全在里面；服务器自己不留记忆，每次请求都从数据库读出这张存档、跑一轮、再写回。而 AgentLoop 像一座工厂：同一张订单（存档）递进来，工厂看订单上"产品类型"那一栏，决定送它上哪条生产线。<strong>存档决定"是谁"，工厂决定"用哪台引擎跑"</strong>——这就是整个执行循环的起点。读懂这一张存档加这一座工厂，你就读懂了第四部分所有故事的开头。
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：执行循环从"读存档、选引擎"开始。</strong><span class="mono">AgentState</span> 是 agent 的存档——装着 <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / llm_config</span> 等"重建一个持久化 agent 所需的全部信息"。<span class="mono">AgentLoop.load</span> 是一座工厂——它读存档里的 <span class="mono">agent_type</span> 当钥匙，挑出这次要跑的实现：<span class="mono">letta_v1_agent</span>（及 <span class="mono">sleeptime_agent</span>）走第三代 <span class="mono">LettaAgentV3</span>，其余走第二代 <span class="mono">LettaAgentV2</span>。而 agent 本身经历了三代演进：同步的元老 <span class="mono">Agent</span>、异步的 <span class="mono">LettaAgentV2</span>、砍掉心跳的 <span class="mono">LettaAgentV3</span>。记住这三件事，第四部分就有了骨架——存档、工厂、三代，正好对应"是谁、用哪台、什么脾气"三个问题。
+</div>
+
+<h2>AgentState：一个 agent 的"存档"</h2>
+<p>先看存档本身。<span class="mono">AgentState</span>（<span class="mono">letta/schemas/agent.py</span>）的文档字符串里有一句点睛之言，道尽了它的本质：<strong>"重建一个持久化 agent 所需的全部信息"</strong>。它不是某个跑在内存里的临时变量，而是一张能序列化、存进数据库、再读出来的<strong>快照</strong>。</p>
+
+<p>这正好接上第 6 课"有状态 vs 无状态"：LLM 本身无状态，Letta 把 agent 的状态<strong>外化</strong>成这张存档。换句话说，"一个 agent"在 Letta 里就等于"一行数据库记录 + 它的存档表示"。</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">那个 <span class="mono">id</span> 不是随机串，而是<strong>带类型前缀</strong>的：<span class="mono">agent-xxxx</span>（第 2、6 课）。一眼就能从 id 认出它是 agent，还是 block、message——这是 Letta 贯穿全局的命名约定。</span></div>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">身份</span><span class="name">id / name / agent_type</span></div>
+    <div class="ld">带类型前缀的主键 <span class="mono">agent-xxxx</span>、名字，以及最关键的 <span class="mono">agent_type</span>——它就是工厂的分派键。</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">在窗</span><span class="name">system / message_ids</span></div>
+    <div class="ld">系统提示，加上"在窗消息的 id 列表"（第 11 课）——这两样直接决定下一轮喂给模型的上下文。</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">记忆</span><span class="name">blocks / memory</span></div>
+    <div class="ld">核心记忆块（第 8 课）。<span class="mono">blocks</span> 是新字段，<span class="mono">memory</span> 是它的废弃别名。</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">行为 · 模型</span><span class="name">tools / tool_rules / model</span></div>
+    <div class="ld">能调哪些工具、工具规则（第 16 课），以及模型句柄 <span class="mono">model</span>（旧字段 <span class="mono">llm_config</span>）。</div></div>
+</div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">把这四组连起来读：<strong>身份说"是谁"，在窗 + 记忆说"它现在知道什么"，行为 + 模型说"它能做什么、用谁来想"</strong>——合起来就够重建一个活的 agent。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/agent.py</span><span class="ln">AgentState 关键字段（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentState</span>(OrmMetadataBase):       <span class="cm"># Pydantic，__id_prefix__ = "agent"</span>
+    <span class="st">"重建一个持久化 agent 所需的全部信息"</span>  <span class="cm"># 类文档串</span>
+    id: str                              <span class="cm"># "agent-xxxx"，带类型前缀的主键</span>
+    name: str
+    system: str                          <span class="cm"># 系统提示</span>
+    agent_type: AgentType                <span class="cm"># 工厂据此选引擎（分派键）</span>
+    message_ids: list[str] | <span class="kw">None</span>        <span class="cm"># 在窗消息的 id（第 11 课）</span>
+    blocks: list[Block]                  <span class="cm"># 核心记忆块（新）</span>
+    memory: Memory                       <span class="cm"># DEPRECATED -> 用 blocks</span>
+    tools: list[Tool]
+    tool_rules: list[ToolRule] | <span class="kw">None</span>    <span class="cm"># 工具规则（第 16 课）</span>
+    model: str | <span class="kw">None</span>                    <span class="cm"># 模型句柄（新）</span>
+    llm_config: LLMConfig                <span class="cm"># DEPRECATED -> 用 model</span>
+</pre></div>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">看见成对的字段别犯晕：<span class="mono">memory / llm_config / sources</span> 都是<strong>废弃</strong>别名，新代码请认 <span class="mono">blocks / model / folders</span>。两套并存只是为了向后兼容。</span></div>
+
+<p>别被字段数量吓到。它们大致就分成开头那四组：<strong>身份、在窗、记忆、行为 + 模型</strong>。抓住"合起来要能重建一个 agent"这条线，你就不必死记每个字段——缺了哪一类，自己也能反推出来。</p>
+
+<h2>存档从哪儿来：从一行 ORM 记录"水合"出来</h2>
+<p><span class="mono">AgentState</span> 是<strong>内存 / API 表示</strong>，不是数据库里的存储格式。真正落库的是 ORM 行 <span class="mono">letta/orm/agent.py</span>；每次需要时，由 <span class="mono">to_pydantic_async</span> 把那一行连同它的块、工具、消息 id 一起"水合（hydrate）"成一个 <span class="mono">AgentState</span> 对象。</p>
+
+<p>这就是第 6 课那句"服务器不记得任何事"的落地：每个请求都现读存档、跑完再写回。所以同一个 agent 能在任意进程、任意机器上"读档续玩"——它的全部状态都在这张可搬运的存档里，而不在某个常驻内存的对象里。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">"水合 → 跑 → 写回"是每个请求的固定三拍。<strong>写回</strong>把这轮新增的消息、改动过的核心记忆落库，下个请求才能读到最新的存档。</span></div>
+
+<p>"水合"这个词很形象：数据库里存的是<strong>脱水的</strong>原始行（外键、id 列表），读取时再把关联的块、工具、消息<strong>泡发</strong>成一个完整对象。<span class="mono">to_pydantic_async</span> 里的 <span class="mono">async</span> 也有讲究——这些关联要并发地去库里取，异步能省下不少等待。</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">POST 消息</div><div class="nd">第 3 课</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">读出存档</div><div class="nd">AgentState 水合</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">AgentLoop.load</div><div class="nd">按类型选引擎</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">step 循环</div><div class="nd">14–16 课</div></div>
+</div>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">把这条线和第 3 课接上：一条消息进来，先<strong>水合存档</strong>，再由工厂<strong>选引擎</strong>，最后才进 step 循环。本课讲的就是中间这两步——循环真正的"起跑线"。</span></div>
+
+<h2>存档装了什么，又没装什么</h2>
+<p>存档大，但不是"什么都往里塞"。它装的是<strong>指针和配置</strong>，不是海量正文。比如 <span class="mono">message_ids</span> 只是一串<strong>消息 id</strong>（第 11 课），真正的消息正文躺在 recall 的数据库表里；归档段落（第 10 课）更是压根不进存档。</p>
+
+<p>这是个关键取舍：存档要<strong>能被频繁读写</strong>，就不能太重。所以它只留"在窗需要、或重建必需"的东西——身份、系统提示、核心记忆块、在窗消息的 id、工具清单——把窗外的海量内容交给各自的 manager 按需去捞。</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>存档里 vs 数据库里</b>：存档只放指针与配置，正文留在外面按需取</div>
+  <div class="cells">
+    <span class="cell hl">身份 / system / blocks</span>
+    <span class="sep">·</span>
+    <span class="cell hl">message_ids（指针）</span>
+    <span class="sep">·</span>
+    <span class="cell q">recall 正文 → MessageManager</span>
+    <span class="sep">·</span>
+    <span class="cell scale">archival 段落 → PassageManager</span>
+  </div>
+</div>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">一句话记住：<strong>存档存"指针 + 配置"，不存"海量正文"。</strong><span class="mono">message_ids</span> 指向在窗消息，正文与归档都留在各自的数据库表里，要用再捞。</span></div>
+
+<p>存档里还藏着些"行为开关"，比如 <span class="mono">message_buffer_autoclear</span>（默认 <span class="mono">False</span>）：一旦打开，agent 就<strong>不记前面的消息</strong>，只靠核心记忆与归档 / 回忆活着。这类字段不直接进上下文，却实打实地改变循环怎么跑——存档不只是"数据"，也带着"配置"。</p>
+
+<h2>AgentLoop.load：按类型选引擎的工厂</h2>
+<p>有了存档，下一步就是<strong>挑引擎</strong>。<span class="mono">AgentLoop.load</span>（<span class="mono">letta/agents/agent_loop.py</span>）是个 <span class="mono">@staticmethod</span> 工厂：它收下 <span class="mono">agent_state</span> 与 <span class="mono">actor</span>，读 <span class="mono">agent_state.agent_type</span> 当钥匙，<strong>返回一个 <span class="mono">BaseAgentV2</span> 实例</strong>——也就是这次要跑的循环。</p>
+
+<p>分派规则一句话：<span class="mono">letta_v1_agent</span> 和 <span class="mono">sleeptime_agent</span> 走第三代 <span class="mono">LettaAgentV3</span>，<strong>其余一律</strong>走第二代 <span class="mono">LettaAgentV2</span>。只有当 agent 额外开了 <span class="mono">sleeptime</span> 且配了多 agent 组时，才换成 <span class="mono">SleeptimeMultiAgentV4 / V3</span>。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx"><span class="mono">sleeptime</span> + 多 agent 组那条分支属于<strong>进阶玩法</strong>（后台记忆整理），大多数 agent 用不到。先抓主干：<span class="mono">letta_v1 / sleeptime → V3</span>，其余 → V2。</span></div>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>拿到钥匙</h4><p>读 <span class="mono">agent_state.agent_type</span>——整个分派只看这一个字段。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>是 letta_v1 / sleeptime？</h4><p>是 → 返回 <span class="mono">LettaAgentV3</span>（新的简化循环，无心跳）。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>否则</h4><p>memgpt / memgpt_v2 / react / workflow / voice… → 返回 <span class="mono">LettaAgentV2</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>开了 sleeptime + 组？</h4><p>换成 <span class="mono">SleeptimeMultiAgentV4</span>（v1/sleeptime 类型）或 <span class="mono">V3</span>（其他）。</p></div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/agent_loop.py</span><span class="ln">AgentLoop.load 分派（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentLoop</span>:
+    <span class="kw">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">load</span>(agent_state, actor) -> BaseAgentV2:
+        t = agent_state.agent_type        <span class="cm"># 唯一的分派键</span>
+        <span class="kw">if</span> t <span class="kw">in</span> [AgentType.letta_v1_agent, AgentType.sleeptime_agent]:
+            <span class="kw">return</span> <span class="fn">LettaAgentV3</span>(agent_state, actor)   <span class="cm"># 新的简化循环</span>
+        <span class="kw">else</span>:                              <span class="cm"># memgpt / react / workflow / voice ...</span>
+            <span class="kw">return</span> <span class="fn">LettaAgentV2</span>(agent_state, actor)   <span class="cm"># 带心跳的老循环</span>
+        <span class="cm"># 注：开了 sleeptime + group 时 -> SleeptimeMultiAgentV4 / V3</span>
+</pre></div>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">工厂的好处：调用方<strong>永远只写</strong> <span class="mono">AgentLoop.load(agent_state, actor)</span>，不必关心背后是 V2 还是 V3。将来新增一种 agent，只动这一个工厂，别处不必改。</span></div>
+
+<p>顺带说工厂的第二个入参 <span class="mono">actor</span>——它是<strong>发起这次请求的用户</strong>，会一路带着做权限与归属校验。工厂不光"挑类"，还把 <span class="mono">agent_state</span> 与 <span class="mono">actor</span> 一起装配进引擎，返回的对象拿来就能 <span class="mono">step</span>。</p>
+
+<p>还有一点容易忽略：<span class="mono">load</span> 是<strong>每个请求都重来一遍</strong>的。上一轮跑完，引擎对象就扔了；下一轮再 <span class="mono">load</span> 一个新的。这跟"存档"的思路完全一致——引擎不留状态，状态全在 <span class="mono">agent_state</span> 里，每轮现装现跑。</p>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>三个锚点，一条主线。</strong>存档是 <span class="mono">letta/schemas/agent.py::AgentState</span>（Pydantic，继承链 <span class="mono">OrmMetadataBase → LettaBase → BaseModel</span>，<span class="mono">__id_prefix__ = "agent"</span>），由 ORM 行 <span class="mono">letta/orm/agent.py</span> 经 <span class="mono">to_pydantic_async</span> 水合。工厂是 <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>，一个返回 <span class="mono">BaseAgentV2</span> 的 <span class="mono">@staticmethod</span>。钥匙是 <span class="mono">letta/schemas/enums.py::AgentType</span> 这个字符串枚举。三者的关系就一句话：<strong>工厂读存档的 <span class="mono">agent_type</span>，挑一个引擎</strong>。本课只看这条主线，引擎内部怎么转，留给第 14–16 课。
+</div>
+
+<h2>三代 agent：从同步元老到砍掉心跳</h2>
+<p>工厂能"挑"，是因为背后真有好几代实现。它们共享一个抽象接口 <span class="mono">BaseAgentV2</span>（<span class="mono">letta/agents/base_agent_v2.py</span>，规定了 <span class="mono">build_request / step / stream</span> 三个抽象方法），但脾气各不相同。</p>
+
+<p><strong>元老 <span class="mono">Agent</span></strong>（<span class="mono">letta/agent.py</span>）是<strong>同步</strong>的：<span class="mono">def step(...) -> LettaUsageStatistics</span>，内部一个 <span class="mono">while True</span> 循环，靠"心跳请求"和函数失败来决定要不要继续。它是 MemGPT 的原始形态，<strong>不在工厂的返回路径上</strong>。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">"不在工厂路径上"不等于没用：一些直接构造 <span class="mono">Agent</span> 的旧代码仍在。但<strong>本课主线</strong>——你新建 agent 默认会走的那条——只看 V2 / V3。</span></div>
+
+<table class="t">
+  <tr><th>代际</th><th>类</th><th>同步/异步</th><th>怎么决定"再走一步"</th><th>工厂会返回它吗</th></tr>
+  <tr><td>元老</td><td class="mono">Agent</td><td>同步 sync</td><td>心跳请求 + 函数失败，<span class="mono">while True</span></td><td>❌ 不经工厂</td></tr>
+  <tr><td>第二代</td><td class="mono">LettaAgentV2</td><td>异步 async</td><td>心跳驱动（<span class="mono">request_heartbeat</span>）</td><td>✅ 大多数类型</td></tr>
+  <tr><td>第三代</td><td class="mono">LettaAgentV3</td><td>异步 async</td><td>无心跳 · 有工具调用就继续</td><td>✅ letta_v1 / sleeptime</td></tr>
+</table>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">连返回类型都变了：元老 <span class="mono">Agent.step</span> 返回 <span class="mono">LettaUsageStatistics</span>（用量统计），而 V2 的 <span class="mono">step</span> 返回 <span class="mono">LettaResponse</span>（完整响应）。代际不同，连"走一轮"给你什么都不一样。</span></div>
+
+<p><strong>第二代 <span class="mono">LettaAgentV2</span></strong> 是异步重写：<span class="mono">async def step(...) -> LettaResponse</span>，是否续步由<strong>心跳</strong>决定（<span class="mono">_decide_continuation</span> 读 <span class="mono">request_heartbeat</span>）。<strong>第三代 <span class="mono">LettaAgentV3</span> 直接继承 V2</strong>，文档说它"砍到更精简"：<strong>不要心跳，循环改成"只要有工具调用就继续"</strong>。</p>
+
+<p>为什么要从同步元老升级到异步的 V2？因为服务端要同时扛<strong>很多 agent、还要流式吐字</strong>。同步的 <span class="mono">while True</span> 会把线程占死；异步能在等模型、等工具时让出，吞吐与延迟都更好。V3 又在 V2 的异步底座上，把"心跳"这层老机制也省了。</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">三代是一条<strong>继承 + 简化</strong>的线：元老 <span class="mono">Agent</span>（同步）→ <span class="mono">LettaAgentV2</span>（异步、心跳）→ <span class="mono">LettaAgentV3</span>（继承 V2、砍掉心跳）。第 14 课拆 V3 的循环，第 15 课专讲"心跳"这个对照。</span></div>
+
+<h2>三代共享的接口：BaseAgentV2</h2>
+<p>工厂敢"返回什么都行"，靠的是一份<strong>统一契约</strong>。<span class="mono">BaseAgentV2</span> 是个抽象基类（<span class="mono">ABC</span>），规定任何一代引擎都必须实现三个方法：<span class="mono">build_request</span>（拼请求）、<span class="mono">step</span>（走一轮）、<span class="mono">stream</span>（流式走一轮）。</p>
+
+<p>有了这份契约，调用方只认接口、不认具体类——这正是工厂能成立的前提。V2 和 V3 都老实继承 <span class="mono">BaseAgentV2</span>；V3 因为继承自 V2，很多方法直接复用，只<strong>覆写</strong>要简化的那部分（比如续步判断 <span class="mono">_decide_continuation</span>）。</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">抽象基类 = "插槽规格"。工厂往插槽里插哪块板子（V2 / V3）都行，因为它们的<strong>引脚（方法签名）一样</strong>。这就是"面向接口编程"在 Letta 里的一处具体落地。</span></div>
+
+<p>顺便回答一个常见疑问：既然 V3 是"砍掉东西"的简化版，为什么还要<strong>继承</strong> V2、而不是另起炉灶？因为两者绝大部分逻辑（拼请求、调模型、存消息）是一样的，继承能<strong>最大化复用</strong>，只在少数几处覆写差异。这也解释了代码里那条略反直觉的关系：更"新"的 V3，是更"老"的 V2 的子类。</p>
+
+<h2>九种 agent_type，到底各走哪条线</h2>
+<p>把钥匙摊开看。<span class="mono">AgentType</span>（<span class="mono">letta/schemas/enums.py</span>）是个字符串枚举，共九个值。下表把每个值映到工厂在"无 sleeptime 组"时返回的引擎——你会发现绝大多数都落在 V2，只有两个走 V3。</p>
+
+<p><span class="mono">agent_type</span> 是<strong>创建 agent 时就定死</strong>的：<span class="mono">CreateAgent.agent_type</span> 的默认值正是 <span class="mono">AgentType.letta_v1_agent</span>（<span class="mono">letta/schemas/agent.py</span>）。所以你不指定类型、随手建一个 agent，它就是 <span class="mono">letta_v1_agent</span>，跑的就是 V3——新设计成了新默认。</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/enums.py</span><span class="ln">AgentType 枚举（节选）</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentType</span>(str, Enum):
+    memgpt_agent     = <span class="st">"memgpt_agent"</span>      <span class="cm"># 最初的 memgpt 工具集</span>
+    memgpt_v2_agent  = <span class="st">"memgpt_v2_agent"</span>   <span class="cm"># 翻新版</span>
+    letta_v1_agent   = <span class="st">"letta_v1_agent"</span>    <span class="cm"># 简化 memgpt 循环：无心跳、不强制工具调用</span>
+    react_agent      = <span class="st">"react_agent"</span>       <span class="cm"># 无记忆工具</span>
+    workflow_agent   = <span class="st">"workflow_agent"</span>    <span class="cm"># 自动清空消息缓冲</span>
+    <span class="cm"># …… split_thread / sleeptime / voice_convo / voice_sleeptime</span>
+    <span class="cm"># 注意：根本没有 letta_agent_v3 这个值！</span>
+</pre></div>
+
+<table class="t">
+  <tr><th>agent_type</th><th>无组时返回</th><th>备注</th></tr>
+  <tr><td class="mono">letta_v1_agent</td><td>LettaAgentV3</td><td>主路径；新建 agent 的默认值</td></tr>
+  <tr><td class="mono">sleeptime_agent</td><td>LettaAgentV3</td><td>无组时回退到 V3</td></tr>
+  <tr><td class="mono">memgpt_agent</td><td>LettaAgentV2</td><td>OG memgpt 工具</td></tr>
+  <tr><td class="mono">memgpt_v2_agent</td><td>LettaAgentV2</td><td>翻新版</td></tr>
+  <tr><td class="mono">react_agent</td><td>LettaAgentV2</td><td>无记忆工具</td></tr>
+  <tr><td class="mono">workflow_agent</td><td>LettaAgentV2</td><td>自动清缓冲</td></tr>
+  <tr><td class="mono">split_thread_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+  <tr><td class="mono">voice_convo_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+  <tr><td class="mono">voice_sleeptime_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+</table>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">记一条捷径就够：<strong>只有 <span class="mono">letta_v1_agent</span>（和无组的 <span class="mono">sleeptime_agent</span>）走 V3，其余全是 V2。</strong>而新建 agent 默认就是 <span class="mono">letta_v1_agent</span>——所以你随手 create 一个，跑的就是 V3。</span></div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">📁</span><span class="lab">存档 · agent_type</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🏭</span><span class="lab">AgentLoop.load</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🤖</span><span class="bubble">letta_v1 → V3 引擎</span>
+    <span class="emoji">🤖</span><span class="bubble">其余 → V2 引擎</span>
+  </div>
+  <div class="cap">同一张存档进厂，工厂看 agent_type 这一栏，挑出该上哪条生产线——按类型选引擎</div>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>"读存档、选引擎"这六个字，就把第 6 课的"有状态 vs 无状态"落到了一个具体对象上。</strong>服务器自己不留记忆：每次请求都把整张存档从数据库水合出来、跑一轮、再写回——所以同一个 agent 能在任意进程、任意机器上"读档续玩"。而 <span class="mono">AgentLoop.load</span> 就是"读档时顺手挑引擎"：同一张存档，<span class="mono">agent_type</span> 决定这次用哪套循环（V3 精简 / V2 心跳 / sleeptime 多 agent）。最妙的是那个反直觉的彩蛋：类明明叫 <span class="mono">LettaAgentV3</span>，触发它的枚举值却是 <span class="mono">letta_v1_agent</span>——因为"V3 的代码"实现的是"Letta v1 的设计"（砍掉了 MemGPT 的心跳与强制工具调用）。<strong>名字记录的是历史，行为写在代码里。</strong>看懂这一层，你就不会再被命名带偏——也会对 Letta"把历史封存进名字、把真相写进代码"的风格会心一笑。
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>别被名字骗了。</strong>第一，<strong>没有</strong> <span class="mono">letta_agent_v3</span> 或 <span class="mono">letta_v3_agent</span> 这个枚举值——触发 <span class="mono">LettaAgentV3</span> 的是 <span class="mono">letta_v1_agent</span>，类名 ≠ 枚举名，千万别照着类名去猜枚举。第二，<span class="mono">AgentState</span> 里 <span class="mono">memory / llm_config / sources</span> 都是<strong>废弃字段</strong>，新代码要用 <span class="mono">blocks / model / folders</span>；两套并存只是兼容历史，读代码时认准新名。把这两点记牢，能省掉一大半"为什么对不上"的困惑。一句口诀收尾：<strong>类名带 V3、枚举名带 v1；新代码认 blocks / model，老字段只当别名读。</strong>
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>为什么要用一个"工厂"，而不是直接 new 一个 agent？</summary><div class="acc-body">
+<p><strong>示例：</strong>调用方（比如处理 POST 的服务）只想说"把这个 agent 跑起来"，它不该关心你内部分了几代实现。<span class="mono">AgentLoop.load(agent_state, actor)</span> 一行就够，返回值统一是 <span class="mono">BaseAgentV2</span>。</p>
+<p><strong>为什么这样设计：</strong>把"选哪代实现"的分支<strong>收口到一个地方</strong>。同一张存档进来，<span class="mono">agent_type</span> 决定走哪条线；将来新增一种 agent，只动这一个工厂方法，别处的调用代码一行都不用改。这正是"开闭原则"——对扩展开放、对修改关闭——的活例子。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>，一个 <span class="mono">@staticmethod</span>，返回类型标注就是 <span class="mono">BaseAgentV2</span>。</p>
+<p><strong>还有什么替代：</strong>在每个调用点写 <span class="mono">if agent_type == …</span>——分支会散落各处、加一种类型就要改十处。工厂是教科书式的解法。</p>
+</div></details>
+
+<details class="accordion"><summary>"V3 的类 / letta_v1 的枚举"为什么对不上？</summary><div class="acc-body">
+<p><strong>示例：</strong>你想让一个 agent 跑 <span class="mono">LettaAgentV3</span>，于是去枚举里找 <span class="mono">letta_v3_agent</span>——找不到。能触发 V3 的值其实叫 <span class="mono">letta_v1_agent</span>。</p>
+<p><strong>为什么这样设计：</strong>两个版本号说的不是一回事。<span class="mono">V3</span> 是<strong>代码实现</strong>的代际（第三次重写循环）；<span class="mono">v1</span> 是<strong>设计版本</strong>——"Letta v1"这套设计主张砍掉 MemGPT 的心跳与强制工具调用。V3 的代码，实现的正是 v1 的设计。</p>
+<p><strong>源码在哪：</strong>枚举注释写得很直白——<span class="mono">letta_v1_agent</span> = "simplification of the memgpt loop, no heartbeats or forced tool calls"（<span class="mono">letta/schemas/enums.py</span>）。</p>
+<p><strong>还有什么替代：</strong>把枚举改名 <span class="mono">letta_agent_v3</span> 当然更直观，但那是个会破坏所有存量数据的改名（每行 agent 都存了这个字符串）。于是历史包袱就这么留下了。</p>
+</div></details>
+
+<details class="accordion"><summary>AgentState 里那些"废弃字段"，到底信哪个？</summary><div class="acc-body">
+<p><strong>示例：</strong>你打印一个 <span class="mono">AgentState</span>，看到既有 <span class="mono">memory</span> 又有 <span class="mono">blocks</span>，既有 <span class="mono">llm_config</span> 又有 <span class="mono">model</span>——该读哪个？</p>
+<p><strong>为什么这样设计：</strong>这些字段在做<strong>渐进式迁移</strong>。老字段（<span class="mono">memory / llm_config / embedding_config / sources</span>）被标了 <span class="mono">deprecated=True</span> 但暂时保留，免得旧客户端一升级就崩；新字段（<span class="mono">blocks / model / embedding / folders</span>）是未来方向。</p>
+<p><strong>源码在哪：</strong>都在 <span class="mono">letta/schemas/agent.py::AgentState</span>，每个废弃字段的 <span class="mono">Field(description=...)</span> 里直接写着"Use `X` field instead"。</p>
+<p><strong>还有什么替代：</strong>直接删老字段——会一刀切断所有老客户端。保留 + 标记废弃，是兼容期里最稳的过渡。读代码时：<strong>认新字段，把老字段当别名。</strong></p>
+</div></details>
+
+<details class="accordion"><summary>其实还有"第四个类" LettaAgent，它算第几代？</summary><div class="acc-body">
+<p><strong>示例：</strong>你在 <span class="mono">letta/agents/</span> 下还会看到一个 <span class="mono">LettaAgent</span>（注意没有 V2/V3 后缀），容易以为它就是工厂返回的那个。</p>
+<p><strong>为什么这样设计：</strong><span class="mono">LettaAgent</span>（<span class="mono">letta/agents/letta_agent.py</span>，继承的是更早的 <span class="mono">BaseAgent</span>）服务于 group / voice 等场景，<strong>不在 <span class="mono">AgentLoop.load</span> 的返回路径上</strong>。本课的主线只看工厂这条路：V2 / V3 都继承 <span class="mono">BaseAgentV2</span>。换句话说，"代"这个词在 Letta 里有点乱——别去数有几个 Agent 类，只记住"工厂会还给你 V2 或 V3"就够走完第四部分。</p>
+<p><strong>源码在哪：</strong>抽象接口 <span class="mono">base_agent_v2.py::BaseAgentV2</span>（抽象方法 <span class="mono">build_request / step / stream</span>）；旁路的 <span class="mono">letta_agent.py::LettaAgent</span>。</p>
+<p><strong>还有什么替代：</strong>把所有路径都塞进一个工厂——会把 group/voice 的特殊装配也搅进来。Letta 选择让工厂只管"单 agent 主循环"这一条线，其余另走它路。</p>
+</div></details>
+
+<h2>第四部分由此展开：下一站</h2>
+<p>这一课是第四部分的地图：<strong>存档（AgentState）说"是谁"，工厂（AgentLoop.load）按 agent_type 选引擎，三代实现各有脾气。</strong>循环的"起点"就此立住。把这三个名词焊进脑子，后面再复杂的循环细节，都能挂回到它们身上。</p>
+
+<p>接下来三课各放大一格：第 14 课拆 <span class="mono">LettaAgentV3</span> 的循环到底怎么一步步走；第 15 课对照"心跳"——看 V2 的 <span class="mono">request_heartbeat</span> 和 V3"靠工具调用续步"差在哪；第 16 课讲<strong>工具规则</strong>（<span class="mono">tool_rules</span>），也就是存档里那个一直没细说的字段。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">一句话带走：<strong>同一张存档，按 <span class="mono">agent_type</span> 选不同引擎</strong>。存档是"是谁"，工厂是"用哪台引擎"，三代是"引擎的脾气"。后面三课，都在这张地图上展开。</span></div>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>AgentState = 存档</strong>：装着 <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / model</span> 等"重建一个持久化 agent 所需的全部信息"；它是内存 / API 表示，由 ORM 行水合而来。</li>
+    <li><strong>AgentLoop.load = 工厂</strong>：读 <span class="mono">agent_state.agent_type</span> 当钥匙，返回一个 <span class="mono">BaseAgentV2</span> 实例——<span class="mono">letta_v1_agent / sleeptime_agent</span> → V3，其余 → V2。</li>
+    <li><strong>三代演进</strong>：同步元老 <span class="mono">Agent</span> → 异步 <span class="mono">LettaAgentV2</span>（心跳）→ <span class="mono">LettaAgentV3</span>（继承 V2、砍掉心跳，靠工具调用续步）。</li>
+    <li><strong>命名陷阱</strong>：没有 <span class="mono">letta_agent_v3</span> 枚举值；触发 V3 的是 <span class="mono">letta_v1_agent</span>（V3 代码实现 v1 设计）。类名 ≠ 枚举名。</li>
+    <li><strong>废弃字段</strong>：<span class="mono">memory / llm_config / sources</span> 已废弃，新代码用 <span class="mono">blocks / model / folders</span>。</li>
+    <li><strong>呼应第 6 课</strong>：服务器无状态，每次请求水合存档、跑、写回，所以同一 agent 能在任意机器"读档续玩"。</li>
+    <li><strong>源码</strong>：<span class="mono">schemas/agent.py::AgentState</span>、<span class="mono">agents/agent_loop.py::AgentLoop.load</span>、<span class="mono">schemas/enums.py::AgentType</span>。</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. AgentLoop.load 是个工厂：同一张存档进来，它靠什么决定这次返回哪个 agent 引擎（V2 还是 V3）？</div>
+  <ol class="opts">
+    <li>看 actor（发起请求的用户）的权限等级来决定</li>
+    <li>随机挑一个，反正两代接口一样</li>
+    <li>读存档里的 agent_state.agent_type 这一个字段当钥匙——整个分派只看它</li>
+    <li>看当前上下文用了多少 token，超过阈值就改用 V3</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。AgentLoop.load(agent_state, actor) 只把 agent_state.agent_type 当分派键：letta_v1_agent / sleeptime_agent → LettaAgentV3，其余 → LettaAgentV2（额外开了 sleeptime + 组才走 SleeptimeMultiAgent）。token 用量是第 12 课压缩要管的事，与选引擎无关；actor 只用于权限与归属校验，不参与选类；两代虽都继承 BaseAgentV2、接口一致，但绝不是随机挑。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 你想让一个新 agent 跑第三代实现 LettaAgentV3。该把 agent_type 设成哪个枚举值？</div>
+  <ol class="opts">
+    <li>letta_v1_agent —— 它就是触发 V3 的值（也是新建 agent 的默认值）；注意“类叫 V3、枚举叫 v1”的错位</li>
+    <li>memgpt_v2_agent —— 数字最大的那个</li>
+    <li>letta_v3_agent</li>
+    <li>letta_agent_v3 —— 跟类名对齐的那个</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。AgentType 里根本没有 letta_agent_v3 或 letta_v3_agent 这种值——照着类名去猜枚举必然落空。触发 LettaAgentV3 的是 letta_v1_agent（也是 CreateAgent.agent_type 的默认值）：“V3”说的是代码第三次重写循环，“v1”说的是 Letta v1 的设计（砍掉心跳与强制工具调用），V3 的代码实现的正是 v1 的设计。memgpt_v2_agent 走的是 V2。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. AgentState 里，哪个字段决定了“下一轮喂给模型的在窗对话消息有哪些”？</div>
+  <ol class="opts">
+    <li>system —— 系统提示里内联了所有历史消息</li>
+    <li>message_ids —— 一串在窗消息的 id（指针）；正文留在 recall 表里，要用再捞</li>
+    <li>blocks —— 核心记忆块里装着完整对话历史</li>
+    <li>memory —— 它是专门存对话正文的字段</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。message_ids 是“在窗消息的 id 列表”（第 11 课），存的是指针而非正文——这正体现存档“只放指针 + 配置、不放海量正文”的取舍，真正的消息正文在 recall 数据库表里。blocks 是核心记忆块（人设 / 用户 / 自定义，第 8 课），不是对话历史；system 是系统提示；memory 只是 blocks 的废弃别名。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. 把 AgentState 叫做“存档”，是怎么呼应第 6 课“有状态 vs 无状态”的？</div>
+  <ol class="opts">
+    <li>服务器把每个 agent 的状态常驻在内存对象里，所以一换机器就会丢</li>
+    <li>服务器自己不留记忆：每个请求都把整张存档从数据库水合出来、跑一轮、再写回——所以同一 agent 能在任意进程 / 机器上“读档续玩”</li>
+    <li>存档只是个缓存，真相一直在模型权重里</li>
+    <li>LLM 自己有状态、会记住上一轮，所以根本不需要存档</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。第 6 课的要点：LLM 无状态，Letta 把 agent 的状态外化成一张可序列化、可落库的存档。每个请求的固定三拍是“水合 → 跑 → 写回”：现从 ORM 行读出 AgentState，跑完把新消息 / 改动写回库。引擎对象每轮现装现扔、自己不留状态，状态全在存档里——所以同一 agent 能在任意进程 / 机器续跑。常驻内存、“LLM 自己记得”、“真相在权重里”都与这套无状态架构相悖。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用“游戏存档 + 工厂选引擎”这两个比喻，把第 13 课串成一个完整故事，并想三件事：(1) 为什么要让一个工厂（AgentLoop.load）按 agent_type 选实现，而不是在每个调用点写 if/else？把它和“将来新增一种 agent”连起来说。(2) 类名是 LettaAgentV3、枚举名却是 letta_v1_agent——这种“名字记录历史、行为写在代码里”的错位，会给读代码的人埋下哪些坑？你会怎么避免被带偏？(3) 既然引擎每个请求现装现扔、状态全在存档里，这对“同一 agent 能在任意机器续跑”意味着什么？再把它接回第 6 课的无状态设计。</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+In Part 3 we took Letta's "memory" apart — three memory tiers, memory blocks, self-editing, compaction. But memory is only the <strong>raw material</strong>: what actually makes an agent <strong>run</strong> is a loop that turns, round after round. Part 4 takes that loop apart, and this lesson is its map.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+Where does the loop start? With two things: a "save file" called <strong>AgentState</strong>, and a "factory" called <strong>AgentLoop.load</strong>. The save file holds everything needed to rebuild an agent; the factory reads the <span class="mono">agent_type</span> on that save and decides which engine runs this time. This lesson doesn't dig into any one engine's internals — that's for the next three lessons; it just sets the starting line straight. Finish it and you hold the map for lessons 14–16.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Think of AgentState as a game save file, and AgentLoop as a factory.</strong> A save file records your level, gear, and current map — load it and you keep playing on any machine. AgentState is the agent's save file: identity, memory, in-window messages, tools, all in there; the server keeps no memory of its own — every request reads this save from the database, runs one round, and writes it back. AgentLoop is like a factory: the same order (save file) comes in, the factory looks at the "product type" column and decides which production line to send it down. <strong>The save decides "who," the factory decides "which engine runs it"</strong> — that's the starting point of the whole execution loop. Read this one save file plus this one factory, and you've read the opening of every story in Part 4.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>One line for this lesson: the execution loop starts by "reading the save, picking the engine."</strong> <span class="mono">AgentState</span> is the agent's save file — holding <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / llm_config</span> and more, "all the information needed to recreate a persisted agent." <span class="mono">AgentLoop.load</span> is a factory — it reads the <span class="mono">agent_type</span> on the save as a key and picks the implementation to run: <span class="mono">letta_v1_agent</span> (and <span class="mono">sleeptime_agent</span>) goes to third-generation <span class="mono">LettaAgentV3</span>, the rest to second-generation <span class="mono">LettaAgentV2</span>. And the agent itself went through three generations: the synchronous elder <span class="mono">Agent</span>, the async <span class="mono">LettaAgentV2</span>, and the heartbeat-free <span class="mono">LettaAgentV3</span>. Remember these three things and Part 4 has a skeleton — save, factory, three generations, matching "who, which engine, what temperament."
+</div>
+
+<h2>AgentState: an agent's "save file"</h2>
+<p>Start with the save itself. The docstring of <span class="mono">AgentState</span> (<span class="mono">letta/schemas/agent.py</span>) has one line that captures its essence: <strong>"all the information needed to recreate a persisted agent."</strong> It isn't a temporary variable living in memory — it's a <strong>snapshot</strong> that can be serialized, stored in the database, and read back out.</p>
+
+<p>This connects straight to lesson 6's "stateful vs stateless": the LLM itself is stateless, so Letta <strong>externalizes</strong> the agent's state into this save file. Put differently, "an agent" in Letta equals "one database row + its save-file representation."</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">That <span class="mono">id</span> isn't a random string — it's <strong>type-prefixed</strong>: <span class="mono">agent-xxxx</span> (lessons 2, 6). One glance tells you it's an agent, not a block or message — a naming convention Letta uses everywhere.</span></div>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">Identity</span><span class="name">id / name / agent_type</span></div>
+    <div class="ld">A type-prefixed primary key <span class="mono">agent-xxxx</span>, a name, and the all-important <span class="mono">agent_type</span> — the factory's dispatch key.</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">In-window</span><span class="name">system / message_ids</span></div>
+    <div class="ld">The system prompt plus the "list of in-window message ids" (lesson 11) — these two directly decide the context fed to the model next round.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">Memory</span><span class="name">blocks / memory</span></div>
+    <div class="ld">Core memory blocks (lesson 8). <span class="mono">blocks</span> is the new field, <span class="mono">memory</span> is its deprecated alias.</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">Behavior · Model</span><span class="name">tools / tool_rules / model</span></div>
+    <div class="ld">Which tools it can call, tool rules (lesson 16), and the model handle <span class="mono">model</span> (old field <span class="mono">llm_config</span>).</div></div>
+</div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">Read the four groups together: <strong>identity says "who," in-window + memory say "what it knows right now," behavior + model say "what it can do and who does the thinking"</strong> — together that's enough to rebuild a living agent.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/agent.py</span><span class="ln">AgentState key fields (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentState</span>(OrmMetadataBase):       <span class="cm"># Pydantic, __id_prefix__ = "agent"</span>
+    <span class="st">"all the information needed to recreate a persisted agent"</span>  <span class="cm"># docstring</span>
+    id: str                              <span class="cm"># "agent-xxxx", type-prefixed key</span>
+    name: str
+    system: str                          <span class="cm"># system prompt</span>
+    agent_type: AgentType                <span class="cm"># factory picks the engine by this (dispatch key)</span>
+    message_ids: list[str] | <span class="kw">None</span>        <span class="cm"># ids of in-window messages (lesson 11)</span>
+    blocks: list[Block]                  <span class="cm"># core memory blocks (new)</span>
+    memory: Memory                       <span class="cm"># DEPRECATED -> use blocks</span>
+    tools: list[Tool]
+    tool_rules: list[ToolRule] | <span class="kw">None</span>    <span class="cm"># tool rules (lesson 16)</span>
+    model: str | <span class="kw">None</span>                    <span class="cm"># model handle (new)</span>
+    llm_config: LLMConfig                <span class="cm"># DEPRECATED -> use model</span>
+</pre></div>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't get dizzy seeing paired fields: <span class="mono">memory / llm_config / sources</span> are all <strong>deprecated</strong> aliases — new code should use <span class="mono">blocks / model / folders</span>. Both sets coexist only for backward compatibility.</span></div>
+
+<p>Don't let the field count scare you. They roughly fall into the four groups above: <strong>identity, in-window, memory, behavior + model</strong>. Hold onto the thread "together they must rebuild an agent," and you needn't memorize every field — if a group is missing, you can reason it back yourself.</p>
+
+<h2>Where the save comes from: "hydrated" out of one ORM row</h2>
+<p><span class="mono">AgentState</span> is the <strong>in-memory / API representation</strong>, not the storage format in the database. What actually lands in the DB is the ORM row <span class="mono">letta/orm/agent.py</span>; whenever needed, <span class="mono">to_pydantic_async</span> "hydrates" that row — together with its blocks, tools, and message ids — into an <span class="mono">AgentState</span> object.</p>
+
+<p>This is lesson 6's "the server remembers nothing" made concrete: every request reads the save fresh, runs, then writes it back. So the same agent can "load and resume" on any process, any machine — all its state lives in this portable save file, not in some long-lived in-memory object.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">"Hydrate → run → write back" is the fixed three-beat of every request. The <strong>write-back</strong> persists this round's new messages and edited core memory, so the next request reads the latest save.</span></div>
+
+<p>The word "hydrate" is vivid: the database stores a <strong>dehydrated</strong> raw row (foreign keys, id lists), and on read the related blocks, tools, and messages are <strong>rehydrated</strong> into a full object. The <span class="mono">async</span> in <span class="mono">to_pydantic_async</span> matters too — those relations are fetched from the DB concurrently, and async saves a lot of waiting.</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">POST message</div><div class="nd">lesson 3</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">read the save</div><div class="nd">AgentState hydrate</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">AgentLoop.load</div><div class="nd">pick engine by type</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">step loop</div><div class="nd">lessons 14–16</div></div>
+</div>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">Connect this line to lesson 3: a message comes in, first <strong>hydrate the save</strong>, then the factory <strong>picks the engine</strong>, and only then enter the step loop. This lesson covers those two middle steps — the loop's real "starting line."</span></div>
+
+<h2>What the save holds — and what it doesn't</h2>
+<p>The save is big, but it isn't "stuff everything in." It holds <strong>pointers and config</strong>, not bulk text. For instance <span class="mono">message_ids</span> is just a list of <strong>message ids</strong> (lesson 11) — the actual message text lives in recall's database table; archival passages (lesson 10) don't enter the save at all.</p>
+
+<p>This is a key trade-off: the save must be <strong>read and written often</strong>, so it can't be heavy. It keeps only what's "needed in-window, or required to rebuild" — identity, system prompt, core memory blocks, in-window message ids, tool list — and leaves the bulk out-of-window content to each manager to fetch on demand.</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>In the save vs in the DB</b>: the save keeps only pointers and config; text stays outside, fetched on demand</div>
+  <div class="cells">
+    <span class="cell hl">identity / system / blocks</span>
+    <span class="sep">·</span>
+    <span class="cell hl">message_ids (pointers)</span>
+    <span class="sep">·</span>
+    <span class="cell q">recall text → MessageManager</span>
+    <span class="sep">·</span>
+    <span class="cell scale">archival passages → PassageManager</span>
+  </div>
+</div>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">Remember it in one line: <strong>the save stores "pointers + config," not "bulk text."</strong> <span class="mono">message_ids</span> points to in-window messages; the text and archive stay in their own DB tables, fetched when needed.</span></div>
+
+<p>The save also hides a few "behavior switches," like <span class="mono">message_buffer_autoclear</span> (default <span class="mono">False</span>): turn it on and the agent <strong>won't remember earlier messages</strong>, living only on core memory plus archival / recall. Such fields don't enter the context directly, yet they really change how the loop runs — the save isn't just "data," it carries "config" too.</p>
+
+<h2>AgentLoop.load: the factory that picks an engine by type</h2>
+<p>With the save in hand, the next step is <strong>picking an engine</strong>. <span class="mono">AgentLoop.load</span> (<span class="mono">letta/agents/agent_loop.py</span>) is a <span class="mono">@staticmethod</span> factory: it takes <span class="mono">agent_state</span> and <span class="mono">actor</span>, reads <span class="mono">agent_state.agent_type</span> as the key, and <strong>returns a <span class="mono">BaseAgentV2</span> instance</strong> — the loop to run this time.</p>
+
+<p>The dispatch rule in one line: <span class="mono">letta_v1_agent</span> and <span class="mono">sleeptime_agent</span> go to third-gen <span class="mono">LettaAgentV3</span>, <strong>everything else</strong> goes to second-gen <span class="mono">LettaAgentV2</span>. Only when an agent additionally enables <span class="mono">sleeptime</span> and is wired to a multi-agent group does it switch to <span class="mono">SleeptimeMultiAgentV4 / V3</span>.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">That <span class="mono">sleeptime</span> + multi-agent-group branch is <strong>advanced play</strong> (background memory housekeeping) that most agents never touch. Grab the trunk first: <span class="mono">letta_v1 / sleeptime → V3</span>, everything else → V2.</span></div>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Grab the key</h4><p>Read <span class="mono">agent_state.agent_type</span> — the whole dispatch looks at this one field.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Is it letta_v1 / sleeptime?</h4><p>Yes → return <span class="mono">LettaAgentV3</span> (the new simplified loop, no heartbeats).</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Otherwise</h4><p>memgpt / memgpt_v2 / react / workflow / voice… → return <span class="mono">LettaAgentV2</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>sleeptime + group on?</h4><p>Switch to <span class="mono">SleeptimeMultiAgentV4</span> (v1/sleeptime types) or <span class="mono">V3</span> (others).</p></div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/agent_loop.py</span><span class="ln">AgentLoop.load dispatch (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentLoop</span>:
+    <span class="kw">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">load</span>(agent_state, actor) -> BaseAgentV2:
+        t = agent_state.agent_type        <span class="cm"># the only dispatch key</span>
+        <span class="kw">if</span> t <span class="kw">in</span> [AgentType.letta_v1_agent, AgentType.sleeptime_agent]:
+            <span class="kw">return</span> <span class="fn">LettaAgentV3</span>(agent_state, actor)   <span class="cm"># new simplified loop</span>
+        <span class="kw">else</span>:                              <span class="cm"># memgpt / react / workflow / voice ...</span>
+            <span class="kw">return</span> <span class="fn">LettaAgentV2</span>(agent_state, actor)   <span class="cm"># older loop with heartbeats</span>
+        <span class="cm"># note: with sleeptime + group -> SleeptimeMultiAgentV4 / V3</span>
+</pre></div>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">The factory's payoff: callers <strong>only ever write</strong> <span class="mono">AgentLoop.load(agent_state, actor)</span>, never caring whether it's V2 or V3 behind it. Add a new agent kind later and you touch only this one factory, nowhere else.</span></div>
+
+<p>A word on the factory's second argument <span class="mono">actor</span> — it's the <strong>user who made this request</strong>, carried along for permission and ownership checks. The factory not only "picks the class" but also assembles <span class="mono">agent_state</span> and <span class="mono">actor</span> into the engine, so the returned object is ready to <span class="mono">step</span>.</p>
+
+<p>One thing easily missed: <span class="mono">load</span> <strong>runs fresh every request</strong>. Last round finishes, the engine object is thrown away; next round <span class="mono">load</span>s a new one. This matches the "save file" idea exactly — the engine keeps no state, all state lives in <span class="mono">agent_state</span>, assembled and run anew each round.</p>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Three anchors, one through-line.</strong> The save is <span class="mono">letta/schemas/agent.py::AgentState</span> (Pydantic, inheritance chain <span class="mono">OrmMetadataBase → LettaBase → BaseModel</span>, <span class="mono">__id_prefix__ = "agent"</span>), hydrated from the ORM row <span class="mono">letta/orm/agent.py</span> via <span class="mono">to_pydantic_async</span>. The factory is <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>, a <span class="mono">@staticmethod</span> returning <span class="mono">BaseAgentV2</span>. The key is the string enum <span class="mono">letta/schemas/enums.py::AgentType</span>. Their relationship in one line: <strong>the factory reads the save's <span class="mono">agent_type</span> and picks an engine</strong>. This lesson follows only that through-line; how an engine turns inside is left to lessons 14–16.
+</div>
+
+<h2>Three generations of agent: from synchronous elder to heartbeat-free</h2>
+<p>The factory can "pick" because there really are several generations behind it. They share one abstract interface, <span class="mono">BaseAgentV2</span> (<span class="mono">letta/agents/base_agent_v2.py</span>, which mandates three abstract methods <span class="mono">build_request / step / stream</span>), but their temperaments differ.</p>
+
+<p><strong>The elder <span class="mono">Agent</span></strong> (<span class="mono">letta/agent.py</span>) is <strong>synchronous</strong>: <span class="mono">def step(...) -> LettaUsageStatistics</span>, with an inner <span class="mono">while True</span> loop that relies on "heartbeat requests" and function failures to decide whether to continue. It's MemGPT's original form, and it's <strong>not on the factory's return path</strong>.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">"Not on the factory path" doesn't mean useless: some older code that constructs <span class="mono">Agent</span> directly still exists. But <strong>this lesson's main line</strong> — the one a new agent runs by default — only looks at V2 / V3.</span></div>
+
+<table class="t">
+  <tr><th>Generation</th><th>Class</th><th>Sync/Async</th><th>How it decides to "step again"</th><th>Returned by factory?</th></tr>
+  <tr><td>Elder</td><td class="mono">Agent</td><td>sync</td><td>heartbeat requests + function failures, <span class="mono">while True</span></td><td>❌ not via factory</td></tr>
+  <tr><td>2nd gen</td><td class="mono">LettaAgentV2</td><td>async</td><td>heartbeat-driven (<span class="mono">request_heartbeat</span>)</td><td>✅ most types</td></tr>
+  <tr><td>3rd gen</td><td class="mono">LettaAgentV3</td><td>async</td><td>no heartbeat · continues if there's a tool call</td><td>✅ letta_v1 / sleeptime</td></tr>
+</table>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Even the return type changed: the elder <span class="mono">Agent.step</span> returns <span class="mono">LettaUsageStatistics</span> (usage stats), while V2's <span class="mono">step</span> returns <span class="mono">LettaResponse</span> (a full response). Different generation, even "one round" hands you something different.</span></div>
+
+<p><strong>2nd-gen <span class="mono">LettaAgentV2</span></strong> is an async rewrite: <span class="mono">async def step(...) -> LettaResponse</span>, where whether to continue is decided by <strong>heartbeats</strong> (<span class="mono">_decide_continuation</span> reads <span class="mono">request_heartbeat</span>). <strong>3rd-gen <span class="mono">LettaAgentV3</span> directly subclasses V2</strong>, and its docstring says it's "stripped down further": <strong>no heartbeats, the loop becomes "continue as long as there's a tool call."</strong></p>
+
+<p>Why upgrade from the synchronous elder to async V2? Because the server must carry <strong>many agents at once and stream tokens</strong>. A synchronous <span class="mono">while True</span> ties up a thread; async can yield while waiting on the model or tools, improving both throughput and latency. V3 then, on V2's async foundation, also drops the old "heartbeat" layer.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">The three generations are a line of <strong>inheritance + simplification</strong>: the elder <span class="mono">Agent</span> (sync) → <span class="mono">LettaAgentV2</span> (async, heartbeat) → <span class="mono">LettaAgentV3</span> (subclasses V2, drops heartbeats). Lesson 14 dissects V3's loop; lesson 15 focuses on the "heartbeat" contrast.</span></div>
+
+<h2>The interface the generations share: BaseAgentV2</h2>
+<p>The factory dares to "return anything" thanks to a <strong>uniform contract</strong>. <span class="mono">BaseAgentV2</span> is an abstract base class (<span class="mono">ABC</span>) that mandates every generation of engine implement three methods: <span class="mono">build_request</span> (assemble the request), <span class="mono">step</span> (run one round), and <span class="mono">stream</span> (stream one round).</p>
+
+<p>With this contract, callers know only the interface, not the concrete class — exactly the premise that lets the factory work. Both V2 and V3 dutifully subclass <span class="mono">BaseAgentV2</span>; because V3 inherits from V2, it reuses many methods directly and only <strong>overrides</strong> the parts it simplifies (like the continuation decision <span class="mono">_decide_continuation</span>).</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">An abstract base class = a "slot spec." The factory can plug in any board (V2 / V3), because their <strong>pins (method signatures) are identical</strong>. That's "programming to an interface" made concrete in Letta.</span></div>
+
+<p>One common question, answered: since V3 is the "stripped-down" simplification, why still <strong>inherit</strong> V2 instead of starting fresh? Because the vast majority of logic (assembling requests, calling the model, storing messages) is the same, and inheritance <strong>maximizes reuse</strong>, overriding only a few spots. That also explains the slightly counter-intuitive relationship in the code: the "newer" V3 is a subclass of the "older" V2.</p>
+
+<h2>Nine agent_types, and which line each one takes</h2>
+<p>Spread the key out. <span class="mono">AgentType</span> (<span class="mono">letta/schemas/enums.py</span>) is a string enum with nine values. The table below maps each value to the engine the factory returns "without a sleeptime group" — you'll find the vast majority land on V2, with only two going to V3.</p>
+
+<p><span class="mono">agent_type</span> is <strong>fixed when the agent is created</strong>: the default of <span class="mono">CreateAgent.agent_type</span> is exactly <span class="mono">AgentType.letta_v1_agent</span> (<span class="mono">letta/schemas/agent.py</span>). So if you don't specify a type and just spin up an agent, it's <span class="mono">letta_v1_agent</span>, running V3 — the new design became the new default.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/enums.py</span><span class="ln">AgentType enum (excerpt)</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentType</span>(str, Enum):
+    memgpt_agent     = <span class="st">"memgpt_agent"</span>      <span class="cm"># the original memgpt toolset</span>
+    memgpt_v2_agent  = <span class="st">"memgpt_v2_agent"</span>   <span class="cm"># refreshed</span>
+    letta_v1_agent   = <span class="st">"letta_v1_agent"</span>    <span class="cm"># simplified memgpt loop: no heartbeats, no forced tool calls</span>
+    react_agent      = <span class="st">"react_agent"</span>       <span class="cm"># no memory tools</span>
+    workflow_agent   = <span class="st">"workflow_agent"</span>    <span class="cm"># auto-clearing message buffer</span>
+    <span class="cm"># ... split_thread / sleeptime / voice_convo / voice_sleeptime</span>
+    <span class="cm"># note: there is NO letta_agent_v3 value!</span>
+</pre></div>
+
+<table class="t">
+  <tr><th>agent_type</th><th>Returned (no group)</th><th>Note</th></tr>
+  <tr><td class="mono">letta_v1_agent</td><td>LettaAgentV3</td><td>main path; default for new agents</td></tr>
+  <tr><td class="mono">sleeptime_agent</td><td>LettaAgentV3</td><td>falls back to V3 when not grouped</td></tr>
+  <tr><td class="mono">memgpt_agent</td><td>LettaAgentV2</td><td>OG memgpt tools</td></tr>
+  <tr><td class="mono">memgpt_v2_agent</td><td>LettaAgentV2</td><td>refreshed</td></tr>
+  <tr><td class="mono">react_agent</td><td>LettaAgentV2</td><td>no memory tools</td></tr>
+  <tr><td class="mono">workflow_agent</td><td>LettaAgentV2</td><td>auto-clears buffer</td></tr>
+  <tr><td class="mono">split_thread_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+  <tr><td class="mono">voice_convo_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+  <tr><td class="mono">voice_sleeptime_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+</table>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">One shortcut is enough: <strong>only <span class="mono">letta_v1_agent</span> (and the ungrouped <span class="mono">sleeptime_agent</span>) go to V3, everything else is V2.</strong> And new agents default to <span class="mono">letta_v1_agent</span> — so spin one up casually and it runs V3.</span></div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">📁</span><span class="lab">save · agent_type</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🏭</span><span class="lab">AgentLoop.load</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🤖</span><span class="bubble">letta_v1 → V3 engine</span>
+    <span class="emoji">🤖</span><span class="bubble">others → V2 engine</span>
+  </div>
+  <div class="cap">the same save enters the factory; it reads the agent_type column and picks the production line — pick the engine by type</div>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 Design spark</div>
+  <strong>Those six words, "read the save, pick the engine," ground lesson 6's "stateful vs stateless" in one concrete object.</strong> The server keeps no memory of its own: every request hydrates the whole save from the database, runs one round, and writes it back — so the same agent can "load and resume" on any process, any machine. And <span class="mono">AgentLoop.load</span> is "picking the engine while you load the save": same save file, <span class="mono">agent_type</span> decides which loop runs this time (V3 simplified / V2 heartbeat / sleeptime multi-agent). The delight is the counter-intuitive kicker: the class is literally named <span class="mono">LettaAgentV3</span>, yet the enum value that triggers it is <span class="mono">letta_v1_agent</span> — because the "V3 code" implements the "Letta v1 design" (dropping MemGPT's heartbeats and forced tool calls). <strong>The name records history; behavior lives in the code.</strong> See this layer and naming will never mislead you — and you'll smile at Letta's style of "sealing history into names, writing truth into code."
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfalls</div>
+  <strong>Don't be fooled by names.</strong> First, there is <strong>no</strong> <span class="mono">letta_agent_v3</span> or <span class="mono">letta_v3_agent</span> enum value — the thing that triggers <span class="mono">LettaAgentV3</span> is <span class="mono">letta_v1_agent</span>; class name ≠ enum name, so never guess the enum from the class name. Second, in <span class="mono">AgentState</span> the fields <span class="mono">memory / llm_config / sources</span> are all <strong>deprecated</strong>; new code should use <span class="mono">blocks / model / folders</span> — both sets coexist only for historical compatibility, so trust the new names when reading code. Keep these two straight and you'll spare yourself half the "why doesn't this match" confusion. A closing mnemonic: <strong>class name carries V3, enum name carries v1; new code knows blocks / model, old fields are just aliases.</strong>
+</div>
+
+<h2>Digging a little deeper</h2>
+
+<details class="accordion"><summary>Why use a "factory" instead of just newing an agent?</summary><div class="acc-body">
+<p><strong>Example:</strong> the caller (say, the service handling a POST) just wants to say "run this agent"; it shouldn't care how many generations of implementation you have inside. <span class="mono">AgentLoop.load(agent_state, actor)</span> is one line, and the return value is uniformly <span class="mono">BaseAgentV2</span>.</p>
+<p><strong>Why it's designed this way:</strong> it <strong>funnels</strong> the "which generation to pick" branching into one place. The same save comes in, <span class="mono">agent_type</span> decides the line; add a new agent kind later and you touch only this one factory method, not a single line of caller code. This is the open–closed principle — open to extension, closed to modification — in the flesh.</p>
+<p><strong>Where in the source:</strong> <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>, a <span class="mono">@staticmethod</span> whose return annotation is exactly <span class="mono">BaseAgentV2</span>.</p>
+<p><strong>What's the alternative:</strong> write <span class="mono">if agent_type == …</span> at every call site — branches scatter everywhere and adding a type means editing ten places. The factory is the textbook solution.</p>
+</div></details>
+
+<details class="accordion"><summary>Why don't the "V3 class" and "letta_v1 enum" match?</summary><div class="acc-body">
+<p><strong>Example:</strong> you want an agent to run <span class="mono">LettaAgentV3</span>, so you hunt the enum for <span class="mono">letta_v3_agent</span> — and can't find it. The value that triggers V3 is actually called <span class="mono">letta_v1_agent</span>.</p>
+<p><strong>Why it's designed this way:</strong> the two version numbers mean different things. <span class="mono">V3</span> is the generation of <strong>code implementation</strong> (the third rewrite of the loop); <span class="mono">v1</span> is the <strong>design version</strong> — "Letta v1," a design that advocates dropping MemGPT's heartbeats and forced tool calls. The V3 code implements exactly the v1 design.</p>
+<p><strong>Where in the source:</strong> the enum comment says it plainly — <span class="mono">letta_v1_agent</span> = "simplification of the memgpt loop, no heartbeats or forced tool calls" (<span class="mono">letta/schemas/enums.py</span>).</p>
+<p><strong>What's the alternative:</strong> renaming the enum to <span class="mono">letta_agent_v3</span> would be clearer, but that's a rename that breaks all stored data (every agent row stored this string). So the historical baggage stays.</p>
+</div></details>
+
+<details class="accordion"><summary>Those "deprecated fields" in AgentState — which do I trust?</summary><div class="acc-body">
+<p><strong>Example:</strong> you print an <span class="mono">AgentState</span> and see both <span class="mono">memory</span> and <span class="mono">blocks</span>, both <span class="mono">llm_config</span> and <span class="mono">model</span> — which to read?</p>
+<p><strong>Why it's designed this way:</strong> these fields are doing a <strong>gradual migration</strong>. The old fields (<span class="mono">memory / llm_config / embedding_config / sources</span>) are marked <span class="mono">deprecated=True</span> but kept for now, so old clients don't crash the moment they upgrade; the new fields (<span class="mono">blocks / model / embedding / folders</span>) are the future direction.</p>
+<p><strong>Where in the source:</strong> all in <span class="mono">letta/schemas/agent.py::AgentState</span>, where each deprecated field's <span class="mono">Field(description=...)</span> literally says "Use `X` field instead."</p>
+<p><strong>What's the alternative:</strong> deleting the old fields outright — which would cut off all old clients at once. Keeping them + marking deprecated is the steadiest transition during the compatibility window. When reading code: <strong>trust the new fields, treat the old ones as aliases.</strong></p>
+</div></details>
+
+<details class="accordion"><summary>There's actually a "fourth class," LettaAgent — which generation is it?</summary><div class="acc-body">
+<p><strong>Example:</strong> under <span class="mono">letta/agents/</span> you'll also see a <span class="mono">LettaAgent</span> (note: no V2/V3 suffix), and it's easy to assume it's the one the factory returns.</p>
+<p><strong>Why it's designed this way:</strong> <span class="mono">LettaAgent</span> (<span class="mono">letta/agents/letta_agent.py</span>, which inherits the earlier <span class="mono">BaseAgent</span>) serves group / voice scenarios and is <strong>not on <span class="mono">AgentLoop.load</span>'s return path</strong>. This lesson's main line only follows the factory: both V2 and V3 inherit <span class="mono">BaseAgentV2</span>. In other words, the word "generation" is a bit messy in Letta — don't count how many Agent classes there are, just remember "the factory hands you back V2 or V3" and that's enough to get through Part 4.</p>
+<p><strong>Where in the source:</strong> the abstract interface <span class="mono">base_agent_v2.py::BaseAgentV2</span> (abstract methods <span class="mono">build_request / step / stream</span>); the side-path <span class="mono">letta_agent.py::LettaAgent</span>.</p>
+<p><strong>What's the alternative:</strong> cramming every path into one factory — which would drag group/voice's special assembly in too. Letta chose to let the factory handle only the "single-agent main loop," with the rest going their own way.</p>
+</div></details>
+
+<h2>Part 4 opens from here: next stop</h2>
+<p>This lesson is Part 4's map: <strong>the save (AgentState) says "who," the factory (AgentLoop.load) picks an engine by agent_type, and the three generations each have their temperament.</strong> The loop's "starting point" is now firmly in place. Weld these three nouns into your head and even the most complex loop details ahead can be hung back onto them.</p>
+
+<p>The next three lessons each zoom in one notch: lesson 14 dissects exactly how <span class="mono">LettaAgentV3</span>'s loop steps through; lesson 15 contrasts the "heartbeat" — how V2's <span class="mono">request_heartbeat</span> differs from V3's "continue on a tool call"; lesson 16 covers <strong>tool rules</strong> (<span class="mono">tool_rules</span>), that field in the save we kept not detailing.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">Take away one line: <strong>the same save, different engines by <span class="mono">agent_type</span></strong>. The save is "who," the factory is "which engine," the three generations are "the engine's temperament." The next three lessons all unfold on this map.</span></div>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>AgentState = the save file</strong>: holds <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / model</span> and more — "all the information needed to recreate a persisted agent"; it's the in-memory / API representation, hydrated from an ORM row.</li>
+    <li><strong>AgentLoop.load = the factory</strong>: reads <span class="mono">agent_state.agent_type</span> as the key and returns a <span class="mono">BaseAgentV2</span> instance — <span class="mono">letta_v1_agent / sleeptime_agent</span> → V3, everything else → V2.</li>
+    <li><strong>Three generations</strong>: synchronous elder <span class="mono">Agent</span> → async <span class="mono">LettaAgentV2</span> (heartbeat) → <span class="mono">LettaAgentV3</span> (subclasses V2, drops heartbeats, continues on tool calls).</li>
+    <li><strong>Naming trap</strong>: there is no <span class="mono">letta_agent_v3</span> enum value; what triggers V3 is <span class="mono">letta_v1_agent</span> (the V3 code implements the v1 design). Class name ≠ enum name.</li>
+    <li><strong>Deprecated fields</strong>: <span class="mono">memory / llm_config / sources</span> are deprecated; new code uses <span class="mono">blocks / model / folders</span>.</li>
+    <li><strong>Echoes lesson 6</strong>: the server is stateless; every request hydrates the save, runs, writes back — so the same agent can "load and resume" on any machine.</li>
+    <li><strong>Source</strong>: <span class="mono">schemas/agent.py::AgentState</span>, <span class="mono">agents/agent_loop.py::AgentLoop.load</span>, <span class="mono">schemas/enums.py::AgentType</span>.</li>
+  </ul>
+</div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. AgentLoop.load is a factory: the same save comes in — what does it use to decide which agent engine (V2 or V3) to return this time?</div>
+  <ol class="opts">
+    <li>It decides based on the permission level of the actor (the requesting user)</li>
+    <li>It picks one at random, since both generations share the same interface</li>
+    <li>It reads the single field agent_state.agent_type as the key — the whole dispatch looks only at that</li>
+    <li>It looks at how many tokens the current context uses; above a threshold it switches to V3</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. AgentLoop.load(agent_state, actor) uses only agent_state.agent_type as the dispatch key: letta_v1_agent / sleeptime_agent → LettaAgentV3, everything else → LettaAgentV2 (sleeptime + group additionally goes to SleeptimeMultiAgent). Token usage is Lesson 12's compaction concern, unrelated to engine choice; actor is only for permission/ownership checks, not class selection; both generations subclass BaseAgentV2 and share an interface, but selection is never random.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. You want a new agent to run the third-generation implementation LettaAgentV3. Which enum value should you set agent_type to?</div>
+  <ol class="opts">
+    <li>letta_v1_agent — it's the value that triggers V3 (and the default for new agents); note the “class is V3, enum is v1” mismatch</li>
+    <li>memgpt_v2_agent — the one with the biggest number</li>
+    <li>letta_v3_agent</li>
+    <li>letta_agent_v3 — the one aligned with the class name</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. AgentType has no letta_agent_v3 or letta_v3_agent value at all — guessing the enum from the class name always fails. What triggers LettaAgentV3 is letta_v1_agent (also the default of CreateAgent.agent_type): “V3” means the third code rewrite of the loop, “v1” means the Letta v1 design (dropping heartbeats and forced tool calls), and the V3 code implements exactly that v1 design. memgpt_v2_agent runs V2.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. In AgentState, which field determines “which in-window conversation messages are fed to the model next round”?</div>
+  <ol class="opts">
+    <li>system — the system prompt inlines all historical messages</li>
+    <li>message_ids — a list of in-window message ids (pointers); the text stays in the recall table, fetched when needed</li>
+    <li>blocks — the core memory blocks hold the full conversation history</li>
+    <li>memory — it's the field dedicated to storing conversation text</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. message_ids is the “list of in-window message ids” (Lesson 11), storing pointers not text — embodying the save's trade-off of “pointers + config, not bulk text,” with the actual message text in the recall DB table. blocks are core memory blocks (persona / human / custom, Lesson 8), not conversation history; system is the system prompt; memory is merely the deprecated alias of blocks.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. Calling AgentState a “save file” — how does that echo Lesson 6's “stateful vs stateless”?</div>
+  <ol class="opts">
+    <li>The server keeps each agent's state in a long-lived in-memory object, so switching machines loses it</li>
+    <li>The server keeps no memory of its own: every request hydrates the whole save from the DB, runs a round, and writes it back — so the same agent can “load and resume” on any process / machine</li>
+    <li>The save is just a cache; the truth always lives in the model weights</li>
+    <li>The LLM is itself stateful and remembers the last round, so no save is needed at all</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Lesson 6's point: the LLM is stateless, so Letta externalizes the agent's state into a serializable, persistable save file. Every request's fixed three-beat is “hydrate → run → write back”: read AgentState fresh from the ORM row, then persist new messages / edits back. The engine object is assembled and discarded each round and keeps no state — all state lives in the save — so the same agent resumes on any process / machine. Long-lived memory, “the LLM remembers,” and “truth in the weights” all contradict this stateless architecture.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Using the two metaphors “game save file + factory picks the engine,” weave Lesson 13 into one coherent story, and think through three things: (1) why have a factory (AgentLoop.load) pick the implementation by agent_type instead of writing if/else at every call site? Connect it to “adding a new agent kind later.” (2) The class is named LettaAgentV3 yet the enum is letta_v1_agent — what traps does this “name records history, behavior lives in code” mismatch set for readers, and how would you avoid being misled? (3) Since the engine is assembled and discarded each request with all state in the save, what does that mean for “the same agent resuming on any machine”? Tie it back to Lesson 6's stateless design.</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="12-context-compaction.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">上下文压缩与记忆压力</span><span class="lang-en">Context compaction &amp; memory pressure</span></div></a><a class="next" href="14-v3-step-loop.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">V3 步进循环</span><span class="lang-en">The V3 step loop</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>
