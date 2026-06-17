@@ -281,5 +281,278 @@ LESSON_13 = {
   </ul>
 </div>
 """,
-    "en": r"""<p>stub</p>""",
+    "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+In Part 3 we took Letta's "memory" apart — three memory tiers, memory blocks, self-editing, compaction. But memory is only the <strong>raw material</strong>: what actually makes an agent <strong>run</strong> is a loop that turns, round after round. Part 4 takes that loop apart, and this lesson is its map.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+Where does the loop start? With two things: a "save file" called <strong>AgentState</strong>, and a "factory" called <strong>AgentLoop.load</strong>. The save file holds everything needed to rebuild an agent; the factory reads the <span class="mono">agent_type</span> on that save and decides which engine runs this time. This lesson doesn't dig into any one engine's internals — that's for the next three lessons; it just sets the starting line straight. Finish it and you hold the map for lessons 14–16.</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 Analogy</div>
+  <strong>Think of AgentState as a game save file, and AgentLoop as a factory.</strong> A save file records your level, gear, and current map — load it and you keep playing on any machine. AgentState is the agent's save file: identity, memory, in-window messages, tools, all in there; the server keeps no memory of its own — every request reads this save from the database, runs one round, and writes it back. AgentLoop is like a factory: the same order (save file) comes in, the factory looks at the "product type" column and decides which production line to send it down. <strong>The save decides "who," the factory decides "which engine runs it"</strong> — that's the starting point of the whole execution loop. Read this one save file plus this one factory, and you've read the opening of every story in Part 4.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>One line for this lesson: the execution loop starts by "reading the save, picking the engine."</strong> <span class="mono">AgentState</span> is the agent's save file — holding <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / llm_config</span> and more, "all the information needed to recreate a persisted agent." <span class="mono">AgentLoop.load</span> is a factory — it reads the <span class="mono">agent_type</span> on the save as a key and picks the implementation to run: <span class="mono">letta_v1_agent</span> goes to third-generation <span class="mono">LettaAgentV3</span>, everything else to second-generation <span class="mono">LettaAgentV2</span>. And the agent itself went through three generations: the synchronous elder <span class="mono">Agent</span>, the async <span class="mono">LettaAgentV2</span>, and the heartbeat-free <span class="mono">LettaAgentV3</span>. Remember these three things and Part 4 has a skeleton — save, factory, three generations, matching "who, which engine, what temperament."
+</div>
+
+<h2>AgentState: an agent's "save file"</h2>
+<p>Start with the save itself. The docstring of <span class="mono">AgentState</span> (<span class="mono">letta/schemas/agent.py</span>) is a single sentence, yet it captures the essence: <strong>"all the information needed to recreate a persisted agent."</strong> It isn't a temporary variable living in memory — it's a <strong>snapshot</strong> that can be serialized, stored in the database, and read back out.</p>
+
+<p>This connects straight to lesson 6's "stateful vs stateless": the LLM itself is stateless, so Letta <strong>externalizes</strong> the agent's state into this save file. Put differently, "an agent" in Letta equals "one database row + its save-file representation."</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">That <span class="mono">id</span> isn't a random string — it's <strong>type-prefixed</strong>: <span class="mono">agent-xxxx</span> (lessons 2, 6). One glance tells you it's an agent, not a block or message — a naming convention Letta uses everywhere.</span></div>
+
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">Identity</span><span class="name">id / name / agent_type</span></div>
+    <div class="ld">A type-prefixed primary key <span class="mono">agent-xxxx</span>, a name, and the all-important <span class="mono">agent_type</span> — the factory's dispatch key.</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">In-window</span><span class="name">system / message_ids</span></div>
+    <div class="ld">The system prompt plus the "list of in-window message ids" (lesson 11) — these two directly decide the context fed to the model next round.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">Memory</span><span class="name">blocks / memory</span></div>
+    <div class="ld">Core memory blocks (lesson 8). <span class="mono">blocks</span> is the new field, <span class="mono">memory</span> is its deprecated alias.</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">Behavior · Model</span><span class="name">tools / tool_rules / model</span></div>
+    <div class="ld">Which tools it can call, tool rules (lesson 16), and the model handle <span class="mono">model</span> (old field <span class="mono">llm_config</span>).</div></div>
+</div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">Read the four groups together: <strong>identity says "who," in-window + memory say "what it knows right now," behavior + model say "what it can do and who does the thinking"</strong> — together that's enough to rebuild a living agent.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/agent.py</span><span class="ln">AgentState key fields (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentState</span>(OrmMetadataBase):       <span class="cm"># Pydantic, __id_prefix__ = "agent"</span>
+    <span class="st">"all the information needed to recreate a persisted agent"</span>  <span class="cm"># docstring</span>
+    id: str                              <span class="cm"># "agent-xxxx", type-prefixed key</span>
+    name: str
+    system: str                          <span class="cm"># system prompt</span>
+    agent_type: AgentType                <span class="cm"># factory picks the engine by this (dispatch key)</span>
+    message_ids: list[str] | <span class="kw">None</span>        <span class="cm"># ids of in-window messages (lesson 11)</span>
+    blocks: list[Block]                  <span class="cm"># core memory blocks (new)</span>
+    memory: Memory                       <span class="cm"># DEPRECATED -> use blocks</span>
+    tools: list[Tool]
+    tool_rules: list[ToolRule] | <span class="kw">None</span>    <span class="cm"># tool rules (lesson 16)</span>
+    model: str | <span class="kw">None</span>                    <span class="cm"># model handle (new)</span>
+    llm_config: LLMConfig                <span class="cm"># DEPRECATED -> use model</span>
+</pre></div>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't get dizzy seeing paired fields: <span class="mono">memory / llm_config / sources</span> are all <strong>deprecated</strong> aliases — new code should use <span class="mono">blocks / model / folders</span>. Both sets coexist only for backward compatibility.</span></div>
+
+<p>Don't let the field count scare you. They roughly fall into the four groups above: <strong>identity, in-window, memory, behavior + model</strong>. Hold onto the thread "together they must rebuild an agent," and you needn't memorize every field — if a group is missing, you can reason it back yourself.</p>
+
+<h2>Where the save comes from: "hydrated" out of one ORM row</h2>
+<p><span class="mono">AgentState</span> is the <strong>in-memory / API representation</strong>, not the storage format in the database. What actually lands in the DB is the ORM row <span class="mono">letta/orm/agent.py</span>; whenever needed, <span class="mono">from_orm_async</span> "hydrates" that row — together with its blocks, tools, and message ids — into an <span class="mono">AgentState</span> object.</p>
+
+<p>This is lesson 6's "the server remembers nothing" made concrete: every request reads the save fresh, runs, then writes it back. So the same agent can "load and resume" on any process, any machine — all its state lives in this portable save file, not in some long-lived in-memory object.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">"Hydrate → run → write back" is the fixed three-beat of every request. The <strong>write-back</strong> persists this round's new messages and edited core memory, so the next request reads the latest save.</span></div>
+
+<p>The word "hydrate" is vivid: the database stores a <strong>dehydrated</strong> raw row (foreign keys, id lists), and on read the related blocks, tools, and messages are <strong>rehydrated</strong> into a full object. The <span class="mono">async</span> in <span class="mono">from_orm_async</span> matters too — those relations are fetched from the DB concurrently, and async saves a lot of waiting.</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">POST message</div><div class="nd">lesson 3</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">read the save</div><div class="nd">AgentState hydrate</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">AgentLoop.load</div><div class="nd">pick engine by type</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">step loop</div><div class="nd">lessons 14–16</div></div>
+</div>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">Connect this line to lesson 3: a message comes in, first <strong>hydrate the save</strong>, then the factory <strong>picks the engine</strong>, and only then enter the step loop. This lesson covers those two middle steps — the loop's real "starting line."</span></div>
+
+<h2>What the save holds — and what it doesn't</h2>
+<p>The save is big, but it isn't "stuff everything in." It holds <strong>pointers and config</strong>, not bulk text. For instance <span class="mono">message_ids</span> is just a list of <strong>message ids</strong> (lesson 11) — the actual message text lives in recall's database table; archival passages (lesson 10) don't enter the save at all.</p>
+
+<p>This is a key trade-off: the save must be <strong>read and written often</strong>, so it can't be heavy. It keeps only what's "needed in-window, or required to rebuild" — identity, system prompt, core memory blocks, in-window message ids, tool list — and leaves the bulk out-of-window content to each manager to fetch on demand.</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>In the save vs in the DB</b>: the save keeps only pointers and config; text stays outside, fetched on demand</div>
+  <div class="cells">
+    <span class="cell hl">identity / system / blocks</span>
+    <span class="sep">·</span>
+    <span class="cell hl">message_ids (pointers)</span>
+    <span class="sep">·</span>
+    <span class="cell q">recall text → MessageManager</span>
+    <span class="sep">·</span>
+    <span class="cell scale">archival passages → PassageManager</span>
+  </div>
+</div>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">Remember it in one line: <strong>the save stores "pointers + config," not "bulk text."</strong> <span class="mono">message_ids</span> points to in-window messages; the text and archive stay in their own DB tables, fetched when needed.</span></div>
+
+<p>The save also hides a few "behavior switches," like <span class="mono">message_buffer_autoclear</span> (default <span class="mono">False</span>): turn it on and the agent <strong>won't remember earlier messages</strong>, living only on core memory plus archival / recall. Such fields don't enter the context directly, yet they really change how the loop runs — the save isn't just "data," it carries "config" too.</p>
+
+<h2>AgentLoop.load: the factory that picks an engine by type</h2>
+<p>With the save in hand, the next step is <strong>picking an engine</strong>. <span class="mono">AgentLoop.load</span> (<span class="mono">letta/agents/agent_loop.py</span>) is a <span class="mono">@staticmethod</span> factory: it takes <span class="mono">agent_state</span> and <span class="mono">actor</span>, reads <span class="mono">agent_state.agent_type</span> as the key, and <strong>returns a <span class="mono">BaseAgentV2</span> instance</strong> — the loop to run this time.</p>
+
+<p>The dispatch rule in one line: <span class="mono">letta_v1_agent</span> and <span class="mono">sleeptime_agent</span> go to third-gen <span class="mono">LettaAgentV3</span>, <strong>everything else</strong> goes to second-gen <span class="mono">LettaAgentV2</span>. Only when an agent additionally enables <span class="mono">sleeptime</span> and is wired to a multi-agent group does it switch to <span class="mono">SleeptimeMultiAgentV4 / V3</span>.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">That <span class="mono">sleeptime</span> + multi-agent-group branch is <strong>advanced play</strong> (background memory housekeeping) that most agents never touch. Grab the trunk first: <span class="mono">letta_v1 / sleeptime → V3</span>, everything else → V2.</span></div>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Grab the key</h4><p>Read <span class="mono">agent_state.agent_type</span> — the whole dispatch looks at this one field.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Is it letta_v1 / sleeptime?</h4><p>Yes → return <span class="mono">LettaAgentV3</span> (the new simplified loop, no heartbeats).</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Otherwise</h4><p>memgpt / memgpt_v2 / react / workflow / voice… → return <span class="mono">LettaAgentV2</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>sleeptime + group on?</h4><p>Switch to <span class="mono">SleeptimeMultiAgentV4</span> (v1/sleeptime types) or <span class="mono">V3</span> (others).</p></div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/agent_loop.py</span><span class="ln">AgentLoop.load dispatch (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentLoop</span>:
+    <span class="kw">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">load</span>(agent_state, actor) -> BaseAgentV2:
+        t = agent_state.agent_type        <span class="cm"># the only dispatch key</span>
+        <span class="kw">if</span> t <span class="kw">in</span> [AgentType.letta_v1_agent, AgentType.sleeptime_agent]:
+            <span class="kw">return</span> <span class="fn">LettaAgentV3</span>(agent_state, actor)   <span class="cm"># new simplified loop</span>
+        <span class="kw">else</span>:                              <span class="cm"># memgpt / react / workflow / voice ...</span>
+            <span class="kw">return</span> <span class="fn">LettaAgentV2</span>(agent_state, actor)   <span class="cm"># older loop with heartbeats</span>
+        <span class="cm"># note: with sleeptime + group -> SleeptimeMultiAgentV4 / V3</span>
+</pre></div>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">The factory's payoff: callers <strong>only ever write</strong> <span class="mono">AgentLoop.load(agent_state, actor)</span>, never caring whether it's V2 or V3 behind it. Add a new agent kind later and you touch only this one factory, nowhere else.</span></div>
+
+<p>A word on the factory's second argument <span class="mono">actor</span> — it's the <strong>user who made this request</strong>, carried along for permission and ownership checks. The factory not only "picks the class" but also assembles <span class="mono">agent_state</span> and <span class="mono">actor</span> into the engine, so the returned object is ready to <span class="mono">step</span>.</p>
+
+<p>One thing easily missed: <span class="mono">load</span> <strong>runs fresh every request</strong>. Last round finishes, the engine object is thrown away; next round <span class="mono">load</span>s a new one. This matches the "save file" idea exactly — the engine keeps no state, all state lives in <span class="mono">agent_state</span>, assembled and run anew each round.</p>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Three anchors, one through-line.</strong> The save is <span class="mono">letta/schemas/agent.py::AgentState</span> (Pydantic, inheritance chain <span class="mono">OrmMetadataBase → LettaBase → BaseModel</span>, <span class="mono">__id_prefix__ = "agent"</span>), hydrated from the ORM row <span class="mono">letta/orm/agent.py</span> via <span class="mono">from_orm_async</span>. The factory is <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>, a <span class="mono">@staticmethod</span> returning <span class="mono">BaseAgentV2</span>. The key is the string enum <span class="mono">letta/schemas/enums.py::AgentType</span>. Their relationship in one line: <strong>the factory reads the save's <span class="mono">agent_type</span> and picks an engine</strong>. This lesson follows only that through-line; how an engine turns inside is left to lessons 14–16.
+</div>
+
+<h2>Three generations of agent: from synchronous elder to heartbeat-free</h2>
+<p>The factory can "pick" because there really are several generations behind it. They share one abstract interface, <span class="mono">BaseAgentV2</span> (<span class="mono">letta/agents/base_agent_v2.py</span>, which mandates three abstract methods <span class="mono">build_request / step / stream</span>), but their temperaments differ.</p>
+
+<p><strong>The elder <span class="mono">Agent</span></strong> (<span class="mono">letta/agent.py</span>) is <strong>synchronous</strong>: <span class="mono">def step(...) -> LettaUsageStatistics</span>, with an inner <span class="mono">while True</span> loop that relies on "heartbeat requests" and function failures to decide whether to continue. It's MemGPT's original form, and it's <strong>not on the factory's return path</strong>.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">"Not on the factory path" doesn't mean useless: some older code that constructs <span class="mono">Agent</span> directly still exists. But <strong>this lesson's main line</strong> — the one a new agent runs by default — only looks at V2 / V3.</span></div>
+
+<table class="t">
+  <tr><th>Generation</th><th>Class</th><th>Sync/Async</th><th>How it decides to "step again"</th><th>Returned by factory?</th></tr>
+  <tr><td>Elder</td><td class="mono">Agent</td><td>sync</td><td>heartbeat requests + function failures, <span class="mono">while True</span></td><td>❌ not via factory</td></tr>
+  <tr><td>2nd gen</td><td class="mono">LettaAgentV2</td><td>async</td><td>heartbeat-driven (<span class="mono">request_heartbeat</span>)</td><td>✅ most types</td></tr>
+  <tr><td>3rd gen</td><td class="mono">LettaAgentV3</td><td>async</td><td>no heartbeat · continues if there's a tool call</td><td>✅ letta_v1 / sleeptime</td></tr>
+</table>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Even the return type changed: the elder <span class="mono">Agent.step</span> returns <span class="mono">LettaUsageStatistics</span> (usage stats), while V2's <span class="mono">step</span> returns <span class="mono">LettaResponse</span> (a full response). Different generation, even "one round" hands you something different.</span></div>
+
+<p><strong>2nd-gen <span class="mono">LettaAgentV2</span></strong> is an async rewrite: <span class="mono">async def step(...) -> LettaResponse</span>, where whether to continue is decided by <strong>heartbeats</strong> (<span class="mono">_decide_continuation</span> reads <span class="mono">request_heartbeat</span>). <strong>3rd-gen <span class="mono">LettaAgentV3</span> directly subclasses V2</strong>, and its docstring says it's "stripped down further": <strong>no heartbeats, the loop becomes "continue as long as there's a tool call."</strong></p>
+
+<p>Why upgrade from the synchronous elder to async V2? Because the server must carry <strong>many agents at once and stream tokens</strong>. A synchronous <span class="mono">while True</span> ties up a thread; async can yield while waiting on the model or tools, improving both throughput and latency. V3 then, on V2's async foundation, also drops the old "heartbeat" layer.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">The three generations are a line of <strong>inheritance + simplification</strong>: the elder <span class="mono">Agent</span> (sync) → <span class="mono">LettaAgentV2</span> (async, heartbeat) → <span class="mono">LettaAgentV3</span> (subclasses V2, drops heartbeats). Lesson 14 dissects V3's loop; lesson 15 focuses on the "heartbeat" contrast.</span></div>
+
+<h2>The interface the generations share: BaseAgentV2</h2>
+<p>The factory dares to "return anything" thanks to a <strong>uniform contract</strong>. <span class="mono">BaseAgentV2</span> is an abstract base class (<span class="mono">ABC</span>) that mandates every generation of engine implement three methods: <span class="mono">build_request</span> (assemble the request), <span class="mono">step</span> (run one round), and <span class="mono">stream</span> (stream one round).</p>
+
+<p>With this contract, callers know only the interface, not the concrete class — exactly the premise that lets the factory work. Both V2 and V3 dutifully subclass <span class="mono">BaseAgentV2</span>; because V3 inherits from V2, it reuses many methods directly and only <strong>overrides</strong> the parts it simplifies (like the continuation decision <span class="mono">_decide_continuation</span>).</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">An abstract base class = a "slot spec." The factory can plug in any board (V2 / V3), because their <strong>pins (method signatures) are identical</strong>. That's "programming to an interface" made concrete in Letta.</span></div>
+
+<p>One common question, answered: since V3 is the "stripped-down" simplification, why still <strong>inherit</strong> V2 instead of starting fresh? Because the vast majority of logic (assembling requests, calling the model, storing messages) is the same, and inheritance <strong>maximizes reuse</strong>, overriding only a few spots. That also explains the slightly counter-intuitive relationship in the code: the "newer" V3 is a subclass of the "older" V2.</p>
+
+<h2>Nine agent_types, and which line each one takes</h2>
+<p>Spread the key out. <span class="mono">AgentType</span> (<span class="mono">letta/schemas/enums.py</span>) is a string enum with nine values. The table below maps each value to the engine the factory returns "without a sleeptime group" — you'll find the vast majority land on V2, with only two going to V3.</p>
+
+<p><span class="mono">agent_type</span> is <strong>fixed when the agent is created</strong>: the default of <span class="mono">CreateAgent.agent_type</span> is exactly <span class="mono">AgentType.letta_v1_agent</span> (<span class="mono">letta/schemas/agent.py</span>). So if you don't specify a type and just spin up an agent, it's <span class="mono">letta_v1_agent</span>, running V3 — the new design became the new default.</p>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/enums.py</span><span class="ln">AgentType enum (excerpt)</span></div>
+<pre><span class="kw">class</span> <span class="fn">AgentType</span>(str, Enum):
+    memgpt_agent     = <span class="st">"memgpt_agent"</span>      <span class="cm"># the original memgpt toolset</span>
+    memgpt_v2_agent  = <span class="st">"memgpt_v2_agent"</span>   <span class="cm"># refreshed</span>
+    letta_v1_agent   = <span class="st">"letta_v1_agent"</span>    <span class="cm"># simplified memgpt loop: no heartbeats, no forced tool calls</span>
+    react_agent      = <span class="st">"react_agent"</span>       <span class="cm"># no memory tools</span>
+    workflow_agent   = <span class="st">"workflow_agent"</span>    <span class="cm"># auto-clearing message buffer</span>
+    <span class="cm"># ... split_thread / sleeptime / voice_convo / voice_sleeptime</span>
+    <span class="cm"># note: there is NO letta_agent_v3 value!</span>
+</pre></div>
+
+<table class="t">
+  <tr><th>agent_type</th><th>Returned (no group)</th><th>Note</th></tr>
+  <tr><td class="mono">letta_v1_agent</td><td>LettaAgentV3</td><td>main path; default for new agents</td></tr>
+  <tr><td class="mono">sleeptime_agent</td><td>LettaAgentV3</td><td>falls back to V3 when not grouped</td></tr>
+  <tr><td class="mono">memgpt_agent</td><td>LettaAgentV2</td><td>OG memgpt tools</td></tr>
+  <tr><td class="mono">memgpt_v2_agent</td><td>LettaAgentV2</td><td>refreshed</td></tr>
+  <tr><td class="mono">react_agent</td><td>LettaAgentV2</td><td>no memory tools</td></tr>
+  <tr><td class="mono">workflow_agent</td><td>LettaAgentV2</td><td>auto-clears buffer</td></tr>
+  <tr><td class="mono">split_thread_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+  <tr><td class="mono">voice_convo_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+  <tr><td class="mono">voice_sleeptime_agent</td><td>LettaAgentV2</td><td>—</td></tr>
+</table>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">One shortcut is enough: <strong>only <span class="mono">letta_v1_agent</span> (and the ungrouped <span class="mono">sleeptime_agent</span>) go to V3, everything else is V2.</strong> And new agents default to <span class="mono">letta_v1_agent</span> — so spin one up casually and it runs V3.</span></div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">📁</span><span class="lab">save · agent_type</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🏭</span><span class="lab">AgentLoop.load</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🤖</span><span class="bubble">letta_v1 → V3 engine</span>
+    <span class="emoji">🤖</span><span class="bubble">others → V2 engine</span>
+  </div>
+  <div class="cap">the same save enters the factory; it reads the agent_type column and picks the production line — pick the engine by type</div>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 Design spark</div>
+  <strong>Those six words, "read the save, pick the engine," ground lesson 6's "stateful vs stateless" in one concrete object.</strong> The server keeps no memory of its own: every request hydrates the whole save from the database, runs one round, and writes it back — so the same agent can "load and resume" on any process, any machine. And <span class="mono">AgentLoop.load</span> is "picking the engine while you load the save": same save file, <span class="mono">agent_type</span> decides which loop runs this time (V3 simplified / V2 heartbeat / sleeptime multi-agent). The delight is the counter-intuitive kicker: the class is literally named <span class="mono">LettaAgentV3</span>, yet the enum value that triggers it is <span class="mono">letta_v1_agent</span> — because the "V3 code" implements the "Letta v1 design" (dropping MemGPT's heartbeats and forced tool calls). <strong>The name records history; behavior lives in the code.</strong> See this layer and naming will never mislead you — and you'll smile at Letta's style of "sealing history into names, writing truth into code."
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfalls</div>
+  <strong>Don't be fooled by names.</strong> First, there is <strong>no</strong> <span class="mono">letta_agent_v3</span> or <span class="mono">letta_v3_agent</span> enum value — the thing that triggers <span class="mono">LettaAgentV3</span> is <span class="mono">letta_v1_agent</span>; class name ≠ enum name, so never guess the enum from the class name. Second, in <span class="mono">AgentState</span> the fields <span class="mono">memory / llm_config / sources</span> are all <strong>deprecated</strong>; new code should use <span class="mono">blocks / model / folders</span> — both sets coexist only for historical compatibility, so trust the new names when reading code. Keep these two straight and you'll spare yourself half the "why doesn't this match" confusion. A closing mnemonic: <strong>class name carries V3, enum name carries v1; new code knows blocks / model, old fields are just aliases.</strong>
+</div>
+
+<h2>Digging a little deeper</h2>
+
+<details class="accordion"><summary>Why use a "factory" instead of just newing an agent?</summary><div class="acc-body">
+<p><strong>Example:</strong> the caller (say, the service handling a POST) just wants to say "run this agent"; it shouldn't care how many generations of implementation you have inside. <span class="mono">AgentLoop.load(agent_state, actor)</span> is one line, and the return value is uniformly <span class="mono">BaseAgentV2</span>.</p>
+<p><strong>Why it's designed this way:</strong> it <strong>funnels</strong> the "which generation to pick" branching into one place. The same save comes in, <span class="mono">agent_type</span> decides the line; add a new agent kind later and you touch only this one factory method, not a single line of caller code. This is the open–closed principle — open to extension, closed to modification — in the flesh.</p>
+<p><strong>Where in the source:</strong> <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>, a <span class="mono">@staticmethod</span> whose return annotation is exactly <span class="mono">BaseAgentV2</span>.</p>
+<p><strong>What's the alternative:</strong> write <span class="mono">if agent_type == …</span> at every call site — branches scatter everywhere and adding a type means editing ten places. The factory is the textbook solution.</p>
+</div></details>
+
+<details class="accordion"><summary>Why don't the "V3 class" and "letta_v1 enum" match?</summary><div class="acc-body">
+<p><strong>Example:</strong> you want an agent to run <span class="mono">LettaAgentV3</span>, so you hunt the enum for <span class="mono">letta_v3_agent</span> — and can't find it. The value that triggers V3 is actually called <span class="mono">letta_v1_agent</span>.</p>
+<p><strong>Why it's designed this way:</strong> the two version numbers mean different things. <span class="mono">V3</span> is the generation of <strong>code implementation</strong> (the third rewrite of the loop); <span class="mono">v1</span> is the <strong>design version</strong> — "Letta v1," a design that advocates dropping MemGPT's heartbeats and forced tool calls. The V3 code implements exactly the v1 design.</p>
+<p><strong>Where in the source:</strong> the enum comment says it plainly — <span class="mono">letta_v1_agent</span> = "simplification of the memgpt loop, no heartbeats or forced tool calls" (<span class="mono">letta/schemas/enums.py</span>).</p>
+<p><strong>What's the alternative:</strong> renaming the enum to <span class="mono">letta_agent_v3</span> would be clearer, but that's a rename that breaks all stored data (every agent row stored this string). So the historical baggage stays.</p>
+</div></details>
+
+<details class="accordion"><summary>Those "deprecated fields" in AgentState — which do I trust?</summary><div class="acc-body">
+<p><strong>Example:</strong> you print an <span class="mono">AgentState</span> and see both <span class="mono">memory</span> and <span class="mono">blocks</span>, both <span class="mono">llm_config</span> and <span class="mono">model</span> — which to read?</p>
+<p><strong>Why it's designed this way:</strong> these fields are doing a <strong>gradual migration</strong>. The old fields (<span class="mono">memory / llm_config / embedding_config / sources</span>) are marked <span class="mono">deprecated=True</span> but kept for now, so old clients don't crash the moment they upgrade; the new fields (<span class="mono">blocks / model / embedding / folders</span>) are the future direction.</p>
+<p><strong>Where in the source:</strong> all in <span class="mono">letta/schemas/agent.py::AgentState</span>, where each deprecated field's <span class="mono">Field(description=...)</span> literally says "Use `X` field instead."</p>
+<p><strong>What's the alternative:</strong> deleting the old fields outright — which would cut off all old clients at once. Keeping them + marking deprecated is the steadiest transition during the compatibility window. When reading code: <strong>trust the new fields, treat the old ones as aliases.</strong></p>
+</div></details>
+
+<details class="accordion"><summary>There's actually a "fourth class," LettaAgent — which generation is it?</summary><div class="acc-body">
+<p><strong>Example:</strong> under <span class="mono">letta/agents/</span> you'll also see a <span class="mono">LettaAgent</span> (note: no V2/V3 suffix), and it's easy to assume it's the one the factory returns.</p>
+<p><strong>Why it's designed this way:</strong> <span class="mono">LettaAgent</span> (<span class="mono">letta/agents/letta_agent.py</span>, which inherits the earlier <span class="mono">BaseAgent</span>) serves group / voice scenarios and is <strong>not on <span class="mono">AgentLoop.load</span>'s return path</strong>. This lesson's main line only follows the factory: both V2 and V3 inherit <span class="mono">BaseAgentV2</span>. In other words, the word "generation" is a bit messy in Letta — don't count how many Agent classes there are, just remember "the factory hands you back V2 or V3" and that's enough to get through Part 4.</p>
+<p><strong>Where in the source:</strong> the abstract interface <span class="mono">base_agent_v2.py::BaseAgentV2</span> (abstract methods <span class="mono">build_request / step / stream</span>); the side-path <span class="mono">letta_agent.py::LettaAgent</span>.</p>
+<p><strong>What's the alternative:</strong> cramming every path into one factory — which would drag group/voice's special assembly in too. Letta chose to let the factory handle only the "single-agent main loop," with the rest going their own way.</p>
+</div></details>
+
+<h2>Part 4 opens from here: next stop</h2>
+<p>This lesson is Part 4's map: <strong>the save (AgentState) says "who," the factory (AgentLoop.load) picks an engine by agent_type, and the three generations each have their temperament.</strong> The loop's "starting point" is now firmly in place. Weld these three nouns into your head and even the most complex loop details ahead can be hung back onto them.</p>
+
+<p>The next three lessons each zoom in one notch: lesson 14 dissects exactly how <span class="mono">LettaAgentV3</span>'s loop steps through; lesson 15 contrasts the "heartbeat" — how V2's <span class="mono">request_heartbeat</span> differs from V3's "continue on a tool call"; lesson 16 covers <strong>tool rules</strong> (<span class="mono">tool_rules</span>), that field in the save we kept not detailing.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">Take away one line: <strong>the same save, different engines by <span class="mono">agent_type</span></strong>. The save is "who," the factory is "which engine," the three generations are "the engine's temperament." The next three lessons all unfold on this map.</span></div>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>AgentState = the save file</strong>: holds <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / model</span> and more — "all the information needed to recreate a persisted agent"; it's the in-memory / API representation, hydrated from an ORM row.</li>
+    <li><strong>AgentLoop.load = the factory</strong>: reads <span class="mono">agent_state.agent_type</span> as the key and returns a <span class="mono">BaseAgentV2</span> instance — <span class="mono">letta_v1_agent / sleeptime_agent</span> → V3, everything else → V2.</li>
+    <li><strong>Three generations</strong>: synchronous elder <span class="mono">Agent</span> → async <span class="mono">LettaAgentV2</span> (heartbeat) → <span class="mono">LettaAgentV3</span> (subclasses V2, drops heartbeats, continues on tool calls).</li>
+    <li><strong>Naming trap</strong>: there is no <span class="mono">letta_agent_v3</span> enum value; what triggers V3 is <span class="mono">letta_v1_agent</span> (the V3 code implements the v1 design). Class name ≠ enum name.</li>
+    <li><strong>Deprecated fields</strong>: <span class="mono">memory / llm_config / sources</span> are deprecated; new code uses <span class="mono">blocks / model / folders</span>.</li>
+    <li><strong>Echoes lesson 6</strong>: the server is stateless; every request hydrates the save, runs, writes back — so the same agent can "load and resume" on any machine.</li>
+    <li><strong>Source</strong>: <span class="mono">schemas/agent.py::AgentState</span>, <span class="mono">agents/agent_loop.py::AgentLoop.load</span>, <span class="mono">schemas/enums.py::AgentType</span>.</li>
+  </ul>
+</div>
+""",
 }
