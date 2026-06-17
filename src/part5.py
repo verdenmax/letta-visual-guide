@@ -970,5 +970,43 @@ LESSON_19 = {"zh": r"""
 </div>
 
 <div class="note tip"><span class="ni">🗺️</span><span class="nx">You can keep one through-line in view across this lesson: <strong>label (ToolType) → factory (pick the executor) → entry (ToolExecutionManager) → five executors (various runtimes) → one unified result (ToolExecutionResult)</strong>. The sections below follow that line one stop at a time.</span></div>
+<h2>ToolType: a tool's "category label"</h2>
+<p>Meet the labels first. <span class="mono">schemas/enums.py::ToolType</span> has 11 values in all, which fall into three groups — <strong>built-in</strong> (shipped by Letta, run in-process or under control), <strong>custom</strong> (the ones you write, sandboxed by default), and <strong>external</strong> (connecting to third parties).</p>
+<div class="cellgroup"><div class="cg-cap"><b>Built-in · shipped by Letta (7)</b></div><div class="cells"><span class="cell hl">letta_core</span><span class="sep">·</span><span class="cell">letta_memory_core</span><span class="sep">·</span><span class="cell">letta_multi_agent_core</span><span class="sep">·</span><span class="cell">letta_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_voice_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_builtin</span><span class="sep">·</span><span class="cell">letta_files_core</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>Custom · the default (1)</b></div><div class="cells"><span class="cell hl">custom</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>External · third-party (3)</b></div><div class="cells"><span class="cell">external_langchain (deprecated)</span><span class="sep">·</span><span class="cell">external_composio (deprecated)</span><span class="sep">·</span><span class="cell hl">external_mcp</span></div></div>
+<div class="note info"><span class="ni">🏷️</span><span class="nx"><span class="mono">custom</span> is the <strong>default</strong>: register a tool and, unless it gets sorted into another class, it stays <span class="mono">custom</span> — and <span class="mono">custom</span> falls through to the sandbox. The two <span class="mono">external_langchain / external_composio</span> are deprecated; the only genuinely live external type is <span class="mono">external_mcp</span>.</span></div>
+<p>Why split into so many kinds? Because Letta's tools come from wildly different places: some are core framework abilities (send a message, edit memory), some are built-in platform utilities (run code, search the web), some are business functions you wrote on the spot, and some don't live locally at all and must be reached over the wire. Labelling each tool with a type is what lets the factory later dispatch it to the right runtime.</p>
+<p>Those 7 built-in kinds break down further by purpose: <span class="mono">letta_core</span> handles conversation and control flow, <span class="mono">letta_memory_core</span> rewrites memory, <span class="mono">letta_sleeptime_core</span> and <span class="mono">letta_voice_sleeptime_core</span> serve the background tidying that happens during "sleep time," <span class="mono">letta_multi_agent_core</span> drives multi-agent collaboration, <span class="mono">letta_builtin</span> runs code and searches the web, and <span class="mono">letta_files_core</span> handles files.</p>
+<h2>The factory: picking an executor by type</h2>
+<p>The labels exist — but who reads them and hands out the work? <span class="mono">ToolExecutorFactory</span>. Inside it holds an <span class="mono">_executor_map</span> that maps each <span class="mono">ToolType</span> to an executor class; <span class="mono">get_executor</span> looks up the table, instantiates, and returns an executor.</p>
+<div class="flow">
+<div class="node"><div class="nt">tool.tool_type</div><div class="nd">the label on the tool</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">get_executor</div><div class="nd">look up _executor_map</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">the concrete executor</div><div class="nd">LettaCore / Sandbox …</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">execute(...)</div><div class="nd">actually run the tool</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">ToolExecutionResult</div><div class="nd">one unified result</div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">The loop only says "call this tool"; <strong>how</strong> it runs is decided by <span class="mono">ToolType</span> + the factory: in-process / sandbox / connect to an MCP server — one and the same <span class="mono">execute</span> interface, hiding three runtimes.</span></div>
+<p>Keep the <strong>end</strong> of the flow in mind too: whichever route it takes, every executor returns the same <span class="mono">ToolExecutionResult</span>. The differences are hidden in the middle while the exit stays uniform — that is exactly the shape of <strong>polymorphism</strong>.</p>
+<p>In implementation, <span class="mono">_executor_map</span> is a <span class="mono">ClassVar</span> — a class-level dict shared by every instance. Looking it up is a plain <span class="mono">dict.get(key, default)</span>: a hit returns the mapped executor class, a miss returns the second argument, <span class="mono">SandboxToolExecutor</span>. One short line that is both a "dispatch table" and a "safety net."</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">the factory (simplified)</span></div><pre><span class="kw">class</span> <span class="fn">ToolExecutorFactory</span>:
+    _executor_map = {
+        ToolType.LETTA_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MEMORY_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_BUILTIN: LettaBuiltinToolExecutor,
+        ToolType.LETTA_FILES_CORE: LettaFileToolExecutor,
+        ToolType.EXTERNAL_MCP: ExternalMCPToolExecutor,
+    }
+    <span class="kw">def</span> <span class="fn">get_executor</span>(cls, tool_type, ...):
+        cls_ = cls._executor_map.<span class="fn">get</span>(tool_type, SandboxToolExecutor)   <span class="cm"># unmapped -> fall back to sandbox</span>
+        <span class="kw">return</span> cls_(...)
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Look at that <span class="mono">.get(tool_type, SandboxToolExecutor)</span> line inside <span class="mono">get_executor</span>: <strong>any type not in the table falls through to the sandbox</strong>. <span class="mono">custom</span>, <span class="mono">letta_voice_sleeptime_core</span>, the multi-agent tools, and both deprecated externals all land here. So "a custom tool = runs in the sandbox" is the <strong>default</strong>, not a special case.</span></div>
+<p>This is the classic <strong>factory pattern</strong>: it gathers "<em>which implementation to actually use</em>" into one place, so the caller just asks for "an executor" without needing to know which class sits behind it or how it is built. Want to add a tool type later? Register one line in <span class="mono">_executor_map</span> — and not a single word of the loop or the entry has to change.</p>
 <!--ENMORE-->
 """}
