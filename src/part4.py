@@ -66,13 +66,13 @@ LESSON_13 = {
 <p>别被字段数量吓到。它们大致就分成开头那四组：<strong>身份、在窗、记忆、行为 + 模型</strong>。抓住"合起来要能重建一个 agent"这条线，你就不必死记每个字段——缺了哪一类，自己也能反推出来。</p>
 
 <h2>存档从哪儿来：从一行 ORM 记录"水合"出来</h2>
-<p><span class="mono">AgentState</span> 是<strong>内存 / API 表示</strong>，不是数据库里的存储格式。真正落库的是 ORM 行 <span class="mono">letta/orm/agent.py</span>；每次需要时，由 <span class="mono">from_orm_async</span> 把那一行连同它的块、工具、消息 id 一起"水合（hydrate）"成一个 <span class="mono">AgentState</span> 对象。</p>
+<p><span class="mono">AgentState</span> 是<strong>内存 / API 表示</strong>，不是数据库里的存储格式。真正落库的是 ORM 行 <span class="mono">letta/orm/agent.py</span>；每次需要时，由 <span class="mono">to_pydantic_async</span> 把那一行连同它的块、工具、消息 id 一起"水合（hydrate）"成一个 <span class="mono">AgentState</span> 对象。</p>
 
 <p>这就是第 6 课那句"服务器不记得任何事"的落地：每个请求都现读存档、跑完再写回。所以同一个 agent 能在任意进程、任意机器上"读档续玩"——它的全部状态都在这张可搬运的存档里，而不在某个常驻内存的对象里。</p>
 
 <div class="note tip"><span class="ni">✅</span><span class="nx">"水合 → 跑 → 写回"是每个请求的固定三拍。<strong>写回</strong>把这轮新增的消息、改动过的核心记忆落库，下个请求才能读到最新的存档。</span></div>
 
-<p>"水合"这个词很形象：数据库里存的是<strong>脱水的</strong>原始行（外键、id 列表），读取时再把关联的块、工具、消息<strong>泡发</strong>成一个完整对象。<span class="mono">from_orm_async</span> 里的 <span class="mono">async</span> 也有讲究——这些关联要并发地去库里取，异步能省下不少等待。</p>
+<p>"水合"这个词很形象：数据库里存的是<strong>脱水的</strong>原始行（外键、id 列表），读取时再把关联的块、工具、消息<strong>泡发</strong>成一个完整对象。<span class="mono">to_pydantic_async</span> 里的 <span class="mono">async</span> 也有讲究——这些关联要并发地去库里取，异步能省下不少等待。</p>
 
 <div class="flow">
   <div class="node"><div class="nt">POST 消息</div><div class="nd">第 3 课</div></div>
@@ -143,7 +143,7 @@ LESSON_13 = {
 
 <div class="card detail">
   <div class="tag">🔬 落到代码</div>
-  <strong>三个锚点，一条主线。</strong>存档是 <span class="mono">letta/schemas/agent.py::AgentState</span>（Pydantic，继承链 <span class="mono">OrmMetadataBase → LettaBase → BaseModel</span>，<span class="mono">__id_prefix__ = "agent"</span>），由 ORM 行 <span class="mono">letta/orm/agent.py</span> 经 <span class="mono">from_orm_async</span> 水合。工厂是 <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>，一个返回 <span class="mono">BaseAgentV2</span> 的 <span class="mono">@staticmethod</span>。钥匙是 <span class="mono">letta/schemas/enums.py::AgentType</span> 这个字符串枚举。三者的关系就一句话：<strong>工厂读存档的 <span class="mono">agent_type</span>，挑一个引擎</strong>。本课只看这条主线，引擎内部怎么转，留给第 14–16 课。
+  <strong>三个锚点，一条主线。</strong>存档是 <span class="mono">letta/schemas/agent.py::AgentState</span>（Pydantic，继承链 <span class="mono">OrmMetadataBase → LettaBase → BaseModel</span>，<span class="mono">__id_prefix__ = "agent"</span>），由 ORM 行 <span class="mono">letta/orm/agent.py</span> 经 <span class="mono">to_pydantic_async</span> 水合。工厂是 <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>，一个返回 <span class="mono">BaseAgentV2</span> 的 <span class="mono">@staticmethod</span>。钥匙是 <span class="mono">letta/schemas/enums.py::AgentType</span> 这个字符串枚举。三者的关系就一句话：<strong>工厂读存档的 <span class="mono">agent_type</span>，挑一个引擎</strong>。本课只看这条主线，引擎内部怎么转，留给第 14–16 课。
 </div>
 
 <h2>三代 agent：从同步元老到砍掉心跳</h2>
@@ -340,13 +340,13 @@ Where does the loop start? With two things: a "save file" called <strong>AgentSt
 <p>Don't let the field count scare you. They roughly fall into the four groups above: <strong>identity, in-window, memory, behavior + model</strong>. Hold onto the thread "together they must rebuild an agent," and you needn't memorize every field — if a group is missing, you can reason it back yourself.</p>
 
 <h2>Where the save comes from: "hydrated" out of one ORM row</h2>
-<p><span class="mono">AgentState</span> is the <strong>in-memory / API representation</strong>, not the storage format in the database. What actually lands in the DB is the ORM row <span class="mono">letta/orm/agent.py</span>; whenever needed, <span class="mono">from_orm_async</span> "hydrates" that row — together with its blocks, tools, and message ids — into an <span class="mono">AgentState</span> object.</p>
+<p><span class="mono">AgentState</span> is the <strong>in-memory / API representation</strong>, not the storage format in the database. What actually lands in the DB is the ORM row <span class="mono">letta/orm/agent.py</span>; whenever needed, <span class="mono">to_pydantic_async</span> "hydrates" that row — together with its blocks, tools, and message ids — into an <span class="mono">AgentState</span> object.</p>
 
 <p>This is lesson 6's "the server remembers nothing" made concrete: every request reads the save fresh, runs, then writes it back. So the same agent can "load and resume" on any process, any machine — all its state lives in this portable save file, not in some long-lived in-memory object.</p>
 
 <div class="note tip"><span class="ni">✅</span><span class="nx">"Hydrate → run → write back" is the fixed three-beat of every request. The <strong>write-back</strong> persists this round's new messages and edited core memory, so the next request reads the latest save.</span></div>
 
-<p>The word "hydrate" is vivid: the database stores a <strong>dehydrated</strong> raw row (foreign keys, id lists), and on read the related blocks, tools, and messages are <strong>rehydrated</strong> into a full object. The <span class="mono">async</span> in <span class="mono">from_orm_async</span> matters too — those relations are fetched from the DB concurrently, and async saves a lot of waiting.</p>
+<p>The word "hydrate" is vivid: the database stores a <strong>dehydrated</strong> raw row (foreign keys, id lists), and on read the related blocks, tools, and messages are <strong>rehydrated</strong> into a full object. The <span class="mono">async</span> in <span class="mono">to_pydantic_async</span> matters too — those relations are fetched from the DB concurrently, and async saves a lot of waiting.</p>
 
 <div class="flow">
   <div class="node"><div class="nt">POST message</div><div class="nd">lesson 3</div></div>
@@ -417,7 +417,7 @@ Where does the loop start? With two things: a "save file" called <strong>AgentSt
 
 <div class="card detail">
   <div class="tag">🔬 Down to the code</div>
-  <strong>Three anchors, one through-line.</strong> The save is <span class="mono">letta/schemas/agent.py::AgentState</span> (Pydantic, inheritance chain <span class="mono">OrmMetadataBase → LettaBase → BaseModel</span>, <span class="mono">__id_prefix__ = "agent"</span>), hydrated from the ORM row <span class="mono">letta/orm/agent.py</span> via <span class="mono">from_orm_async</span>. The factory is <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>, a <span class="mono">@staticmethod</span> returning <span class="mono">BaseAgentV2</span>. The key is the string enum <span class="mono">letta/schemas/enums.py::AgentType</span>. Their relationship in one line: <strong>the factory reads the save's <span class="mono">agent_type</span> and picks an engine</strong>. This lesson follows only that through-line; how an engine turns inside is left to lessons 14–16.
+  <strong>Three anchors, one through-line.</strong> The save is <span class="mono">letta/schemas/agent.py::AgentState</span> (Pydantic, inheritance chain <span class="mono">OrmMetadataBase → LettaBase → BaseModel</span>, <span class="mono">__id_prefix__ = "agent"</span>), hydrated from the ORM row <span class="mono">letta/orm/agent.py</span> via <span class="mono">to_pydantic_async</span>. The factory is <span class="mono">letta/agents/agent_loop.py::AgentLoop.load</span>, a <span class="mono">@staticmethod</span> returning <span class="mono">BaseAgentV2</span>. The key is the string enum <span class="mono">letta/schemas/enums.py::AgentType</span>. Their relationship in one line: <strong>the factory reads the save's <span class="mono">agent_type</span> and picks an engine</strong>. This lesson follows only that through-line; how an engine turns inside is left to lessons 14–16.
 </div>
 
 <h2>Three generations of agent: from synchronous elder to heartbeat-free</h2>
