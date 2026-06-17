@@ -559,6 +559,231 @@ Where does the loop start? With two things: a "save file" called <strong>AgentSt
 
 
 LESSON_14 = {
-    "zh": r"""<p>stub</p>""",
+    "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+上一课我们站在工厂门口：一份叫 <strong>AgentState</strong> 的"存档"递进来，<span class="mono">AgentLoop.load</span> 看 <span class="mono">agent_type</span> 这一栏，挑出这次该跑的引擎——默认那条线挑中的，是第三代 <strong>LettaAgentV3</strong>。可工厂只负责"挑"，没说引擎"怎么转"。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+这一课，我们掀开 V3 引擎的盖子。里面没有魔法，只有一个朴素的 <strong>for 循环</strong>：调一次模型 → 执行工具 → 问一句"还要继续吗" → 再来一遍，最多 50 次。而那句"还要继续吗"的判据，简单到反直觉——它不看模型"想不想继续"，只看模型这一轮<strong>有没有调工具</strong>。读完这一课，你就拿到了 agent "跑起来"的全部真相。</p>
+
+<div class="card analogy">
+  <div class="tag">🔌 生活类比</div>
+  <strong>把 V3 的循环想成一名流水线工人。</strong>工人面前有条传送带：每来一个零件（一次 step），他做一件事——看图纸、动手装、装完抬头看"后面还有没有活"。有活就接着装下一个，没活就把工位交还给你（用户）。但工人有条铁规矩：一天最多干 <strong>50 件</strong>，到点必须打卡下班，免得无限加班。最妙的是他判断"还有没有活"的方式特别朴素：不是问自己"我还想不想干"，而是看"我这一轮有没有<strong>伸手去拿工具</strong>"——伸手拿了工具，说明话没说完、活没干完，那就再转一圈；这一轮光说话没动工具，那就是收尾了，把话筒交还给你。整条流水线就这么转：<strong>拿活 → 干活 → 看看还有没有下一件 → 最多 50 件就下班。</strong>
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 宏观理解</div>
+  <strong>一句话抓住本课：<span class="mono">step()</span> 是个带预算的 for 循环，每一圈抽干一个 <span class="mono">_step</span>。</strong><span class="mono">step()</span>（<span class="mono">letta_agent_v3.py::step</span>）的骨架就是 <span class="mono">for i in range(max_steps)</span>，<span class="mono">max_steps</span> 默认 <span class="mono">DEFAULT_MAX_STEPS = 50</span>；每一圈把一个 <span class="mono">_step</span> 异步生成器抽干（<span class="mono">async for chunk</span>），循环结束统一返回<strong>一个</strong> <span class="mono">LettaResponse</span>。而一次 <span class="mono">_step</span> 干三件事：<strong>调一次 LLM、执行工具、把结果落库</strong>（拿有效工具 → 刷新消息 → 调模型 → <span class="mono">_handle_ai_response</span> → 持久化 → yield）。续步与否由 <span class="mono">_decide_continuation</span> 拍板，规则朴素到一句话——"没调工具就结束，调了工具就继续"，外加几条硬覆盖（终止工具 / 退出前必调 / 到 50 步 / 要审批）。记住这三件事——<strong>for 循环、一次 _step、续步规则</strong>——V3 的循环就拆完了。
+</div>
+
+<h2>step()：一个带预算的 for 循环</h2>
+<p>先看最外层。很多人以为"agent 循环"是什么精巧的状态机，可 <span class="mono">step()</span>（<span class="mono">letta_agent_v3.py::step</span>）的骨架朴素得让人意外：就是一句 <span class="mono">for i in range(max_steps)</span>。每一圈调一个 <span class="mono">_step</span>、抽干它吐出的消息攒进一个列表；循环跑完，把列表打包成一个 <span class="mono">LettaResponse</span> 返回。</p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx"><span class="mono">max_steps</span> 的默认值写在 <span class="mono">constants.py::DEFAULT_MAX_STEPS = 50</span>。这个"预算"就是循环的<strong>安全绳</strong>——后面有专门一节讲它防的到底是什么。</span></div>
+
+<p>每一圈里真正干活的是 <span class="mono">self._step(...)</span>，它是个<strong>异步生成器</strong>。<span class="mono">step()</span> 用 <span class="mono">async for chunk in response</span> 把它一块块抽干，每块（一条 <span class="mono">LettaMessage</span>）都 append 进结果列表。抽干之后，看一眼 <span class="mono">self.should_continue</span> 这个开关：为真就转下一圈，为假就 <span class="mono">break</span>。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>进入第 i 圈</h4><p>还在预算内（<span class="mono">i &lt; 50</span>）就开跑；用尽就退出。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>跑一个 _step</h4><p>一次 LLM 调用 + 工具执行；<span class="mono">async for</span> 把它吐的消息抽干、攒进列表。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>should_continue？</h4><p>这一轮调工具了吗？这个开关由 <span class="mono">_decide_continuation</span> 写好。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>是 / 否</h4><p>是 → 回到顶上转下一圈；否 → <span class="mono">break</span> 跳出循环。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>i == 49 兜底</h4><p>跑满最后一圈还没人设停因，就盖上 <span class="mono">max_steps</span>。</p></div></div>
+</div>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">那个开关 <span class="mono">should_continue</span> 不是 <span class="mono">step()</span> 自己算的——它由 <span class="mono">_step</span> 内部写好（更准确说，是 <span class="mono">_handle_ai_response</span> 一并算出 <span class="mono">(新消息, should_continue, stop_reason)</span> 三元组）。<span class="mono">step()</span> 只管<strong>读</strong>这个开关。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">step 主循环（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">step</span>(self, input_messages, max_steps=DEFAULT_MAX_STEPS, ...) -> LettaResponse:
+    msgs = []
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(max_steps):          <span class="cm"># 预算：最多 50 圈</span>
+        response = self.<span class="fn">_step</span>(...)        <span class="cm"># 一次 LLM + 工具，异步生成器</span>
+        <span class="kw">async for</span> chunk <span class="kw">in</span> response:    <span class="cm"># 把这一圈吐的消息抽干</span>
+            msgs.<span class="fn">append</span>(chunk)
+        <span class="kw">if not</span> self.should_continue:      <span class="cm"># _step 写好的开关</span>
+            <span class="kw">break</span>                         <span class="cm"># 没调工具 -> 收尾</span>
+        <span class="kw">if</span> i == max_steps - 1 <span class="kw">and</span> self.stop_reason <span class="kw">is None</span>:
+            self.stop_reason = <span class="fn">LettaStopReason</span>(StopReasonType.max_steps)
+    <span class="cm"># 循环外：没人设停因就默认 end_turn，最后打包成一个响应</span>
+    <span class="kw">return</span> <span class="fn">LettaResponse</span>(messages=msgs, stop_reason=self.stop_reason <span class="kw">or</span> end_turn)
+</pre></div>
+
+<p>循环跑完还有两处收尾值得记。其一，若跑到最后一圈（<span class="mono">i == max_steps - 1</span>）都没人设过停因，<span class="mono">step()</span> 会主动盖一个 <span class="mono">StopReasonType.max_steps</span>——这就是"预算用尽"的标记。其二，整个循环结束后若仍没有任何停因，默认就是 <span class="mono">StopReasonType.end_turn</span>（正常收尾）。</p>
+
+<h2>一次 _step：LLM 调用 + 工具执行 + 落库</h2>
+<p>拆完外层，钻进每一圈的 <span class="mono">_step</span>（<span class="mono">letta_agent_v3.py::_step</span>）。源码里它的定位写得很清楚——"一次 LLM 调用与工具执行"，是所有公开方法（<span class="mono">step</span> / <span class="mono">stream</span>）共同 funnel 进来的那个异步生成器。一次 <span class="mono">_step</span>，干的就是三件事：<strong>调一次模型、执行工具、把结果落库</strong>。</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>拿有效工具 + 要不要强制</h4><p><span class="mono">_get_valid_tools()</span>，再问 <span class="mono">tool_rules_solver.should_force_tool_call()</span>。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>刷新消息</h4><p><span class="mono">_refresh_messages</span> 擦掉旧的内心独白；<strong>不重建系统提示</strong>（保住 prefix cache）。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>调 LLM</h4><p><span class="mono">llm_adapter.invoke_llm(...)</span>，外面裹一层"撑爆就压缩重试"。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>_handle_ai_response</h4><p>校验并执行工具，算出 <span class="mono">(新消息, should_continue, stop_reason)</span>。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>落库</h4><p><span class="mono">_checkpoint_messages</span> 把这一步的消息写进库——<strong>先落库，再流式</strong>。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>yield</h4><p>把消息一块块吐给外层 <span class="mono">step()</span> 去 append。</p></div></div>
+</div>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">第 2 步那句"不重建系统提示"是个性能细节：系统提示是消息列表最前面、最稳定的一段，保持它不变，模型服务端的 <strong>prefix cache</strong>（第 5、9 课）才能命中。系统提示只在<strong>压缩或重置后</strong>才重建。</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">_step 骨架（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">_step</span>(self, messages, ...):        <span class="cm"># 异步生成器：一次 LLM + 工具</span>
+    valid_tools = <span class="kw">await</span> self.<span class="fn">_get_valid_tools</span>()
+    force = self.tool_rules_solver.<span class="fn">should_force_tool_call</span>()
+    messages = <span class="kw">await</span> self.<span class="fn">_refresh_messages</span>(messages)  <span class="cm"># 擦内心独白，不重建系统提示</span>
+    <span class="kw">while True</span>:                            <span class="cm"># 撑爆就压缩重试</span>
+        <span class="kw">try</span>:
+            <span class="kw">async for</span> chunk <span class="kw">in</span> llm_adapter.<span class="fn">invoke_llm</span>(messages, valid_tools):
+                <span class="kw">yield</span> chunk
+            <span class="kw">break</span>
+        <span class="kw">except</span> ContextWindowExceededError:   <span class="cm"># 接上第 12 课的压缩</span>
+            messages = <span class="kw">await</span> self.<span class="fn">compact</span>(...)
+            <span class="kw">await</span> self.<span class="fn">rebuild_system_prompt_async</span>()
+    new_messages, self.should_continue, self.stop_reason = \
+        <span class="kw">await</span> self.<span class="fn">_handle_ai_response</span>(tool_calls, valid_tools, ...)
+    <span class="kw">await</span> self.<span class="fn">_checkpoint_messages</span>(...)        <span class="cm"># 持久化要在流式之前</span>
+    <span class="kw">for</span> m <span class="kw">in</span> new_messages:
+        <span class="kw">yield</span> m
+</pre></div>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">把第 5 步那句源码注释记牢——"<strong>持久化要发生在流式之前</strong>，以最小化 agent 进入不一致状态的概率"。一会儿有专门的折叠讲它为什么这么重要。</span></div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">🐹</span><span class="lab">step 3/50</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🔁</span><span class="lab">这轮调工具了？</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🛞</span><span class="bubble">调了 → 再转一圈！</span>
+    <span class="emoji">🛑</span><span class="bubble">没调 → 刹车，停。</span>
+  </div>
+  <div class="cap">仓鼠轮上的里程表数到 3/50：只要这一轮伸手调了工具，就再蹬一圈；空手而归就刹车下班</div>
+</div>
+
+<h2>继续还是停：_decide_continuation 拍板</h2>
+<p>现在轮到全课的题眼：循环凭什么决定"再走一步"还是"收工"？答案在 <span class="mono">_decide_continuation</span>（<span class="mono">letta_agent_v3.py::_decide_continuation</span>）。它的文档字符串把规则写成两条，朴素到反直觉：<strong>1. 没调工具？循环结束。2. 调了工具？循环继续。</strong></p>
+
+<div class="note tip"><span class="ni">💡</span><span class="nx">反直觉在哪？它压根<strong>不看</strong>模型有没有说"我想继续"。它只认一个客观事实——这一轮模型<strong>有没有发起工具调用</strong>。调了，说明还有后续要做（执行完工具得让模型看看结果）；没调，说明模型在直接回话了，那就把话筒交还用户。</span></div>
+
+<p>为什么"调了工具就得继续"？因为工具调用是个<strong>两段式</strong>动作：模型先说"我要调 <span class="mono">search</span>"，系统执行 <span class="mono">search</span> 拿到结果，还得把结果<strong>喂回</strong>模型让它接着说。所以只要这一轮有工具调用，循环就必须再转一圈消化结果——这也正是 <span class="mono">letta_v1_agent</span> 注释里 "no heartbeats" 的真意：不靠模型自己举手要心跳，只靠"有没有调工具"这个客观信号驱动。</p>
+
+<div class="flow">
+  <div class="node hl"><div class="nt">这轮调工具了吗？</div><div class="nd">_decide_continuation 的唯一题眼</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">否 · 没调工具</div><div class="nd">还有"退出前必调"的工具没调？有 → 继续；没有 → 停 end_turn</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">是 · 调了工具</div><div class="nd">是"终止工具"？是 → 停 tool_rule；否 → 继续</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">硬覆盖</div><div class="nd">已是第 50 步？→ 停 max_steps</div></div>
+</div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">_decide_continuation（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">_decide_continuation</span>(self, agent_state, tool_call_name,
+                         tool_rule_violated, tool_rules_solver, is_final_step, finish_reason=None):
+    <span class="cm"># 规则：没调工具 -> 结束；调了工具 -> 继续（再加几条硬覆盖）</span>
+    <span class="kw">if</span> tool_call_name <span class="kw">is None</span>:                  <span class="cm"># 这一轮没调工具</span>
+        uncalled = tool_rules_solver.<span class="fn">get_uncalled_required_tools</span>(...)
+        <span class="kw">if</span> uncalled <span class="kw">and not</span> is_final_step:
+            <span class="kw">return</span> <span class="nb">True</span>, nudge, <span class="nb">None</span>           <span class="cm"># 还有"退出前必调" -> 继续并提示补调</span>
+        <span class="kw">if</span> finish_reason == <span class="st">"length"</span>:
+            <span class="kw">return</span> <span class="nb">False</span>, <span class="nb">None</span>, <span class="fn">stop</span>(max_tokens_exceeded)
+        <span class="kw">return</span> <span class="nb">False</span>, <span class="nb">None</span>, <span class="fn">stop</span>(end_turn)      <span class="cm"># 正常收尾</span>
+    <span class="kw">else</span>:                                       <span class="cm"># 这一轮调了工具</span>
+        <span class="kw">if</span> tool_rule_violated:
+            <span class="kw">return</span> <span class="nb">True</span>, nudge, <span class="nb">None</span>           <span class="cm"># 违规也继续（带纠正提示）</span>
+        tool_rules_solver.<span class="fn">register_tool_call</span>(tool_call_name)
+        <span class="kw">if</span> tool_rules_solver.<span class="fn">is_terminal_tool</span>(tool_call_name):
+            <span class="kw">return</span> <span class="nb">False</span>, <span class="nb">None</span>, <span class="fn">stop</span>(tool_rule)   <span class="cm"># 终止工具 -> 停</span>
+        <span class="kw">if</span> is_final_step:
+            <span class="kw">return</span> <span class="nb">False</span>, <span class="nb">None</span>, <span class="fn">stop</span>(max_steps)   <span class="cm"># 到 50 步 -> 停</span>
+        <span class="kw">return</span> <span class="nb">True</span>, nudge, <span class="nb">None</span>               <span class="cm"># 否则继续</span>
+</pre></div>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">这里藏着几条<strong>硬覆盖</strong>，别忽略：即便规则说"没调工具就结束"，只要还有 <span class="mono">required_before_exit</span>（退出前必须至少调一次）的工具没调，循环就被强行续上、并提示模型去补调；反过来，即便调了工具，撞上"终止工具"或"第 50 步"也会被强行停下。<strong>规则是骨架，覆盖是补丁。</strong></span></div>
+
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <strong>四个锚点，一条主线。</strong>外层循环是 <span class="mono">letta_agent_v3.py::step</span>（<span class="mono">for i in range(max_steps)</span>，返回 <span class="mono">LettaResponse</span>）；每圈的 <span class="mono">letta_agent_v3.py::_step</span> 是"一次 LLM + 工具 + 落库"的异步生成器；工具的校验与执行、那个续步三元组在 <span class="mono">letta_agent_v3.py::_handle_ai_response</span>；续步判据在 <span class="mono">letta_agent_v3.py::_decide_continuation</span>。再加两个常量级锚点：预算 <span class="mono">constants.py::DEFAULT_MAX_STEPS = 50</span>，停因 <span class="mono">letta/schemas/letta_stop_reason.py::StopReasonType</span>。一句话串起来：<strong>step 转圈、_step 干活、_handle_ai_response 算账、_decide_continuation 拍板，撞上预算就盖 max_steps。</strong>
+</div>
+
+<div class="card spark">
+  <div class="tag">💡 设计亮点</div>
+  <strong>"Agent"听着玄，落到代码里就是一个带预算的 for 循环：调模型 → 跑工具 → 问"还继续吗" → 重复，最多 50 次。</strong>而那句"还继续吗"的判据反直觉地简单——它不看模型"说没说想继续"，只看模型这一轮"<strong>有没有调工具</strong>"：调了，说明活没干完，继续；没调，说明该把话筒还给用户，结束。这正是 <span class="mono">letta_v1_agent</span> 注释里 "no heartbeats"（无心跳）的精髓：上一代要靠模型自己在参数里举手要"心跳"才续步（第 15 课细讲），V3 把这层全省了，只认一个客观信号。还有一处工程细节是"可恢复性"的关键：<strong>先落库，再流式</strong>（<span class="mono">_checkpoint_messages</span> 的注释明说"持久化要在流式之前"）。哪怕进程在吐字吐到一半时崩了，这一步的消息也已经写进了 <span class="mono">AgentState</span>——下次读档就能接着跑（正好呼应第 13 课那张"存档"）。<strong>朴素的循环、客观的判据、先存后吐的纪律——三样加起来，就是 V3 "稳"的全部秘密。</strong>
+</div>
+
+<h2>停下来的理由：StopReasonType</h2>
+<p>循环每次停下，都会盖一个"停因"章——<span class="mono">StopReasonType</span>（<span class="mono">letta/schemas/letta_stop_reason.py</span>，一个字符串枚举）。它不只是给人看的标签：<span class="mono">LettaStopReason.run_status</span> 会把停因映射成这次运行的<strong>最终状态</strong>（<span class="mono">completed / failed / cancelled</span>），决定调用方看到的是"成功收尾"还是"出错了"。</p>
+
+<p>最常见的两个停因，正好对应循环的两种正常退出：<span class="mono">end_turn</span>（模型这轮没调工具、正常把话筒交还用户）和 <span class="mono">max_steps</span>（跑满 50 步的预算上限）。注意——<span class="mono">max_steps</span> 映射的是 <strong>completed</strong>，不是 failed：撞上限是"按规矩到点下班"，不算崩溃。</p>
+
+<table class="t">
+  <tr><th>停因 StopReasonType</th><th>什么时候触发</th><th>run_status</th></tr>
+  <tr><td class="mono">end_turn</td><td>这轮没调工具，正常收尾</td><td>completed</td></tr>
+  <tr><td class="mono">tool_rule</td><td>调到了"终止工具"（第 16 课）</td><td>completed</td></tr>
+  <tr><td class="mono">max_steps</td><td>跑满 50 步预算上限</td><td>completed</td></tr>
+  <tr><td class="mono">requires_approval</td><td>工具需人工审批，暂停等批准</td><td>completed</td></tr>
+  <tr><td class="mono">max_tokens_exceeded</td><td>模型这轮因长度被截断（<span class="mono">finish_reason=length</span>）</td><td>failed</td></tr>
+  <tr><td class="mono">cancelled</td><td>运行被外部取消</td><td>cancelled</td></tr>
+  <tr><td class="mono">error / llm_api_error / …</td><td>模型出错、工具非法、响应无效等</td><td>failed</td></tr>
+</table>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">把停因按 <span class="mono">run_status</span> 分三堆记最省力：<strong>completed</strong> 那堆都是"正常下班"——<span class="mono">end_turn / max_steps / tool_rule / requires_approval</span>；<strong>failed</strong> 那堆是"出岔子"——<span class="mono">error / invalid_tool_call / max_tokens_exceeded …</span>；<strong>cancelled</strong> 单独一个。撞上限算 completed 这点最反直觉，记住它。</span></div>
+
+<div class="card warn">
+  <div class="tag">⚠️ 常见误区</div>
+  <strong>别把 <span class="mono">step()</span> 当成流式接口。</strong><span class="mono">step()</span>（<span class="mono">letta_agent_v3.py::step</span>）不是边跑边吐字给前端的——它在内部把每个 <span class="mono">_step</span> 生成器抽干、攒进一个列表，循环结束后<strong>统一返回一个 <span class="mono">LettaResponse</span></strong>（完整响应）。真正"流式吐字"的是另一个方法 <span class="mono">stream(...)</span>，两者别混为一谈。常见的错觉是：看到 <span class="mono">_step</span> 里有 <span class="mono">async for ... yield</span> 就以为整个 <span class="mono">step()</span> 在流式——其实那个 <span class="mono">yield</span> 只是 <span class="mono">_step</span> 把消息交给 <span class="mono">step()</span> 的<strong>内部管道</strong>，<span class="mono">step()</span> 拿到后是 append 进列表、不是转发给客户端。一句话收尾：<strong><span class="mono">_step</span> 的 yield 是"内部传话"，<span class="mono">stream()</span> 才是"对外直播"，<span class="mono">step()</span> 是"录好再交片"。</strong>
+</div>
+
+<h2>再挖深一点</h2>
+
+<details class="accordion"><summary>为什么要"先落库、再流式"？</summary><div class="acc-body">
+<p><strong>示例：</strong>用户问了个问题，模型调了工具、正吐着回复，进程突然崩了。如果是"先吐字、后落库"，这半截工作就全丢了，重来一遍还可能扣两次费、发两次邮件。</p>
+<p><strong>为什么这样设计：</strong>V3 在 <span class="mono">_step</span> 里把顺序定死成"先 <span class="mono">_checkpoint_messages</span> 落库，再 <span class="mono">yield</span> 流式"。源码注释原话——"持久化要发生在流式之前，以最小化 agent 进入不一致状态的概率"。这样哪怕流到一半崩了，这一步的消息已经在 <span class="mono">AgentState</span> 里，下次读档能接着跑，状态不会被弄脏。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta_agent_v3.py::_step</span> 末尾的 <span class="mono">_checkpoint_messages</span> 调用；存档本身见第 13 课的 <span class="mono">AgentState</span>。</p>
+<p><strong>还有什么替代：</strong>先流后存——延迟更低，但崩溃就丢状态、还可能重复副作用。Letta 选了"稳"压"快"。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">max_steps = 50</span> 到底防的是什么？</summary><div class="acc-body">
+<p><strong>示例：</strong>模型陷入"调工具 → 看结果 → 再调同一个工具 → ……"的自我循环，停不下来。没有上限的话，它能一直烧 token、一直占着这个请求。</p>
+<p><strong>为什么这样设计：</strong><span class="mono">DEFAULT_MAX_STEPS = 50</span>（<span class="mono">constants.py</span>）就是给循环装的"保险丝"。跑满 50 圈还没自然收尾，<span class="mono">step()</span> 主动盖上 <span class="mono">StopReasonType.max_steps</span> 退出。关键是——这个停因映射的 <span class="mono">run_status</span> 是 <strong>completed</strong>，不是 failed：到点下班是预期内的保护，不当成错误。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta_agent_v3.py::step</span> 里 <span class="mono">i == max_steps - 1</span> 的兜底；映射见 <span class="mono">letta_stop_reason.py::LettaStopReason.run_status</span>。</p>
+<p><strong>还有什么替代：</strong>不设上限——一个跑飞的 agent 就能拖垮服务、烧光预算。50 是"够用又不至于失控"的工程折中。</p>
+</div></details>
+
+<details class="accordion"><summary><span class="mono">_step</span> 里那层 "撑爆 → 压缩 → 重试" 是干嘛的？</summary><div class="acc-body">
+<p><strong>示例：</strong>消息越堆越多，这一轮喂给模型时撑爆了上下文窗口，LLM 直接报 <span class="mono">ContextWindowExceededError</span>。</p>
+<p><strong>为什么这样设计：</strong><span class="mono">_step</span> 把 <span class="mono">invoke_llm</span> 裹在一个重试循环里：一旦抓到 <span class="mono">ContextWindowExceededError</span>，就调 <span class="mono">self.compact(...)</span> 把历史压一压（正是第 12 课的压缩）、重建系统提示，然后重试这次调用。于是"窗口压力"被悄悄消化在循环内部，外层 <span class="mono">step()</span> 基本无感。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta_agent_v3.py::_step</span> 的 <span class="mono">except ContextWindowExceededError</span> 分支；压缩逻辑见 <span class="mono">services/summarizer/compact.py::compact_messages</span>（第 12 课）。</p>
+<p><strong>还有什么替代：</strong>直接报错给用户——体验差。把压缩接进循环、让 agent 自己"喘口气再继续"，是更顺滑的解法。</p>
+</div></details>
+
+<details class="accordion"><summary>模型一轮调了好几个工具（并行），循环怎么算？</summary><div class="acc-body">
+<p><strong>示例：</strong>模型一次性发起 3 个工具调用（并行）。每个工具各自算一遍"要不要继续"，会不会有的说停、有的说继续，打架？</p>
+<p><strong>为什么这样设计：</strong><span class="mono">_handle_ai_response</span> 统一处理单个与并行工具调用：逐个校验、执行、再各自跑 <span class="mono">_decide_continuation</span>。但只要这批里没有谁触发"终止工具（<span class="mono">tool_rule</span>）"或"第 50 步（<span class="mono">max_steps</span>）"这类硬停，它就强制 <span class="mono">aggregate_continue = True</span>——也就是说，并行调用<strong>默认续一圈</strong>，好让模型回头把多个工具的结果汇总成一段话。</p>
+<p><strong>源码在哪：</strong><span class="mono">letta_agent_v3.py::_handle_ai_response</span> 聚合续步那段（<span class="mono">has_terminal</span> / <span class="mono">is_max_steps</span> 的判断）。</p>
+<p><strong>还有什么替代：</strong>任一工具说停就停——可模型还没机会把并行结果讲给用户。默认续步更合直觉。</p>
+</div></details>
+
+<h2>下一站</h2>
+<p>这一课我们把 V3 引擎拆到了底：<span class="mono">step()</span> 是带预算的 for 循环，一次 <span class="mono">_step</span> 做三件事（调模型、跑工具、落库），续步与否由 <span class="mono">_decide_continuation</span> 用"调没调工具"一锤定音，停下来时盖一个 <span class="mono">StopReasonType</span>。三件事焊进脑子，agent "跑起来"就不再神秘。</p>
+
+<p>但有个对照一直没展开：上一代 V2 不是靠"调没调工具"续步的，而是靠模型在参数里举手要"心跳"（<span class="mono">request_heartbeat</span>）。下一课（第 15 课）就专讲这个对照——为什么 MemGPT 当初要心跳、V3 又为什么敢把它砍掉。再往后第 16 课，拆 <span class="mono">_decide_continuation</span> 反复点到、却一直没细说的那套 <span class="mono">tool_rules</span>（终止 / 必调 / 审批）。</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">一句话带走：<strong><span class="mono">step()</span> 是带预算的 for 循环，一次 <span class="mono">_step</span> = 调模型 + 跑工具 + 落库，续步只看"这轮调没调工具"。</strong>把这三句记牢，第四部分剩下的循环细节都能挂回到它们身上。</span></div>
+
+<div class="card key">
+  <div class="tag">✅ 本课要点</div>
+  <ul>
+    <li><strong>step() = 带预算的 for 循环</strong>：<span class="mono">for i in range(max_steps)</span>，<span class="mono">DEFAULT_MAX_STEPS = 50</span>；每圈抽干一个 <span class="mono">_step</span>，循环结束返回<strong>一个</strong> <span class="mono">LettaResponse</span>。</li>
+    <li><strong>一次 _step = 三件事</strong>：一次 LLM 调用 + 工具执行 + 落库（拿有效工具 → 刷新消息 → 调模型 → <span class="mono">_handle_ai_response</span> → <span class="mono">_checkpoint_messages</span> → yield）。</li>
+    <li><strong>续步规则</strong>（<span class="mono">_decide_continuation</span>）：没调工具 → 结束（<span class="mono">end_turn</span>）；调了工具 → 继续。硬覆盖：终止工具 → <span class="mono">tool_rule</span> 停、退出前必调 → 续、第 50 步 → <span class="mono">max_steps</span> 停、要审批 → <span class="mono">requires_approval</span>。</li>
+    <li><strong>先落库再流式</strong>：<span class="mono">_checkpoint_messages</span> 注释"持久化要在流式之前"，保证半路崩了也能读档续跑（呼应第 13 课）。</li>
+    <li><strong>撑爆就压缩重试</strong>：<span class="mono">_step</span> 里 LLM 调用裹着 <span class="mono">except ContextWindowExceededError → compact → 重试</span>（接上第 12 课）。</li>
+    <li><strong>step() 不流式</strong>：返回 <span class="mono">LettaResponse</span>；流式是另一个 <span class="mono">stream()</span>。</li>
+    <li><strong>源码</strong>：<span class="mono">letta_agent_v3.py::step / _step / _handle_ai_response / _decide_continuation</span>、<span class="mono">constants.py::DEFAULT_MAX_STEPS</span>、<span class="mono">letta_stop_reason.py::StopReasonType</span>。</li>
+  </ul>
+</div>
+""",
     "en": r"""<p>stub</p>""",
 }
