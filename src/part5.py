@@ -1248,5 +1248,29 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <p>回读校验：<span class="mono">local_sandbox.py::parse_out_function_results_markers</span> 找 marker、切长度、比 MD5；再交 <span class="mono">helpers/tool_parser_helper.py::parse_stdout_best_effort</span> 做 <span class="mono">json.loads</span> + <span class="mono">AgentState.model_validate</span>。</p>
 <p>类型与安全：沙箱类型在 <span class="mono">schemas/enums.py::SandboxType</span>；本次安全修复是 PR #3343（commit <span class="mono">1131535</span>）。</p>
 </div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p><strong>误区一：以为脚本由 <span class="mono">.j2</span> 模板渲染。</strong> <span class="mono">letta/templates/sandbox_code_file.py.j2</span> 在 v0.16.8 <strong>未被任何 .py 引用</strong>，只能当对照参考；真实脚本由 <span class="mono">_render_sandbox_code</span> 拼字符串。</p>
+<p><strong>误区二：以为参数也走 pickle。</strong> 参数是<strong>内联字面量</strong>（<span class="mono">repr()</span>），整段脚本里只有 <span class="mono">agent_state</span> 一项走 pickle。</p>
+<p><strong>误区三：以为帧是 #3343 加的。</strong> <span class="mono">marker+长度+MD5</span> 帧<strong>早就存在</strong>，#3343 只改了 payload 编码（pickle→JSON）。</p>
+<p><strong>误区四：信 docstring 和变量名。</strong> <span class="mono">generate_execution_script</span> 的 docstring 写着"base64-encode/pickle the result"、变量名带 <span class="mono">_pkl</span>——都是<strong>遗留</strong>，实际装的是 JSON。</p>
+</div>
+<h2>再挖深一点</h2>
+<p>下面四个抽屉，分别回答"为什么这样切边界""帧到底防谁""#3343 改了哪一段""本地 venv 怎么跑"。想细抠的同学可以逐个展开。</p>
+<details class="accordion"><summary>① 信任边界为什么这样切？</summary><div class="acc-body">
+<p>核心只有一条：<span class="mono">pickle.loads</span> 会在反序列化时执行任意代码。所以"能不能 pickle.loads"等价于"我信不信这段字节的来源"。</p>
+<p>server→sandbox 的 <span class="mono">agent_state</span> 是服务端自己 <span class="mono">pickle.dumps</span> 的，来源可信，沙箱只 loads——风险往低信任侧流，没问题。sandbox→server 的输出来自陌生代码，来源不可信，所以只能 <span class="mono">json.loads</span>。</p>
+</div></details>
+<details class="accordion"><summary>② marker+长度+MD5 防的是什么？</summary><div class="acc-body">
+<p>防的是"结果通道被污染"。沙箱的 stdout 谁都能写：调试 print、异常栈、甚至一个伪造的 marker 加假结果。</p>
+<p>于是三层各司其职：<span class="mono">marker</span> 在噪声里定位真 payload 的起点；<span class="mono">length</span> 精确切出 payload，避免被尾部噪声带偏；<span class="mono">MD5</span> 比对校验和，一旦被截断或篡改就 <span class="mono">raise Exception("Function ran, but output is corrupted.")</span>。</p>
+</div></details>
+<details class="accordion"><summary>③ PR #3343 到底改了什么？</summary><div class="acc-body">
+<p>只改了一件事：把 sandbox→server 的 <strong>payload 编码</strong>从 pickle 换成 JSON，于是服务端读回来时从 <span class="mono">pickle.loads</span> 变成 <span class="mono">json.loads</span>，RCE 面被消除。</p>
+<p>没改的：marker+长度+MD5 帧（本就存在）、server→sandbox 仍 pickle <span class="mono">agent_state</span>（有意的受信方向）。另外 <span class="mono">safe_pickle.py::safe_pickle_dumps</span> 只服务于 modal_sandbox_v2，加的是 10MB/深度 50 的防崩溃护栏，并非防恶意。</p>
+</div></details>
+<details class="accordion"><summary>④ 本地 venv 怎么跑？E2B/Modal 有何不同？</summary><div class="acc-body">
+<p>本地 <span class="mono">AsyncToolSandboxLocal</span>：按需 <span class="mono">venv.create(with_pip=True)</span> 建或复用虚拟环境、<span class="mono">pip install -r</span> 装依赖，脚本写临时 <span class="mono">.py</span>，用 <span class="mono">asyncio.create_subprocess_exec</span> 起子进程跑，超时是 <span class="mono">tool_sandbox_timeout</span>（默认 180s）。</p>
+<p>差异只在外层：E2B 回程会多包一层 base64；Modal 返回的是结构化 dict。但"生成脚本 + 信任边界 + 帧校验"这套主干，在三种沙箱里是一致的。</p>
+</div></details>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
