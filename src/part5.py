@@ -86,5 +86,18 @@ LESSON_17 = {"zh": r"""
   <div class="step"><div class="num">2</div><div class="sc"><h4>是 Optional[X] 吗？</h4><p>没有默认值，但类型是 <span class="mono">Optional[X]</span>（即 <span class="mono">is_optional</span> 为真）→ <strong>可选</strong>，不进 required。</p></div></div>
   <div class="step"><div class="num">3</div><div class="sc"><h4>否则</h4><p>既无默认值、又不是 Optional → <strong>进 required</strong>，模型调用时必须提供。</p></div></div>
 </div>
+<div class="cute"><div class="row">
+  <span class="emoji">📝</span><span class="lab">docstring</span>
+  <span class="emoji">🔧</span><span class="lab">函数</span>
+  <span class="arrow">→</span>
+  <span class="emoji">📜</span><span class="lab">schema</span>
+  <span class="arrow">→</span>
+  <span class="emoji">🤖</span><span class="bubble">我只看菜单</span>
+</div><div class="cap">模型从不读你的函数体，只读 generate_schema 拼出的那份 schema。</div></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>这里有个容易被忽略的视角转换：<strong>docstring 不是写给人看的注释，而是写给"模型"的 API 文档</strong>。模型决定要不要调这个工具、怎么填参数，全部依据就是这份 schema——而 schema 的描述文字，逐字来自你的 docstring。</p>
+<p>所以一句含糊或缺失的参数描述，会<strong>直接降低</strong>模型用对工具的概率。这是功能问题，不是代码风格问题。Letta 索性把它升级成"编译期错误"：任一参数缺描述，<span class="mono">generate_schema</span> 当场 <span class="mono">raise ValueError</span>，工具压根建不出来，逼你把话说清楚。</p>
+<p>一句话记住：<strong>给模型写 docstring，而不是给同事写</strong>。这正好回扣第 4 课——工具是 agent 与世界的接口，而接口的质量，就压在这几行描述上。</p>
+</div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
