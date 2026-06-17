@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>18 · 不执行就生成 schema / Deriving the schema without executing - Letta 图解教程</title>
+<meta name="description" content="第五部分 · 工具系统｜不执行就生成 schema - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="18 · 不执行就生成 schema / Deriving the schema without executing - Letta 图解教程">
+<meta property="og:description" content="第五部分 · 工具系统｜不执行就生成 schema - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="18 · 不执行就生成 schema / Deriving the schema without executing - Letta 图解教程">
+<meta name="twitter:description" content="第五部分 · 工具系统｜不执行就生成 schema - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第五部分 · 工具系统</span><span class="lang-en">Part 5 · The tool system</span></span>
+    <span class="pill">18 / 20</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:90%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第五部分 · 工具系统</span><span class="lang-en">Part 5 · The tool system</span></div>
+    <h1><span class="lang-zh">不执行就生成 schema</span><span class="lang-en">Deriving the schema without executing</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 17 课有一个悄悄藏起来的前提：我们<strong>已经握着一个 Python 函数对象</strong>，可以直接 <span class="mono">inspect.signature</span> 读它的签名。可现实里，用户注册自定义工具时，递给服务器的往往不是函数对象，而是<strong>一段源码字符串</strong>。</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">于是冒出一个棘手的要求：要在<strong>绝不运行这段代码</strong>的前提下，照样产出它的 JSON schema。既要"读懂"这段陌生代码的形状，又一行都不能跑——这才是本课真正的难点。第 17 课解决的是"已有函数对象"的简单情形，本课要啃的，是"只有一段源码字符串"的硬核情形。</p>
+
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>想象你在仓库验收一批陌生的电子产品。最稳妥的办法不是<strong>拆封、通电、试用</strong>——万一里头是"诈弹"呢？而是<strong>不拆封就验货</strong>：只读包装外印的"成分表 / 规格参数"，照着这些信息建档入库。</p>
+<p>给 schema 派生器读源码，就是这种"读规格不通电"：只看函数的<strong>签名与 docstring</strong>（外印的规格），绝不 <span class="mono">import</span> 运行它（通电试用）。这段代码是用户上传的，谁也不知道它通电后会做什么。</p>
+<p>更妙的是，这张"规格表"还自带防伪：包装上印的信息若对不上（源码语法错、参数缺注解），验货当场就能打回，根本不必通电就知道这批货不合格。读源码派生 schema 也一样——很多问题在"读"的阶段就被拦下了，压根轮不到"跑"。</p>
+</div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>Letta 的答案是 <span class="mono">letta/functions/functions.py::derive_openai_json_schema(source_code, name=None)</span>。它的套路只有三步：先用<strong>纯 AST 解析</strong>把源码读成语法树，再据此造一个 <span class="mono">MockFunction</span>（只带 <span class="mono">__name__ / __doc__ / __signature__</span> 三件套），最后把这个"假函数"喂给<strong>第 17 课里那个一模一样的</strong> <span class="mono">generate_schema</span>。</p>
+<p>全程<strong>绝不 <span class="mono">exec</span>、绝不 <span class="mono">import</span></strong> 用户代码。要看懂这套魔术，得回答三个问题：</p>
+<ul>
+<li>为什么<strong>不能</strong>直接 <span class="mono">import</span> 这段源码？</li>
+<li><span class="mono">MockFunction</span> 凭什么能<strong>骗过 <span class="mono">inspect</span></strong>？</li>
+<li>AST 究竟<strong>静态读</strong>到了哪些东西？</li>
+</ul>
+<p>留意这三步全程<strong>只读不写、只解析不执行</strong>。下面几节就顺着这三个问题往下挖：先看 import 为何危险，再看 <span class="mono">MockFunction</span> 如何伪装，最后看 AST 到底读了哪些字段。</p>
+</div>
+
+<p>为什么"绝不运行"是条不容商量的红线？因为 Letta 是<strong>多租户</strong>服务：同一个进程里可能同时跑着许多用户的工具。只要有一段上传代码在 import 时越界，受害的就不只是它自己的会话，而是整台服务器和上面所有人的数据。把执行权牢牢攥在自己手里，是这类平台的生存底线。</p>
+
+<h2>为什么不能直接 import</h2>
+<p>最直觉的做法是 <span class="mono">import</span> 用户模块、再 <span class="mono">inspect</span> 里面的函数。可这条路有致命问题：<span class="mono">import</span> 会执行模块的<strong>顶层代码</strong>。用户源码里只要在函数定义之外写一行 <span class="mono">os.system(...)</span>，导入的那一刻就在你的服务器上跑起来了——这是教科书级的<strong>远程代码执行（RCE）</strong>。</p>
+<div class="cols">
+<div class="col"><h4>❌ import + inspect</h4><p>把源码当模块加载，会<strong>执行顶层代码</strong>。等于让陌生人在你服务器上跑任意命令，安全边界直接失守。</p></div>
+<div class="col"><h4>✅ ast.parse</h4><p>把源码解析成<strong>语法树</strong>，<strong>纯静态、只读不跑</strong>。语法树就是结构化的"代码长相"，读它不会触发任何副作用。</p></div>
+</div>
+<p>把"顶层代码"说穿了：它指的是函数定义<strong>之外</strong>、模块一被加载就会执行的语句——<span class="mono">import</span> 第三方库、读环境变量、发一个网络请求，全都在加载那一刻发生。攻击者只要把恶意逻辑放在顶层（甚至藏进一个装饰器或默认参数表达式里），你的 <span class="mono">import</span> 就替他按下了执行键。</p>
+<p>而 <span class="mono">ast.parse</span> 走的是另一条世界线：它把源码当成<strong>文本</strong>来分析，产出一棵描述"代码长什么样"的语法树。树上记着"这里定义了一个函数、它叫什么、有哪些参数、注解是什么"，但<strong>没有任何一步会执行</strong>这些语句。读一棵树，再危险的代码也只是数据。</p>
+<table class="t">
+<tr><th>维度</th><th>import + inspect</th><th>ast.parse（Letta 选这条）</th></tr>
+<tr><td class="mono">是否执行代码</td><td>会，顶层语句立即运行</td><td>否，只构建语法树</td></tr>
+<tr><td class="mono">安全风险</td><td>任意代码执行（RCE）</td><td>无副作用，纯只读</td></tr>
+<tr><td class="mono">能拿到什么</td><td>真函数对象与真实签名</td><td>节点信息：函数名、参数、注解、docstring</td></tr>
+<tr><td class="mono">坏代码的下场</td><td>已经跑了，覆水难收</td><td>顶多语法错，抛 LettaToolCreateError</td></tr>
+</table>
+<p>有人会反问：那我先把代码丢进一个受限沙箱、再 import 不就行了？可以，但成本与风险都高得多——你得维护沙箱、限制系统调用、还得承担逃逸风险。而"只为拿一张 schema"这件小事，根本不值得动用那么重的武器。能用"读"解决的，就别用"跑"。</p>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">用户源码</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="lab">AST 只读不跑</span><span class="arrow">→</span><span class="emoji">📜</span><span class="bubble">我读你，但绝不跑你</span></div><div class="cap">派生器只"阅读"代码的形状，把它翻译成一张 schema，自始至终不让这段代码运行一行。</div></div>
+
+<h2>派生流程：纯 AST + 复用 generate_schema</h2>
+<div class="flow">
+<div class="node"><div class="nt">source_code</div><div class="nd">用户上传的源码字符串</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">ast.parse（不跑）</div><div class="nd">解析成语法树，纯静态</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">_parse_function_from_source</div><div class="nd">从树里抽出签名与 docstring</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">MockFunction</div><div class="nd">只带三件套的假函数</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">generate_schema</div><div class="nd">第 17 课的同一个生成器</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">JSON schema</div><div class="nd">模型能看懂的工具契约</div></div>
+</div>
+<p>这条流水线最妙的地方，是末端那个 <span class="mono">generate_schema</span> 跟第 17 课<strong>一字不差</strong>。原生工具走的是"函数对象 → generate_schema"，上传工具走的是"源码 → MockFunction → generate_schema"——两条路在最后一步<strong>汇合到同一个生成器</strong>，schema 的口径因此完全一致。</p>
+<p>别把"复用"看成偷懒，它其实是<strong>刻意的单一事实源</strong>：schema 的生成规则全代码库只有一处实现。无论工具是平台内置的、还是用户现写现传的，只要走到 <span class="mono">generate_schema</span>，类型映射、docstring 解析、保留参数过滤就完全一致，绝不会冒出"内置工具和上传工具 schema 口径不一样"的诡异 bug。</p>
+<p>把上面流程里的第三步 <span class="mono">_parse_function_from_source</span> 单独放大，它内部其实是四个干净利落的小动作：</p>
+<div class="vflow">
+<div class="step"><div class="num">1</div><div class="sc"><h4>ast.parse(src)</h4><p>把源码字符串解析成语法树；语法不合法当场抛 <span class="mono">LettaToolCreateError</span>。</p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>选出函数节点</h4><p>遍历 <span class="mono">ast.walk(tree)</span>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span> 当作工具本体。</p></div></div>
+<div class="step"><div class="num">3</div><div class="sc"><h4>重建 Signature</h4><p>逐个参数读注解、用 <span class="mono">ast.literal_eval</span> 取字面量默认值，拼出 <span class="mono">inspect.Signature</span>。</p></div></div>
+<div class="step"><div class="num">4</div><div class="sc"><h4>装进 MockFunction</h4><p>把函数名、docstring 与重建好的签名塞进假函数，交还给上层。</p></div></div>
+</div>
+<p>第一步的 <span class="mono">ast.parse</span> 还顺手当了"守门员"：源码若有语法错误，解析阶段就抛 <span class="mono">LettaToolCreateError</span>，把坏代码挡在创建环节之外。注意它<strong>只检查语法、不检查语义</strong>——能解析成树就放行；至于工具跑起来对不对，那是后面执行阶段才操心的事。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">派生入口（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">derive_openai_json_schema</span>(source_code: str, name=<span class="kw">None</span>):
+    mock = <span class="fn">_parse_function_from_source</span>(source_code, name)  <span class="cm"># 纯 AST，绝不 exec</span>
+    <span class="kw">return</span> <span class="fn">generate_schema</span>(mock, name=name)            <span class="cm"># 复用第 17 课的生成器</span>
+</pre></div>
+<p>请记住这条主线：派生器<strong>没有重写</strong>任何 schema 生成逻辑。它干的活，是把一段源码"翻译"成一个 <span class="mono">generate_schema</span> 能接受的输入；真正生成 schema 的，仍是第 17 课那台机器。少一处实现，就少一处会与另一处跑偏的风险。</p>
+<h2>MockFunction：骗过 inspect 的"假函数"</h2>
+<p>问题来了：<span class="mono">generate_schema</span> 期待的是一个<strong>真函数对象</strong>，它要对其调用 <span class="mono">inspect.signature</span>、读 <span class="mono">__doc__</span>。可我们手里只有从 AST 抽出来的零件，并没有真函数。Letta 的办法是临时<strong>捏一个"假函数"</strong>——<span class="mono">MockFunction</span>，只把 <span class="mono">inspect</span> 关心的几个属性凑齐，剩下的一概不管。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">MockFunction</span></div>
+<pre><span class="kw">class</span> <span class="fn">MockFunction</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, name, docstring, signature):
+        self.__name__ = name
+        self.__doc__ = docstring
+        self.__signature__ = signature        <span class="cm"># 设了它，inspect.signature 就照常工作</span>
+    <span class="kw">def</span> <span class="fn">__call__</span>(self, *a, **k):
+        <span class="kw">raise</span> <span class="fn">NotImplementedError</span>(<span class="st">"mock function cannot be called"</span>)
+</pre></div>
+<div class="cellgroup"><div class="cg-cap"><b>MockFunction 只凑齐三个属性</b></div><div class="cells"><span class="cell hl">__name__ 名字</span><span class="sep">·</span><span class="cell hl">__doc__ docstring</span><span class="sep">·</span><span class="cell hl">__signature__ 参数</span></div></div>
+<div class="note tip"><span class="ni">💡</span><span class="nx">关键在于：一旦显式设好 <span class="mono">__signature__</span>，<span class="mono">inspect.signature(mock)</span> 与 <span class="mono">parse(mock.__doc__)</span> 就能在一段<strong>从未运行过</strong>的代码上照常工作——<span class="mono">inspect</span> 只认这些属性，根本不在乎对象是真函数还是假货。这正是上传工具能<strong>原样复用</strong> <span class="mono">generate_schema</span> 的底层原因。</span></div>
+<p>还有个细节别放过：<span class="mono">__call__</span> 被<strong>故意</strong>写成抛 <span class="mono">NotImplementedError</span>。<span class="mono">MockFunction</span> 的唯一使命是"供 <span class="mono">inspect</span> 读取属性"，它不该、也不能被真正调用。万一某段代码手滑把它当工具执行，会立刻炸出清晰的错误，而不是悄悄返回 <span class="mono">None</span> 把 bug 藏起来——这是典型的<strong>防御性设计</strong>。</p>
+<p>这背后是 Python 的<strong>鸭子类型</strong>哲学："像鸭子一样走路、像鸭子一样叫，就当它是鸭子。" <span class="mono">inspect</span> 不查血统、只看属性：你拿得出 <span class="mono">__signature__</span>，它就把你当一个有签名的对象对待。<span class="mono">MockFunction</span> 正是吃准了这一点，用最小的"伪装"骗过了一整套本为真函数设计的工具链。</p>
+<h2>AST 静态读了什么</h2>
+<p>真正干活的是 <span class="mono">_parse_function_from_source</span>。它先把源码 <span class="mono">ast.parse</span> 成语法树，从中挑出函数节点，再<strong>逐项重建</strong>一个 <span class="mono">inspect.Signature</span>：参数名取自节点、类型来自注解、默认值用 <span class="mono">ast.literal_eval</span> 安全求值（只认字面量，不执行表达式）。整张签名是"拼"出来的，没有任何一处需要运行原代码。</p>
+<p>举个具体例子：用户上传一个签名为 <span class="mono">def lookup(city: str = "NYC")</span> 的工具。解析器读树之后得到——函数名 <span class="mono">lookup</span>、参数 <span class="mono">city</span> 类型为 <span class="mono">str</span>、默认值 <span class="mono">"NYC"</span>，再加上 docstring 里那句描述。这些全部来自"读结构"，函数体里真正干活的那行逻辑<strong>一次都没跑过</strong>。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">_parse_function_from_source（要点）</span></div>
+<pre><span class="kw">def</span> <span class="fn">_parse_function_from_source</span>(src, name):
+    tree = ast.<span class="fn">parse</span>(src)               <span class="cm"># 语法错 -> LettaToolCreateError</span>
+    func = [n <span class="kw">for</span> n <span class="kw">in</span> ast.<span class="fn">walk</span>(tree) <span class="kw">if</span> isinstance(n, ast.FunctionDef)][-<span class="nb">1</span>]  <span class="cm"># 取最后一个函数</span>
+    <span class="cm"># 重建 inspect.Signature：参数名、注解、用 ast.literal_eval 取默认值</span>
+    <span class="cm"># 源码里定义的 BaseModel 用 type(name, (BaseModel,), {...}) 原地重建成桩，不 import</span>
+    <span class="kw">return</span> <span class="fn">MockFunction</span>(func.name, ast.<span class="fn">get_docstring</span>(func), sig)
+</pre></div>
+<p>顺带一提，docstring 是直接从解析出的函数节点上读出来的（它的第一条语句若是字符串，就是 docstring）——纯 AST、不靠正则。Letta 的 AST 辅助 <span class="mono">ast_parsers.py::get_function_name_and_docstring</span> 干脆直接用标准库的 <span class="mono">ast.get_docstring</span> 来做这件事，多行、缩进、转义都替你处理好。</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">一段源码里若有<strong>多个函数</strong>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span>（约定：工具就是文件里最后定义的那个）。相关 AST 辅助住在 <span class="mono">letta/functions/ast_parsers.py</span>，其中 <span class="mono">resolve_type</span> 用<strong>白名单</strong>解析类型、默认 <span class="mono">allow_unsafe_eval=False</span>——不过它是在<strong>之后执行工具、强转模型传来的参数</strong>时才用上，同样守着"不借解析跑代码"的底线。</span></div>
+<p>这里还藏着两个值得记住的"安全阀"。第一个针对默认值：解析器不用 <span class="mono">eval</span>，而用 <span class="mono">ast.literal_eval</span>——后者只接受数字、字符串、列表、字典这类<strong>字面量</strong>，碰到函数调用或任意表达式就直接拒绝，从根上堵死"连求个默认值都能偷跑代码"的缝隙。</p>
+<p>第二个针对类型注解：派生时，注解里不认识的名字<strong>不会</strong>被 import 或求值，而是当作普通字符串放过（源码里定义的 BaseModel 则原地造桩）——靠的是 functions.py 内的静态解析，不真去解类型。两道阀门合起来，确保"解析"绝不退化成"执行"。</p>
+
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>一句话概括这门手艺：<strong>"从一段你拒绝运行的代码里，生成它的 schema。"</strong> 读函数签名最朴素的办法是 <span class="mono">import + inspect</span>，可 <span class="mono">import</span> 用户代码＝在你的服务端执行任意代码。Letta 的巧招是：先 <span class="mono">ast.parse</span> 成语法树（只读不跑），再造一个只带 <span class="mono">__name__/__doc__/__signature__</span> 的 <span class="mono">MockFunction</span>，喂给<strong>完全相同</strong>的 <span class="mono">generate_schema</span>。</p>
+<p>结果是：模型拿到一张真 schema，服务器却<strong>一行用户代码都没跑</strong>。连源码里定义的 Pydantic 类型，也用 <span class="mono">type(name,(BaseModel,),{})</span> 原地重建成桩，而非 import。它把"安全"巧妙地变成了一道"解析"题——这正是第 20 课沙箱哲学的前奏：<strong>"工具的代码，自始至终不可信。"</strong></p>
+<p>这种"把危险操作转化成安全操作"的思路，在工程上极有价值：它不是给危险行为层层加锁，而是<strong>从设计上让危险根本无从发生</strong>。记住这个套路，你会在很多优秀系统里反复见到它的身影。</p>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">记忆钩子：这一课的所有巧思，都能压缩成一句话——<strong>"读它，但绝不跑它。"</strong> 读，靠 AST；接回旧流程，靠 <span class="mono">MockFunction</span>；安全，靠从不 import。</span></div>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p>这套机制散落在几处，但脉络清晰：</p>
+<ul>
+<li><strong>派生器三件套</strong>（均在 <span class="mono">letta/functions/functions.py</span>）：<span class="mono">derive_openai_json_schema</span>、<span class="mono">MockFunction</span>、<span class="mono">_parse_function_from_source</span>。</li>
+<li><strong>AST 辅助</strong>：<span class="mono">letta/functions/ast_parsers.py</span>，含 <span class="mono">get_function_name_and_docstring</span> 与白名单类型解析 <span class="mono">resolve_type</span>。</li>
+<li><strong>TypeScript 派生</strong>：<span class="mono">letta/functions/typescript_parser.py::derive_typescript_json_schema</span>。</li>
+<li><strong>接线在创建时</strong>：<span class="mono">letta/services/tool_manager.py</span>（custom 且无 schema → 调用派生）→ <span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>（按 <span class="mono">source_type</span> 分派 Python / TypeScript）。</li>
+</ul>
+<p>一句话串起来：<strong>创建时</strong>由 <span class="mono">tool_manager</span> 触发，<strong>派生</strong>落在 <span class="mono">functions.py</span> 三件套，<strong>类型解析</strong>靠 <span class="mono">ast_parsers.py</span>，<strong>语言分派</strong>看 <span class="mono">source_type</span>。顺着这条线读源码，基本不会迷路。</p>
+</div>
+
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<ul>
+<li><span class="mono">MockFunction</span> 住在 <strong>functions.py</strong>，<strong>不在</strong> <span class="mono">ast_parsers.py</span>——别找错文件。</li>
+<li>多函数源码取<strong>最后一个</strong> <span class="mono">FunctionDef</span>，<strong>不是第一个</strong>。</li>
+<li>TypeScript 工具创建<strong>必须显式传 <span class="mono">json_schema</span></strong>，否则 <span class="mono">ToolCreate</span> 直接报错。</li>
+<li>schema 派生<strong>只在创建时</strong>做，<strong>已不在</strong> pydantic 校验器里：<span class="mono">Tool.refresh_source_code_and_json_schema</span> 对 custom 缺 schema 只<strong>告警</strong>、不再现算。</li>
+<li><span class="mono">ast.literal_eval</span> 只认<strong>字面量</strong>；别误以为它能求值任意默认值表达式，那正是它"安全"的原因。</li>
+</ul>
+</div>
+<h2>TypeScript 工具</h2>
+<p>工具不只能用 Python 写。<span class="mono">letta/functions/typescript_parser.py::derive_typescript_json_schema</span> 负责 TS：它<strong>不走 AST</strong>，而是用<strong>正则</strong>扫描 <span class="mono">export function</span> 的签名，再从 <span class="mono">JSDoc</span> 注释里取参数描述；参数名后带 <span class="mono">?</span> 视为可选。</p>
+<p>类型映射更粗放：<span class="mono">union</span> 一律映射成 <span class="mono">string</span>，<span class="mono">any</span> 也落到 <span class="mono">string</span>。源类型由 <span class="mono">letta/schemas/enums.py::ToolSourceType</span> 枚举给出，有 <span class="mono">python / typescript / json</span> 三种。</p>
+<div class="note info"><span class="ni">👉</span><span class="nx">但有个硬约束：TS 工具在 API 创建时<strong>必须</strong>自带 <span class="mono">json_schema</span>（<span class="mono">ToolCreate.validate_typescript_requires_schema</span>，缺了就 <span class="mono">ValueError</span>）。所以"自动派生 schema"这条路<strong>主要服务 Python 工具</strong>；TS 的 schema 通常由调用方显式给出。</span></div>
+<p>顺手厘清 <span class="mono">source_type</span> 的角色：它就是一张"语言标签"，告诉派生器这段源码该用哪把解析器——Python 走 AST、TypeScript 走正则，而 JSON 则表示"schema 我已经给你了，不用派生"。</p>
+<div class="cellgroup"><div class="cg-cap"><b>ToolSourceType 的三种取值</b></div><div class="cells"><span class="cell hl">python · 走 AST 派生</span><span class="sep">·</span><span class="cell">typescript · 走正则，需显式 schema</span><span class="sep">·</span><span class="cell">json · 直接提供 schema</span></div></div>
+<p>那为什么 TS 偏偏要"必须显式给 schema"？因为正则能稳妥覆盖的 TypeScript 语法面，远不如 Python 的 AST 完整、严谨。与其在复杂类型上猜错，不如让调用方把权威 schema 直接交出来。于是"自动派生"这条便利通道，主力服务的始终是 Python。</p>
+<p>顺带交代 <span class="mono">JSDoc</span> 的角色：TS 解析器从 <span class="mono">/** ... */</span> 注释里取每个参数的描述，就像 Python 从 docstring 取描述一样——给模型看的"说明"，两种语言殊途同归，都放在注释里。区别只在抽取方式：一个用正则扫文本，一个用 AST 读结构。</p>
+
+<h2>再挖深一点</h2>
+<p>把几个最容易卡住的"为什么"摊开来讲，每条都给示例、原因和源码出处。</p>
+<details class="accordion"><summary>① 为什么用 AST，而不直接 import？</summary><div class="acc-body">
+<p><strong>示例：</strong>用户源码在函数定义之外、顶层写了一行 <span class="mono">os.system("rm -rf /")</span>，只要你 <span class="mono">import</span> 它，这行就在你的服务器上跑了。注意：函数<strong>根本没被调用</strong>，仅仅"导入"就足以触发，这正是顶层代码可怕的地方。</p>
+<p><strong>为什么：</strong><span class="mono">import</span> 会执行模块的<strong>顶层代码</strong>，等于把服务器交给陌生人，是标准的 RCE。<span class="mono">ast.parse</span> 则只把源码读成<strong>语法树</strong>——纯静态、零副作用，看一千遍也不会触发任何执行。安全的本质，是"只读不跑"。</p>
+<p><strong>源码：</strong><span class="mono">letta/functions/functions.py::_parse_function_from_source</span> 全程基于 <span class="mono">ast</span>，没有一处 <span class="mono">exec/import</span>。</p>
+<p><strong>延伸：</strong>正因如此，Letta 把"不可信代码"当成贯穿整个工具系统的第一性原则——从派生 schema 到第 20 课的沙箱执行，都是这条原则的不同侧面。</p>
+</div></details>
+<details class="accordion"><summary>② MockFunction 凭什么骗过 inspect？</summary><div class="acc-body">
+<p><strong>示例：</strong><span class="mono">inspect.signature(mock)</span> 照样返回完整签名，哪怕 <span class="mono">mock</span> 从未被当作真函数定义过、调用它还会直接抛 <span class="mono">NotImplementedError</span>。</p>
+<p><strong>为什么：</strong><span class="mono">inspect</span> 读签名时只看对象的 <span class="mono">__signature__</span> 属性，读文档只看 <span class="mono">__doc__</span>——它<strong>根本不验证</strong>对象是不是"真函数"。只要这几个属性齐了，它就照常工作。这正是上传工具能原样复用 <span class="mono">generate_schema</span> 的关键。</p>
+<p><strong>源码：</strong><span class="mono">letta/functions/functions.py::MockFunction</span> 在 <span class="mono">__init__</span> 里手动设好这三个属性。</p>
+<p><strong>延伸：</strong>这也解释了为什么不必"真造一个函数"：<span class="mono">generate_schema</span> 要的从来不是可执行性，而是<strong>可描述性</strong>——签名与文档齐了，描述就齐了。</p>
+</div></details>
+<details class="accordion"><summary>③ 为什么取最后一个函数？未知类型怎么办？</summary><div class="acc-body">
+<p><strong>示例：</strong>源码里先写了几个辅助函数、最后才是工具本体，于是解析器取<strong>最后一个</strong> <span class="mono">FunctionDef</span>。</p>
+<p><strong>为什么：</strong>约定"工具是文件末尾那个函数"。若源码里<strong>定义</strong>了 Pydantic 模型，就用 <span class="mono">type(name, (BaseModel,), {...})</span> <strong>原地重建</strong>成一个桩类，绝不去 <span class="mono">import</span> 真实定义——既能让签名成形，又守住"不跑用户代码"的底线。</p>
+<p><strong>源码：</strong><span class="mono">_parse_function_from_source</span>（取最后一个 <span class="mono">FunctionDef</span>、<span class="mono">ast.literal_eval</span> 取默认值）；白名单解析 <span class="mono">ast_parsers.py::resolve_type</span> 用于之后的参数强转。</p>
+<p><strong>延伸：</strong>造桩靠 <span class="mono">type(name,(BaseModel,),{})</span> 这一行——它在运行时凭空合成一个类，仅供签名"有个名字可填"，绝不去触碰用户真正想引用的那个定义。</p>
+</div></details>
+<details class="accordion"><summary>④ 派生到底在何时、何地触发？</summary><div class="acc-body">
+<p><strong>示例：</strong>你创建一个 custom Python 工具却没给 <span class="mono">json_schema</span>，服务器就在<strong>创建流程</strong>里替你把 schema 派生出来。反过来，若你已经给了 schema，这一步就被跳过——派生只是"缺啥补啥"的兜底。</p>
+<p><strong>为什么：</strong>接线落在 <span class="mono">tool_manager</span>（判断 custom 且缺 schema）→ <span class="mono">generate_schema_for_tool_creation</span>（按 <span class="mono">source_type</span> 分派 Python / TS）。它<strong>已不在</strong> pydantic 校验器里，所以一次创建只算一次；而 TS 因为必须显式给 schema，通常不会落到自动派生这一支。</p>
+<p><strong>源码：</strong><span class="mono">letta/services/tool_manager.py</span>、<span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>。</p>
+<p><strong>延伸：</strong>把派生放在创建时、而非每次校验时，既省去重复计算，也让 schema 成为一份"创建那一刻定下、之后稳定不变"的契约。</p>
+</div></details>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><strong>注册自定义工具时，schema 靠纯 AST 派生</strong>：从源码字符串生成 schema，<strong>绝不运行</strong>这段代码。</li>
+<li><strong><span class="mono">derive_openai_json_schema</span> = <span class="mono">_parse_function_from_source</span> + 复用 <span class="mono">generate_schema</span></strong>：和第 17 课汇合到同一个生成器。</li>
+<li><strong><span class="mono">MockFunction</span> 提供 <span class="mono">__name__ / __doc__ / __signature__</span></strong>：用三件套骗过 <span class="mono">inspect</span>，调用即抛错。</li>
+<li><strong>取最后一个 <span class="mono">FunctionDef</span>、未知类型造桩</strong>：未定义的 BaseModel 用 <span class="mono">type(name,(BaseModel,),{})</span> 顶上，不 import。</li>
+<li><strong>TS 工具必须显式给 <span class="mono">json_schema</span></strong>：自动派生主要服务 Python。</li>
+<li><strong>派生只在创建时做</strong>：接线在 <span class="mono">tool_manager</span> → <span class="mono">tool_schema_generator</span>，已不在 pydantic 校验器里。</li>
+</ul>
+<p>把这几条连起来看：<strong>不运行</strong>是原则，<strong>AST 解析</strong>是手段，<strong>MockFunction</strong>是适配器，<strong>复用 generate_schema</strong>是收益。四者环环相扣，缺一不可——这正是一个"安全又省事"的设计该有的样子。</p>
+</div>
+
+<p>回头看这一课，它其实只讲了一件事：<strong>把"安全"重新表述成"解析"</strong>。一旦你拒绝运行用户代码，"读懂它"就从一个运行时问题变成了一个纯文本分析问题——而文本分析，正是 AST 的拿手好戏。<span class="mono">MockFunction</span> 则像一座桥，让分析出来的零件无缝接回第 17 课那套成熟的生成器。</p>
+
+<p>至此，工具有了 schema、能被模型"看见"并发起调用。可当 agent <strong>真要执行</strong>一个工具时，它怎么知道"该用哪种方式跑它"——是直接在进程内调用、丢进沙箱隔离执行、还是连去一台外部服务器？这就是<strong>第 19 课"工具分发与执行"</strong>要回答的问题。换句话说，schema 解决的是"模型怎么理解工具"，而执行要解决的是"系统怎么安全地把工具跑起来"——这个故事，才刚刚讲到一半。</p>
+
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 用户注册自定义 Python 工具时，递给服务器的是一段源码字符串（不是函数对象）。Letta 如何为它产出 JSON schema？</div>
+  <ol class="opts">
+    <li>derive_openai_json_schema 用 ast.parse 纯静态解析源码、重建签名、包成 MockFunction，再复用 generate_schema——这段代码从不被 exec 或 import</li>
+    <li>它拿几组样例输入把函数跑一遍，记录观察到的参数/返回类型</li>
+    <li>它让模型读源码、生成一份 schema，再把模型的输出缓存下来</li>
+    <li>它把源码当模块 import 进来，再对得到的函数对象调 inspect.signature</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。第 18 课的核心就是“不运行代码也能派生 schema”。derive_openai_json_schema（letta/functions/functions.py）调用 _parse_function_from_source：用 ast.parse 纯静态解析、挑出函数节点、重建 inspect.Signature，返回一个 MockFunction；再把这个 mock 喂给第 17 课同一个 generate_schema。import + inspect 会执行顶层代码（在多租户服务器上即 RCE），既不是“跑函数”也不是“问模型”。是“读”，不是“跑”。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. generate_schema 期待一个可内省的真函数对象，可我们手里只有从 AST 拆出来的零件。MockFunction 凭什么能顶替上场？</div>
+  <ol class="opts">
+    <li>它设好 __name__、__doc__、__signature__——而 inspect.signature() 与 docstring 解析读的正是这几个属性，于是对从未运行的代码也能内省</li>
+    <li>它继承用户的类、重写 __call__ 让其直接返回 schema</li>
+    <li>它把源码编译成真正可调用的对象，让 inspect 能在沙箱里安全地执行它</li>
+    <li>它保存原始源码字符串，generate_schema 每要一个字段就把字符串重新解析一遍</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。inspect 不查血统、只读属性。MockFunction.__init__（letta/functions/functions.py）设好 __name__、__doc__、__signature__；一旦显式设了 __signature__，inspect.signature(mock) 就返回它、docstring 解析读 __doc__，于是同一个 generate_schema 能在从未运行的代码上工作（鸭子类型）。注意 MockFunction.__call__ 故意抛 NotImplementedError——它本就不该被执行。既不编译、不沙箱跑，也不会“每个字段重解析一次”。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 用户上传的源码里定义了三个函数：先是两个辅助函数，最后才是真正的工具。哪个会成为工具？这个判断需要“运行”什么吗？</div>
+  <ol class="opts">
+    <li>第一个 FunctionDef，因为解析器惯例取最先定义的那个</li>
+    <li>哪个函数有 docstring 就取哪个；若有多个有 docstring，源码因有歧义被拒</li>
+    <li>名字与 tool name 参数相符的那个，通过 import 模块来确定</li>
+    <li>解析树里最后一个 FunctionDef，纯靠遍历 AST 节点列表选出——不执行任何东西</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。_parse_function_from_source 用 ast.walk 收集 ast.FunctionDef 节点，取最后一个（[-1]）——约定是“工具就是文件里最后定义的那个函数”。这是对 AST 节点的静态读取，不跑任何代码。它明确不是第一个、也不是“有 docstring 的那个”（被选中的函数要求有 docstring，但选择靠位置），更不会为匹配名字去 import。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. 你创建一个 source_type 为 typescript 的工具，却没传 json_schema，指望 Letta 像对 Python 那样替你自动派生。结果如何？</div>
+  <ol class="opts">
+    <li>创建失败：ToolCreate.validate_typescript_requires_schema 抛 ValueError——TypeScript 工具必须显式提供 json_schema</li>
+    <li>它静默地用一份空的 parameters schema 建出工具，模型靠猜来填参数</li>
+    <li>和 Python 一样照常工作：derive_typescript_json_schema 通过 AST 从源码生成完整 schema</li>
+    <li>它先把 TypeScript 转译成 Python，再走普通的 AST 派生</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。TS 工具是“自动派生”的例外。ToolCreate.validate_typescript_requires_schema 会拒绝没有 json_schema 的 typescript 源码（ValueError），所以便利的自动派生主要服务 Python。derive_typescript_json_schema 确实存在，但它基于正则、较粗放（union/any → string），并非 AST，也没有 TS→Python 转译这一步。schema 不会被静默置空；缺显式 json_schema 时创建直接失败。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. 你想读 MockFunction 的定义，它在哪个文件里？</div>
+  <ol class="opts">
+    <li>letta/functions/typescript_parser.py——它被 Python 和 TypeScript 派生共用</li>
+    <li>letta/services/tool_schema_generator.py——挨着创建期接线</li>
+    <li>letta/functions/ast_parsers.py——因为它属于 AST 解析辅助</li>
+    <li>letta/functions/functions.py——和 derive_openai_json_schema、_parse_function_from_source 在一起</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。MockFunction 住在 letta/functions/functions.py，和派生三件套 derive_openai_json_schema、_parse_function_from_source 在一起。ast_parsers.py 是常见的坑——它放的是 get_function_name_and_docstring、resolve_type（白名单，allow_unsafe_eval=False）等 AST 辅助，但没有 MockFunction。typescript_parser.py 负责基于正则的 TS 派生；tool_schema_generator.py 放的是 generate_schema_for_tool_creation（创建期分派）——都不是 MockFunction。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用“不拆封验货”这个比喻，把第 18 课的故事完整讲一遍，并想三件事：(1) 为什么 Letta 宁可“读源码”也绝不“import 跑一下”？若把 import 换成“先丢进沙箱再 import”，省下的麻烦和新增的风险各是什么？(2) MockFunction 只凑齐 __name__/__doc__/__signature__ 三个属性，却故意让 __call__ 抛 NotImplementedError。为什么“能被内省”和“不能被调用”要同时成立——这对一个“假函数”意味着怎样的设计取舍？(3) Python 工具能在创建时自动派生 schema，TypeScript 工具却必须显式带上 json_schema。若让你把“自动派生”也扩到 TypeScript，你会选 AST 式解析器还是继续用正则——如何权衡“覆盖更多语法”与“猜错复杂类型”的风险？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 17 quietly leaned on one assumption: we <strong>already held a Python function object</strong> and could call <span class="mono">inspect.signature</span> on it directly. But in reality, when a user registers a custom tool, what reaches the server is usually not a function object but <strong>a string of source code</strong>.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">That raises a thorny demand: produce its JSON schema <strong>without ever running the code</strong>. You must "understand" the shape of this unfamiliar code yet execute not a single line — that is the real difficulty here. Lesson 17 solved the easy case of "we already have a function object"; this lesson tackles the hardcore case of "all we have is a source string."</p>
+
+<div class="card analogy"><div class="tag">🔌 Analogy</div>
+<p>Picture yourself receiving a batch of unfamiliar electronics at a warehouse. The safest move is not to <strong>unbox, power on, and try them out</strong> — what if one is a "booby trap"? Instead you <strong>inspect without unsealing</strong>: read only the "ingredients / spec sheet" printed on the box, and file each item by that information.</p>
+<p>Handing source code to the schema deriver is exactly this "read the spec, never power it on": look only at the function's <strong>signature and docstring</strong> (the printed spec), never <span class="mono">import</span> and run it (powering on). This code was uploaded by a user, and nobody knows what it will do once powered up.</p>
+<p>Better still, this "spec sheet" is self-checking: if the printed information doesn't add up (a syntax error in the source, a parameter missing its annotation), you can reject the shipment on the spot — no need to power anything on to know the batch is defective. Deriving a schema from source is the same: many problems are caught at the "reading" stage and never reach the "running" stage at all.</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Letta's answer is <span class="mono">letta/functions/functions.py::derive_openai_json_schema(source_code, name=None)</span>. Its recipe is just three steps: first use <strong>pure AST parsing</strong> to read the source into a syntax tree, then build a <span class="mono">MockFunction</span> from it (carrying only the trio <span class="mono">__name__ / __doc__ / __signature__</span>), and finally feed that "fake function" into the <strong>exact same</strong> <span class="mono">generate_schema</span> from Lesson 17.</p>
+<p>At no point does it <strong>ever <span class="mono">exec</span> or <span class="mono">import</span></strong> the user's code. To see through this magic, answer three questions:</p>
+<ul>
+<li>Why can we <strong>not</strong> just <span class="mono">import</span> this source directly?</li>
+<li>How does <span class="mono">MockFunction</span> manage to <strong>fool <span class="mono">inspect</span></strong>?</li>
+<li>What exactly does the AST <strong>read statically</strong>?</li>
+</ul>
+<p>Notice that all three steps <strong>only read, never write; only parse, never execute</strong>. The next sections dig down along these three questions: first why import is dangerous, then how <span class="mono">MockFunction</span> disguises itself, and finally which fields the AST actually reads.</p>
+</div>
+
+<p>Why is "never run it" a non-negotiable red line? Because Letta is a <strong>multi-tenant</strong> service: one process may run many users' tools at once. If a single piece of uploaded code oversteps at import time, the victim is not just its own session but the whole server and everyone's data on it. Keeping execution firmly in your own hands is the survival baseline for such a platform.</p>
+<h2>Why you can't just import</h2>
+<p>The most intuitive approach is to <span class="mono">import</span> the user's module and then <span class="mono">inspect</span> the function inside. But this path has a fatal flaw: <span class="mono">import</span> executes the module's <strong>top-level code</strong>. If the user's source has a single line like <span class="mono">os.system(...)</span> outside any function definition, it runs on your server the instant you import it — a textbook case of <strong>remote code execution (RCE)</strong>.</p>
+<div class="cols">
+<div class="col"><h4>❌ import + inspect</h4><p>Loading the source as a module <strong>executes top-level code</strong>. That's like letting a stranger run arbitrary commands on your server — the security boundary falls immediately.</p></div>
+<div class="col"><h4>✅ ast.parse</h4><p>Parsing the source into a <strong>syntax tree</strong> is <strong>purely static, read-only, never run</strong>. A syntax tree is just the structured "shape" of the code; reading it triggers no side effects.</p></div>
+</div>
+<p>To spell out "top-level code": it means statements <strong>outside</strong> any function definition that run the instant the module is loaded — importing a third-party library, reading an environment variable, firing a network request, all happen at load time. An attacker only has to put malicious logic at the top level (or even hide it inside a decorator or a default-argument expression), and your <span class="mono">import</span> presses the execute button for them.</p>
+<p>By contrast, <span class="mono">ast.parse</span> follows a different timeline: it analyzes the source as <strong>text</strong> and produces a syntax tree describing "what the code looks like." The tree records "a function is defined here, this is its name, these are its parameters, here are the annotations," but <strong>no step executes</strong> any of those statements. Read as a tree, even the most dangerous code is just data.</p>
+<table class="t">
+<tr><th>Dimension</th><th>import + inspect</th><th>ast.parse (Letta's choice)</th></tr>
+<tr><td class="mono">Runs the code?</td><td>Yes — top-level statements run at once</td><td>No — only builds a syntax tree</td></tr>
+<tr><td class="mono">Security risk</td><td>Arbitrary code execution (RCE)</td><td>No side effects, pure read-only</td></tr>
+<tr><td class="mono">What you can get</td><td>A real function object and real signature</td><td>Node info: function name, parameters, annotations, docstring</td></tr>
+<tr><td class="mono">Fate of bad code</td><td>Already ran — no undo</td><td>At worst a syntax error, raises LettaToolCreateError</td></tr>
+</table>
+<p>Someone might push back: can't I drop the code into a restricted sandbox first and then import it? You can, but the cost and risk are far higher — you must maintain the sandbox, restrict system calls, and still bear the escape risk. For the small matter of "just getting a schema," it isn't worth wielding such a heavy weapon. If "reading" can solve it, don't "run" it.</p>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">user source</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="lab">AST reads, never runs</span><span class="arrow">→</span><span class="emoji">📜</span><span class="bubble">I read you, but never run you</span></div><div class="cap">The deriver only "reads" the shape of the code and translates it into a schema, never letting a single line of that code run.</div></div>
+<h2>The pipeline: pure AST + reusing generate_schema</h2>
+<div class="flow">
+<div class="node"><div class="nt">source_code</div><div class="nd">the source string a user uploaded</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">ast.parse (no run)</div><div class="nd">parsed into a syntax tree, purely static</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">_parse_function_from_source</div><div class="nd">pulls signature and docstring from the tree</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">MockFunction</div><div class="nd">a fake function carrying only the trio</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">generate_schema</div><div class="nd">the very same generator from Lesson 17</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">JSON schema</div><div class="nd">the tool contract the model can read</div></div>
+</div>
+<p>The cleverest part of this pipeline is that the <span class="mono">generate_schema</span> at the end is <strong>word-for-word identical</strong> to Lesson 17's. Native tools take "function object → generate_schema"; uploaded tools take "source → MockFunction → generate_schema" — the two paths <strong>converge on the same generator</strong> at the final step, so the schemas come out perfectly consistent.</p>
+<p>Don't read "reuse" as laziness — it is a deliberate <strong>single source of truth</strong>: the rules for generating a schema have exactly one implementation across the whole codebase. Whether a tool is platform-built-in or written and uploaded on the spot, once it reaches <span class="mono">generate_schema</span> the type mapping, docstring parsing, and reserved-parameter filtering are identical, so the weird bug of "built-in and uploaded tools have different schema conventions" can never appear.</p>
+<p>Zoom in on the third step above, <span class="mono">_parse_function_from_source</span>, and inside it are four clean little moves:</p>
+<div class="vflow">
+<div class="step"><div class="num">1</div><div class="sc"><h4>ast.parse(src)</h4><p>Parse the source string into a syntax tree; invalid syntax raises <span class="mono">LettaToolCreateError</span> on the spot.</p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>Pick the function node</h4><p>Walk <span class="mono">ast.walk(tree)</span> and take the <strong>last</strong> <span class="mono">FunctionDef</span> as the tool body.</p></div></div>
+<div class="step"><div class="num">3</div><div class="sc"><h4>Rebuild the Signature</h4><p>Read each parameter's annotation, take literal defaults via <span class="mono">ast.literal_eval</span>, and assemble an <span class="mono">inspect.Signature</span>.</p></div></div>
+<div class="step"><div class="num">4</div><div class="sc"><h4>Wrap in MockFunction</h4><p>Stuff the function name, docstring, and rebuilt signature into the fake function and hand it back up.</p></div></div>
+</div>
+<p>Step one's <span class="mono">ast.parse</span> doubles as a "gatekeeper": if the source has a syntax error, the parsing stage raises <span class="mono">LettaToolCreateError</span> and keeps bad code out of creation entirely. Note it checks <strong>syntax only, not semantics</strong> — parse into a tree and it passes; whether the tool runs correctly is a worry for the later execution stage.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">derivation entry (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">derive_openai_json_schema</span>(source_code: str, name=<span class="kw">None</span>):
+    mock = <span class="fn">_parse_function_from_source</span>(source_code, name)  <span class="cm"># pure AST, never exec</span>
+    <span class="kw">return</span> <span class="fn">generate_schema</span>(mock, name=name)            <span class="cm"># reuse Lesson 17's generator</span>
+</pre></div>
+<p>Keep this main thread in mind: the deriver <strong>rewrites none</strong> of the schema-generation logic. Its job is to "translate" a piece of source into an input that <span class="mono">generate_schema</span> will accept; the thing that actually generates the schema is still Lesson 17's machine. One fewer implementation means one fewer place that can drift out of sync with another.</p>
+<h2>MockFunction: the "fake function" that fools inspect</h2>
+<p>Here's the snag: <span class="mono">generate_schema</span> expects a <strong>real function object</strong> — it wants to call <span class="mono">inspect.signature</span> on it and read <span class="mono">__doc__</span>. But all we hold are parts pulled from the AST, not a real function. Letta's move is to whip up a "fake function" on the fly — <span class="mono">MockFunction</span> — gathering just the few attributes <span class="mono">inspect</span> cares about and ignoring everything else.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">MockFunction</span></div>
+<pre><span class="kw">class</span> <span class="fn">MockFunction</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, name, docstring, signature):
+        self.__name__ = name
+        self.__doc__ = docstring
+        self.__signature__ = signature        <span class="cm"># set this, and inspect.signature just works</span>
+    <span class="kw">def</span> <span class="fn">__call__</span>(self, *a, **k):
+        <span class="kw">raise</span> <span class="fn">NotImplementedError</span>(<span class="st">"mock function cannot be called"</span>)
+</pre></div>
+<div class="cellgroup"><div class="cg-cap"><b>MockFunction gathers just three attributes</b></div><div class="cells"><span class="cell hl">__name__ name</span><span class="sep">·</span><span class="cell hl">__doc__ docstring</span><span class="sep">·</span><span class="cell hl">__signature__ params</span></div></div>
+<div class="note tip"><span class="ni">💡</span><span class="nx">The key point: once <span class="mono">__signature__</span> is set explicitly, <span class="mono">inspect.signature(mock)</span> and <span class="mono">parse(mock.__doc__)</span> work fine on code that has <strong>never run</strong> — <span class="mono">inspect</span> only looks at these attributes and doesn't care whether the object is a real function or a fake. This is exactly why uploaded tools can <strong>reuse</strong> <span class="mono">generate_schema</span> unchanged.</span></div>
+<p>Don't miss another detail: <span class="mono">__call__</span> is <strong>deliberately</strong> written to raise <span class="mono">NotImplementedError</span>. <span class="mono">MockFunction</span>'s only mission is "let <span class="mono">inspect</span> read attributes"; it shouldn't and can't be truly called. Should some code slip and execute it as a tool, it blows up with a clear error at once, rather than quietly returning <span class="mono">None</span> and hiding the bug — a textbook piece of <strong>defensive design</strong>.</p>
+<p>Behind this is Python's <strong>duck typing</strong> philosophy: "if it walks like a duck and quacks like a duck, treat it as a duck." <span class="mono">inspect</span> checks no pedigree, only attributes: produce a <span class="mono">__signature__</span> and it treats you as an object that has a signature. <span class="mono">MockFunction</span> banks on exactly this, using the smallest possible "disguise" to fool an entire toolchain built for real functions.</p>
+<h2>What the AST reads statically</h2>
+<p>The real workhorse is <span class="mono">_parse_function_from_source</span>. It first <span class="mono">ast.parse</span>s the source into a syntax tree, picks out the function node, then <strong>rebuilds</strong> an <span class="mono">inspect.Signature</span> item by item: parameter names come from the node, types from the annotations, and defaults from <span class="mono">ast.literal_eval</span>'s safe evaluation (literals only, no expressions executed). The whole signature is "assembled," with nothing anywhere needing the original code to run.</p>
+<p>A concrete example: a user uploads a tool whose signature is <span class="mono">def lookup(city: str = "NYC")</span>. After reading the tree, the parser obtains — function name <span class="mono">lookup</span>, parameter <span class="mono">city</span> of type <span class="mono">str</span>, default <span class="mono">"NYC"</span>, plus the description line from the docstring. All of it comes from "reading structure"; the line in the body that does the real work never ran once.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">_parse_function_from_source (key points)</span></div>
+<pre><span class="kw">def</span> <span class="fn">_parse_function_from_source</span>(src, name):
+    tree = ast.<span class="fn">parse</span>(src)               <span class="cm"># syntax error -> LettaToolCreateError</span>
+    func = [n <span class="kw">for</span> n <span class="kw">in</span> ast.<span class="fn">walk</span>(tree) <span class="kw">if</span> isinstance(n, ast.FunctionDef)][-<span class="nb">1</span>]  <span class="cm"># take the last function</span>
+    <span class="cm"># rebuild inspect.Signature: param names, annotations, defaults via ast.literal_eval</span>
+    <span class="cm"># rebuild source-defined BaseModels in place via type(name, (BaseModel,), {...}), no import</span>
+    <span class="kw">return</span> <span class="fn">MockFunction</span>(func.name, ast.<span class="fn">get_docstring</span>(func), sig)
+</pre></div>
+<p>By the way, the docstring is read straight off the parsed function node (its first statement, if a string literal, is the docstring) — pure AST, no regex. Letta's AST helper <span class="mono">ast_parsers.py::get_function_name_and_docstring</span> uses the stdlib <span class="mono">ast.get_docstring</span> for exactly this, handling multi-line text, indentation, and escaping for you.</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">If a piece of source has <strong>multiple functions</strong>, it takes the <strong>last</strong> <span class="mono">FunctionDef</span> (convention: the tool is the last function defined in the file). The related AST helpers live in <span class="mono">letta/functions/ast_parsers.py</span>, where <span class="mono">resolve_type</span> resolves types via a <strong>whitelist</strong> with <span class="mono">allow_unsafe_eval=False</span> by default — though it kicks in <strong>later, when the tool runs and the model's incoming args are coerced</strong>, holding the same "no code-execution-via-parsing" line.</span></div>
+<p>Two more "safety valves" hide here, worth remembering. The first targets defaults: the parser doesn't use <span class="mono">eval</span> but <span class="mono">ast.literal_eval</span> — which accepts only literals like numbers, strings, lists, and dicts, and outright rejects a function call or arbitrary expression, sealing off the gap of "sneaking code in even while evaluating a default."</p>
+<p>The second targets type annotations: during derivation an unrecognized name is <strong>not</strong> imported or evaluated — it's left as a plain string (and a Pydantic model defined in the source is stubbed in place), via the static parsing in functions.py rather than truly resolving the type. Together the two valves ensure "parsing" never degrades into "executing."</p>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>One line sums up the craft: <strong>"generate the schema of code you refuse to run."</strong> The plainest way to read a function's signature is <span class="mono">import + inspect</span>, but importing user code = executing arbitrary code on your server. Letta's trick: first <span class="mono">ast.parse</span> into a syntax tree (read-only, no run), then build a <span class="mono">MockFunction</span> carrying only <span class="mono">__name__/__doc__/__signature__</span>, and feed it to the <strong>exact same</strong> <span class="mono">generate_schema</span>.</p>
+<p>The result: the model gets a real schema, yet the server <strong>ran not one line</strong> of user code. Even a Pydantic type defined in the source is rebuilt in place via <span class="mono">type(name,(BaseModel,),{})</span> as a stub rather than imported. It cleverly turns "security" into a "parsing" problem — a prelude to Lesson 20's sandbox philosophy: <strong>"a tool's code is untrusted from start to finish."</strong></p>
+<p>This idea of "turning a dangerous operation into a safe one" is hugely valuable in engineering: instead of piling locks on dangerous behavior, it makes the danger <strong>impossible to occur by design</strong>. Remember this pattern and you'll see it again and again in many fine systems.</p>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Memory hook: every bit of cleverness in this lesson compresses to one line — <strong>"read it, but never run it."</strong> Reading relies on the AST; reconnecting to the old pipeline relies on <span class="mono">MockFunction</span>; safety relies on never importing.</span></div>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p>This machinery is scattered across a few spots, but the thread is clear:</p>
+<ul>
+<li><strong>The deriver trio</strong> (all in <span class="mono">letta/functions/functions.py</span>): <span class="mono">derive_openai_json_schema</span>, <span class="mono">MockFunction</span>, <span class="mono">_parse_function_from_source</span>.</li>
+<li><strong>AST helpers</strong>: <span class="mono">letta/functions/ast_parsers.py</span>, with <span class="mono">get_function_name_and_docstring</span> and the whitelist type resolver <span class="mono">resolve_type</span>.</li>
+<li><strong>TypeScript derivation</strong>: <span class="mono">letta/functions/typescript_parser.py::derive_typescript_json_schema</span>.</li>
+<li><strong>Wired at creation time</strong>: <span class="mono">letta/services/tool_manager.py</span> (custom and no schema → call the deriver) → <span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span> (dispatch Python / TypeScript by <span class="mono">source_type</span>).</li>
+</ul>
+<p>Stringing it together: <strong>at creation</strong> <span class="mono">tool_manager</span> triggers it, <strong>derivation</strong> lands in the <span class="mono">functions.py</span> trio, <strong>type resolution</strong> relies on <span class="mono">ast_parsers.py</span>, and <strong>language dispatch</strong> looks at <span class="mono">source_type</span>. Follow this line through the source and you'll rarely get lost.</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ Common misconceptions</div>
+<ul>
+<li><span class="mono">MockFunction</span> lives in <strong>functions.py</strong>, <strong>not</strong> in <span class="mono">ast_parsers.py</span> — don't look in the wrong file.</li>
+<li>Multi-function source takes the <strong>last</strong> <span class="mono">FunctionDef</span>, <strong>not the first</strong>.</li>
+<li>Creating a TypeScript tool <strong>must pass an explicit <span class="mono">json_schema</span></strong>, or <span class="mono">ToolCreate</span> errors out.</li>
+<li>Schema derivation happens <strong>only at creation</strong>, <strong>no longer</strong> in a pydantic validator: <span class="mono">Tool.refresh_source_code_and_json_schema</span> only <strong>warns</strong> on a custom tool missing its schema, never recomputes it.</li>
+<li><span class="mono">ast.literal_eval</span> accepts <strong>literals only</strong>; don't assume it can evaluate arbitrary default expressions — that is precisely why it is "safe."</li>
+</ul>
+</div>
+<h2>TypeScript tools</h2>
+<p>Tools needn't be written in Python alone. <span class="mono">letta/functions/typescript_parser.py::derive_typescript_json_schema</span> handles TS: it <strong>skips the AST</strong> and instead uses <strong>regex</strong> to scan the signature of <span class="mono">export function</span>, then pulls parameter descriptions from <span class="mono">JSDoc</span> comments; a parameter name followed by <span class="mono">?</span> is treated as optional.</p>
+<p>Its type mapping is coarser: <span class="mono">union</span> always maps to <span class="mono">string</span>, and <span class="mono">any</span> also lands on <span class="mono">string</span>. The source type comes from the <span class="mono">letta/schemas/enums.py::ToolSourceType</span> enum, with three values: <span class="mono">python / typescript / json</span>.</p>
+<div class="note info"><span class="ni">👉</span><span class="nx">But there's a hard constraint: a TS tool <strong>must</strong> bring its own <span class="mono">json_schema</span> at API creation (<span class="mono">ToolCreate.validate_typescript_requires_schema</span>; missing it raises <span class="mono">ValueError</span>). So the "auto-derive schema" path <strong>mainly serves Python tools</strong>; a TS schema is usually supplied explicitly by the caller.</span></div>
+<p>Let's clarify <span class="mono">source_type</span>'s role: it is just a "language label" telling the deriver which parser to use for this source — Python takes the AST, TypeScript takes regex, and JSON means "I've already given you the schema, no derivation needed."</p>
+<div class="cellgroup"><div class="cg-cap"><b>The three values of ToolSourceType</b></div><div class="cells"><span class="cell hl">python · AST derivation</span><span class="sep">·</span><span class="cell">typescript · regex, needs explicit schema</span><span class="sep">·</span><span class="cell">json · schema provided directly</span></div></div>
+<p>So why must TS "supply a schema explicitly"? Because the slice of TypeScript syntax regex can cover reliably is far less complete and rigorous than Python's AST. Rather than guess wrong on complex types, let the caller hand over the authoritative schema directly. So the convenient "auto-derive" channel is, first and foremost, in service of Python.</p>
+<p>While we're at it, JSDoc's role: the TS parser pulls each parameter's description from <span class="mono">/** ... */</span> comments, just as Python takes descriptions from the docstring — the "manual" shown to the model lives in comments in both languages, arriving at the same place by different roads. The only difference is extraction: one scans text with regex, the other reads structure with the AST.</p>
+<h2>Digging a little deeper</h2>
+<p>Let's lay out the "why"s most likely to trip you up, each with an example, the reason, and the source location.</p>
+<details class="accordion"><summary>① Why use the AST instead of importing directly?</summary><div class="acc-body">
+<p><strong>Example:</strong> the user's source has a line <span class="mono">os.system("rm -rf /")</span> at the top level, outside any function definition; just <span class="mono">import</span> it and that line runs on your server. Note: the function is <strong>never called</strong> — merely "importing" is enough to trigger it, which is exactly what makes top-level code so frightening.</p>
+<p><strong>Why:</strong> <span class="mono">import</span> executes a module's <strong>top-level code</strong>, which is like handing your server to a stranger — a standard RCE. <span class="mono">ast.parse</span>, by contrast, only reads the source into a <strong>syntax tree</strong> — purely static, zero side effects; read it a thousand times and nothing executes. The essence of safety is "read, never run."</p>
+<p><strong>Source:</strong> <span class="mono">letta/functions/functions.py::_parse_function_from_source</span> is built entirely on <span class="mono">ast</span>, with not a single <span class="mono">exec/import</span>.</p>
+<p><strong>Going further:</strong> for this very reason, Letta treats "untrusted code" as a first principle running through the whole tool system — from deriving a schema to Lesson 20's sandboxed execution, all are different facets of this one principle.</p>
+</div></details>
+<details class="accordion"><summary>② How does MockFunction fool inspect?</summary><div class="acc-body">
+<p><strong>Example:</strong> <span class="mono">inspect.signature(mock)</span> still returns a full signature, even though <span class="mono">mock</span> was never defined as a real function and calling it raises <span class="mono">NotImplementedError</span> outright.</p>
+<p><strong>Why:</strong> when reading a signature <span class="mono">inspect</span> looks only at the object's <span class="mono">__signature__</span> attribute, and for docs only at <span class="mono">__doc__</span> — it <strong>doesn't verify</strong> whether the object is a "real function." With those few attributes in place, it works as usual. This is the key to uploaded tools reusing <span class="mono">generate_schema</span> unchanged.</p>
+<p><strong>Source:</strong> <span class="mono">letta/functions/functions.py::MockFunction</span> sets these three attributes by hand in <span class="mono">__init__</span>.</p>
+<p><strong>Going further:</strong> this also explains why you needn't "really build a function": <span class="mono">generate_schema</span> never wanted executability, only <strong>describability</strong> — with signature and docs in place, the description is complete.</p>
+</div></details>
+<details class="accordion"><summary>③ Why take the last function? What about unknown types?</summary><div class="acc-body">
+<p><strong>Example:</strong> the source has a few helper functions first and the tool body last, so the parser takes the <strong>last</strong> <span class="mono">FunctionDef</span>.</p>
+<p><strong>Why:</strong> the convention is "the tool is the function at the end of the file." If the source <strong>defines</strong> a Pydantic model, a <strong>stub class</strong> is rebuilt in place with <span class="mono">type(name, (BaseModel,), {...})</span> rather than importing the real definition — letting the signature take shape while holding the "don't run user code" line.</p>
+<p><strong>Source:</strong> <span class="mono">_parse_function_from_source</span> (last <span class="mono">FunctionDef</span>, defaults via <span class="mono">ast.literal_eval</span>); the whitelist resolver <span class="mono">ast_parsers.py::resolve_type</span> is used later for arg coercion.</p>
+<p><strong>Going further:</strong> the stubbing rests on the one line <span class="mono">type(name,(BaseModel,),{})</span> — it synthesizes a class out of thin air at runtime, just so the signature "has a name to fill in," never touching the definition the user actually meant to reference.</p>
+</div></details>
+<details class="accordion"><summary>④ When and where is derivation actually triggered?</summary><div class="acc-body">
+<p><strong>Example:</strong> you create a custom Python tool but give no <span class="mono">json_schema</span>, and the server derives the schema for you during the <strong>creation flow</strong>. Conversely, if you've already given a schema, this step is skipped — derivation is just a "fill in what's missing" fallback.</p>
+<p><strong>Why:</strong> the wiring lands in <span class="mono">tool_manager</span> (which judges "custom and missing schema") → <span class="mono">generate_schema_for_tool_creation</span> (dispatching Python / TS by <span class="mono">source_type</span>). It is <strong>no longer</strong> in a pydantic validator, so one creation counts as one derivation; and since TS must supply a schema explicitly, it usually doesn't fall into the auto-derive branch.</p>
+<p><strong>Source:</strong> <span class="mono">letta/services/tool_manager.py</span> and <span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>.</p>
+<p><strong>Going further:</strong> placing derivation at creation rather than at every validation both spares repeated computation and makes the schema a contract "settled at the moment of creation and stable thereafter."</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><strong>When registering a custom tool, the schema is derived by pure AST</strong>: a schema is built from the source string, <strong>never running</strong> that code.</li>
+<li><strong><span class="mono">derive_openai_json_schema</span> = <span class="mono">_parse_function_from_source</span> + reusing <span class="mono">generate_schema</span></strong>: it converges on the same generator as Lesson 17.</li>
+<li><strong><span class="mono">MockFunction</span> provides <span class="mono">__name__ / __doc__ / __signature__</span></strong>: it fools <span class="mono">inspect</span> with the trio, and raises if called.</li>
+<li><strong>Take the last <span class="mono">FunctionDef</span>, stub unknown types</strong>: an undefined BaseModel is filled by <span class="mono">type(name,(BaseModel,),{})</span>, no import.</li>
+<li><strong>A TS tool must supply <span class="mono">json_schema</span> explicitly</strong>: auto-derivation mainly serves Python.</li>
+<li><strong>Derivation happens only at creation</strong>: wired in <span class="mono">tool_manager</span> → <span class="mono">tool_schema_generator</span>, no longer in a pydantic validator.</li>
+</ul>
+<p>Read these together: <strong>not running</strong> is the principle, <strong>AST parsing</strong> is the means, <strong>MockFunction</strong> is the adapter, and <strong>reusing generate_schema</strong> is the payoff. The four interlock, none dispensable — exactly what a "safe yet effortless" design should look like.</p>
+</div>
+
+<p>Looking back, this lesson really told just one story: <strong>restating "security" as "parsing."</strong> Once you refuse to run user code, "understanding it" turns from a runtime problem into a pure text-analysis problem — and text analysis is exactly the AST's forte. <span class="mono">MockFunction</span> then acts as a bridge, seamlessly reconnecting the analyzed parts to Lesson 17's mature generator.</p>
+
+<p>By now a tool has a schema, can be "seen" by the model, and can be invoked. But when an agent <strong>actually executes</strong> a tool, how does it know "which way to run it" — call it directly in-process, drop it into a sandbox for isolated execution, or reach out to an external server? That is the question <strong>Lesson 19, "tool dispatch and execution,"</strong> will answer. In other words, the schema solves "how the model understands a tool," while execution must solve "how the system runs a tool safely" — and that story is only half told.</p>
+
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. A user registers a custom Python tool by sending a source-code string (not a function object). How does Letta produce its JSON schema?</div>
+  <ol class="opts">
+    <li>derive_openai_json_schema parses the source with ast.parse (pure AST), rebuilds a signature, wraps it in a MockFunction, and reuses generate_schema — the code is never exec'd or imported</li>
+    <li>It runs the function once on a few sample inputs and records the argument/return types it observes</li>
+    <li>It asks the model to read the source and emit a schema, then caches the model's output</li>
+    <li>It imports the source as a module, then calls inspect.signature on the resulting function object</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The whole point of lesson 18 is deriving a schema without running the code. derive_openai_json_schema (letta/functions/functions.py) calls _parse_function_from_source, which uses ast.parse — purely static — picks the function node, rebuilds an inspect.Signature, and returns a MockFunction; that mock is then fed to the same generate_schema from lesson 17. import + inspect would execute top-level code (an RCE on a multi-tenant server), and neither running the function nor asking the model is involved. Reading, not running.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. generate_schema expects a real function object to introspect, but we only hold fragments pulled from the AST. What makes a MockFunction good enough to stand in?</div>
+  <ol class="opts">
+    <li>It sets __name__, __doc__, and __signature__ — exactly what inspect.signature() and docstring parsing read — so introspection works on code that never ran</li>
+    <li>It subclasses the user's class and overrides __call__ to return the schema directly</li>
+    <li>It compiles the source into a real callable so inspect can execute it safely in a sandbox</li>
+    <li>It stores the raw source string, and generate_schema re-parses that string each time it needs a field</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. inspect checks no pedigree — it reads attributes. MockFunction.__init__ (letta/functions/functions.py) sets __name__, __doc__, and __signature__; once __signature__ is set explicitly, inspect.signature(mock) returns it and docstring parsing reads __doc__, so the same generate_schema works on never-run code (duck typing). Notably MockFunction.__call__ raises NotImplementedError — it is never meant to execute. Nothing is compiled, sandbox-run, or re-parsed per field.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. A user's uploaded source defines three functions: two helpers first, then the actual tool. Which one becomes the tool, and is anything run to decide?</div>
+  <ol class="opts">
+    <li>The first FunctionDef, since parsers conventionally take the earliest definition</li>
+    <li>Whichever function has a docstring; if several do, the source is rejected as ambiguous</li>
+    <li>The one whose name matches the tool name argument, resolved by importing the module</li>
+    <li>The last FunctionDef in the parsed tree, chosen purely by walking the AST node list — nothing is executed</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. _parse_function_from_source collects ast.FunctionDef nodes via ast.walk and takes the last one ([-1]) — the convention is “the tool is the last function defined in the file.” This is a static read of the AST nodes; nothing runs. It is explicitly NOT the first function, and not “the one with a docstring” (a docstring is required on the chosen function, but selection is by position), and nothing is imported to match names.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. You create a tool whose source_type is typescript but pass no json_schema, expecting Letta to auto-derive it the way it does for Python. What happens?</div>
+  <ol class="opts">
+    <li>Creation fails: ToolCreate.validate_typescript_requires_schema raises ValueError — a TypeScript tool must supply an explicit json_schema</li>
+    <li>It silently creates the tool with an empty parameters schema, and the model fills arguments by guessing</li>
+    <li>It works just like Python: derive_typescript_json_schema produces a complete schema from the source via the AST</li>
+    <li>It transpiles the TypeScript to Python first, then runs the normal AST derivation</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. TS tools are the exception to auto-derivation. ToolCreate.validate_typescript_requires_schema rejects a typescript source with no json_schema (ValueError), so the convenient auto-derive path mainly serves Python. derive_typescript_json_schema does exist, but it is regex-based and coarse (union/any → string), not AST, and there is no TS→Python transpile step. The schema is not silently emptied; creation simply fails until you pass an explicit json_schema.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. You want to read MockFunction's definition. Which file holds it?</div>
+  <ol class="opts">
+    <li>letta/functions/typescript_parser.py — it is shared by both Python and TypeScript derivation</li>
+    <li>letta/services/tool_schema_generator.py — next to the creation-time wiring</li>
+    <li>letta/functions/ast_parsers.py — since it is part of the AST-parsing helpers</li>
+    <li>letta/functions/functions.py — alongside derive_openai_json_schema and _parse_function_from_source</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. MockFunction lives in letta/functions/functions.py, together with the deriver trio derive_openai_json_schema and _parse_function_from_source. ast_parsers.py is a common trap — it holds AST helpers like get_function_name_and_docstring and resolve_type (whitelist, allow_unsafe_eval=False), but NOT MockFunction. typescript_parser.py handles regex-based TS derivation; tool_schema_generator.py holds generate_schema_for_tool_creation (the creation-time dispatch), not MockFunction.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Use the “inspect without unsealing” metaphor to tell lesson 18's story as a whole, and think through three things: (1) Why does Letta insist on “reading the source” and never “just import to run it”? If you swapped import for “sandbox it first, then import,” what trouble would you save and what new risk would you add? (2) MockFunction gathers only the three attributes __name__/__doc__/__signature__, yet deliberately makes __call__ raise NotImplementedError. Why should “introspectable” and “not callable” hold at the same time — and what design trade-off does that imply for a “fake function”? (3) Python tools can auto-derive a schema at creation, but TypeScript tools must bring an explicit json_schema. If you had to extend “auto-derivation” to TypeScript too, would you pick an AST-style parser or stay with regex — how would you weigh “covering more syntax” against the risk of “guessing complex types wrong”?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="17-tool-as-function.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">工具即 Python 函数 + docstring</span><span class="lang-en">A tool is a Python function + docstring</span></div></a><a class="next" href="19-tool-dispatch-and-mcp.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">工具分发与执行（含 MCP）</span><span class="lang-en">Tool dispatch &amp; execution (incl. MCP)</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

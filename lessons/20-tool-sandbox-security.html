@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>20 · 自定义工具沙箱与安全修复 / The tool sandbox &amp; a security fix - Letta 图解教程</title>
+<meta name="description" content="第五部分 · 工具系统｜自定义工具沙箱与安全修复 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="20 · 自定义工具沙箱与安全修复 / The tool sandbox &amp; a security fix - Letta 图解教程">
+<meta property="og:description" content="第五部分 · 工具系统｜自定义工具沙箱与安全修复 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="20 · 自定义工具沙箱与安全修复 / The tool sandbox &amp; a security fix - Letta 图解教程">
+<meta name="twitter:description" content="第五部分 · 工具系统｜自定义工具沙箱与安全修复 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第五部分 · 工具系统</span><span class="lang-en">Part 5 · The tool system</span></span>
+    <span class="pill">20 / 20</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第五部分 · 工具系统</span><span class="lang-en">Part 5 · The tool system</span></div>
+    <h1><span class="lang-zh">自定义工具沙箱与安全修复</span><span class="lang-en">The tool sandbox &amp; a security fix</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 19 课结尾留了个悬念：一个自定义工具——用户自己写的 Python 源码——默认会被交给 <span class="mono">SandboxToolExecutor</span>，也就是"扔进沙箱"。可沙箱凭什么敢跑一段陌生人的代码？跑完之后，又该怎么把结果安全地收回服务端？</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这是第五部分的收尾，也是整套工具系统"安全观"的落点。我们要把一张<strong>信任边界图</strong>画清楚：哪段路可以"放心传"、哪段路"必须验真"，以及一次真实的安全修复（PR #3343）如何把这条边界焊死。</p>
+
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>把沙箱想成监狱的探视窗。你（服务端）要递东西<strong>进去</strong>——那是你自己的物品，可以直接递原物。因为风险方向是"往里走"：东西进了高墙，再危险也跑不到你这边。</p>
+<p>可对方（沙箱里跑的陌生代码）从里面递<strong>出来</strong>的任何包裹，你绝不能伸手直接接管。必须隔着玻璃、过安检、核对封条——因为你根本不知道里面是糖果还是刀片。</p>
+<p>这一课全部的安全感，就压在这条朴素规矩上：<strong>往里递可以是原物，往外收必须过安检</strong>。剩下的工程，只是把"原物"翻译成 <span class="mono">pickle</span>、把"安检"翻译成 <span class="mono">JSON</span> 加一层校验而已。</p>
+<p>这条规矩看着简单，却常被违反：很多"沙箱"只盯着把代码关进去，却忘了"收结果"这一步同样跨越边界。真正的安全，恰恰藏在你<strong>怎么把东西拿出来</strong>。</p>
+</div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>记住一句话就够了：<strong>自定义工具是不可信代码</strong>。它不在主进程里跑，而是被丢进一个沙箱——本地 venv、E2B 或 Modal，由 <span class="mono">SandboxType</span> 三选一。</p>
+<p>沙箱内外只有两条数据通道，方向相反、信任也相反。<strong>server→sandbox</strong> 走 <span class="mono">pickle</span>（受信：服务端把自己造的 <span class="mono">agent_state</span> 序列化进去）；<strong>sandbox→server</strong> 走 <span class="mono">JSON</span>（不可信：<strong>绝不 <span class="mono">pickle.loads</span></strong>），并加 <span class="mono">marker+长度+MD5</span> 帧来校验完整性。</p>
+<p>这张<strong>信任边界图</strong>就是本课的全部。而 PR #3343 正是一次把回程通道从 pickle 改成 JSON 的真实安全修复——它把这条边界从"差不多安全"变成"焊死"。</p>
+<p>再强调一遍方向感：数据从服务端流向沙箱时，权限是在<strong>收窄</strong>（进了低信任区），所以 pickle 安全；数据从沙箱流回服务端时，权限在<strong>放大</strong>（回到高信任区），所以必须只用 JSON。把"权限放大的方向"当成红线，整张图就记住了。</p>
+</div>
+<h2>沙箱三选一：代码到底在哪跑</h2>
+<p>一个自定义工具被执行前，Letta 先决定"在哪跑"。这不是随机的，而是一条短路式的判定链：先看工具自己的偏好，再看全局配置，最后兜底到本地。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>看 tool.metadata</h4><p>若工具显式标了 <span class="mono">sandbox=="modal"</span> 且 Modal 已启用 → 用 <strong>Modal</strong>（云端容器，强隔离）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>看全局配置</h4><p>否则查 <span class="mono">ToolSettings.sandbox_type</span>：若配了 <span class="mono">e2b_api_key</span> → 用 <strong>E2B</strong>（云端微沙箱）。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>兜底本地</h4><p>都没有 → <strong>Local</strong>：在本机建一个隔离 venv，用子进程跑。开发期最常见。</p></div></div>
+</div>
+<p>三种沙箱不是冗余，而是<strong>隔离强度与部署成本的权衡</strong>。本地 venv 零依赖、最快，但和服务端共享内核，隔离最弱；E2B、Modal 把代码送进云端独立容器，隔离强，但要联网和配额。所以同一段工具，开发期可能跑在本地，生产期被切到 Modal——这正是"在哪跑"必须可配置的原因。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">类型定义在 <span class="mono">schemas/enums.py::SandboxType</span>（<span class="mono">E2B / MODAL / LOCAL</span>）；选择逻辑落在 <span class="mono">sandbox_tool_executor.py</span>，全局开关是 <span class="mono">settings.py::ToolSettings.sandbox_type</span>。关键点是：本课的"生成脚本 + 信任边界"主要讲<strong>本地沙箱</strong>这条路；marker+长度+MD5 帧是<strong>本地特有</strong>（E2B 改用 base64、Modal 走原生部署直接返回结构化 dict、连脚本都不生成）。但<strong>"信任边界"这条原则三种沙箱通用</strong>——回程数据一律不当可信代码反序列化。</span></div>
+<p>顺便提一句配置：<span class="mono">LocalSandboxConfig</span> 还能调 <span class="mono">sandbox_dir</span>、<span class="mono">use_venv</span>、<span class="mono">venv_name</span>、<span class="mono">pip_requirements</span> 等，决定本地沙箱具体怎么落地。但这些都是"怎么跑"的旋钮，不改"信谁"的边界。</p>
+<h2>生成的沙箱脚本：把工具包起来跑</h2>
+<p>沙箱不会"直接调用"用户函数。服务端会<strong>现拼一段 Python 脚本</strong>，把所有需要的东西内联进去，再让沙箱整段执行。这段脚本由 <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span> 拼出来。</p>
+<p>这种"现拼脚本"的做法有个好处：服务端对沙箱里要发生的一切<strong>完全掌控</strong>——传什么、调用什么、怎么打包结果，全写死在脚本里，沙箱只是个老老实实的执行器。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>解出 agent_state</h4><p><span class="mono">pickle.loads(...)</span> 还原服务端传进来的 <span class="mono">agent_state</span>（受信方向）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>内联参数</h4><p>每个调用参数按 <span class="mono">repr()</span> 写成字面量，<strong>不是 pickle</strong>。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>内联用户源码</h4><p>把工具的 <span class="mono">source_code</span> 逐字粘进来，定义出函数本体。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>调用 + 打包</h4><p><span class="mono">_function_result = tool(...)</span>，再把结果 + <span class="mono">agent_state</span> 打成 JSON。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>加帧写 stdout</h4><p>前面缀上 <span class="mono">marker+长度+MD5</span>，写进标准输出，等服务端来读。</p></div></div>
+</div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/base.py</span><span class="ln">_render_sandbox_code（简化骨架）</span></div>
+<pre><span class="cm"># 服务端把 agent_state pickle 进脚本，沙箱里 loads（受信方向）</span>
+agent_state = pickle.<span class="fn">loads</span>(<span class="nb">b"..."</span>)
+x = <span class="st">"&lt;内联字面量&gt;"</span>            <span class="cm"># 参数按 repr() 内联，不是 pickle</span>
+<span class="cm"># &lt;用户工具源码逐字内联&gt;</span>
+_function_result = <span class="fn">my_tool</span>(x, agent_state=agent_state)
+payload = _letta_json.<span class="fn">dumps</span>({<span class="st">"results"</span>: _function_result,
+    <span class="st">"agent_state"</span>: agent_state.<span class="fn">model_dump</span>(mode=<span class="st">"json"</span>)}).<span class="fn">encode</span>()  <span class="cm"># JSON，不是 pickle</span>
+sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn">pack</span>(<span class="st">"&gt;I"</span>, len(payload)) + md5_hex + payload)
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">为什么把<strong>源码逐字内联</strong>、而不是 import 用户模块？因为沙箱里根本没有那个模块——工具源码只存在数据库里。内联后脚本自包含，沙箱只要一个干净解释器就能跑。脚本里还会用 <span class="mono">coerce_dict_args_by_annotations(...)</span> 按注解把参数强转成正确类型，避免字符串和数字错配。</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">agent_state</span> 走 <span class="mono">pickle.dumps</span>（服务端造、沙箱 <span class="mono">loads</span>）；但<strong>调用参数是内联字面量（<span class="mono">repr()</span>），不是 pickle</strong>。整段脚本里，只有 <span class="mono">agent_state</span> 这一项用到了 pickle——这个区分后面会反复用到。</span></div>
+
+<h2>信任边界：方向决定序列化</h2>
+<p>现在把两条通道并排放。<strong>同一份脚本，两个方向用了两种序列化</strong>——这不是随意，而是信任在说话。</p>
+<div class="cols">
+  <div class="col"><h4>⬇️ server → sandbox</h4><p>用 <span class="mono">pickle</span> 传 <span class="mono">agent_state</span>。<strong>受信</strong>：是服务端 pickle 自己造的对象，沙箱只负责 loads。权限往低信任侧流，没有"反序列化不可信输入"的问题。</p></div>
+  <div class="col"><h4>⬆️ sandbox → server</h4><p>只用 <span class="mono">JSON</span> + <span class="mono">marker+长度+MD5</span>。<strong>不可信</strong>：沙箱刚跑完任意用户代码，它的 stdout 绝不能 <span class="mono">pickle.loads</span>，只能当数据读。</p></div>
+</div>
+<p>为什么向下可以 pickle？因为被反序列化的对象是<strong>服务端自己造的</strong>，沙箱拿到的是数据、不是攻击面；就算沙箱想搞鬼，它也改不了"已经 pickle 进去的字节"。</p>
+<p>为什么向上必须 JSON？因为 <span class="mono">pickle.loads</span> 会在反序列化时<strong>执行任意代码</strong>。沙箱里跑的是陌生人的工具，它的输出天然可疑——用 <span class="mono">json.loads</span> 读，最坏也只是拿到一坨假数据，而不是被 RCE。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">一个反直觉点：受信方向用 pickle 不是"将就"，而是<strong>主动选择</strong>——它能一次性还原 <span class="mono">agent_state</span> 这种复杂对象，省去手写序列化。pickle 本身不是坏人，把它用在不可信方向才是。</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">举个具体攻击：恶意工具在 <span class="mono">return</span> 时不返回普通 dict，而是返回一个带 <span class="mono">__reduce__</span> 的对象。若服务端用 <span class="mono">pickle.loads</span> 读它，反序列化的瞬间就执行攻击者指定的命令——服务端沦陷。改成 <span class="mono">json.loads</span> 后，这种对象根本无法表达，攻击面被结构性消除。</span></div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">⬇️ pickle</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">自己人，放行</span></div>
+<div class="row"><span class="emoji">🔐</span><span class="lab">⬆️ JSON</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">外人，过安检 MD5</span></div>
+<div class="cap">信任＝方向：能 pickle.loads 你自己造的数据；绝不 pickle.loads 跨过不可信边界回来的数据。</div></div>
+
+<h2>回程帧：marker + 长度 + MD5</h2>
+<p>沙箱的 stdout 是一条嘈杂的河：用户代码可能 print 调试信息、可能抛异常栈、甚至可能故意打一个<strong>假结果</strong>。所以真正的结果不是"整段 stdout"，而是被一段帧<strong>圈起来</strong>的那一小块。</p>
+<table class="t">
+  <tr><th>字段</th><th>大小</th><th>作用</th></tr>
+  <tr><td class="mono">MARKER</td><td class="mono">16 字节</td><td>uuid5 生成的定位锚，在噪声里标出"真结果从这里开始"</td></tr>
+  <tr><td class="mono">LENGTH</td><td class="mono">4 字节 '&gt;I'</td><td>big-endian 无符号整数，告诉你 payload 有多长，好精确切片</td></tr>
+  <tr><td class="mono">MD5</td><td class="mono">32 字节 hex</td><td>payload 的校验和，抓篡改与截断</td></tr>
+  <tr><td class="mono">JSON_PAYLOAD</td><td class="mono">LENGTH 字节</td><td>真正的结果：工具返回值 + agent_state 的 JSON</td></tr>
+</table>
+<div class="cellgroup"><div class="cg-cap"><b>stdout 帧布局</b></div><div class="cells"><span class="cell hl">MARKER(16)</span><span class="sep">·</span><span class="cell">LENGTH(4)</span><span class="sep">·</span><span class="cell">MD5(32)</span><span class="sep">·</span><span class="cell">JSON_PAYLOAD</span></div></div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">local_sandbox.py · helpers/tool_parser_helper.py</span><span class="ln">parse_out_function_results_markers + parse_stdout_best_effort（简化）</span></div>
+<pre>pos = data.<span class="fn">find</span>(MARKER)                       <span class="cm"># 在嘈杂 stdout 里定位真结果</span>
+length = struct.<span class="fn">unpack</span>(<span class="st">"&gt;I"</span>, data[p:p+<span class="nb">4</span>])[<span class="nb">0</span>]
+payload = data[start : start+length]
+<span class="kw">if</span> hashlib.<span class="fn">md5</span>(payload).<span class="fn">hexdigest</span>() != checksum:
+    <span class="kw">raise</span> <span class="fn">Exception</span>(<span class="st">"Function ran, but output is corrupted."</span>)
+<span class="cm"># —— 下面两行其实在 helpers/tool_parser_helper.py::parse_stdout_best_effort 里 ——</span>
+result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON，绝不 pickle.loads</span>
+agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic 重水合</span>
+</pre></div>
+<p>你可能会问：为什么用 stdout 这种"脏"通道，而不开一条干净的返回管道？因为沙箱的边界本质是一个<strong>进程</strong>，进程之间最通用、最不挑运行时的桥就是标准输出。代价是 stdout 里混着一切，于是必须靠帧把"真结果"从噪声里捞出来。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">这套帧防的是什么？用户工具能往 stdout 打<strong>任何东西</strong>，包括一个伪造的结果或假 marker。marker 圈出真 payload，长度做精确切片，MD5 抓篡改/截断——三层叠起来，服务端才敢说"我读到的就是工具真正返回的那一份"。</span></div>
+<p>顺序也有讲究：<strong>先比 MD5、再 <span class="mono">json.loads</span></strong>。若先解析、出错了再说，攻击者就有机会用畸形 JSON 去触发解析器的边角行为；先校验完整性，等于把"可疑输入"挡在解析之前。</p>
+<h2>PR #3343：把 pickle 换成 JSON</h2>
+<p>帧校验一直都在，但有一处老漏洞：早期回程 payload 是 <strong>pickle</strong> 编码的，服务端读回来时会 <span class="mono">pickle.loads</span>。这等于对"刚跑完任意用户代码的沙箱输出"做反序列化——一个干净利落的<strong>服务端 RCE</strong>。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">PR #3343 · commit 1131535</span></div>
+<pre><span class="cm"># 旧（有漏洞）：服务端对沙箱 stdout 直接 pickle.loads -> 服务端 RCE</span>
+<span class="cm">- result = pickle.loads(text)</span>
+<span class="cm"># 新（已修复）：只 json.loads，绝不执行代码</span>
+<span class="cm">+ result = json.loads(payload)</span>
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">注意分寸：<span class="mono">marker+长度+MD5</span> 帧<strong>早于 #3343 就存在</strong>。#3343 只把 sandbox→server 的 <strong>payload 编码</strong>从 pickle 换成 JSON；server→sandbox 仍然 pickle <span class="mono">agent_state</span>——那是有意保留的受信方向，不是漏改。</span></div>
+<p>这条修复的价值不在代码量，而在<strong>思路</strong>：序列化格式的选择本身就是一道安全闸。把 pickle 留给"我造的、往低信任侧流"的数据，把 JSON 留给"别人造的、往高信任侧回"的数据——这条规矩一旦内化，类似的 RCE 在设计阶段就被挡住，而不必等事后修补。</p>
+
+<h2>把回程在脑子里走一遍</h2>
+<p>抽象讲完，拿个具体例子收一收。假设用户写了个 <span class="mono">get_weather(city)</span> 工具，模型在某一步决定调用它、参数是 <span class="mono">city="上海"</span>。从这一刻起，发生的事是这样的。</p>
+<p>服务端先把当前 <span class="mono">agent_state</span> 用 <span class="mono">pickle.dumps</span> 成一段字节，连同 <span class="mono">city</span> 的字面量、用户那段 <span class="mono">get_weather</span> 源码，一起拼进一份临时脚本。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">这一步就能看清区分：<span class="mono">agent_state</span> 是 pickle 字节，而 <span class="mono">city</span> 只是脚本里一个内联的字符串字面量 <span class="mono">"上海"</span>。同一份脚本，两种"塞数据进去"的方式，对应两种信任。</span></div>
+<p>脚本被丢进沙箱执行：沙箱里 <span class="mono">pickle.loads</span> 还原 <span class="mono">agent_state</span>、跑 <span class="mono">get_weather("上海")</span>、拿到返回值，再把"返回值 + 更新后的 agent_state"打成 JSON，前面缀上 marker、长度、MD5，整包写进 stdout。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">这里是全课的转折点：从下一步起，所有数据都<strong>跨过了不可信边界</strong>。沙箱刚执行完一段我们无法预先信任的代码，它写出来的每个字节，都得当"外人递出的包裹"来对待。</span></div>
+<p>服务端读回 stdout：先用 marker 定位、按长度切片、比对 MD5——任何一步不符，就判定结果损坏、直接抛错。校验通过后，<strong>只</strong>对 payload 做 <span class="mono">json.loads</span>。</p>
+<p>最后用 <span class="mono">AgentState.model_validate</span> 把状态重新水合成对象。全程没有任何一行对沙箱输出做 <span class="mono">pickle.loads</span>——这就是整条旅程的安全保证：往里是 pickle、往外是 JSON，边界两侧泾渭分明。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">把这趟旅程压缩成一句话：<strong>数据下行用 pickle、上行用 JSON，中间隔着一道 marker+长度+MD5 的安检门</strong>。记住这句，等于记住了整课。</span></div>
+
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>一句话收束：<strong>你信任哪个方向，决定你用哪种序列化。</strong></p>
+<p><span class="mono">pickle.loads</span> 能在反序列化时执行任意代码，于是规则被砍到极简：<strong>可以 pickle.loads 你自己造的数据</strong>（server→sandbox，权限往下流进低信任沙箱，没风险）；<strong>绝不 pickle.loads 跨过不可信边界回来的数据</strong>（sandbox→server，刚跑完任意用户代码，只能当 JSON 读）。</p>
+<p>PR #3343 修的正是这个：旧代码 <span class="mono">pickle.loads</span> 沙箱 stdout——服务端 RCE；改成 <span class="mono">json.loads</span> 就堵死了。而 <span class="mono">marker+长度+MD5</span> 是另一层——完整性层：用户工具能打假结果，marker 圈真 payload、MD5 抓篡改。</p>
+<p>安全被化简成一个词：<strong>信任＝方向</strong>。这也收口了整条工具链：第 18 课"不跑代码就读它" → 第 19 课"自定义→沙箱" → 第 20 课"连沙箱的输出也不可信"。</p>
+<p>顺着这条线还能预判别处：只要看到"反序列化不可信来源"，就该立刻警觉；只要确认"数据是自己造、往低信任侧送"，就可以放心用高表达力的格式。这套直觉，远不止用在沙箱上，它几乎是所有跨边界通信的底色。</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p>生成脚本：<span class="mono">tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script</span> 与 <span class="mono">_render_sandbox_code</span>。本地执行：<span class="mono">local_sandbox.py::AsyncToolSandboxLocal</span>（建/复用 venv、子进程、超时）。</p>
+<p>回读校验：<span class="mono">local_sandbox.py::parse_out_function_results_markers</span> 找 marker、切长度、比 MD5；再交 <span class="mono">helpers/tool_parser_helper.py::parse_stdout_best_effort</span> 做 <span class="mono">json.loads</span> + <span class="mono">AgentState.model_validate</span>。</p>
+<p>类型与安全：沙箱类型在 <span class="mono">schemas/enums.py::SandboxType</span>；本次安全修复是 PR #3343（commit <span class="mono">1131535</span>）。</p>
+<p>顺带一提，<span class="mono">local_sandbox.py</span> 里还藏着 venv 复用、依赖安装、超时控制等工程细节；它们不影响信任边界这条主线，却决定了本地沙箱跑得快不快、稳不稳。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p><strong>误区一：以为脚本由 <span class="mono">.j2</span> 模板渲染。</strong> <span class="mono">letta/templates/sandbox_code_file.py.j2</span> 在 v0.16.8 <strong>未被任何 .py 引用</strong>，只能当对照参考；真实脚本由 <span class="mono">_render_sandbox_code</span> 拼字符串。</p>
+<p><strong>误区二：以为参数也走 pickle。</strong> 参数是<strong>内联字面量</strong>（<span class="mono">repr()</span>），整段脚本里只有 <span class="mono">agent_state</span> 一项走 pickle。</p>
+<p><strong>误区三：以为帧是 #3343 加的。</strong> <span class="mono">marker+长度+MD5</span> 帧<strong>早就存在</strong>，#3343 只改了 payload 编码（pickle→JSON）。</p>
+<p><strong>误区四：信 docstring 和变量名。</strong> <span class="mono">generate_execution_script</span> 的 docstring 写着"base64-encode/pickle the result"、变量名带 <span class="mono">_pkl</span>——都是<strong>遗留</strong>，实际装的是 JSON。</p>
+</div>
+<h2>再挖深一点</h2>
+<p>下面四个抽屉，分别回答"为什么这样切边界""帧到底防谁""#3343 改了哪一段""本地 venv 怎么跑"。想细抠的同学可以逐个展开。</p>
+<details class="accordion"><summary>① 信任边界为什么这样切？</summary><div class="acc-body">
+<p>核心只有一条：<span class="mono">pickle.loads</span> 会在反序列化时执行任意代码。所以"能不能 pickle.loads"等价于"我信不信这段字节的来源"。</p>
+<p>server→sandbox 的 <span class="mono">agent_state</span> 是服务端自己 <span class="mono">pickle.dumps</span> 的，来源可信，沙箱只 loads——风险往低信任侧流，没问题。sandbox→server 的输出来自陌生代码，来源不可信，所以只能 <span class="mono">json.loads</span>。</p>
+<p>再换个角度：信任不是"信不信这段数据长得对"，而是"信不信造它的人"。pickle 危险，恰恰因为它把"数据"和"可执行代码"混在一起——来源可信时这种混合很方便（能直接还原复杂对象），来源不可信时它就成了炸弹。</p>
+</div></details>
+<details class="accordion"><summary>② marker+长度+MD5 防的是什么？</summary><div class="acc-body">
+<p>防的是"结果通道被污染"。沙箱的 stdout 谁都能写：调试 print、异常栈、甚至一个伪造的 marker 加假结果。</p>
+<p>于是三层各司其职：<span class="mono">marker</span> 在噪声里定位真 payload 的起点；<span class="mono">length</span> 精确切出 payload，避免被尾部噪声带偏；<span class="mono">MD5</span> 比对校验和，一旦被截断或篡改就 <span class="mono">raise Exception("Function ran, but output is corrupted.")</span>。</p>
+<p>还有个细节：<span class="mono">marker</span> 是 uuid5 生成的 16 字节，几乎不可能被用户输出意外撞上，也很难被恶意"猜中"，于是"定位"这一步本身就带了一点防伪意味。</p>
+<p>有人会问：MD5 不是不安全吗？这里它只用来抓<strong>意外损坏</strong>，并不抗密码学攻击——真正挡恶意的是"只 json.loads、绝不 pickle.loads"那条规矩，MD5 只是完整性的廉价快照。</p>
+</div></details>
+<details class="accordion"><summary>③ PR #3343 到底改了什么？</summary><div class="acc-body">
+<p>只改了一件事：把 sandbox→server 的 <strong>payload 编码</strong>从 pickle 换成 JSON，于是服务端读回来时从 <span class="mono">pickle.loads</span> 变成 <span class="mono">json.loads</span>，RCE 面被消除。</p>
+<p>没改的：marker+长度+MD5 帧（本就存在）、server→sandbox 仍 pickle <span class="mono">agent_state</span>（有意的受信方向）。另外 <span class="mono">safe_pickle.py::safe_pickle_dumps</span> 只服务于 modal_sandbox_v2，加的是 10MB/深度 50 的防崩溃护栏，并非防恶意。</p>
+<p>一句话区分两件事：帧负责<strong>完整性</strong>（结果没被改坏），编码格式负责<strong>安全性</strong>（读它不会执行代码）。#3343 动的是后者，前者从一开始就在。</p>
+<p>想直观点：修复前服务端这端是 <span class="mono">pickle.loads(沙箱字节)</span>，修复后是 <span class="mono">json.loads(沙箱字节)</span>。同样在读不可信输入，前者能被反序列化触发 RCE，后者最多解析失败——差别就这么大。</p>
+</div></details>
+<details class="accordion"><summary>④ 本地 venv 怎么跑？E2B/Modal 有何不同？</summary><div class="acc-body">
+<p>本地 <span class="mono">AsyncToolSandboxLocal</span>：按需 <span class="mono">venv.create(with_pip=True)</span> 建或复用虚拟环境、<span class="mono">pip install -r</span> 装依赖，脚本写临时 <span class="mono">.py</span>，用 <span class="mono">asyncio.create_subprocess_exec</span> 起子进程跑，超时是 <span class="mono">tool_sandbox_timeout</span>（默认 180s）。</p>
+<p>差异不止在外层：本地用 marker+长度+MD5 帧；<strong>E2B 改用 base64 编码</strong>（不是多包一层，是另一条路径）；<strong>Modal 直接返回结构化 dict</strong>，连生成脚本和帧都没有。三者真正<strong>共用的是"信任边界"原则</strong>——去程可信、回程一律 JSON / 结构化、绝不 pickle.loads。</p>
+<p>也正因为本地沙箱与服务端共享内核，它的隔离是"够用级"而非"强保证"：能挡住误伤和大多数意外，但要跑完全不可信的代码，应切到 E2B 或 Modal 的容器级隔离。</p>
+<p>超时到了会怎样？子进程被杀、本次调用按失败处理，不会把服务端拖死。临时脚本文件用完即清，venv 则可复用，省去每次重新建环境的开销。</p>
+</div></details>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>自定义工具是不可信代码，跑在沙箱里（<span class="mono">local / E2B / Modal</span>，由 <span class="mono">SandboxType</span> 三选一）。</li>
+<li><strong>server→sandbox = pickle</strong>（受信，传 <span class="mono">agent_state</span>）；<strong>sandbox→server = JSON</strong>（不可信）+ <span class="mono">marker+长度+MD5</span> 帧。</li>
+<li><strong>绝不 <span class="mono">pickle.loads</span> 沙箱输出</strong>——这正是 PR #3343（commit <span class="mono">1131535</span>）的修复。</li>
+<li><span class="mono">.j2</span> 模板在 v0.16.8 未被引用，真实脚本在 <span class="mono">_render_sandbox_code</span>；docstring 与 <span class="mono">_pkl</span> 命名是遗留。</li>
+<li>一个词记住全部：<strong>信任＝方向</strong>。</li>
+</ul>
+</div>
+
+<h2>第五部分收尾：定义 → 派生 → 分发 → 隔离执行</h2>
+<p>第五部分到这里走完。把四课串成一条线，工具系统的全貌就清楚了：从"一个普通 Python 函数"到"安全地跑完一段陌生代码"，每一步都在回答一个具体问题。</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 5 · 一条线</b></div><div class="cells"><span class="cell">17 函数+docstring→schema</span><span class="sep">·</span><span class="cell">18 不跑就派生</span><span class="sep">·</span><span class="cell">19 按类型分发执行</span><span class="sep">·</span><span class="cell hl">20 沙箱隔离+信任边界</span></div></div>
+<p>一句话串起来：<strong>定义 → 派生 → 分发 → 隔离执行</strong>。第 17 课把函数变成 schema，第 18 课不执行就派生出 schema，第 19 课按 <span class="mono">ToolType</span> 分发给执行器，第 20 课处理最危险的一类——自定义代码——并画清它运行时的信任边界。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">它还回指前两课：第 20 课"连沙箱输出也不可信"，与第 18 课"不执行就读它"是同一种警惕；而第 19 课结尾那次"自定义→沙箱"的 handoff，正是在这一课被兑现。</span></div>
+<p>拉远看，这也是整份《Letta 可视化指南》在工具这块的全部野心：不堆砌 API，而是把"一个普通函数怎么变成模型能安全调用的能力"这条链，从头到尾讲透——定义它、派生它的接口、按类型分发它、再隔离地执行它。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">如果你只带走一张图，就带"信任＝方向"这张：它不仅解释了沙箱，也是一切"跨信任边界传数据"问题的通用解法——无论对面是沙箱、第三方服务，还是另一个不受控的进程。</span></div>
+<p>下一站是<strong>第六部分 · LLM Provider 抽象</strong>：工具讲完了，我们回到更上游的问题——Letta 怎么用一套统一接口，把 OpenAI、Anthropic 等不同厂商的模型，接进同一个 agent 循环。</p>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 服务端把 agent_state 送进沙箱时用的是哪种序列化？为什么这个方向用 pickle 是安全的？</div>
+  <ol class="opts">
+    <li>用 pickle：被反序列化的 agent_state 是服务端自己造的可信对象，沙箱只负责 pickle.loads。数据从高信任流向低信任沙箱、权限在收窄，不存在“反序列化不可信输入”的问题</li>
+    <li>用 JSON：所有跨沙箱边界的数据都必须是 JSON，pickle 在任何方向都被禁止</li>
+    <li>调用参数和 agent_state 都用 pickle 一起打包送进去，沙箱再统一 loads</li>
+    <li>用 pickle，但只是因为快——agent_state 太大，JSON 编不动，和信任方向无关</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。server→sandbox 走 pickle 是有意的受信方向：agent_state 由服务端 pickle.dumps，沙箱里 pickle.loads 还原。因为被反序列化的字节来源可信（服务端自己造的），且权限往低信任侧流，pickle.loads 不会变成攻击面。注意区分：整段脚本里只有 agent_state 用 pickle；调用参数是按 repr() 内联的字面量，不是 pickle。说“任何方向都禁 pickle”是错的——被禁的是回程（sandbox→server）。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 为什么沙箱回传给服务端的结果必须用 JSON 读，而绝不能 pickle.loads？</div>
+  <ol class="opts">
+    <li>因为 agent_state 已经在去程用过 pickle 了，回程不能重复用同一种格式</li>
+    <li>因为沙箱刚执行过不可信的用户代码，它的 stdout 是不可信输出。pickle.loads 会在反序列化时执行任意代码——对沙箱输出 pickle.loads 等于一个服务端 RCE；json.loads 最坏只是拿到假数据</li>
+    <li>因为沙箱里没装 pickle 模块，只能用 JSON 编码结果</li>
+    <li>因为 JSON 比 pickle 快，回程数据量大，必须用最快的格式</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。回程是不可信方向：沙箱刚跑完陌生人的工具代码，它写到 stdout 的每个字节都可疑。pickle.loads 在反序列化时执行任意代码，一个恶意工具只要返回带 __reduce__ 的对象，服务端 pickle.loads 的瞬间就被 RCE。改用 json.loads，这类对象根本无法表达，最坏只是解析到假数据。这和“快不快”“装没装模块”都无关——纯粹是信任边界问题。这也正是 PR #3343 修复的点。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 回程帧里的 marker + 长度 + MD5 解决的是哪一类问题？</div>
+  <ol class="opts">
+    <li>压缩 stdout，避免大结果占用太多带宽</li>
+    <li>把 pickle 升级成加密格式，防止 agent_state 在去程被沙箱偷看</li>
+    <li>替代 JSON 解析，让服务端可以直接 pickle.loads 沙箱输出</li>
+    <li>结果通道被污染：用户工具能往 stdout 打任何东西（调试 print、异常栈、甚至伪造的假结果）。marker 在噪声里定位真 payload、长度精确切片、MD5 抓篡改/截断，三层叠起来保证读到的就是工具真正返回的那份</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。stdout 是条嘈杂的河：调试输出、异常栈、甚至用户故意打的假结果/假 marker 都混在里面。三层各司其职——marker（uuid5 的 16 字节）在噪声里定位真 payload 起点；length（4 字节 big-endian '&gt;I'）精确切出 payload；MD5（32 hex）抓篡改与截断，不符就 raise Exception("Function ran, but output is corrupted.")。它防的是完整性/伪造，和加密、压缩无关；更不是为了让服务端去 pickle.loads——恰恰相反，校验通过后只 json.loads。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. PR #3343（commit 1131535）到底改了什么？哪些是它没动的？</div>
+  <ol class="opts">
+    <li>它新增了 marker+长度+MD5 帧，在此之前回程根本没有任何完整性校验</li>
+    <li>它把去程的 agent_state 也从 pickle 改成 JSON，彻底禁用了 pickle</li>
+    <li>它把本地沙箱换成 E2B，用云端隔离替代了进程隔离</li>
+    <li>它只把 sandbox→server 的 payload 编码从 pickle 换成 JSON，于是服务端读回从 pickle.loads 变成 json.loads，消除 RCE 面。marker+长度+MD5 帧早就存在、不是它加的；server→sandbox 仍 pickle agent_state，是有意保留的受信方向</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。#3343 的范围很窄但很关键：只改回程 payload 的编码（pickle→JSON），落点在 tool_parser_helper.py——服务端从 pickle.loads(沙箱字节) 变成 json.loads(payload)，结构性消除了服务端 RCE。它没动的：①marker+长度+MD5 帧本就存在（负责完整性，不是 #3343 引入）；②server→sandbox 仍 pickle agent_state（受信方向，有意保留，不是漏改）。说它“加了帧”“禁用了所有 pickle”“换成 E2B”都把范围搞错了。一句话：帧管完整性、编码格式管安全性，#3343 动的是后者。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. 在 v0.16.8 里，沙箱实际执行的那段脚本是由 letta/templates/sandbox_code_file.py.j2 模板渲染出来的吗？</div>
+  <ol class="opts">
+    <li>不是。那个 .j2 模板在 v0.16.8 没有被任何 .py 引用，只能当对照参考；真实脚本是 tool_sandbox/base.py 里 generate_execution_script / _render_sandbox_code 用字符串拼出来的</li>
+    <li>没有脚本——沙箱直接 import 用户的工具模块并调用，不需要拼脚本</li>
+    <li>是的，Jinja2 在运行时渲染该模板，把 agent_state 和用户源码填进去生成脚本</li>
+    <li>是的，但只有 Modal 沙箱用模板，本地和 E2B 用别的方式</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。这是常见误区。letta/templates/sandbox_code_file.py.j2 在 v0.16.8 是死文件——没有任何 .py 引用它，只能当人类对照参考。真实脚本由 tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script 调 _render_sandbox_code 用字符串拼出：pickle.loads 还原 agent_state、按 repr() 内联参数、逐字内联用户 source_code、调用并把结果+agent_state 打成 JSON、加 marker+长度+MD5 写 stdout。也别被 docstring（写着“base64-encode/pickle the result”）和带 _pkl 的变量名骗了——都是遗留，实际装 JSON。沙箱也不会 import 用户模块（那模块只存在数据库里），所以必须内联自包含。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用“监狱探视窗”这个比喻，把第 20 课的“信任边界”完整讲一遍，并想三件事：(1) 为什么 server→sandbox 能放心用 pickle、而 sandbox→server 必须只用 json.loads？把它和“权限放大的方向”联系起来——什么样的通用规则能让你在任何跨边界场景里一眼判断“这里能不能反序列化”？(2) marker+长度+MD5 帧负责“完整性”、JSON 编码负责“安全性”，这是两件事，PR #3343 只改了后者。如果有人只加强了帧（比如把 MD5 换成 SHA-256），却仍然 pickle.loads payload，安全吗？为什么完整性校验救不了一个“会执行代码的解析器”？(3) 本地沙箱和服务端共享内核，隔离只是“够用级”。把同一个自定义工具从本地切到 E2B/Modal，信任边界这张图会变吗？哪些不变（信任边界原则：去程可信、回程绝不 pickle.loads）、哪些变（隔离强度、延迟，以及回程编码——本地的 marker+MD5 帧 / E2B 的 base64 / Modal 的结构化 dict）？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 19 ended on a cliffhanger: a custom tool — Python source the user wrote themselves — is by default handed to <span class="mono">SandboxToolExecutor</span>, i.e. "thrown into a sandbox." But what gives the sandbox the nerve to run a stranger's code? And once it finishes, how do you safely collect the result back into the server?</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This is Part 5's finale, and the landing point for the whole tool system's "security mindset." We will draw one <strong>trust-boundary diagram</strong> clearly: which leg of the trip you can "pass along freely," which leg "must be verified," and how one real security fix (PR #3343) welds that boundary shut.</p>
+
+<div class="card analogy"><div class="tag">🔌 Real-world analogy</div>
+<p>Think of the sandbox as a prison visitation window. You (the server) want to pass something <strong>in</strong> — it is your own belongings, so you can hand over the original object. Because the risk only flows inward: once something is behind the high wall, however dangerous, it can never reach your side.</p>
+<p>But any parcel the other party (the stranger's code running inside) hands <strong>out</strong>, you must never reach in and take directly. It has to go through the glass, through the scanner, with its seal checked — because you have no idea whether it holds candy or a razor blade.</p>
+<p>All of this lesson's sense of safety rests on one plain rule: <strong>passing in may be the original; collecting out must pass the scanner</strong>. The rest of the engineering merely translates "the original" into <span class="mono">pickle</span> and "the scanner" into <span class="mono">JSON</span> plus a layer of verification.</p>
+<p>The rule looks simple yet is often broken: many "sandboxes" fixate on locking code <em>in</em>, yet forget that "collecting the result" crosses the boundary just the same. Real safety hides precisely in <strong>how you take things back out</strong>.</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>One sentence is enough: <strong>a custom tool is untrusted code</strong>. It does not run in the main process; it is dropped into a sandbox — a local venv, E2B, or Modal, one of three picked by <span class="mono">SandboxType</span>.</p>
+<p>Across the wall there are only two data channels, opposite in direction and opposite in trust. <strong>server→sandbox</strong> uses <span class="mono">pickle</span> (trusted: the server serializes the <span class="mono">agent_state</span> it built itself); <strong>sandbox→server</strong> uses <span class="mono">JSON</span> (untrusted: <strong>never <span class="mono">pickle.loads</span></strong>), with a <span class="mono">marker+length+MD5</span> frame to verify integrity.</p>
+<p>This <strong>trust-boundary diagram</strong> is the whole lesson. And PR #3343 is exactly the real security fix that switched the return channel from pickle to JSON — taking this boundary from "roughly safe" to "welded shut."</p>
+<p>Stressing the sense of direction once more: when data flows from server to sandbox, privilege <strong>narrows</strong> (entering a low-trust zone), so pickle is safe; when data flows from sandbox back to server, privilege <strong>widens</strong> (returning to a high-trust zone), so it must be JSON only. Treat "the direction in which privilege widens" as the red line, and you have memorized the whole diagram.</p>
+</div>
+<h2>Three sandboxes, one pick: where does the code actually run?</h2>
+<p>Before a custom tool runs, Letta first decides "where to run it." This is not random but a short-circuit decision chain: check the tool's own preference first, then the global config, and finally fall back to local.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Check tool.metadata</h4><p>If the tool explicitly marks <span class="mono">sandbox=="modal"</span> and Modal is enabled → use <strong>Modal</strong> (cloud container, strong isolation).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Check the global config</h4><p>Otherwise consult <span class="mono">ToolSettings.sandbox_type</span>: if an <span class="mono">e2b_api_key</span> is set → use <strong>E2B</strong> (cloud micro-sandbox).</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Fall back to local</h4><p>Neither → <strong>Local</strong>: build an isolated venv on the host and run it in a subprocess. The most common case during development.</p></div></div>
+</div>
+<p>The three sandboxes are not redundant; they are a <strong>trade-off between isolation strength and deployment cost</strong>. A local venv has zero dependencies and is fastest, but shares the kernel with the server and isolates the least; E2B and Modal ship code into a dedicated cloud container — strong isolation, yet they need network access and quota. So the same tool may run locally in development and be switched to Modal in production — exactly why "where to run" must be configurable.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">The type is defined in <span class="mono">schemas/enums.py::SandboxType</span> (<span class="mono">E2B / MODAL / LOCAL</span>); the selection logic lives in <span class="mono">sandbox_tool_executor.py</span>, and the global switch is <span class="mono">settings.py::ToolSettings.sandbox_type</span>. The key point: this lesson's "generate script + trust boundary" walkthrough is mainly the <strong>local</strong> path; the marker+length+MD5 frame is <strong>local-only</strong> (E2B uses base64 instead, and Modal returns a native structured dict via deployment — no generated script at all). But the <strong>trust-boundary principle is universal</strong> across all three — none of them deserializes the return as trusted code.</span></div>
+<p>A configuration aside: <span class="mono">LocalSandboxConfig</span> can also tune <span class="mono">sandbox_dir</span>, <span class="mono">use_venv</span>, <span class="mono">venv_name</span>, <span class="mono">pip_requirements</span> and more, deciding how the local sandbox is actually laid down. But these are all "how to run" knobs; they do not change the "whom to trust" boundary.</p>
+<h2>The generated sandbox script: wrap the tool and run it</h2>
+<p>The sandbox does not "directly call" the user's function. The server assembles a Python script on the fly, inlines everything it needs, and then lets the sandbox execute the whole thing. That script is assembled by <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span>.</p>
+<p>This "assemble-the-script" approach has an upside: the server has <strong>full control</strong> over everything that happens inside the sandbox — what gets passed in, what gets called, how the result is packed are all hard-coded into the script, and the sandbox is merely an obedient executor.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Unpickle agent_state</h4><p><span class="mono">pickle.loads(...)</span> restores the <span class="mono">agent_state</span> the server passed in (the trusted direction).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Inline the arguments</h4><p>Each call argument is written as a literal via <span class="mono">repr()</span>, <strong>not</strong> pickle.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Inline the user source</h4><p>The tool's <span class="mono">source_code</span> is pasted in verbatim, defining the function body.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Call + pack</h4><p><span class="mono">_function_result = tool(...)</span>, then pack the result + <span class="mono">agent_state</span> into JSON.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Frame + write stdout</h4><p>Prefix it with <span class="mono">marker+length+MD5</span>, write to standard output, and wait for the server to read it.</p></div></div>
+</div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/base.py</span><span class="ln">_render_sandbox_code (simplified skeleton)</span></div>
+<pre><span class="cm"># server pickles agent_state into the script; the sandbox loads it (trusted direction)</span>
+agent_state = pickle.<span class="fn">loads</span>(<span class="nb">b"..."</span>)
+x = <span class="st">"&lt;inlined literal&gt;"</span>            <span class="cm"># args inlined via repr(), not pickle</span>
+<span class="cm"># &lt;user tool source inlined verbatim&gt;</span>
+_function_result = <span class="fn">my_tool</span>(x, agent_state=agent_state)
+payload = _letta_json.<span class="fn">dumps</span>({<span class="st">"results"</span>: _function_result,
+    <span class="st">"agent_state"</span>: agent_state.<span class="fn">model_dump</span>(mode=<span class="st">"json"</span>)}).<span class="fn">encode</span>()  <span class="cm"># JSON, not pickle</span>
+sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn">pack</span>(<span class="st">"&gt;I"</span>, len(payload)) + md5_hex + payload)
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Why inline the source <strong>verbatim</strong> instead of importing the user's module? Because that module simply does not exist inside the sandbox — the tool source lives only in the database. Inlined, the script is self-contained, and the sandbox needs only a clean interpreter to run it. The script also calls <span class="mono">coerce_dict_args_by_annotations(...)</span> to coerce each argument to the right type per its annotation, avoiding string/number mismatches.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">agent_state</span> goes through <span class="mono">pickle.dumps</span> (server-built, sandbox <span class="mono">loads</span>); but <strong>the call arguments are inlined literals (<span class="mono">repr()</span>), not pickle</strong>. In the entire script, <span class="mono">agent_state</span> is the only thing that uses pickle — a distinction we will lean on repeatedly later.</span></div>
+<h2>Trust boundary: direction decides serialization</h2>
+<p>Now place the two channels side by side. <strong>One script, two directions, two serializations</strong> — not arbitrary, but trust speaking.</p>
+<div class="cols">
+  <div class="col"><h4>⬇️ server → sandbox</h4><p>Uses <span class="mono">pickle</span> to pass <span class="mono">agent_state</span>. <strong>Trusted</strong>: the server pickles an object it built itself, and the sandbox only loads it. Privilege flows toward the low-trust side, so there is no "deserializing untrusted input" problem.</p></div>
+  <div class="col"><h4>⬆️ sandbox → server</h4><p>Uses only <span class="mono">JSON</span> + <span class="mono">marker+length+MD5</span>. <strong>Untrusted</strong>: the sandbox just ran arbitrary user code, so its stdout must never be <span class="mono">pickle.loads</span>'d — it can only be read as data.</p></div>
+</div>
+<p>Why can the downward leg use pickle? Because the object being deserialized was built by the server itself; the sandbox receives data, not an attack surface. Even if the sandbox wanted to misbehave, it cannot alter "the bytes already pickled in."</p>
+<p>Why must the upward leg be JSON? Because <span class="mono">pickle.loads</span> executes arbitrary code during deserialization. The sandbox ran a stranger's tool, so its output is inherently suspect — read with <span class="mono">json.loads</span>, the worst case is a blob of fake data, not an RCE.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">A counterintuitive point: using pickle on the trusted direction is not "making do" but a <strong>deliberate choice</strong> — it restores a complex object like <span class="mono">agent_state</span> in one shot, sparing hand-written serialization. pickle itself is not the villain; using it on the untrusted direction is.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">A concrete attack: a malicious tool returns, instead of a plain dict, an object carrying a <span class="mono">__reduce__</span>. If the server reads it with <span class="mono">pickle.loads</span>, the moment of deserialization runs the attacker's chosen command — the server falls. Switch to <span class="mono">json.loads</span> and such an object cannot even be expressed; the attack surface is structurally eliminated.</span></div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">⬇️ pickle</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">Insider — let it through</span></div>
+<div class="row"><span class="emoji">🔐</span><span class="lab">⬆️ JSON</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">Outsider — scan with MD5</span></div>
+<div class="cap">Trust = direction: you may pickle.loads data you built yourself; never pickle.loads data coming back across the untrusted boundary.</div></div>
+
+<h2>The return frame: marker + length + MD5</h2>
+<p>The sandbox's stdout is a noisy river: user code may print debug info, may throw a stack trace, may even deliberately print a <strong>fake result</strong>. So the real result is not "the whole stdout" but the small piece <strong>fenced off</strong> by a frame.</p>
+<table class="t">
+  <tr><th>Field</th><th>Size</th><th>Role</th></tr>
+  <tr><td class="mono">MARKER</td><td class="mono">16 bytes</td><td>a uuid5-generated locator anchor that flags "the real result starts here" amid the noise</td></tr>
+  <tr><td class="mono">LENGTH</td><td class="mono">4 bytes '&gt;I'</td><td>big-endian unsigned int telling you how long the payload is, for a precise slice</td></tr>
+  <tr><td class="mono">MD5</td><td class="mono">32 bytes hex</td><td>checksum of the payload, catching tampering and truncation</td></tr>
+  <tr><td class="mono">JSON_PAYLOAD</td><td class="mono">LENGTH bytes</td><td>the real result: the tool's return value + agent_state as JSON</td></tr>
+</table>
+<div class="cellgroup"><div class="cg-cap"><b>stdout frame layout</b></div><div class="cells"><span class="cell hl">MARKER(16)</span><span class="sep">·</span><span class="cell">LENGTH(4)</span><span class="sep">·</span><span class="cell">MD5(32)</span><span class="sep">·</span><span class="cell">JSON_PAYLOAD</span></div></div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">local_sandbox.py · helpers/tool_parser_helper.py</span><span class="ln">parse_out_function_results_markers + parse_stdout_best_effort (simplified)</span></div>
+<pre>pos = data.<span class="fn">find</span>(MARKER)                       <span class="cm"># locate the real result in noisy stdout</span>
+length = struct.<span class="fn">unpack</span>(<span class="st">"&gt;I"</span>, data[p:p+<span class="nb">4</span>])[<span class="nb">0</span>]
+payload = data[start : start+length]
+<span class="kw">if</span> hashlib.<span class="fn">md5</span>(payload).<span class="fn">hexdigest</span>() != checksum:
+    <span class="kw">raise</span> <span class="fn">Exception</span>(<span class="st">"Function ran, but output is corrupted."</span>)
+<span class="cm"># —— the next two lines are actually in helpers/tool_parser_helper.py::parse_stdout_best_effort ——</span>
+result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON, never pickle.loads</span>
+agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic re-hydrate</span>
+</pre></div>
+<p>You might ask: why use a "dirty" channel like stdout instead of opening a clean return pipe? Because the sandbox boundary is essentially a <strong>process</strong>, and the most universal, least runtime-fussy bridge between processes is standard output. The cost is that stdout mixes in everything, so a frame is required to fish "the real result" out of the noise.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">What does this frame defend against? A user tool can print <strong>anything</strong> to stdout, including a forged result or a fake marker. The marker fences off the real payload, the length slices it precisely, and MD5 catches tampering/truncation — stacked together, only then dare the server say "what I read is exactly the one the tool actually returned."</span></div>
+<p>The order matters too: <strong>compare MD5 first, then <span class="mono">json.loads</span></strong>. If you parsed first and handled errors later, an attacker could use malformed JSON to trigger the parser's corner-case behavior; verifying integrity first holds "suspicious input" back before parsing.</p>
+<h2>PR #3343: swap pickle for JSON</h2>
+<p>The frame check was always there, but one old hole remained: early on, the return payload was <strong>pickle</strong>-encoded, and the server would <span class="mono">pickle.loads</span> it on read-back. That amounts to deserializing "the output of a sandbox that just ran arbitrary user code" — a clean-cut <strong>server-side RCE</strong>.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/tool_parser_helper.py</span><span class="ln">PR #3343 · commit 1131535</span></div>
+<pre><span class="cm"># old (vulnerable): server pickle.loads on the sandbox stdout -> server RCE</span>
+<span class="cm">- result = pickle.loads(text)</span>
+<span class="cm"># new (fixed): json.loads only, never executes code</span>
+<span class="cm">+ result = json.loads(payload)</span>
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Mind the scope: the <span class="mono">marker+length+MD5</span> frame <strong>existed before #3343</strong>. #3343 only switched the sandbox→server <strong>payload encoding</strong> from pickle to JSON; server→sandbox still pickles <span class="mono">agent_state</span> — that is the trusted direction kept on purpose, not an oversight.</span></div>
+<p>The fix's value is not in lines of code but in the <strong>mindset</strong>: the choice of serialization format is itself a security gate. Reserve pickle for "data I built, flowing to the low-trust side," and JSON for "data others built, returning to the high-trust side" — once internalized, this rule blocks similar RCEs at design time, instead of waiting to patch after the fact.</p>
+
+<h2>Walk the return trip in your head</h2>
+<p>Abstractions done, let us close with a concrete example. Suppose the user wrote a <span class="mono">get_weather(city)</span> tool, and at some step the model decides to call it with <span class="mono">city="Shanghai"</span>. From this moment on, here is what happens.</p>
+<p>The server first <span class="mono">pickle.dumps</span> the current <span class="mono">agent_state</span> into a blob of bytes and, together with the <span class="mono">city</span> literal and the user's <span class="mono">get_weather</span> source, assembles them into a temporary script.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">This step already shows the distinction: <span class="mono">agent_state</span> is pickle bytes, while <span class="mono">city</span> is just an inlined string literal <span class="mono">"Shanghai"</span> in the script. One script, two ways of "stuffing data in," matching two kinds of trust.</span></div>
+<p>The script is dropped into the sandbox to run: there it <span class="mono">pickle.loads</span> the <span class="mono">agent_state</span>, runs <span class="mono">get_weather("Shanghai")</span>, gets the return value, then packs "the return value + the updated agent_state" into JSON, prefixes marker, length, MD5, and writes the whole bundle to stdout.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">This is the lesson's turning point: from the next step on, all data has <strong>crossed the untrusted boundary</strong>. The sandbox just finished running code we could not trust in advance, so every byte it writes out must be treated as "a parcel handed over by an outsider."</span></div>
+<p>The server reads stdout back: first locate by marker, slice by length, compare MD5 — if any step mismatches, the result is judged corrupted and an error is thrown outright. Once verification passes, <strong>only</strong> the payload is <span class="mono">json.loads</span>'d.</p>
+<p>Finally <span class="mono">AgentState.model_validate</span> re-hydrates the state into an object. Nowhere along the way is a single line of <span class="mono">pickle.loads</span> applied to the sandbox output — that is the whole trip's safety guarantee: pickle going in, JSON coming out, the two sides of the boundary kept cleanly apart.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">Compress the trip into one sentence: <strong>data downstream uses pickle, upstream uses JSON, with a marker+length+MD5 security gate in between</strong>. Remember that one line and you have remembered the whole lesson.</span></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>Close it in one sentence: <strong>which direction you trust decides which serialization you use.</strong></p>
+<p><span class="mono">pickle.loads</span> can run arbitrary code during deserialization, so the rule is cut to the bone: <strong>you may pickle.loads data you built yourself</strong> (server→sandbox, privilege flowing down into the low-trust sandbox, no risk); <strong>never pickle.loads data coming back across the untrusted boundary</strong> (sandbox→server, just ran arbitrary user code, can only be read as JSON).</p>
+<p>PR #3343 fixed exactly this: the old code did <span class="mono">pickle.loads</span> on the sandbox stdout — a server RCE; switching to <span class="mono">json.loads</span> seals it. The <span class="mono">marker+length+MD5</span> is a separate layer — the integrity layer: a user tool can print a fake result, so the marker fences the real payload and MD5 catches tampering.</p>
+<p>Security boils down to one word: <strong>trust = direction</strong>. This also closes the whole tool chain: Lesson 18 "read it without running it" → Lesson 19 "custom → sandbox" → Lesson 20 "even the sandbox's output is untrusted."</p>
+<p>Following this line you can anticipate elsewhere too: whenever you see "deserializing an untrusted source," be instantly wary; whenever you confirm "the data is self-built, sent to the low-trust side," you may freely use a high-expressiveness format. This intuition reaches far beyond the sandbox — it is almost the baseline of all cross-boundary communication.</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p>Script generation: <span class="mono">tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script</span> and <span class="mono">_render_sandbox_code</span>. Local execution: <span class="mono">local_sandbox.py::AsyncToolSandboxLocal</span> (build/reuse venv, subprocess, timeout).</p>
+<p>Read-back verification: <span class="mono">local_sandbox.py::parse_out_function_results_markers</span> finds the marker, slices the length, compares MD5; then hands off to <span class="mono">helpers/tool_parser_helper.py::parse_stdout_best_effort</span> for <span class="mono">json.loads</span> + <span class="mono">AgentState.model_validate</span>.</p>
+<p>Types and security: the sandbox type is in <span class="mono">schemas/enums.py::SandboxType</span>; this security fix is PR #3343 (commit <span class="mono">1131535</span>).</p>
+<p>By the way, <span class="mono">local_sandbox.py</span> also hides engineering details like venv reuse, dependency install, and timeout control; they do not affect the trust-boundary throughline, yet they decide whether the local sandbox runs fast and stays stable.</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ Common misconceptions</div>
+<p><strong>Misconception 1: thinking the script is rendered from the <span class="mono">.j2</span> template.</strong> <span class="mono">letta/templates/sandbox_code_file.py.j2</span> is <strong>not referenced by any .py</strong> in v0.16.8 — it only serves as a side reference; the real script is string-assembled by <span class="mono">_render_sandbox_code</span>.</p>
+<p><strong>Misconception 2: thinking arguments also go through pickle.</strong> Arguments are <strong>inlined literals</strong> (<span class="mono">repr()</span>); in the whole script only <span class="mono">agent_state</span> uses pickle.</p>
+<p><strong>Misconception 3: thinking the frame was added by #3343.</strong> The <span class="mono">marker+length+MD5</span> frame <strong>already existed</strong>; #3343 only changed the payload encoding (pickle→JSON).</p>
+<p><strong>Misconception 4: trusting the docstring and variable names.</strong> The docstring of <span class="mono">generate_execution_script</span> says "base64-encode/pickle the result," and a variable carries <span class="mono">_pkl</span> — both are <strong>legacy</strong>; what is actually carried is JSON.</p>
+</div>
+<h2>Dig a little deeper</h2>
+<p>The four drawers below answer, respectively, "why cut the boundary this way," "whom the frame really defends against," "which lines #3343 changed," and "how the local venv runs." If you want the fine detail, expand them one by one.</p>
+<details class="accordion"><summary>① Why is the trust boundary cut this way?</summary><div class="acc-body">
+<p>There is just one core idea: <span class="mono">pickle.loads</span> runs arbitrary code during deserialization. So "may I pickle.loads this" is equivalent to "do I trust the source of these bytes."</p>
+<p>The server→sandbox <span class="mono">agent_state</span> is <span class="mono">pickle.dumps</span>'d by the server itself; the source is trusted, and the sandbox only loads it — risk flows to the low-trust side, no problem. The sandbox→server output comes from unfamiliar code; the source is untrusted, so it can only be <span class="mono">json.loads</span>'d.</p>
+<p>Another angle: trust is not "do I believe this data looks right" but "do I trust whoever made it." pickle is dangerous precisely because it mixes "data" and "executable code" — when the source is trusted this mix is convenient (it restores complex objects directly), and when the source is untrusted it becomes a bomb.</p>
+</div></details>
+<details class="accordion"><summary>② What does marker+length+MD5 defend against?</summary><div class="acc-body">
+<p>It defends against "the result channel being polluted." Anyone can write to the sandbox's stdout: debug prints, exception stacks, even a forged marker plus a fake result.</p>
+<p>So the three layers each do their job: <span class="mono">marker</span> locates the start of the real payload amid the noise; <span class="mono">length</span> slices the payload precisely, avoiding being misled by trailing noise; <span class="mono">MD5</span> compares the checksum, and on truncation or tampering it does <span class="mono">raise Exception("Function ran, but output is corrupted.")</span>.</p>
+<p>One more detail: the <span class="mono">marker</span> is a uuid5-generated 16 bytes, almost impossible for user output to hit by accident and hard to "guess" maliciously, so the "locate" step itself carries a touch of anti-forgery.</p>
+<p>Someone may ask: isn't MD5 insecure? Here it only catches <strong>accidental corruption</strong> and does not resist cryptographic attacks — what truly blocks malice is the rule "json.loads only, never pickle.loads"; MD5 is merely a cheap integrity snapshot.</p>
+</div></details>
+<details class="accordion"><summary>③ What exactly did PR #3343 change?</summary><div class="acc-body">
+<p>It changed just one thing: switching the sandbox→server <strong>payload encoding</strong> from pickle to JSON, so the server's read-back goes from <span class="mono">pickle.loads</span> to <span class="mono">json.loads</span>, and the RCE surface is eliminated.</p>
+<p>What it did not change: the marker+length+MD5 frame (already there), and server→sandbox still pickling <span class="mono">agent_state</span> (the intentional trusted direction). Also <span class="mono">safe_pickle.py::safe_pickle_dumps</span> serves only modal_sandbox_v2, adding a 10MB/depth-50 anti-crash guardrail, not an anti-malice one.</p>
+<p>One sentence to separate two things: the frame handles <strong>integrity</strong> (the result was not corrupted), and the encoding format handles <strong>security</strong> (reading it does not execute code). #3343 touched the latter; the former was there from the start.</p>
+<p>For intuition: before the fix the server side was <span class="mono">pickle.loads(sandbox bytes)</span>, after it is <span class="mono">json.loads(sandbox bytes)</span>. Both read untrusted input, but the former can be deserialization-triggered into an RCE while the latter at most fails to parse — that is how big the difference is.</p>
+</div></details>
+<details class="accordion"><summary>④ How does the local venv run? How do E2B/Modal differ?</summary><div class="acc-body">
+<p>Local <span class="mono">AsyncToolSandboxLocal</span>: on demand <span class="mono">venv.create(with_pip=True)</span> builds or reuses a virtual environment, <span class="mono">pip install -r</span> installs dependencies, the script is written to a temporary <span class="mono">.py</span>, and <span class="mono">asyncio.create_subprocess_exec</span> spawns a subprocess to run it, with the timeout being <span class="mono">tool_sandbox_timeout</span> (default 180s).</p>
+<p>The differences are more than skin-deep: local uses the marker+length+MD5 frame; <strong>E2B uses base64 encoding instead</strong> (a different path, not an extra layer); <strong>Modal returns a structured dict directly</strong>, with no generated script or frame at all. What the three genuinely <strong>share is the trust-boundary principle</strong> — trusted on the way in, JSON/structured on the way back, never pickle.loads.</p>
+<p>Precisely because the local sandbox shares the kernel with the server, its isolation is "good enough" rather than a "strong guarantee": it can block accidents and most mishaps, but to run fully untrusted code you should switch to the container-level isolation of E2B or Modal.</p>
+<p>What happens when the timeout hits? The subprocess is killed and this call is treated as a failure, without dragging the server down. The temporary script file is cleaned up after use, while the venv can be reused, saving the cost of rebuilding the environment each time.</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>A custom tool is untrusted code, run in a sandbox (<span class="mono">local / E2B / Modal</span>, one of three by <span class="mono">SandboxType</span>).</li>
+<li><strong>server→sandbox = pickle</strong> (trusted, passing <span class="mono">agent_state</span>); <strong>sandbox→server = JSON</strong> (untrusted) + a <span class="mono">marker+length+MD5</span> frame.</li>
+<li><strong>Never <span class="mono">pickle.loads</span> the sandbox output</strong> — that is exactly the fix in PR #3343 (commit <span class="mono">1131535</span>).</li>
+<li>The <span class="mono">.j2</span> template is unreferenced in v0.16.8; the real script lives in <span class="mono">_render_sandbox_code</span>; the docstring and the <span class="mono">_pkl</span> naming are legacy.</li>
+<li>One word to remember it all: <strong>trust = direction</strong>.</li>
+</ul>
+</div>
+<h2>Part 5 wrap-up: define → derive → dispatch → isolated execution</h2>
+<p>Part 5 ends here. String the four lessons into one line and the tool system's whole picture becomes clear: from "an ordinary Python function" to "safely finishing a piece of unfamiliar code," every step answers one concrete question.</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 5 · one line</b></div><div class="cells"><span class="cell">17 function+docstring→schema</span><span class="sep">·</span><span class="cell">18 derive without running</span><span class="sep">·</span><span class="cell">19 dispatch by type</span><span class="sep">·</span><span class="cell hl">20 sandbox isolation + trust boundary</span></div></div>
+<p>In one line: <strong>define → derive → dispatch → isolated execution</strong>. Lesson 17 turns a function into a schema, Lesson 18 derives the schema without executing, Lesson 19 dispatches to an executor by <span class="mono">ToolType</span>, and Lesson 20 handles the most dangerous class — custom code — and draws its runtime trust boundary clearly.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">It also points back to the previous two lessons: Lesson 20's "even the sandbox output is untrusted" is the same wariness as Lesson 18's "read it without running it"; and the "custom → sandbox" handoff at the end of Lesson 19 is exactly what this lesson delivers.</span></div>
+<p>Pull back, and this is the whole ambition of the <em>Letta Visual Guide</em> on tools: not to pile up APIs, but to explain end to end the chain of "how an ordinary function becomes a capability the model can call safely" — define it, derive its interface, dispatch it by type, then execute it in isolation.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">If you take away only one diagram, take "trust = direction": it explains not only the sandbox but is the general solution to every "passing data across a trust boundary" problem — whether the other side is a sandbox, a third-party service, or another uncontrolled process.</span></div>
+<p>Next stop is <strong>Part 6 · the LLM Provider abstraction</strong>: with tools covered, we return to a more upstream question — how Letta uses one unified interface to plug different vendors' models, like OpenAI and Anthropic, into the same agent loop.</p>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. When the server sends agent_state into the sandbox, which serialization does it use, and why is pickle safe in this direction?</div>
+  <ol class="opts">
+    <li>pickle: the agent_state being deserialized is a trusted object the server built itself, and the sandbox only pickle.loads it. Data flows from high trust down into the low-trust sandbox, so privilege narrows and there is no “deserializing untrusted input” problem</li>
+    <li>JSON: all data crossing the sandbox boundary must be JSON, and pickle is forbidden in every direction</li>
+    <li>both the call arguments and agent_state are pickled together and sent in, and the sandbox loads them all at once</li>
+    <li>pickle, but only because it is fast — agent_state is too big for JSON, and it has nothing to do with trust direction</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. server→sandbox uses pickle as a deliberate trusted direction: agent_state is pickle.dumps'd by the server and pickle.loads'd back inside the sandbox. Because the deserialized bytes come from a trusted source (the server built them) and privilege flows toward the low-trust side, pickle.loads never becomes an attack surface. Note the distinction: in the whole script only agent_state uses pickle; call arguments are inlined literals via repr(), not pickle. “Forbid pickle in every direction” is wrong — what is forbidden is the return leg (sandbox→server).</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. Why must the result the sandbox sends back to the server be read as JSON, and never pickle.loads'd?</div>
+  <ol class="opts">
+    <li>Because agent_state already used pickle on the way in, and the return trip cannot reuse the same format</li>
+    <li>Because the sandbox just ran untrusted user code, so its stdout is untrusted output. pickle.loads executes arbitrary code during deserialization — pickle.loads on the sandbox output is a server-side RCE; json.loads at worst yields fake data</li>
+    <li>Because the sandbox has no pickle module installed, so it can only encode results as JSON</li>
+    <li>Because JSON is faster than pickle, and the return data is large, so the fastest format is required</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The return leg is the untrusted direction: the sandbox just ran a stranger's tool code, so every byte it writes to stdout is suspect. pickle.loads executes arbitrary code during deserialization — a malicious tool need only return an object carrying a __reduce__, and the instant the server pickle.loads it, it is RCE'd. With json.loads such objects cannot even be expressed, so the worst case is parsing fake data. This has nothing to do with speed or installed modules — it is purely a trust-boundary issue, and exactly what PR #3343 fixed.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. What class of problem does the return frame's marker + length + MD5 solve?</div>
+  <ol class="opts">
+    <li>Compressing stdout to keep large results from using too much bandwidth</li>
+    <li>Upgrading pickle to an encrypted format to stop the sandbox from peeking at agent_state on the way in</li>
+    <li>Replacing JSON parsing so the server can pickle.loads the sandbox output directly</li>
+    <li>The result channel being polluted: a user tool can print anything to stdout (debug prints, stack traces, even a forged fake result). The marker locates the real payload amid the noise, the length slices it precisely, and MD5 catches tampering/truncation — three layers ensuring what is read is exactly what the tool actually returned</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. stdout is a noisy river: debug output, stack traces, even a fake result/fake marker a user deliberately prints are all mixed in. The three layers each do a job — marker (uuid5's 16 bytes) locates the real payload's start amid the noise; length (4 bytes big-endian '&gt;I') slices the payload precisely; MD5 (32 hex) catches tampering and truncation, raising Exception("Function ran, but output is corrupted.") on mismatch. It defends integrity/forgery, unrelated to encryption or compression; and it is certainly not there to let the server pickle.loads — on the contrary, once verified, only json.loads runs.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. What exactly did PR #3343 (commit 1131535) change, and what did it leave untouched?</div>
+  <ol class="opts">
+    <li>It added the marker+length+MD5 frame; before it, the return leg had no integrity check at all</li>
+    <li>It also switched the inbound agent_state from pickle to JSON, banning pickle entirely</li>
+    <li>It replaced the local sandbox with E2B, swapping cloud isolation for process isolation</li>
+    <li>It only switched the sandbox→server payload encoding from pickle to JSON, so the server's read-back changed from pickle.loads to json.loads, eliminating the RCE surface. The marker+length+MD5 frame already existed and was not added by it; server→sandbox still pickles agent_state, the intentionally kept trusted direction</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. #3343's scope is narrow but pivotal: it changes only the return payload's encoding (pickle→JSON), landing in tool_parser_helper.py — the server goes from pickle.loads(sandbox bytes) to json.loads(payload), structurally eliminating the server RCE. What it left alone: (1) the marker+length+MD5 frame already existed (it handles integrity and was not introduced by #3343); (2) server→sandbox still pickles agent_state (the trusted direction, kept on purpose, not an oversight). Saying it “added the frame,” “banned all pickle,” or “switched to E2B” all misstate the scope. In one line: the frame governs integrity, the encoding governs security, and #3343 moved the latter.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. In v0.16.8, is the script the sandbox actually runs rendered from the letta/templates/sandbox_code_file.py.j2 template?</div>
+  <ol class="opts">
+    <li>No. That .j2 template is not referenced by any .py in v0.16.8 and only serves as a side reference; the real script is string-assembled by generate_execution_script / _render_sandbox_code in tool_sandbox/base.py</li>
+    <li>There is no script — the sandbox directly imports the user's tool module and calls it, with no assembling needed</li>
+    <li>Yes, Jinja2 renders that template at runtime, filling in agent_state and the user source to produce the script</li>
+    <li>Yes, but only the Modal sandbox uses the template; local and E2B use other means</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. A common trap. letta/templates/sandbox_code_file.py.j2 is dead in v0.16.8 — no .py references it, so it is only a human side reference. The real script is string-assembled by tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script via _render_sandbox_code: pickle.loads to restore agent_state, inline arguments via repr(), inline the user's source_code verbatim, call it, pack result+agent_state into JSON, and write marker+length+MD5 to stdout. Do not be fooled by the docstring (which says “base64-encode/pickle the result”) or the _pkl variable name — both are legacy; what is actually carried is JSON. The sandbox also cannot import the user module (it lives only in the database), so the script must be inlined and self-contained.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Use the “prison visitation window” metaphor to tell lesson 20's “trust boundary” as a whole, and think through three things: (1) Why can server→sandbox safely use pickle while sandbox→server must use json.loads only? Tie it to “the direction in which privilege widens” — what general rule lets you judge at a glance, in any cross-boundary scenario, whether “deserialization is safe here”? (2) The marker+length+MD5 frame handles “integrity” while the JSON encoding handles “security” — two different things, and PR #3343 only changed the latter. If someone strengthened only the frame (say, swapping MD5 for SHA-256) but still pickle.loads'd the payload, is that safe? Why can't an integrity check save you from “a parser that executes code”? (3) The local sandbox shares the kernel with the server, so its isolation is only “good enough.” If you move the same custom tool from local to E2B/Modal, does the trust-boundary diagram change? What stays the same (the trust-boundary principle: trusted inbound, never pickle.loads on the way back) and what changes (isolation strength, latency, and the return encoding — local's marker+MD5 frame / E2B's base64 / Modal's structured dict)?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="19-tool-dispatch-and-mcp.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">工具分发与执行（含 MCP）</span><span class="lang-en">Tool dispatch &amp; execution (incl. MCP)</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

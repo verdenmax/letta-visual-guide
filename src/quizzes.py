@@ -1351,6 +1351,466 @@ QUIZZES = {
             },
         ],
     },
+    "17-tool-as-function.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "模型在决定要不要调某个工具、以及怎么填参数时，它真正读到的是什么？",
+                    "en": "When the model decides whether to call a tool and how to fill its arguments, what does it actually read?",
+                },
+                "opts": [
+                    {"zh": "只有 generate_schema 从签名 + docstring 拼出的那份 JSON schema——name、description，以及每个参数的类型/描述。函数体从不展示给模型",
+                     "en": "Only the JSON schema that generate_schema built from the signature + docstring — name, description, and each parameter's type/description. The function body is never shown to the model"},
+                    {"zh": "函数的完整 Python 源码（含函数体），好让它推敲各种边界情况",
+                     "en": "The full Python source of the function, body included, so it can reason about edge cases"},
+                    {"zh": "主要是 docstring 的 Returns: 段，它告诉模型这次调用会返回什么",
+                     "en": "Mainly the docstring's Returns: section, which tells it what the call will hand back"},
+                    {"zh": "函数在几组样例输入上实际执行的一段运行轨迹",
+                     "en": "A live trace of the function executing on a few sample inputs"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "模型只读 schema。generate_schema（letta/functions/schema_generator.py）用 inspect.signature 取参数与注解、用 docstring_parser（Google 风）取描述文字，产出 name / description / parameters；函数体被抹掉，所以“完整源码”和“运行轨迹”它都看不到——这正是“你写代码、模型读 schema”的全部要义。而 Returns: 是给人看的：只有 docstring 第一句（成为 description）和 Args: 里逐参数那几行会进 schema，Returns: 不进。",
+                    "en": "The model reads only the schema. generate_schema (letta/functions/schema_generator.py) uses inspect.signature for params + annotations and docstring_parser (Google style) for the description text, emitting name / description / parameters; the body is wiped, so neither the full source nor a live trace is ever available — that is the whole point of “you write code, the model reads a schema.” And Returns: is for humans: only the first docstring line (which becomes the description) and the Args: per-parameter lines enter the schema, not Returns:.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你写了个工具，签名里有参数 x: int，但 docstring 的 Args: 段从没描述 x。创建这个工具时会发生什么？",
+                    "en": "You write a tool whose signature has a parameter x: int, but your docstring's Args: section never describes x. What happens when the tool is created?",
+                },
+                "opts": [
+                    {"zh": "generate_schema 在构建 schema 时 raise ValueError——不给 x 补上描述，工具就建不出来",
+                     "en": "generate_schema raises ValueError while building the schema — the tool can't be created until you add a description for x"},
+                    {"zh": "工具照常创建；x 只是拿到一个空描述，模型靠猜来填它",
+                     "en": "The tool is created fine; x just gets an empty description and the model fills it by guessing"},
+                    {"zh": "工具能创建，但 x 被悄悄从 schema 里丢掉，模型根本看不到它",
+                     "en": "The tool is created, but x is silently dropped from the schema so the model never sees it"},
+                    {"zh": "它只记一条警告，并给 x 套上 “No description available” 顶替",
+                     "en": "It only logs a warning and substitutes “No description available” for x"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "在 generate_schema 的逐参数循环里，缺描述是硬中止：它在 doc.params 里找该参数、取到 None，于是 raise ValueError（Parameter 'x' lacks a description...）。创建当场失败，错误一路抛给注册工具的调用方。它不会降级成警告、不会塞个空/默认描述、也不会悄悄丢弃——这些做法都会瓦解“docstring 是模型唯一的说明书”。一个易混点：“No description available” 这个回退只用于函数级总描述，从不用于某个参数。",
+                    "en": "In generate_schema's per-parameter loop a missing description is a hard stop: it scans doc.params for that arg, gets None, and raises ValueError (Parameter 'x' lacks a description...). Creation aborts and the error propagates to whoever is registering the tool. It is not downgraded to a warning, not given an empty/default description, and not silently dropped — any of those would defeat “the docstring is the model's only manual.” One subtlety: the “No description available” fallback applies only to the function-level description, never to a parameter.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个工具定义为 def foo(self, agent_state, x: int)。生成的 JSON schema 里会出现哪些参数？",
+                    "en": "A tool is defined as def foo(self, agent_state, x: int). Which parameters appear in the generated JSON schema?",
+                },
+                "opts": [
+                    {"zh": "只有 x。self 和 agent_state 属于 TOOL_RESERVED_KWARGS，generate_schema 直接跳过；它们从不进 schema，模型既看不到也不用填",
+                     "en": "Only x. self and agent_state are in TOOL_RESERVED_KWARGS, so generate_schema skips them; they never enter the schema and the model neither sees nor fills them"},
+                    {"zh": "三个都在——self、agent_state、x——因为 schema 完全照搬签名",
+                     "en": "All three — self, agent_state, and x — since the schema mirrors the signature exactly"},
+                    {"zh": "x 和 agent_state，但不含 self",
+                     "en": "x and agent_state, but not self"},
+                    {"zh": "只有 x，外加一个 request_heartbeat 参数——由 generate_schema 作为保留控制字段注入",
+                     "en": "Only x, plus a request_heartbeat parameter that generate_schema injects as a reserved control field"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "generate_schema 会跳过保留参数：循环开头，若 p.name 在 TOOL_RESERVED_KWARGS（[self, agent_state]）里就 continue，两者都不进 schema——schema 并非逐字照搬签名。而 request_heartbeat 不是由 generate_schema 加的，它在运行期另行附加（第 15 课），所以任何“让 generate_schema 注入它”的选项都是错的。最终只剩 x，也就是模型真正要填的那一个参数。",
+                    "en": "generate_schema skips reserved kwargs: at the top of the loop, if p.name is in TOOL_RESERVED_KWARGS ([self, agent_state]) it continues, so neither enters the schema — the signature is not mirrored verbatim. And request_heartbeat is NOT added by generate_schema; it is attached separately at runtime (Lesson 15), so any option that has generate_schema inject it is wrong. Net result: only x, the single parameter the model must actually supply.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你能把工具参数标注成 Dict[str, int] 并让它进入 schema 吗？",
+                    "en": "Can you annotate a tool parameter as Dict[str, int] and have it become part of the schema?",
+                },
+                "opts": [
+                    {"zh": "不行——type_to_json_schema_type 对带参的 Dict[k,v] 会 raise ValueError。要传结构化入参，请改用 Pydantic BaseModel，它会经 model_json_schema() 展开",
+                     "en": "No — type_to_json_schema_type raises ValueError on a parameterized Dict[k,v]. For structured input, define a Pydantic BaseModel instead; it is expanded via model_json_schema()"},
+                    {"zh": "可以——它能干净地映射成“字符串键、整数值”的 JSON object",
+                     "en": "Yes — it maps cleanly to a JSON object with string keys and integer values"},
+                    {"zh": "可以，但前提是你还得给它一个默认值 {}",
+                     "en": "Yes, but only if you also give it a default value of {}"},
+                    {"zh": "不行——它会 raise TypeError，和“缺类型注解”报的是同一个错",
+                     "en": "No — it raises TypeError, the very same error you get from a missing type annotation"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "带参的 Dict[str, int] 会被拒：type_to_json_schema_type 手写映射各类型，对带键值的 Dict 抛 ValueError（对一般 Union 抛 NotImplementedError）。JSON schema 无法无歧义地表达任意键值字典，所以 Letta 宁可报错也不猜。正解是 Pydantic BaseModel，其 model_json_schema() 会把字段/类型/必填嵌进工具 schema。注意错误类型：这是 ValueError，不是“缺注解”时的 TypeError——两道关、两种异常。",
+                    "en": "A parameterized Dict[str, int] is rejected: type_to_json_schema_type hand-maps types and raises ValueError for a keyed Dict (and NotImplementedError for a general Union). JSON schema can't express an arbitrary key/value dict unambiguously, so Letta errors rather than guesses. The fix is a Pydantic BaseModel, whose model_json_schema() nests fields/types/required into the tool schema. Mind the error kind: it is ValueError, not the TypeError raised for a missing annotation — different gates, different exceptions.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你 docstring 的 Args: 段格式略不规范，validate_google_style_docstring 不太满意。工具还建得出来吗？",
+                    "en": "Your docstring's Args: block is formatted a little off-standard, so validate_google_style_docstring isn't satisfied. Does the tool still build?",
+                },
+                "opts": [
+                    {"zh": "通常能——validate_google_style_docstring 只是建议性的：它的 ValueError 被捕获后降级成 logger.warning。真正的关卡是逐参数检查“有没有描述、有没有类型注解”",
+                     "en": "Usually yes — validate_google_style_docstring is advisory: its ValueError is caught and downgraded to a logger.warning. The real gate is the per-parameter check for a description and a type annotation"},
+                    {"zh": "不能——任何 Google 风校验失败都会以 ValueError 中止 schema 生成",
+                     "en": "No — any Google-style validation failure aborts schema generation with a ValueError"},
+                    {"zh": "不能——它会 raise TypeError，不修好格式工具就被拒",
+                     "en": "No — it raises TypeError and the tool is rejected until the formatting is fixed"},
+                    {"zh": "能，而且那些不规范的参数会在建 schema 前被自动修正成 Google 风格",
+                     "en": "Yes, and the malformed parameters are auto-corrected to Google style before the schema is built"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "两道关，一软一硬。validate_google_style_docstring 是软的：它的 ValueError 被 try/except 包住、记成一条警告，所以单是格式不规范并不会拦住构建。硬关在 generate_schema 的循环里——参数缺描述抛 ValueError、缺类型注解抛 TypeError，这两个不会被吞。没有任何东西会自动修正你的 docstring。所以格式只是“提醒”，逐参数缺描述或缺注解才是真正拦住创建的“硬伤”。",
+                    "en": "Two gates, soft and hard. validate_google_style_docstring is soft: its ValueError is wrapped in try/except and logged as a warning, so off-standard formatting alone won't stop the build. The hard gate lives inside generate_schema's loop — a parameter with no description raises ValueError, a missing type annotation raises TypeError; those are not swallowed. Nothing auto-corrects your docstring. So formatting is a reminder; a missing per-parameter description or annotation is what actually blocks creation.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“餐厅菜单”这个比喻，把第 17 课的故事完整讲一遍，并想三件事：(1) 为什么 Letta 把工具表示成“裸函数 + docstring”，而不是搞一个特殊基类或装饰器？“模型只读 schema、从不读函数体”换来了什么——又给 docstring 压上了什么新责任？(2) generate_schema 把“某个参数缺描述”做成创建期的硬 ValueError，却对“不规范的 Google 风 docstring”只给一条警告放行。为什么把“硬/软”这条线正好画在这里？(3) 类型表支持 str/int/bool/float/Optional/List/Literal/BaseModel，却拒绝带参 Dict 和一般 Union。如果一定要再支持一种“结构化”入参类型，你会扩这张表，还是把人引向 Pydantic 模型——你会怎么权衡？",
+                "en": "Use the “restaurant menu” metaphor to tell lesson 17's story as a whole, and think through three things: (1) Why does Letta represent a tool as a bare function + docstring instead of a special base class or decorator? What does “the model reads only the schema, never the body” buy you — and what new responsibility does it place on the docstring? (2) generate_schema turns a missing per-parameter description into a hard ValueError at creation time, yet lets an off-standard Google-style docstring through with only a warning. Why draw the “hard vs soft” line exactly there? (3) The type map supports str/int/bool/float/Optional/List/Literal/BaseModel but rejects parameterized Dict and general Union. If you had to support one more “structured” input type, would you extend the map or push people toward Pydantic models — and what would you trade off?",
+            },
+        ],
+    },
+    "18-schema-without-executing.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "用户注册自定义 Python 工具时，递给服务器的是一段源码字符串（不是函数对象）。Letta 如何为它产出 JSON schema？",
+                    "en": "A user registers a custom Python tool by sending a source-code string (not a function object). How does Letta produce its JSON schema?",
+                },
+                "opts": [
+                    {"zh": "derive_openai_json_schema 用 ast.parse 纯静态解析源码、重建签名、包成 MockFunction，再复用 generate_schema——这段代码从不被 exec 或 import",
+                     "en": "derive_openai_json_schema parses the source with ast.parse (pure AST), rebuilds a signature, wraps it in a MockFunction, and reuses generate_schema — the code is never exec'd or imported"},
+                    {"zh": "它把源码当模块 import 进来，再对得到的函数对象调 inspect.signature",
+                     "en": "It imports the source as a module, then calls inspect.signature on the resulting function object"},
+                    {"zh": "它拿几组样例输入把函数跑一遍，记录观察到的参数/返回类型",
+                     "en": "It runs the function once on a few sample inputs and records the argument/return types it observes"},
+                    {"zh": "它让模型读源码、生成一份 schema，再把模型的输出缓存下来",
+                     "en": "It asks the model to read the source and emit a schema, then caches the model's output"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "第 18 课的核心就是“不运行代码也能派生 schema”。derive_openai_json_schema（letta/functions/functions.py）调用 _parse_function_from_source：用 ast.parse 纯静态解析、挑出函数节点、重建 inspect.Signature，返回一个 MockFunction；再把这个 mock 喂给第 17 课同一个 generate_schema。import + inspect 会执行顶层代码（在多租户服务器上即 RCE），既不是“跑函数”也不是“问模型”。是“读”，不是“跑”。",
+                    "en": "The whole point of lesson 18 is deriving a schema without running the code. derive_openai_json_schema (letta/functions/functions.py) calls _parse_function_from_source, which uses ast.parse — purely static — picks the function node, rebuilds an inspect.Signature, and returns a MockFunction; that mock is then fed to the same generate_schema from lesson 17. import + inspect would execute top-level code (an RCE on a multi-tenant server), and neither running the function nor asking the model is involved. Reading, not running.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "generate_schema 期待一个可内省的真函数对象，可我们手里只有从 AST 拆出来的零件。MockFunction 凭什么能顶替上场？",
+                    "en": "generate_schema expects a real function object to introspect, but we only hold fragments pulled from the AST. What makes a MockFunction good enough to stand in?",
+                },
+                "opts": [
+                    {"zh": "它设好 __name__、__doc__、__signature__——而 inspect.signature() 与 docstring 解析读的正是这几个属性，于是对从未运行的代码也能内省",
+                     "en": "It sets __name__, __doc__, and __signature__ — exactly what inspect.signature() and docstring parsing read — so introspection works on code that never ran"},
+                    {"zh": "它把源码编译成真正可调用的对象，让 inspect 能在沙箱里安全地执行它",
+                     "en": "It compiles the source into a real callable so inspect can execute it safely in a sandbox"},
+                    {"zh": "它继承用户的类、重写 __call__ 让其直接返回 schema",
+                     "en": "It subclasses the user's class and overrides __call__ to return the schema directly"},
+                    {"zh": "它保存原始源码字符串，generate_schema 每要一个字段就把字符串重新解析一遍",
+                     "en": "It stores the raw source string, and generate_schema re-parses that string each time it needs a field"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "inspect 不查血统、只读属性。MockFunction.__init__（letta/functions/functions.py）设好 __name__、__doc__、__signature__；一旦显式设了 __signature__，inspect.signature(mock) 就返回它、docstring 解析读 __doc__，于是同一个 generate_schema 能在从未运行的代码上工作（鸭子类型）。注意 MockFunction.__call__ 故意抛 NotImplementedError——它本就不该被执行。既不编译、不沙箱跑，也不会“每个字段重解析一次”。",
+                    "en": "inspect checks no pedigree — it reads attributes. MockFunction.__init__ (letta/functions/functions.py) sets __name__, __doc__, and __signature__; once __signature__ is set explicitly, inspect.signature(mock) returns it and docstring parsing reads __doc__, so the same generate_schema works on never-run code (duck typing). Notably MockFunction.__call__ raises NotImplementedError — it is never meant to execute. Nothing is compiled, sandbox-run, or re-parsed per field.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "用户上传的源码里定义了三个函数：先是两个辅助函数，最后才是真正的工具。哪个会成为工具？这个判断需要“运行”什么吗？",
+                    "en": "A user's uploaded source defines three functions: two helpers first, then the actual tool. Which one becomes the tool, and is anything run to decide?",
+                },
+                "opts": [
+                    {"zh": "解析树里最后一个 FunctionDef，纯靠遍历 AST 节点列表选出——不执行任何东西",
+                     "en": "The last FunctionDef in the parsed tree, chosen purely by walking the AST node list — nothing is executed"},
+                    {"zh": "第一个 FunctionDef，因为解析器惯例取最先定义的那个",
+                     "en": "The first FunctionDef, since parsers conventionally take the earliest definition"},
+                    {"zh": "哪个函数有 docstring 就取哪个；若有多个有 docstring，源码因有歧义被拒",
+                     "en": "Whichever function has a docstring; if several do, the source is rejected as ambiguous"},
+                    {"zh": "名字与 tool name 参数相符的那个，通过 import 模块来确定",
+                     "en": "The one whose name matches the tool name argument, resolved by importing the module"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "_parse_function_from_source 用 ast.walk 收集 ast.FunctionDef 节点，取最后一个（[-1]）——约定是“工具就是文件里最后定义的那个函数”。这是对 AST 节点的静态读取，不跑任何代码。它明确不是第一个、也不是“有 docstring 的那个”（被选中的函数要求有 docstring，但选择靠位置），更不会为匹配名字去 import。",
+                    "en": "_parse_function_from_source collects ast.FunctionDef nodes via ast.walk and takes the last one ([-1]) — the convention is “the tool is the last function defined in the file.” This is a static read of the AST nodes; nothing runs. It is explicitly NOT the first function, and not “the one with a docstring” (a docstring is required on the chosen function, but selection is by position), and nothing is imported to match names.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你创建一个 source_type 为 typescript 的工具，却没传 json_schema，指望 Letta 像对 Python 那样替你自动派生。结果如何？",
+                    "en": "You create a tool whose source_type is typescript but pass no json_schema, expecting Letta to auto-derive it the way it does for Python. What happens?",
+                },
+                "opts": [
+                    {"zh": "创建失败：ToolCreate.validate_typescript_requires_schema 抛 ValueError——TypeScript 工具必须显式提供 json_schema",
+                     "en": "Creation fails: ToolCreate.validate_typescript_requires_schema raises ValueError — a TypeScript tool must supply an explicit json_schema"},
+                    {"zh": "和 Python 一样照常工作：derive_typescript_json_schema 通过 AST 从源码生成完整 schema",
+                     "en": "It works just like Python: derive_typescript_json_schema produces a complete schema from the source via the AST"},
+                    {"zh": "它静默地用一份空的 parameters schema 建出工具，模型靠猜来填参数",
+                     "en": "It silently creates the tool with an empty parameters schema, and the model fills arguments by guessing"},
+                    {"zh": "它先把 TypeScript 转译成 Python，再走普通的 AST 派生",
+                     "en": "It transpiles the TypeScript to Python first, then runs the normal AST derivation"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "TS 工具是“自动派生”的例外。ToolCreate.validate_typescript_requires_schema 会拒绝没有 json_schema 的 typescript 源码（ValueError），所以便利的自动派生主要服务 Python。derive_typescript_json_schema 确实存在，但它基于正则、较粗放（union/any → string），并非 AST，也没有 TS→Python 转译这一步。schema 不会被静默置空；缺显式 json_schema 时创建直接失败。",
+                    "en": "TS tools are the exception to auto-derivation. ToolCreate.validate_typescript_requires_schema rejects a typescript source with no json_schema (ValueError), so the convenient auto-derive path mainly serves Python. derive_typescript_json_schema does exist, but it is regex-based and coarse (union/any → string), not AST, and there is no TS→Python transpile step. The schema is not silently emptied; creation simply fails until you pass an explicit json_schema.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你想读 MockFunction 的定义，它在哪个文件里？",
+                    "en": "You want to read MockFunction's definition. Which file holds it?",
+                },
+                "opts": [
+                    {"zh": "letta/functions/functions.py——和 derive_openai_json_schema、_parse_function_from_source 在一起",
+                     "en": "letta/functions/functions.py — alongside derive_openai_json_schema and _parse_function_from_source"},
+                    {"zh": "letta/functions/ast_parsers.py——因为它属于 AST 解析辅助",
+                     "en": "letta/functions/ast_parsers.py — since it is part of the AST-parsing helpers"},
+                    {"zh": "letta/functions/typescript_parser.py——它被 Python 和 TypeScript 派生共用",
+                     "en": "letta/functions/typescript_parser.py — it is shared by both Python and TypeScript derivation"},
+                    {"zh": "letta/services/tool_schema_generator.py——挨着创建期接线",
+                     "en": "letta/services/tool_schema_generator.py — next to the creation-time wiring"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "MockFunction 住在 letta/functions/functions.py，和派生三件套 derive_openai_json_schema、_parse_function_from_source 在一起。ast_parsers.py 是常见的坑——它放的是 get_function_name_and_docstring、resolve_type（白名单，allow_unsafe_eval=False）等 AST 辅助，但没有 MockFunction。typescript_parser.py 负责基于正则的 TS 派生；tool_schema_generator.py 放的是 generate_schema_for_tool_creation（创建期分派）——都不是 MockFunction。",
+                    "en": "MockFunction lives in letta/functions/functions.py, together with the deriver trio derive_openai_json_schema and _parse_function_from_source. ast_parsers.py is a common trap — it holds AST helpers like get_function_name_and_docstring and resolve_type (whitelist, allow_unsafe_eval=False), but NOT MockFunction. typescript_parser.py handles regex-based TS derivation; tool_schema_generator.py holds generate_schema_for_tool_creation (the creation-time dispatch), not MockFunction.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“不拆封验货”这个比喻，把第 18 课的故事完整讲一遍，并想三件事：(1) 为什么 Letta 宁可“读源码”也绝不“import 跑一下”？若把 import 换成“先丢进沙箱再 import”，省下的麻烦和新增的风险各是什么？(2) MockFunction 只凑齐 __name__/__doc__/__signature__ 三个属性，却故意让 __call__ 抛 NotImplementedError。为什么“能被内省”和“不能被调用”要同时成立——这对一个“假函数”意味着怎样的设计取舍？(3) Python 工具能在创建时自动派生 schema，TypeScript 工具却必须显式带上 json_schema。若让你把“自动派生”也扩到 TypeScript，你会选 AST 式解析器还是继续用正则——如何权衡“覆盖更多语法”与“猜错复杂类型”的风险？",
+                "en": "Use the “inspect without unsealing” metaphor to tell lesson 18's story as a whole, and think through three things: (1) Why does Letta insist on “reading the source” and never “just import to run it”? If you swapped import for “sandbox it first, then import,” what trouble would you save and what new risk would you add? (2) MockFunction gathers only the three attributes __name__/__doc__/__signature__, yet deliberately makes __call__ raise NotImplementedError. Why should “introspectable” and “not callable” hold at the same time — and what design trade-off does that imply for a “fake function”? (3) Python tools can auto-derive a schema at creation, but TypeScript tools must bring an explicit json_schema. If you had to extend “auto-derivation” to TypeScript too, would you pick an AST-style parser or stay with regex — how would you weigh “covering more syntax” against the risk of “guessing complex types wrong”?",
+            },
+        ],
+    },
+    "19-tool-dispatch-and-mcp.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "模型吐出一个工具调用后，agent 循环真正调用的“执行入口”是谁？ToolExecutorFactory 在其中扮演什么角色？",
+                    "en": "After the model emits a tool call, which “execution entry” does the agent loop actually call? And what role does ToolExecutorFactory play?",
+                },
+                "opts": [
+                    {"zh": "真入口是 ToolExecutionManager.execute_tool_async：它用工厂拿到执行器，再负责计时、超长截断、把异常包成 ToolExecutionResult。工厂只“按 ToolType 选执行器”，本身不运行工具",
+                     "en": "The real entry is ToolExecutionManager.execute_tool_async: it uses the factory to obtain an executor, then handles timing, over-length truncation, and wrapping exceptions into a ToolExecutionResult. The factory only “picks an executor by ToolType” and does not run the tool itself"},
+                    {"zh": "工厂 ToolExecutorFactory.get_executor 既选执行器又直接运行工具，循环调它就够了",
+                     "en": "The factory ToolExecutorFactory.get_executor both picks the executor and runs the tool directly, so the loop just calls it"},
+                    {"zh": "循环直接调用具体执行器的 execute()，中间没有任何管理器层",
+                     "en": "The loop calls a concrete executor's execute() directly, with no intermediate manager layer"},
+                    {"zh": "模型自己通过网络把工具调用发给执行器，服务端只负责转发结果",
+                     "en": "The model itself sends the tool call to the executor over the network, and the server only relays the result"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "第 19 课的关键分层：ToolExecutorFactory（tool_execution_manager.py）只做“选人”——按 tool.tool_type 查 _executor_map、返回一个执行器实例；真正被循环调用的入口是同一文件的 ToolExecutionManager.execute_tool_async，它先用工厂取执行器，再统一计时、按 return_char_limit 截断、把异常包成 ToolExecutionResult。所以“工厂＝入口”是常见误区：工厂不运行工具，管理器才是入口。",
+                    "en": "Lesson 19's key layering: ToolExecutorFactory (tool_execution_manager.py) only “picks the person” — it looks up _executor_map by tool.tool_type and returns an executor instance; the entry the loop actually calls is ToolExecutionManager.execute_tool_async in the same file, which first gets the executor from the factory, then uniformly times the call, truncates by return_char_limit, and wraps exceptions into a ToolExecutionResult. So “factory = entry” is a common trap: the factory doesn't run the tool; the manager is the entry.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你注册了一个自己写的 Python 工具 calculate_invoice，没有把它归到任何内置类别。它默认会被哪个执行器执行？为什么？",
+                    "en": "You register a Python tool you wrote yourself, calculate_invoice, without sorting it into any built-in category. Which executor runs it by default, and why?",
+                },
+                "opts": [
+                    {"zh": "SandboxToolExecutor。它的类型默认是 custom，而 custom 不在工厂 _executor_map 里——get_executor 的 .get(tool_type, SandboxToolExecutor) 会兜底返回沙箱执行器",
+                     "en": "SandboxToolExecutor. Its type defaults to custom, and custom is not in the factory's _executor_map — get_executor's .get(tool_type, SandboxToolExecutor) falls back to the sandbox executor"},
+                    {"zh": "LettaCoreToolExecutor，因为所有没有特别归类的工具都按“核心工具”在进程内直跑",
+                     "en": "LettaCoreToolExecutor, since any tool not specially categorized runs in-process as a “core tool”"},
+                    {"zh": "LettaBuiltinToolExecutor，自定义函数被当作内置工具处理",
+                     "en": "LettaBuiltinToolExecutor, treating a custom function as a built-in tool"},
+                    {"zh": "创建会失败，因为工厂里没有 custom 对应的执行器，无法分发",
+                     "en": "Creation fails, because the factory has no executor mapped for custom, so it can't be dispatched"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "schema 层默认 tool_type=CUSTOM（custom 不会被 upsert_base_tools_async 按名字归类）。工厂 ToolExecutorFactory._executor_map 显式登记 7 条、落到 5 个执行器类（LETTA_CORE/LETTA_MEMORY_CORE/LETTA_SLEEPTIME_CORE→LettaCore、LETTA_MULTI_AGENT_CORE→Sandbox、LETTA_BUILTIN→LettaBuiltin、LETTA_FILES_CORE→LettaFile、EXTERNAL_MCP→ExternalMCP），custom 不在其中；get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor) 兜底，所以自定义工具默认进沙箱。它不会失败——兜底正是为这种情况设计的。",
+                    "en": "At the schema layer tool_type defaults to CUSTOM (custom is not name-sorted by upsert_base_tools_async). The factory ToolExecutorFactory._executor_map wires 7 entries explicitly onto 5 executor classes (LETTA_CORE/LETTA_MEMORY_CORE/LETTA_SLEEPTIME_CORE→LettaCore, LETTA_MULTI_AGENT_CORE→Sandbox, LETTA_BUILTIN→LettaBuiltin, LETTA_FILES_CORE→LettaFile, EXTERNAL_MCP→ExternalMCP), and custom is not among them; get_executor falls back via _executor_map.get(tool_type, SandboxToolExecutor), so a custom tool goes to the sandbox by default. It does not fail — the fallback exists precisely for this case.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个 external_mcp 类型的工具被调用时，它的代码是在 Letta 的本地沙箱里跑的吗？执行路径大致是怎样的？",
+                    "en": "When a tool of type external_mcp is called, does its code run inside Letta's local sandbox? Roughly what is the execution path?",
+                },
+                "opts": [
+                    {"zh": "不在沙箱。ExternalMCPToolExecutor 从 mcp:&lt;server&gt; 标签解析出服务器名，交给 MCPManager().execute_mcp_server_tool 连接外部 MCP server（connect → execute → cleanup），Letta 本地不跑任何工具代码",
+                     "en": "Not in the sandbox. ExternalMCPToolExecutor parses the server name from the mcp:&lt;server&gt; tag and hands it to MCPManager().execute_mcp_server_tool, which connects to the external MCP server (connect → execute → cleanup); Letta runs no tool code locally"},
+                    {"zh": "在沙箱里跑。所有“外部代码”都被当作不可信代码，统一丢进 SandboxToolExecutor 隔离执行",
+                     "en": "It runs in the sandbox. All “external code” is treated as untrusted and uniformly thrown into SandboxToolExecutor for isolated execution"},
+                    {"zh": "在 Letta 进程内直跑，和 core_memory_append 一样，以求最低延迟",
+                     "en": "It runs in-process inside Letta, just like core_memory_append, for the lowest latency"},
+                    {"zh": "Letta 把工具源码下载到本地，import 后在受限解释器里执行",
+                     "en": "Letta downloads the tool's source locally and executes it in a restricted interpreter after importing it"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "MCP 有两个反直觉点：①不走沙箱——ExternalMCPToolExecutor（mcp_tool_executor.py）连接的是外部 MCP server，本地不跑工具代码；②每次开新连接——MCPManager.execute_mcp_server_tool 走 connect → execute → cleanup，不复用连接。真正的传输客户端在 services/mcp/（stdio/sse/streamable_http），functions/mcp_client/ 只放配置类型。沙箱是用来隔离“在你机器上跑的陌生代码”的，而 MCP 的代码根本不在你机器上跑。",
+                    "en": "MCP has two counterintuitive points: (1) no sandbox — ExternalMCPToolExecutor (mcp_tool_executor.py) connects to an external MCP server and runs no tool code locally; (2) a fresh connection each time — MCPManager.execute_mcp_server_tool goes connect → execute → cleanup with no connection reuse. The real transport clients live in services/mcp/ (stdio/sse/streamable_http); functions/mcp_client/ holds only config types. The sandbox exists to isolate “unfamiliar code running on your machine,” but MCP's code never runs on your machine at all.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "agent 调用 core_memory_append 改写核心记忆时，是哪个执行器在执行它？在哪种运行时里跑？",
+                    "en": "When an agent calls core_memory_append to rewrite core memory, which executor runs it, and in what runtime?",
+                },
+                "opts": [
+                    {"zh": "LettaCoreToolExecutor，在 Letta 进程内直跑。core_memory_append 的类型是 letta_memory_core，工厂把 LETTA_MEMORY_CORE 也映射到 LettaCoreToolExecutor——记忆工具不进沙箱",
+                     "en": "LettaCoreToolExecutor, in-process inside Letta. core_memory_append has type letta_memory_core, and the factory maps LETTA_MEMORY_CORE to LettaCoreToolExecutor too — memory tools do not go to the sandbox"},
+                    {"zh": "SandboxToolExecutor，因为任何“写状态”的工具都必须先隔离，避免污染服务端内存",
+                     "en": "SandboxToolExecutor, because any “state-writing” tool must be isolated first to avoid polluting server memory"},
+                    {"zh": "有一个专门的 LettaMemoryToolExecutor 处理所有记忆工具",
+                     "en": "A dedicated LettaMemoryToolExecutor handles all memory tools"},
+                    {"zh": "LettaBuiltinToolExecutor，记忆改写被当作内置实用工具处理",
+                     "en": "LettaBuiltinToolExecutor, treating memory edits as a built-in utility"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "工厂 _executor_map 把 LETTA_CORE 和 LETTA_MEMORY_CORE（还有 LETTA_SLEEPTIME_CORE）都映射到同一个 LettaCoreToolExecutor（core_tool_executor.py），它把 core、记忆、sleeptime 三摊工具全在进程内直跑——所以 core_memory_append 在进程内执行、延迟最低，不绕沙箱。没有单独的“Memory”执行器；记忆工具也不会因为“写状态”被丢进沙箱。",
+                    "en": "The factory's _executor_map maps LETTA_CORE and LETTA_MEMORY_CORE (and LETTA_SLEEPTIME_CORE) all to the same LettaCoreToolExecutor (core_tool_executor.py), which runs core, memory, and sleeptime tools all in-process — so core_memory_append executes in-process at the lowest latency, with no sandbox detour. There is no separate “Memory” executor, and memory tools are not sandboxed for “writing state.”",
+                },
+            },
+            {
+                "q": {
+                    "zh": "ToolType 共有 11 种，但工厂只有 5 个执行器类；_executor_map 只显式接线了其中一部分类型。像 custom、letta_voice_sleeptime_core、以及弃用的 external_langchain/external_composio 这些没进表的类型，会怎样被执行？",
+                    "en": "ToolType has 11 values, but there are only 5 executor classes; _executor_map wires only some of those types explicitly. Types not in the table — like custom, letta_voice_sleeptime_core, and the deprecated external_langchain/external_composio — how do they get executed?",
+                },
+                "opts": [
+                    {"zh": "全部兜底走 SandboxToolExecutor——get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor)，凡是没在表里的类型一律落到沙箱。这是“默认安全”：除非明确认定安全，否则隔离",
+                     "en": "They all fall back to SandboxToolExecutor — get_executor uses _executor_map.get(tool_type, SandboxToolExecutor), so any type not in the table lands in the sandbox. This is “secure by default”: isolate unless explicitly judged safe"},
+                    {"zh": "工厂会抛 KeyError，这些类型的工具无法被执行",
+                     "en": "The factory raises KeyError, and tools of those types cannot be executed"},
+                    {"zh": "每种类型都有一个同名执行器，只是没写进 _executor_map，运行时按命名约定动态加载",
+                     "en": "Each type has a same-named executor that's simply omitted from _executor_map and loaded dynamically by naming convention at runtime"},
+                    {"zh": "它们回退到 LettaCoreToolExecutor，在进程内直跑",
+                     "en": "They fall back to LettaCoreToolExecutor and run in-process"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这正是本课最大的“陷阱”：_executor_map 显式接线了 7 个条目（LETTA_CORE、LETTA_MEMORY_CORE、LETTA_SLEEPTIME_CORE → LettaCore；LETTA_MULTI_AGENT_CORE → Sandbox；LETTA_BUILTIN、LETTA_FILES_CORE、EXTERNAL_MCP），映射到 5 个执行器类。其余 4 种没进表的类型（custom、letta_voice_sleeptime_core、external_langchain、external_composio）靠 get_executor 的 .get(tool_type, SandboxToolExecutor) 兜底走沙箱。注意 letta_multi_agent_core 也在沙箱跑，但它是被显式映射的，不是兜底。彩蛋：ExternalComposioToolExecutor 这个类存在却没被接线（external_composio 弃用、兜底沙箱），是永远不会被选中的死代码。既不会 KeyError，也没有“按命名动态加载”。",
+                    "en": "This is the lesson's biggest trap: _executor_map wires 7 entries explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_SLEEPTIME_CORE → LettaCore; LETTA_MULTI_AGENT_CORE → Sandbox; LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP) onto just 5 executor classes. The other 4 unlisted types (custom, letta_voice_sleeptime_core, external_langchain, external_composio) fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Note letta_multi_agent_core also runs in the sandbox, but by an explicit mapping, not the fallback. Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“医院分诊台”这个比喻，把第 19 课的执行链路完整讲一遍，并想三件事：(1) ToolType + 工厂这套“按类型分发”的设计，和“在循环里写一长串 if/elif 判断该怎么跑”相比，好在哪？日后新增一种工具类型、或想把某类工具从沙箱挪到进程内，各要改哪里？(2) 自定义工具“默认兜底沙箱”是“默认安全”，可它也意味着一个忘了归类的内置工具会悄悄变慢（多绕一层沙箱）。这个“安全 vs 性能”的默认你怎么权衡？要不要在“落到兜底”时打一条告警日志？(3) MCP 不走沙箱、每次现连现断，把“运行第三方代码”的风险留在外部 server。对比“本地沙箱跑自定义代码”，这两种扩展能力的方式在信任边界、延迟、故障模式上各有什么不同？什么场景该选哪种？",
+                "en": "Use the “hospital triage desk” metaphor to tell lesson 19's execution chain as a whole, and think through three things: (1) Compared with “writing a long if/elif in the loop to decide how to run,” what's better about the ToolType + factory “dispatch by type” design? To add a new tool type later, or to move some class of tool from the sandbox to in-process, what would you change in each case? (2) “Custom defaults to the sandbox” is secure by default, but it also means a built-in tool someone forgot to categorize silently gets slower (one extra sandbox hop). How would you weigh this “safety vs performance” default — would you log a warning whenever execution “hits the fallback”? (3) MCP skips the sandbox and connects/disconnects per call, leaving the risk of “running third-party code” on the external server. Compared with “running custom code in a local sandbox,” how do these two ways of extending capability differ in trust boundary, latency, and failure modes — and when would you pick each?",
+            },
+        ],
+    },
+    "20-tool-sandbox-security.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "服务端把 agent_state 送进沙箱时用的是哪种序列化？为什么这个方向用 pickle 是安全的？",
+                    "en": "When the server sends agent_state into the sandbox, which serialization does it use, and why is pickle safe in this direction?",
+                },
+                "opts": [
+                    {"zh": "用 pickle：被反序列化的 agent_state 是服务端自己造的可信对象，沙箱只负责 pickle.loads。数据从高信任流向低信任沙箱、权限在收窄，不存在“反序列化不可信输入”的问题",
+                     "en": "pickle: the agent_state being deserialized is a trusted object the server built itself, and the sandbox only pickle.loads it. Data flows from high trust down into the low-trust sandbox, so privilege narrows and there is no “deserializing untrusted input” problem"},
+                    {"zh": "用 JSON：所有跨沙箱边界的数据都必须是 JSON，pickle 在任何方向都被禁止",
+                     "en": "JSON: all data crossing the sandbox boundary must be JSON, and pickle is forbidden in every direction"},
+                    {"zh": "用 pickle，但只是因为快——agent_state 太大，JSON 编不动，和信任方向无关",
+                     "en": "pickle, but only because it is fast — agent_state is too big for JSON, and it has nothing to do with trust direction"},
+                    {"zh": "调用参数和 agent_state 都用 pickle 一起打包送进去，沙箱再统一 loads",
+                     "en": "both the call arguments and agent_state are pickled together and sent in, and the sandbox loads them all at once"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "server→sandbox 走 pickle 是有意的受信方向：agent_state 由服务端 pickle.dumps，沙箱里 pickle.loads 还原。因为被反序列化的字节来源可信（服务端自己造的），且权限往低信任侧流，pickle.loads 不会变成攻击面。注意区分：整段脚本里只有 agent_state 用 pickle；调用参数是按 repr() 内联的字面量，不是 pickle。说“任何方向都禁 pickle”是错的——被禁的是回程（sandbox→server）。",
+                    "en": "server→sandbox uses pickle as a deliberate trusted direction: agent_state is pickle.dumps'd by the server and pickle.loads'd back inside the sandbox. Because the deserialized bytes come from a trusted source (the server built them) and privilege flows toward the low-trust side, pickle.loads never becomes an attack surface. Note the distinction: in the whole script only agent_state uses pickle; call arguments are inlined literals via repr(), not pickle. “Forbid pickle in every direction” is wrong — what is forbidden is the return leg (sandbox→server).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么沙箱回传给服务端的结果必须用 JSON 读，而绝不能 pickle.loads？",
+                    "en": "Why must the result the sandbox sends back to the server be read as JSON, and never pickle.loads'd?",
+                },
+                "opts": [
+                    {"zh": "因为沙箱刚执行过不可信的用户代码，它的 stdout 是不可信输出。pickle.loads 会在反序列化时执行任意代码——对沙箱输出 pickle.loads 等于一个服务端 RCE；json.loads 最坏只是拿到假数据",
+                     "en": "Because the sandbox just ran untrusted user code, so its stdout is untrusted output. pickle.loads executes arbitrary code during deserialization — pickle.loads on the sandbox output is a server-side RCE; json.loads at worst yields fake data"},
+                    {"zh": "因为 JSON 比 pickle 快，回程数据量大，必须用最快的格式",
+                     "en": "Because JSON is faster than pickle, and the return data is large, so the fastest format is required"},
+                    {"zh": "因为沙箱里没装 pickle 模块，只能用 JSON 编码结果",
+                     "en": "Because the sandbox has no pickle module installed, so it can only encode results as JSON"},
+                    {"zh": "因为 agent_state 已经在去程用过 pickle 了，回程不能重复用同一种格式",
+                     "en": "Because agent_state already used pickle on the way in, and the return trip cannot reuse the same format"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "回程是不可信方向：沙箱刚跑完陌生人的工具代码，它写到 stdout 的每个字节都可疑。pickle.loads 在反序列化时执行任意代码，一个恶意工具只要返回带 __reduce__ 的对象，服务端 pickle.loads 的瞬间就被 RCE。改用 json.loads，这类对象根本无法表达，最坏只是解析到假数据。这和“快不快”“装没装模块”都无关——纯粹是信任边界问题。这也正是 PR #3343 修复的点。",
+                    "en": "The return leg is the untrusted direction: the sandbox just ran a stranger's tool code, so every byte it writes to stdout is suspect. pickle.loads executes arbitrary code during deserialization — a malicious tool need only return an object carrying a __reduce__, and the instant the server pickle.loads it, it is RCE'd. With json.loads such objects cannot even be expressed, so the worst case is parsing fake data. This has nothing to do with speed or installed modules — it is purely a trust-boundary issue, and exactly what PR #3343 fixed.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "回程帧里的 marker + 长度 + MD5 解决的是哪一类问题？",
+                    "en": "What class of problem does the return frame's marker + length + MD5 solve?",
+                },
+                "opts": [
+                    {"zh": "结果通道被污染：用户工具能往 stdout 打任何东西（调试 print、异常栈、甚至伪造的假结果）。marker 在噪声里定位真 payload、长度精确切片、MD5 抓篡改/截断，三层叠起来保证读到的就是工具真正返回的那份",
+                     "en": "The result channel being polluted: a user tool can print anything to stdout (debug prints, stack traces, even a forged fake result). The marker locates the real payload amid the noise, the length slices it precisely, and MD5 catches tampering/truncation — three layers ensuring what is read is exactly what the tool actually returned"},
+                    {"zh": "把 pickle 升级成加密格式，防止 agent_state 在去程被沙箱偷看",
+                     "en": "Upgrading pickle to an encrypted format to stop the sandbox from peeking at agent_state on the way in"},
+                    {"zh": "压缩 stdout，避免大结果占用太多带宽",
+                     "en": "Compressing stdout to keep large results from using too much bandwidth"},
+                    {"zh": "替代 JSON 解析，让服务端可以直接 pickle.loads 沙箱输出",
+                     "en": "Replacing JSON parsing so the server can pickle.loads the sandbox output directly"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "stdout 是条嘈杂的河：调试输出、异常栈、甚至用户故意打的假结果/假 marker 都混在里面。三层各司其职——marker（uuid5 的 16 字节）在噪声里定位真 payload 起点；length（4 字节 big-endian '&gt;I'）精确切出 payload；MD5（32 hex）抓篡改与截断，不符就 raise Exception(\"Function ran, but output is corrupted.\")。它防的是完整性/伪造，和加密、压缩无关；更不是为了让服务端去 pickle.loads——恰恰相反，校验通过后只 json.loads。",
+                    "en": "stdout is a noisy river: debug output, stack traces, even a fake result/fake marker a user deliberately prints are all mixed in. The three layers each do a job — marker (uuid5's 16 bytes) locates the real payload's start amid the noise; length (4 bytes big-endian '&gt;I') slices the payload precisely; MD5 (32 hex) catches tampering and truncation, raising Exception(\"Function ran, but output is corrupted.\") on mismatch. It defends integrity/forgery, unrelated to encryption or compression; and it is certainly not there to let the server pickle.loads — on the contrary, once verified, only json.loads runs.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "PR #3343（commit 1131535）到底改了什么？哪些是它没动的？",
+                    "en": "What exactly did PR #3343 (commit 1131535) change, and what did it leave untouched?",
+                },
+                "opts": [
+                    {"zh": "它只把 sandbox→server 的 payload 编码从 pickle 换成 JSON，于是服务端读回从 pickle.loads 变成 json.loads，消除 RCE 面。marker+长度+MD5 帧早就存在、不是它加的；server→sandbox 仍 pickle agent_state，是有意保留的受信方向",
+                     "en": "It only switched the sandbox→server payload encoding from pickle to JSON, so the server's read-back changed from pickle.loads to json.loads, eliminating the RCE surface. The marker+length+MD5 frame already existed and was not added by it; server→sandbox still pickles agent_state, the intentionally kept trusted direction"},
+                    {"zh": "它新增了 marker+长度+MD5 帧，在此之前回程根本没有任何完整性校验",
+                     "en": "It added the marker+length+MD5 frame; before it, the return leg had no integrity check at all"},
+                    {"zh": "它把去程的 agent_state 也从 pickle 改成 JSON，彻底禁用了 pickle",
+                     "en": "It also switched the inbound agent_state from pickle to JSON, banning pickle entirely"},
+                    {"zh": "它把本地沙箱换成 E2B，用云端隔离替代了进程隔离",
+                     "en": "It replaced the local sandbox with E2B, swapping cloud isolation for process isolation"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "#3343 的范围很窄但很关键：只改回程 payload 的编码（pickle→JSON），落点在 tool_parser_helper.py——服务端从 pickle.loads(沙箱字节) 变成 json.loads(payload)，结构性消除了服务端 RCE。它没动的：①marker+长度+MD5 帧本就存在（负责完整性，不是 #3343 引入）；②server→sandbox 仍 pickle agent_state（受信方向，有意保留，不是漏改）。说它“加了帧”“禁用了所有 pickle”“换成 E2B”都把范围搞错了。一句话：帧管完整性、编码格式管安全性，#3343 动的是后者。",
+                    "en": "#3343's scope is narrow but pivotal: it changes only the return payload's encoding (pickle→JSON), landing in tool_parser_helper.py — the server goes from pickle.loads(sandbox bytes) to json.loads(payload), structurally eliminating the server RCE. What it left alone: (1) the marker+length+MD5 frame already existed (it handles integrity and was not introduced by #3343); (2) server→sandbox still pickles agent_state (the trusted direction, kept on purpose, not an oversight). Saying it “added the frame,” “banned all pickle,” or “switched to E2B” all misstate the scope. In one line: the frame governs integrity, the encoding governs security, and #3343 moved the latter.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "在 v0.16.8 里，沙箱实际执行的那段脚本是由 letta/templates/sandbox_code_file.py.j2 模板渲染出来的吗？",
+                    "en": "In v0.16.8, is the script the sandbox actually runs rendered from the letta/templates/sandbox_code_file.py.j2 template?",
+                },
+                "opts": [
+                    {"zh": "不是。那个 .j2 模板在 v0.16.8 没有被任何 .py 引用，只能当对照参考；真实脚本是 tool_sandbox/base.py 里 generate_execution_script / _render_sandbox_code 用字符串拼出来的",
+                     "en": "No. That .j2 template is not referenced by any .py in v0.16.8 and only serves as a side reference; the real script is string-assembled by generate_execution_script / _render_sandbox_code in tool_sandbox/base.py"},
+                    {"zh": "是的，Jinja2 在运行时渲染该模板，把 agent_state 和用户源码填进去生成脚本",
+                     "en": "Yes, Jinja2 renders that template at runtime, filling in agent_state and the user source to produce the script"},
+                    {"zh": "是的，但只有 Modal 沙箱用模板，本地和 E2B 用别的方式",
+                     "en": "Yes, but only the Modal sandbox uses the template; local and E2B use other means"},
+                    {"zh": "没有脚本——沙箱直接 import 用户的工具模块并调用，不需要拼脚本",
+                     "en": "There is no script — the sandbox directly imports the user's tool module and calls it, with no assembling needed"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这是常见误区。letta/templates/sandbox_code_file.py.j2 在 v0.16.8 是死文件——没有任何 .py 引用它，只能当人类对照参考。真实脚本由 tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script 调 _render_sandbox_code 用字符串拼出：pickle.loads 还原 agent_state、按 repr() 内联参数、逐字内联用户 source_code、调用并把结果+agent_state 打成 JSON、加 marker+长度+MD5 写 stdout。也别被 docstring（写着“base64-encode/pickle the result”）和带 _pkl 的变量名骗了——都是遗留，实际装 JSON。沙箱也不会 import 用户模块（那模块只存在数据库里），所以必须内联自包含。",
+                    "en": "A common trap. letta/templates/sandbox_code_file.py.j2 is dead in v0.16.8 — no .py references it, so it is only a human side reference. The real script is string-assembled by tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script via _render_sandbox_code: pickle.loads to restore agent_state, inline arguments via repr(), inline the user's source_code verbatim, call it, pack result+agent_state into JSON, and write marker+length+MD5 to stdout. Do not be fooled by the docstring (which says “base64-encode/pickle the result”) or the _pkl variable name — both are legacy; what is actually carried is JSON. The sandbox also cannot import the user module (it lives only in the database), so the script must be inlined and self-contained.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“监狱探视窗”这个比喻，把第 20 课的“信任边界”完整讲一遍，并想三件事：(1) 为什么 server→sandbox 能放心用 pickle、而 sandbox→server 必须只用 json.loads？把它和“权限放大的方向”联系起来——什么样的通用规则能让你在任何跨边界场景里一眼判断“这里能不能反序列化”？(2) marker+长度+MD5 帧负责“完整性”、JSON 编码负责“安全性”，这是两件事，PR #3343 只改了后者。如果有人只加强了帧（比如把 MD5 换成 SHA-256），却仍然 pickle.loads payload，安全吗？为什么完整性校验救不了一个“会执行代码的解析器”？(3) 本地沙箱和服务端共享内核，隔离只是“够用级”。把同一个自定义工具从本地切到 E2B/Modal，信任边界这张图会变吗？哪些不变（信任边界原则：去程可信、回程绝不 pickle.loads）、哪些变（隔离强度、延迟，以及回程编码——本地的 marker+MD5 帧 / E2B 的 base64 / Modal 的结构化 dict）？",
+                "en": "Use the “prison visitation window” metaphor to tell lesson 20's “trust boundary” as a whole, and think through three things: (1) Why can server→sandbox safely use pickle while sandbox→server must use json.loads only? Tie it to “the direction in which privilege widens” — what general rule lets you judge at a glance, in any cross-boundary scenario, whether “deserialization is safe here”? (2) The marker+length+MD5 frame handles “integrity” while the JSON encoding handles “security” — two different things, and PR #3343 only changed the latter. If someone strengthened only the frame (say, swapping MD5 for SHA-256) but still pickle.loads'd the payload, is that safe? Why can't an integrity check save you from “a parser that executes code”? (3) The local sandbox shares the kernel with the server, so its isolation is only “good enough.” If you move the same custom tool from local to E2B/Modal, does the trust-boundary diagram change? What stays the same (the trust-boundary principle: trusted inbound, never pickle.loads on the way back) and what changes (isolation strength, latency, and the return encoding — local's marker+MD5 frame / E2B's base64 / Modal's structured dict)?",
+            },
+        ],
+    },
 }
 
 

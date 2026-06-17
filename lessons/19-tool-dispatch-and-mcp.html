@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>19 · 工具分发与执行（含 MCP） / Tool dispatch &amp; execution (incl. MCP) - Letta 图解教程</title>
+<meta name="description" content="第五部分 · 工具系统｜工具分发与执行（含 MCP） - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="19 · 工具分发与执行（含 MCP） / Tool dispatch &amp; execution (incl. MCP) - Letta 图解教程">
+<meta property="og:description" content="第五部分 · 工具系统｜工具分发与执行（含 MCP） - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="19 · 工具分发与执行（含 MCP） / Tool dispatch &amp; execution (incl. MCP) - Letta 图解教程">
+<meta name="twitter:description" content="第五部分 · 工具系统｜工具分发与执行（含 MCP） - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第五部分 · 工具系统</span><span class="lang-en">Part 5 · The tool system</span></span>
+    <span class="pill">19 / 20</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:95%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第五部分 · 工具系统</span><span class="lang-en">Part 5 · The tool system</span></div>
+    <h1><span class="lang-zh">工具分发与执行（含 MCP）</span><span class="lang-en">Tool dispatch &amp; execution (incl. MCP)</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 14 课讲 agent 的执行循环时，"执行工具"只用一行带过；第 17、18 课又让工具长出了 schema、能被模型"看见"并调用。可是当模型真吐出一个工具调用、系统<strong>要去跑它</strong>的那一步，我们一直没拆开看。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就把"执行"摊开：当 agent 真要跑一个工具时，它怎么知道<strong>该用哪种方式</strong>跑——进程内直接调？丢进沙箱隔离执行？还是开一条网络连接到外部服务器？答案藏在一个叫 <span class="mono">ToolType</span> 的标签和一个工厂里。</p>
+<div class="note info"><span class="ni">❓</span><span class="nx">带着一个具体问题读下去：当模型说"调用 <span class="mono">run_code</span>"时，到底是<strong>谁、在哪里、用什么方式</strong>真正把这段代码跑起来的？答案不是某一个函数，而是"类型标签 + 工厂 + 执行器"这一整套机制——这一课就是把它拆给你看。</span></div>
+
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>把"执行工具"想成医院的<strong>分诊台</strong>。同样是来"看病"，前台并不自己治，而是按你的<strong>科室标签</strong>把你送到不同地方。</p>
+<p>内科的小毛病，直接进诊室当场看（对应 <span class="mono">core</span>，进程内直跑）；要动刀的，送进<strong>手术室</strong>隔离操作（对应 <span class="mono">sandbox</span>，在沙箱里跑陌生代码）；本院看不了的疑难，<strong>转外院会诊</strong>（对应 <span class="mono">MCP</span>，连外部服务器）。</p>
+<p>关键在于：分诊台自己<strong>不看病</strong>，它只做一件事——<strong>按类型把你送到对的地方</strong>。Letta 里这个分诊台，就是下面要讲的"工厂"。</p>
+</div>
+
+<p>这个类比里其实藏着这一课的全部要点：<strong>同样一句"执行工具"，落地时有好几种完全不同的跑法</strong>；决定走哪条路的，是工具身上的类型标签和那个"分诊"的工厂。把这两样搞懂，"执行"这一步就透明了。</p>
+
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>每个 <span class="mono">Tool</span> 都带一个 <span class="mono">ToolType</span>（共 11 种），相当于贴在工具上的"科室标签"。</p>
+<p><span class="mono">tool_execution_manager.py::ToolExecutorFactory</span> 是那个分诊台：它按 <span class="mono">ToolType</span> 把工具映射到对应的<strong>执行器</strong>。但真正被 agent 循环调用的入口，是同一个文件里的 <span class="mono">ToolExecutionManager::execute_tool_async</span>。</p>
+<p>执行器们各管一摊：<span class="mono">core</span> 进程内直跑、<span class="mono">builtin</span> 跑内置工具、<span class="mono">files</span> 管文件、<span class="mono">mcp</span> 连外部服务器、<span class="mono">sandbox</span> 跑自定义代码。</p>
+<p>所以这一课只讲三件事：<strong>ToolType 是什么</strong>、<strong>工厂怎么按它选执行器</strong>、<strong>每个执行器到底干啥</strong>。</p>
+</div>
+
+<div class="note tip"><span class="ni">🗺️</span><span class="nx">读这一课可以盯住一条主线：<strong>标签（ToolType）→ 工厂（选执行器）→ 入口（ToolExecutionManager）→ 五个执行器（各种运行时）→ 统一结果（ToolExecutionResult）</strong>。下面就顺着这条线一节一节走。</span></div>
+
+<h2>ToolType：工具的"种类标签"</h2>
+<p>先认标签。<span class="mono">schemas/enums.py::ToolType</span> 一共 11 种，可以归成三类——<strong>内置</strong>（Letta 自带，进程内或受控执行）、<strong>自定义</strong>（你写的，默认进沙箱）、<strong>外部</strong>（连第三方）。</p>
+<div class="cellgroup"><div class="cg-cap"><b>内置 · Letta 自带（7 种）</b></div><div class="cells"><span class="cell hl">letta_core</span><span class="sep">·</span><span class="cell">letta_memory_core</span><span class="sep">·</span><span class="cell">letta_multi_agent_core</span><span class="sep">·</span><span class="cell">letta_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_voice_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_builtin</span><span class="sep">·</span><span class="cell">letta_files_core</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>自定义 · 默认值（1 种）</b></div><div class="cells"><span class="cell hl">custom</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>外部 · 第三方（3 种）</b></div><div class="cells"><span class="cell">external_langchain（弃用）</span><span class="sep">·</span><span class="cell">external_composio（弃用）</span><span class="sep">·</span><span class="cell hl">external_mcp</span></div></div>
+<div class="note info"><span class="ni">🏷️</span><span class="nx"><span class="mono">custom</span> 是<strong>默认值</strong>：注册一个工具如果没被归到别的类，它就是 <span class="mono">custom</span>——而 <span class="mono">custom</span> 会兜底走沙箱。两个 <span class="mono">external_langchain / external_composio</span> 已弃用，真正活跃的外部类型只有 <span class="mono">external_mcp</span>。</span></div>
+<p>为什么要分这么多种？因为 Letta 的工具来源天差地别：有的是框架自带的核心能力（发消息、改记忆），有的是平台内置的实用工具（跑代码、搜网页），有的是你临时写的业务函数，还有的根本不在本地、得连出去。给每个工具贴上类型标签，后面的工厂才能照标签把它们派到正确的运行时。</p>
+<p>内置那 7 种又按用途细分：<span class="mono">letta_core</span> 管对话与控制流，<span class="mono">letta_memory_core</span> 改写记忆，<span class="mono">letta_sleeptime_core</span> 与 <span class="mono">letta_voice_sleeptime_core</span> 服务"睡眠时间"里的后台整理，<span class="mono">letta_multi_agent_core</span> 负责多 agent 协作，<span class="mono">letta_builtin</span> 跑代码、搜网，<span class="mono">letta_files_core</span> 管文件。</p>
+
+<h2>工厂：按类型选执行器</h2>
+<p>标签有了，谁来读标签、派活？是 <span class="mono">ToolExecutorFactory</span>。它内部存了一张 <span class="mono">_executor_map</span>，把 <span class="mono">ToolType</span> 映射到执行器类；<span class="mono">get_executor</span> 查表、实例化、返回一个执行器。</p>
+<div class="flow">
+<div class="node"><div class="nt">tool.tool_type</div><div class="nd">工具上的标签</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">get_executor</div><div class="nd">查 _executor_map</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">具体执行器</div><div class="nd">LettaCore / Sandbox …</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">execute(...)</div><div class="nd">真正跑工具</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">ToolExecutionResult</div><div class="nd">统一结果</div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">循环只说"调这个工具"，<strong>怎么跑</strong>由 <span class="mono">ToolType</span> + 工厂决定：进程内直跑 / 沙箱 / 连 MCP server——同一个 <span class="mono">execute</span> 接口，藏起三种运行时。</span></div>
+<p>还要记住流程的<strong>终点</strong>：不管走哪条路，所有执行器都返回同一种 <span class="mono">ToolExecutionResult</span>。差异被藏在中间，出口却是统一的——这正是"多态"的形状。</p>
+<p>实现上，<span class="mono">_executor_map</span> 是一个 <span class="mono">ClassVar</span>——类级别的字典，所有实例共享。查表就是普通的 <span class="mono">dict.get(key, default)</span>：命中就拿映射好的执行器类，落空就拿第二个参数 <span class="mono">SandboxToolExecutor</span>。短短一行，既是"分发表"，又是"安全网"。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">工厂（简化）</span></div><pre><span class="kw">class</span> <span class="fn">ToolExecutorFactory</span>:
+    _executor_map = {
+        ToolType.LETTA_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MEMORY_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_SLEEPTIME_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MULTI_AGENT_CORE: SandboxToolExecutor,
+        ToolType.LETTA_BUILTIN: LettaBuiltinToolExecutor,
+        ToolType.LETTA_FILES_CORE: LettaFileToolExecutor,
+        ToolType.EXTERNAL_MCP: ExternalMCPToolExecutor,
+    }
+    <span class="kw">def</span> <span class="fn">get_executor</span>(cls, tool_type, ...):
+        cls_ = cls._executor_map.<span class="fn">get</span>(tool_type, SandboxToolExecutor)   <span class="cm"># 未映射 -> 兜底沙箱</span>
+        <span class="kw">return</span> cls_(...)
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">看 <span class="mono">get_executor</span> 那行的 <span class="mono">.get(tool_type, SandboxToolExecutor)</span>：<strong>没在表里的类型，一律兜底走沙箱</strong>。<span class="mono">custom</span>、<span class="mono">letta_voice_sleeptime_core</span>、两个弃用的 external 这 4 种落这里（<span class="mono">letta_multi_agent_core</span> 则是<strong>显式</strong>映射到沙箱，不算兜底）。所以"自定义工具＝在沙箱里跑"是<strong>默认</strong>，不是特例。</span></div>
+<p>这其实是经典的<strong>工厂模式</strong>：把"<em>到底用哪一种实现</em>"收拢到一处，调用方只管开口要"一个执行器"，不必知道背后是哪个类、怎么构造。日后想加一种工具类型，往 <span class="mono">_executor_map</span> 里登记一行即可，循环和入口的代码一个字都不用改。</p>
+
+<h2>真正的入口：ToolExecutionManager</h2>
+<p>工厂只负责"选人"。真正被 agent 循环调用的，是 <span class="mono">ToolExecutionManager::execute_tool_async</span>：它用工厂拿到执行器，<strong>计时</strong>、<strong>截断超长返回</strong>、把异常<strong>包成结果对象</strong>，再交回循环。</p>
+<p>为什么把这些杂活都塞进入口？因为工具是 agent 里最"不可控"的一环——可能读数据库、跑代码、连网络，耗时和失败方式千差万别。把计时、截断、异常包装统一收在入口这一层，循环就不必为每种工具单独操心；每步耗时的可观测性、不被撑爆不抛异常的稳定性，也都集中、可控。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">入口（简化）</span></div><pre><span class="kw">async def</span> <span class="fn">execute_tool_async</span>(self, function_name, function_args, tool, ...):
+    executor = ToolExecutorFactory.<span class="fn">get_executor</span>(tool.tool_type, ...)
+    result = <span class="kw">await</span> executor.<span class="fn">execute</span>(function_name, function_args, tool, actor, ...)
+    <span class="kw">if</span> len(return_str) > tool.return_char_limit:   <span class="cm"># 超长截断</span>
+        ...
+    <span class="kw">return</span> result   <span class="cm"># ToolExecutionResult(status, func_return, stdout, stderr, ...)</span>
+</pre></div>
+<div class="note tip"><span class="ni">🧭</span><span class="nx">分清两层：工厂只回答"<strong>用哪个执行器</strong>"，<span class="mono">ToolExecutionManager</span> 才是循环真正调的<strong>入口</strong>——它负责计时、超 <span class="mono">return_char_limit</span> 截断、把异常统一包成 <span class="mono">ToolExecutionResult(status="error")</span>。</span></div>
+<p>那个统一的返回值 <span class="mono">ToolExecutionResult</span> 长什么样？它带 <span class="mono">status</span>（成功或失败）、<span class="mono">func_return</span>（工具的返回值）、<span class="mono">stdout / stderr</span>（运行时打印的内容），还有 <span class="mono">sandbox_config_fingerprint</span> 等字段。无论 core 直跑还是沙箱里跑，循环拿到的都是这同一个壳——这也是入口愿意花力气把一切都归一成它的原因。</p>
+
+<h2>五个执行器，各管一摊</h2>
+<p>工厂表里点名的、加上兜底的，一共五个执行器。下面这张表把"标签 → 执行器 → 类别 → 典型工具"对上号。</p>
+<table class="t">
+<tr><th>ToolType</th><th>执行器</th><th>类别</th><th>典型工具</th></tr>
+<tr><td class="mono">letta_core</td><td class="mono">LettaCoreToolExecutor</td><td>进程内</td><td class="mono">send_message · conversation_search</td></tr>
+<tr><td class="mono">letta_memory_core</td><td class="mono">LettaCoreToolExecutor</td><td>进程内 · 记忆</td><td class="mono">core_memory_append · core_memory_replace</td></tr>
+<tr><td class="mono">letta_builtin</td><td class="mono">LettaBuiltinToolExecutor</td><td>受控内置</td><td class="mono">run_code · web_search · fetch_webpage</td></tr>
+<tr><td class="mono">letta_files_core</td><td class="mono">LettaFileToolExecutor</td><td>文件</td><td class="mono">open_files · grep_files</td></tr>
+<tr><td class="mono">external_mcp</td><td class="mono">ExternalMCPToolExecutor</td><td>外部服务器</td><td class="mono">MCP 工具</td></tr>
+<tr><td class="mono">custom（兜底）</td><td class="mono">SandboxToolExecutor</td><td>沙箱</td><td class="mono">你写的自定义工具</td></tr>
+</table>
+<p>把这五个执行器各自的活儿摊开说：</p>
+<ul>
+<li><span class="mono">LettaCoreToolExecutor</span>：core、<strong>记忆</strong>、sleeptime 三摊工具全揽下，统统<strong>进程内直跑</strong>。改核心记忆的 <span class="mono">core_memory_append / core_memory_replace</span> 就在这里执行，不绕沙箱、延迟最低。</li>
+<li><span class="mono">LettaBuiltinToolExecutor</span>：跑平台内置工具——<span class="mono">run_code</span> 执行代码、<span class="mono">web_search</span> 搜网、<span class="mono">fetch_webpage</span> 抓网页，是一组"受控"的实用能力。</li>
+<li><span class="mono">LettaFileToolExecutor</span>：专管文件类工具，比如 <span class="mono">open_files</span>、<span class="mono">grep_files</span>，服务于把文件读进上下文、在文件里检索。</li>
+<li><span class="mono">ExternalMCPToolExecutor</span>：唯一"往外连"的执行器，把调用转发给外部 MCP 服务器，本地一行业务代码都不跑。</li>
+<li><span class="mono">SandboxToolExecutor</span>：自定义工具和所有未映射类型的<strong>兜底</strong>，把陌生代码丢进隔离沙箱里执行——它怎么跑、为什么敢跑，是第 20 课的主题。</li>
+</ul>
+<p>举三个例子把分发走一遍。模型要 <span class="mono">core_memory_append</span>（类型 <span class="mono">letta_memory_core</span>），工厂交给 <span class="mono">LettaCoreToolExecutor</span>，在进程内当场改记忆；要 <span class="mono">run_code</span>（<span class="mono">letta_builtin</span>），交给 <span class="mono">LettaBuiltinToolExecutor</span> 受控执行；要你自己写的 <span class="mono">calculate_invoice</span>（没归类、落在 <span class="mono">custom</span>），工厂在表里找不到、兜底交给 <span class="mono">SandboxToolExecutor</span> 丢进沙箱。同一行调用，三种完全不同的命运。</p>
+<p>它们都继承基类 <span class="mono">tool_executor_base.py::ToolExecutor</span>，统一签名 <span class="mono">async def execute(...) -&gt; ToolExecutionResult</span>。注意记忆工具 <span class="mono">core_memory_append</span> 也归 <span class="mono">LettaCoreToolExecutor</span>，在<strong>进程内直跑</strong>，并不进沙箱。</p>
+<div class="note info"><span class="ni">🧩</span><span class="nx">统一接口的妙处：循环只认 <span class="mono">execute(...) -&gt; ToolExecutionResult</span> 这一个签名。无论底层是改记忆、跑代码、还是连外部服务器，对循环来说都"长得一样"——于是它能对任何工具一视同仁地调用、计时、记录、再把结果接回对话。</span></div>
+<p>进程内直跑和丢进沙箱，本质是一道"信任与速度"的取舍。可信的核心工具（改记忆、发消息）直接在进程里跑，最快也最省事；来路不明的自定义代码则必须先隔离，宁可慢一点、麻烦一点，也不能让它碰到服务端的内存和权限。把这道取舍交给"类型"来表达，正是这套设计最聪明的地方。</p>
+
+<div class="cute">
+<div class="row"><span class="emoji">🏭</span><span class="lab">按 ToolType 分拣</span><span class="arrow">→</span><span class="emoji">🧠</span><span class="bubble">core · 进程内</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">同一座工厂</span><span class="arrow">→</span><span class="emoji">🔧</span><span class="bubble">builtin · 内置</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">不同传送带</span><span class="arrow">→</span><span class="emoji">📁</span><span class="bubble">files · 文件</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">各走各的</span><span class="arrow">→</span><span class="emoji">🔌</span><span class="bubble">mcp · 外部</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">兜底那条</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">sandbox · 沙箱</span></div>
+<div class="cap">工厂按 ToolType 把每个工具送上对的传送带：进程内、内置、文件、外部、沙箱</div>
+</div>
+
+<p>所以"分发"这件事可以一句话收口：<strong>工具带着类型标签进来，工厂照标签发往对应执行器，执行器各跑各的运行时，最后都吐出同一种结果</strong>。下面单看最特别的一条传送带——通往外部世界的 MCP。</p>
+
+<h2>MCP：连接外部工具服务器</h2>
+<p>前面四类都在 Letta 自己家里跑。<strong>MCP</strong>（Model Context Protocol）不一样：工具其实活在<strong>外部服务器</strong>上，Letta 只是个客户端，把调用<strong>转发</strong>过去、再把结果取回来。</p>
+<p>这类工具的 <span class="mono">tool_type</span> 是 <span class="mono">external_mcp</span>，还会被打上 <span class="mono">mcp:&lt;server&gt;</span> 标签（由 <span class="mono">ToolCreate.from_mcp</span> 设置）。执行时由 <span class="mono">ExternalMCPToolExecutor</span> 从标签里取出目标服务器名，交给 <span class="mono">MCPManager</span> 去连、去跑、再断开。</p>
+<div class="note tip"><span class="ni">🌐</span><span class="nx">MCP 是个<strong>开放协议</strong>：任何人都能写一个 MCP server，暴露一批工具（查库、发邮件、调内部 API…）。Letta 这边只要登记服务器、导入工具，agent 就能调用，而工具的实现细节对 Letta 完全透明。</span></div>
+<div class="vflow">
+<div class="step"><div class="num">1</div><div class="sc"><h4>MCP 工具</h4><p>带 <span class="mono">mcp:&lt;server&gt;</span> 标签，类型 <span class="mono">external_mcp</span></p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>ExternalMCPToolExecutor</h4><p>从标签解析出目标服务器名</p></div></div>
+<div class="step"><div class="num">3</div><div class="sc"><h4>MCPManager.execute_mcp_server_tool</h4><p>统一入口，掌管整条连接生命周期</p></div></div>
+<div class="step"><div class="num">4</div><div class="sc"><h4>connect → execute → cleanup</h4><p>每次开新连接、跑完即断，不复用</p></div></div>
+</div>
+<p>把这条竖流连起来读：工具带着 <span class="mono">mcp:&lt;server&gt;</span> 标签进来，执行器从标签解析出服务器名，<span class="mono">MCPManager</span> 负责连上去、把调用发过去、收回结果、再断开。整个过程里 Letta 不执行任何工具逻辑，只做"中转"。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/mcp_tool_executor.py</span><span class="ln">MCP 执行（简化）</span></div><pre><span class="kw">async def</span> <span class="fn">execute</span>(self, function_name, function_args, tool, ...):
+    server = <span class="fn">_tag_to_server</span>(tool.tags)        <span class="cm"># 从 "mcp:&lt;server&gt;" 标签取服务器名</span>
+    resp, ok = <span class="kw">await</span> MCPManager().<span class="fn">execute_mcp_server_tool</span>(
+        server, tool_name=function_name, tool_args=function_args, ...)   <span class="cm"># 连外部 server</span>
+    <span class="kw">return</span> ToolExecutionResult(status=<span class="st">"success"</span> <span class="kw">if</span> ok <span class="kw">else</span> <span class="st">"error"</span>, func_return=resp)
+</pre></div>
+<div class="cellgroup"><div class="cg-cap"><b>三种 MCP 传输 · MCPServerType</b></div><div class="cells"><span class="cell hl">stdio</span><span class="sep">·</span><span class="cell">sse</span><span class="sep">·</span><span class="cell">streamable_http</span></div></div>
+<p>换个角度看，MCP 把"工具"和"运行工具的进程"彻底解耦：实现、依赖、密钥都留在工具自己的服务器里，Letta 只通过协议发起调用。第三方因此能把一整套能力打包成一个 MCP server，挂到任意 agent 上即插即用。</p>
+<p>代价是每次调用都得<strong>现连现断</strong>——<span class="mono">connect → execute → cleanup</span> 一条龙。好处是无状态、干净、互不影响；坏处是连接开销，所以 MCP 更适合"偶尔用一下的外部能力"，而非高频热路径。</p>
+<div class="note info"><span class="ni">🔌</span><span class="nx">两个反直觉点：MCP 执行<strong>不走沙箱</strong>（它连的是外部 server，不是在本地跑代码）；而且每次调用都<strong>开一条新连接</strong>（<span class="mono">connect → execute → cleanup</span>）。真正的传输客户端在 <span class="mono">letta/services/mcp/</span>，<strong>不是</strong> <span class="mono">functions/mcp_client/</span>——后者只放配置类型与异常。</span></div>
+<p>一句话记住 MCP：<strong>工具在别人家，Letta 上门调用</strong>。它扩展了 agent 的能力边界，又把"运行第三方代码"的风险留在第三方那边——这和本地沙箱是两条不同的安全思路。</p>
+<p>换个比方：前面四类执行器像是"在自己家的不同房间干活"，MCP 则像"打电话叫外卖"——活儿在别人那儿干，你只负责下单和收货。这也解释了 MCP 为什么不走沙箱：沙箱是用来隔离"在你家里跑的陌生代码"的，而 MCP 的代码压根不在你家跑。</p>
+
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p><strong>"一次调用，背后是好几种运行时。"</strong> 从第 14 课循环的视角看，"调一个工具"永远是统一的一行代码。</p>
+<p>可底下却天差地别：进程内改核心记忆（<span class="mono">LettaCore</span>）、shell 出去在沙箱 venv 里跑陌生代码（<span class="mono">Sandbox</span>）、开一条网络连接到 MCP 服务器（<span class="mono">ExternalMCP</span>）。<span class="mono">ToolType</span> + 工厂，就是把这些差异藏起来的<strong>多态</strong>。</p>
+<p>还有个反直觉真相：11 种 <span class="mono">ToolType</span> 其实只对应 <strong>5 个执行器类</strong>——<span class="mono">_executor_map</span> 显式登记了 <strong>7 条</strong>（多种类型共用 <span class="mono">LettaCore</span>），剩下 4 种（<span class="mono">custom</span>、voice-sleeptime、两个弃用 external）才<strong>兜底走 <span class="mono">SandboxToolExecutor</span></strong>。"自定义＝沙箱"是默认，不是特例。</p>
+<p>而所有执行器，最后都返回同一个 <span class="mono">ToolExecutionResult</span>——正是第 16 课工具规则违规时用的那个类型。出口统一，差异内敛。</p>
+<p>放进整条工具链看更清楚：第 17、18 课让工具"有了 schema、能被看见"，这一课让工具"被正确地跑起来"。模型那端永远是统一的函数调用，系统这端却悄悄做了一次<strong>按类型的运行时选择</strong>——这正是好抽象的样子：上层简单，下层灵活。</p>
+<p>换句话说，<span class="mono">ToolType</span> 把"我是什么工具"写进数据，工厂把"什么工具用什么方式跑"写进逻辑——这是一种<strong>数据驱动的分发</strong>。想改变某类工具的跑法，不必动循环，只要改它的类型、或改 <span class="mono">_executor_map</span> 里的一行映射。</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p>想自己翻源码的话，这一课牵涉的文件不多，按"分发链路"排一排：</p>
+<p>工厂与入口都在 <span class="mono">letta/services/tool_executor/tool_execution_manager.py</span>：<span class="mono">ToolExecutorFactory</span> 选执行器，<span class="mono">ToolExecutionManager</span> 是真入口。</p>
+<p>执行器基类 <span class="mono">tool_executor_base.py::ToolExecutor</span>；五个实现：<span class="mono">core_tool_executor.py::LettaCoreToolExecutor</span>、<span class="mono">builtin_tool_executor.py::LettaBuiltinToolExecutor</span>、<span class="mono">files_tool_executor.py::LettaFileToolExecutor</span>、<span class="mono">mcp_tool_executor.py::ExternalMCPToolExecutor</span>、<span class="mono">sandbox_tool_executor.py::SandboxToolExecutor</span>。</p>
+<p>类型定义在 <span class="mono">schemas/enums.py::ToolType</span>；MCP 配置在 <span class="mono">functions/mcp_client/types.py</span>，客户端与管理器在 <span class="mono">services/mcp/</span> 加 <span class="mono">services/mcp_manager.py::MCPManager</span>；<span class="mono">ToolExecutionResult</span> 在 <span class="mono">schemas/tool_execution_result.py</span>。</p>
+</div>
+
+<p>这一课其实在反复讲同一个道理：好的系统会把"变化"关进一个小盒子。工具千变万化，但变化都被收进了"类型标签"和"工厂映射"这两处；除此之外，循环、入口、结果对象统统保持不变。于是新增一种工具、换一种运行时，影响面都很小——这就是把复杂度按位置切开的价值。</p>
+
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>这一课最容易踩的几个坑：</p>
+<ul>
+<li><strong>以为每种类型都有专属执行器</strong>——11 种类型只对应 5 个执行器类；<span class="mono">_executor_map</span> 显式登记 7 条，其余 4 种兜底沙箱。</li>
+<li><strong>以为工厂就是入口</strong>——真正入口是 <span class="mono">ToolExecutionManager</span>，工厂只负责"选"。</li>
+<li><strong>以为 MCP 客户端在 <span class="mono">functions/mcp_client/</span></strong>——那里只有配置类型，客户端在 <span class="mono">services/mcp/</span>。</li>
+<li><strong>以为只有自定义工具走沙箱</strong>——<span class="mono">letta_voice_sleeptime_core</span> 和多 agent 工具也走沙箱。</li>
+<li><strong>彩蛋</strong>：<span class="mono">ExternalComposioToolExecutor</span> 其实没被接线（<span class="mono">external_composio</span> 弃用、兜底沙箱），是一段死代码。</li>
+</ul>
+</div>
+
+<p>还有一个常被忽略的好处：因为所有执行器都吐出同一种结果，错误处理也被统一了。工具抛异常也好、返回超长也好、规则违规也好，循环看到的永远是一个带状态的结果对象，而不是五花八门的异常。"出错"于是变成"正常流程的一个分支"，循环因此能稳稳地继续走下去。</p>
+
+<h2>再挖深一点</h2>
+<p>下面四个抽屉，留给想钻到底的人：标签从哪来、为什么默认沙箱是安全的、MCP 怎么集成、内置工具有哪些（外加一段"考古"）。</p>
+<p>这些都是"知道了更踏实，第一次读却可以跳过"的细节。只想记主线，记住"类型 → 工厂 → 执行器 → 统一结果"就够；想抠实现，就逐个展开下面的抽屉。</p>
+<details class="accordion"><summary>① 一个工具的 tool_type 是怎么定的？</summary><div class="acc-body">
+<p>schema 层默认就是 <span class="mono">CUSTOM</span>。注册<strong>基础工具</strong>时按名字归类：<span class="mono">tool_manager.py::upsert_base_tools</span> 里，<span class="mono">name in BASE_TOOLS → LETTA_CORE</span>、<span class="mono">BASE_MEMORY_TOOLS → LETTA_MEMORY_CORE</span>、<span class="mono">BUILTIN_TOOLS → LETTA_BUILTIN</span>、<span class="mono">FILES_TOOLS → LETTA_FILES_CORE</span> 等。</p>
+<p>MCP 工具则<strong>显式设</strong>：<span class="mono">create_mcp_tool_async</span> 直接给 <span class="mono">tool_type=EXTERNAL_MCP</span>。其余你自己写的，就留在默认 <span class="mono">CUSTOM</span>。</p>
+<div class="note tip"><span class="ni">🔖</span><span class="nx">一个工具<strong>叫什么名字</strong>，往往就决定了它<strong>怎么被执行</strong>：注册阶段定下的 <span class="mono">tool_type</span> 会一路跟着它，直到执行时被工厂读到。</span></div>
+</div></details>
+<details class="accordion"><summary>② 为什么"自定义默认沙箱"是合理的安全默认？</summary><div class="acc-body">
+<p>因为自定义工具是<strong>不可信代码</strong>——它可能来自任何人。把"没归类的一律丢沙箱"设成默认，意味着<strong>除非明确认定安全（进了 _executor_map），否则就隔离</strong>。这是"默认安全"（secure by default）的典型做法。</p>
+<p>反过来想：要是默认进程内直跑，任何一个忘了归类的工具都会拿到服务端的执行权限。兜底沙箱，正好把这个风险堵死。</p>
+<div class="note info"><span class="ni">🛡️</span><span class="nx">这也呼应第 18 课的态度：对待工具代码，<strong>默认不信任</strong>。第 18 课是"不运行就派生 schema"，这一课是"不确定就丢沙箱"——同一种安全直觉的两面。</span></div>
+</div></details>
+<details class="accordion"><summary>③ MCP 到底怎么集成？</summary><div class="acc-body">
+<p>三种传输：<span class="mono">stdio</span>（本地子进程）、<span class="mono">sse</span>、<span class="mono">streamable_http</span>（远程 HTTP），定义在 <span class="mono">functions/mcp_client/types.py::MCPServerType</span>，配套 <span class="mono">StdioServerConfig</span> 等配置类。</p>
+<p>执行特点：<strong>不走沙箱</strong>、每次<strong>开新连接</strong>（<span class="mono">connect → execute → cleanup</span>）。客户端实现在 <span class="mono">services/mcp/</span>，由工厂 <span class="mono">MCPManager::get_mcp_client</span> 按传输类型挑客户端。</p>
+<div class="note warn"><span class="ni">📁</span><span class="nx">容易记混：<span class="mono">functions/mcp_client/types.py</span> 里只有<strong>配置与类型</strong>，真正建连接、发请求的<strong>客户端实现</strong>在 <span class="mono">services/mcp/</span>。别被目录名 <span class="mono">mcp_client</span> 骗了。</span></div>
+</div></details>
+<details class="accordion"><summary>④ 内置工具有哪些？外加一段"考古"</summary><div class="acc-body">
+<p>内置工具在 <span class="mono">constants.py::BUILTIN_TOOLS</span>：<span class="mono">run_code</span>、<span class="mono">run_code_with_tools</span>、<span class="mono">web_search</span>、<span class="mono">fetch_webpage</span>，都由 <span class="mono">LettaBuiltinToolExecutor</span> 跑。</p>
+<p>考古发现：<span class="mono">ExternalComposioToolExecutor</span> 这个类<strong>存在</strong>，却<strong>没出现在 _executor_map 里</strong>。<span class="mono">external_composio</span> 已弃用、会兜底走沙箱——所以那个执行器是一段<strong>永远不会被选中</strong>的死代码。</p>
+<div class="note info"><span class="ni">🔍</span><span class="nx">考古的启示：<strong>一个类存在，不代表它被用上</strong>。判断代码活没活，要看它有没有被真正<strong>接线</strong>——这里就是看它在不在 <span class="mono">_executor_map</span> 里。</span></div>
+</div></details>
+
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><span class="mono">ToolType</span> 共 11 种，像标签一样贴在每个 <span class="mono">Tool</span> 上。</li>
+<li><span class="mono">ToolExecutorFactory</span> 按类型选执行器；<strong>未映射的一律兜底 <span class="mono">SandboxToolExecutor</span></strong>。</li>
+<li><span class="mono">ToolExecutionManager::execute_tool_async</span> 才是真入口（计时、截断、包结果）。</li>
+<li>运行时各异：<span class="mono">core</span> 进程内、<span class="mono">custom</span> 沙箱、<span class="mono">mcp</span> 连外部服务器。</li>
+<li>所有执行器统一返回 <span class="mono">ToolExecutionResult</span>。</li>
+</ul>
+</div>
+
+<div class="cellgroup"><div class="cg-cap"><b>第五部分串起来 · 工具的一生</b></div><div class="cells"><span class="cell">17 定义：函数+docstring→schema</span><span class="sep">·</span><span class="cell">18 派生：不跑就生成</span><span class="sep">·</span><span class="cell hl">19 分发：按类型执行</span><span class="sep">·</span><span class="cell">20 隔离：沙箱+信任边界</span></div></div>
+
+<p>回头看第五部分这条线：<strong>定义 → 派生 → 分发 → 隔离执行</strong>。第 17 课把函数变成 schema，第 18 课不运行就把 schema 派生出来，第 19 课按类型把工具分发给执行器，第 20 课讲最危险的那一类——自定义代码——到底怎么被隔离着跑。</p>
+
+<p>串起来看：模型选工具（第 17、18 课给了 schema）→ 循环调用（第 14 课）→ 工厂按 <span class="mono">ToolType</span> 分发 → 执行器各跑各的。而自定义工具默认被交给 <span class="mono">SandboxToolExecutor</span>，也就是丢进<strong>沙箱</strong>。可沙箱到底<strong>怎么跑、凭什么敢跑陌生人的代码</strong>？这就是第 20 课，也是第五部分的收尾。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">小结一句：这一课把"执行工具"从一行黑箱，拆成了"类型 → 工厂 → 入口 → 执行器 → 结果"五个清清楚楚的环节。下一课，我们钻进其中最危险的那个环节——沙箱。</span></div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 模型吐出一个工具调用后，agent 循环真正调用的“执行入口”是谁？ToolExecutorFactory 在其中扮演什么角色？</div>
+  <ol class="opts">
+    <li>真入口是 ToolExecutionManager.execute_tool_async：它用工厂拿到执行器，再负责计时、超长截断、把异常包成 ToolExecutionResult。工厂只“按 ToolType 选执行器”，本身不运行工具</li>
+    <li>循环直接调用具体执行器的 execute()，中间没有任何管理器层</li>
+    <li>模型自己通过网络把工具调用发给执行器，服务端只负责转发结果</li>
+    <li>工厂 ToolExecutorFactory.get_executor 既选执行器又直接运行工具，循环调它就够了</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。第 19 课的关键分层：ToolExecutorFactory（tool_execution_manager.py）只做“选人”——按 tool.tool_type 查 _executor_map、返回一个执行器实例；真正被循环调用的入口是同一文件的 ToolExecutionManager.execute_tool_async，它先用工厂取执行器，再统一计时、按 return_char_limit 截断、把异常包成 ToolExecutionResult。所以“工厂＝入口”是常见误区：工厂不运行工具，管理器才是入口。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 你注册了一个自己写的 Python 工具 calculate_invoice，没有把它归到任何内置类别。它默认会被哪个执行器执行？为什么？</div>
+  <ol class="opts">
+    <li>SandboxToolExecutor。它的类型默认是 custom，而 custom 不在工厂 _executor_map 里——get_executor 的 .get(tool_type, SandboxToolExecutor) 会兜底返回沙箱执行器</li>
+    <li>LettaBuiltinToolExecutor，自定义函数被当作内置工具处理</li>
+    <li>创建会失败，因为工厂里没有 custom 对应的执行器，无法分发</li>
+    <li>LettaCoreToolExecutor，因为所有没有特别归类的工具都按“核心工具”在进程内直跑</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。schema 层默认 tool_type=CUSTOM（custom 不会被 upsert_base_tools_async 按名字归类）。工厂 ToolExecutorFactory._executor_map 显式登记 7 条、落到 5 个执行器类（LETTA_CORE/LETTA_MEMORY_CORE/LETTA_SLEEPTIME_CORE→LettaCore、LETTA_MULTI_AGENT_CORE→Sandbox、LETTA_BUILTIN→LettaBuiltin、LETTA_FILES_CORE→LettaFile、EXTERNAL_MCP→ExternalMCP），custom 不在其中；get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor) 兜底，所以自定义工具默认进沙箱。它不会失败——兜底正是为这种情况设计的。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 一个 external_mcp 类型的工具被调用时，它的代码是在 Letta 的本地沙箱里跑的吗？执行路径大致是怎样的？</div>
+  <ol class="opts">
+    <li>不在沙箱。ExternalMCPToolExecutor 从 mcp:&lt;server&gt; 标签解析出服务器名，交给 MCPManager().execute_mcp_server_tool 连接外部 MCP server（connect → execute → cleanup），Letta 本地不跑任何工具代码</li>
+    <li>在 Letta 进程内直跑，和 core_memory_append 一样，以求最低延迟</li>
+    <li>Letta 把工具源码下载到本地，import 后在受限解释器里执行</li>
+    <li>在沙箱里跑。所有“外部代码”都被当作不可信代码，统一丢进 SandboxToolExecutor 隔离执行</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。MCP 有两个反直觉点：①不走沙箱——ExternalMCPToolExecutor（mcp_tool_executor.py）连接的是外部 MCP server，本地不跑工具代码；②每次开新连接——MCPManager.execute_mcp_server_tool 走 connect → execute → cleanup，不复用连接。真正的传输客户端在 services/mcp/（stdio/sse/streamable_http），functions/mcp_client/ 只放配置类型。沙箱是用来隔离“在你机器上跑的陌生代码”的，而 MCP 的代码根本不在你机器上跑。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. agent 调用 core_memory_append 改写核心记忆时，是哪个执行器在执行它？在哪种运行时里跑？</div>
+  <ol class="opts">
+    <li>SandboxToolExecutor，因为任何“写状态”的工具都必须先隔离，避免污染服务端内存</li>
+    <li>LettaCoreToolExecutor，在 Letta 进程内直跑。core_memory_append 的类型是 letta_memory_core，工厂把 LETTA_MEMORY_CORE 也映射到 LettaCoreToolExecutor——记忆工具不进沙箱</li>
+    <li>有一个专门的 LettaMemoryToolExecutor 处理所有记忆工具</li>
+    <li>LettaBuiltinToolExecutor，记忆改写被当作内置实用工具处理</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。工厂 _executor_map 把 LETTA_CORE 和 LETTA_MEMORY_CORE（还有 LETTA_SLEEPTIME_CORE）都映射到同一个 LettaCoreToolExecutor（core_tool_executor.py），它把 core、记忆、sleeptime 三摊工具全在进程内直跑——所以 core_memory_append 在进程内执行、延迟最低，不绕沙箱。没有单独的“Memory”执行器；记忆工具也不会因为“写状态”被丢进沙箱。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. ToolType 共有 11 种，但工厂只有 5 个执行器类；_executor_map 只显式接线了其中一部分类型。像 custom、letta_voice_sleeptime_core、以及弃用的 external_langchain/external_composio 这些没进表的类型，会怎样被执行？</div>
+  <ol class="opts">
+    <li>它们回退到 LettaCoreToolExecutor，在进程内直跑</li>
+    <li>工厂会抛 KeyError，这些类型的工具无法被执行</li>
+    <li>每种类型都有一个同名执行器，只是没写进 _executor_map，运行时按命名约定动态加载</li>
+    <li>全部兜底走 SandboxToolExecutor——get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor)，凡是没在表里的类型一律落到沙箱。这是“默认安全”：除非明确认定安全，否则隔离</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。这正是本课最大的“陷阱”：_executor_map 显式接线了 7 个条目（LETTA_CORE、LETTA_MEMORY_CORE、LETTA_SLEEPTIME_CORE → LettaCore；LETTA_MULTI_AGENT_CORE → Sandbox；LETTA_BUILTIN、LETTA_FILES_CORE、EXTERNAL_MCP），映射到 5 个执行器类。其余 4 种没进表的类型（custom、letta_voice_sleeptime_core、external_langchain、external_composio）靠 get_executor 的 .get(tool_type, SandboxToolExecutor) 兜底走沙箱。注意 letta_multi_agent_core 也在沙箱跑，但它是被显式映射的，不是兜底。彩蛋：ExternalComposioToolExecutor 这个类存在却没被接线（external_composio 弃用、兜底沙箱），是永远不会被选中的死代码。既不会 KeyError，也没有“按命名动态加载”。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用“医院分诊台”这个比喻，把第 19 课的执行链路完整讲一遍，并想三件事：(1) ToolType + 工厂这套“按类型分发”的设计，和“在循环里写一长串 if/elif 判断该怎么跑”相比，好在哪？日后新增一种工具类型、或想把某类工具从沙箱挪到进程内，各要改哪里？(2) 自定义工具“默认兜底沙箱”是“默认安全”，可它也意味着一个忘了归类的内置工具会悄悄变慢（多绕一层沙箱）。这个“安全 vs 性能”的默认你怎么权衡？要不要在“落到兜底”时打一条告警日志？(3) MCP 不走沙箱、每次现连现断，把“运行第三方代码”的风险留在外部 server。对比“本地沙箱跑自定义代码”，这两种扩展能力的方式在信任边界、延迟、故障模式上各有什么不同？什么场景该选哪种？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">When Lesson 14 walked through the agent's execution loop, "running a tool" got barely a single line; Lessons 17 and 18 then grew tools a schema so the model could "see" and call them. But the moment the model actually emits a tool call and the system <strong>has to run it</strong> — that one step we never pried open.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson lays "execution" out flat: when an agent really has to run a tool, how does it know <strong>which way</strong> to run it — call it in-process? throw it into an isolated sandbox? or open a network connection to an external server? The answer hides inside a label called <span class="mono">ToolType</span> and a factory.</p>
+<div class="note info"><span class="ni">❓</span><span class="nx">Read on with one concrete question in mind: when the model says "call <span class="mono">run_code</span>", who exactly, <strong>where</strong>, and <strong>by what means</strong> actually runs that code? The answer is not some single function but a whole mechanism — "type label + factory + executor" — and this lesson takes it apart for you.</span></div>
+
+<div class="card analogy"><div class="tag">🔌 Analogy</div>
+<p>Think of "running a tool" as a hospital's <strong>triage desk</strong>. Everyone shows up to "see a doctor," yet the front desk treats no one itself — it routes you by your <strong>department label</strong> to different places.</p>
+<p>A minor internal complaint goes straight into a consulting room and is seen on the spot (this is <span class="mono">core</span>, run in-process); anything that needs cutting is sent to an isolated <strong>operating room</strong> (this is <span class="mono">sandbox</span>, running unfamiliar code under isolation); a hard case this hospital can't handle is <strong>referred out for a second opinion</strong> (this is <span class="mono">MCP</span>, connecting to an external server).</p>
+<p>The point is this: the triage desk <strong>treats no one</strong>; it does exactly one thing — <strong>route you by type to the right place</strong>. In Letta, that triage desk is the "factory" we are about to meet.</p>
+</div>
+<p>This analogy quietly holds the whole lesson: one phrase, "run a tool," lands as several completely different ways of running; what decides the route is the tool's <strong>type label</strong> and that "triaging" factory. Grasp those two and the "execution" step turns transparent.</p>
+
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Every <span class="mono">Tool</span> carries a <span class="mono">ToolType</span> (11 in all), the equivalent of a "department label" stuck on the tool.</p>
+<p><span class="mono">tool_execution_manager.py::ToolExecutorFactory</span> is that triage desk: it maps a tool to the matching <strong>executor</strong> by its <span class="mono">ToolType</span>. But the entry the agent loop actually calls is <span class="mono">ToolExecutionManager::execute_tool_async</span>, in the very same file.</p>
+<p>The executors each mind their own patch: <span class="mono">core</span> runs in-process, <span class="mono">builtin</span> runs the built-in tools, <span class="mono">files</span> handles files, <span class="mono">mcp</span> connects to external servers, <span class="mono">sandbox</span> runs custom code.</p>
+<p>So this lesson covers just three things: <strong>what ToolType is</strong>, <strong>how the factory picks an executor by it</strong>, and <strong>what each executor actually does</strong>.</p>
+</div>
+
+<div class="note tip"><span class="ni">🗺️</span><span class="nx">You can keep one through-line in view across this lesson: <strong>label (ToolType) → factory (pick the executor) → entry (ToolExecutionManager) → five executors (various runtimes) → one unified result (ToolExecutionResult)</strong>. The sections below follow that line one stop at a time.</span></div>
+<h2>ToolType: a tool's "category label"</h2>
+<p>Meet the labels first. <span class="mono">schemas/enums.py::ToolType</span> has 11 values in all, which fall into three groups — <strong>built-in</strong> (shipped by Letta, run in-process or under control), <strong>custom</strong> (the ones you write, sandboxed by default), and <strong>external</strong> (connecting to third parties).</p>
+<div class="cellgroup"><div class="cg-cap"><b>Built-in · shipped by Letta (7)</b></div><div class="cells"><span class="cell hl">letta_core</span><span class="sep">·</span><span class="cell">letta_memory_core</span><span class="sep">·</span><span class="cell">letta_multi_agent_core</span><span class="sep">·</span><span class="cell">letta_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_voice_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_builtin</span><span class="sep">·</span><span class="cell">letta_files_core</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>Custom · the default (1)</b></div><div class="cells"><span class="cell hl">custom</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>External · third-party (3)</b></div><div class="cells"><span class="cell">external_langchain (deprecated)</span><span class="sep">·</span><span class="cell">external_composio (deprecated)</span><span class="sep">·</span><span class="cell hl">external_mcp</span></div></div>
+<div class="note info"><span class="ni">🏷️</span><span class="nx"><span class="mono">custom</span> is the <strong>default</strong>: register a tool and, unless it gets sorted into another class, it stays <span class="mono">custom</span> — and <span class="mono">custom</span> falls through to the sandbox. The two <span class="mono">external_langchain / external_composio</span> are deprecated; the only genuinely live external type is <span class="mono">external_mcp</span>.</span></div>
+<p>Why split into so many kinds? Because Letta's tools come from wildly different places: some are core framework abilities (send a message, edit memory), some are built-in platform utilities (run code, search the web), some are business functions you wrote on the spot, and some don't live locally at all and must be reached over the wire. Labelling each tool with a type is what lets the factory later dispatch it to the right runtime.</p>
+<p>Those 7 built-in kinds break down further by purpose: <span class="mono">letta_core</span> handles conversation and control flow, <span class="mono">letta_memory_core</span> rewrites memory, <span class="mono">letta_sleeptime_core</span> and <span class="mono">letta_voice_sleeptime_core</span> serve the background tidying that happens during "sleep time," <span class="mono">letta_multi_agent_core</span> drives multi-agent collaboration, <span class="mono">letta_builtin</span> runs code and searches the web, and <span class="mono">letta_files_core</span> handles files.</p>
+<h2>The factory: picking an executor by type</h2>
+<p>The labels exist — but who reads them and hands out the work? <span class="mono">ToolExecutorFactory</span>. Inside it holds an <span class="mono">_executor_map</span> that maps each <span class="mono">ToolType</span> to an executor class; <span class="mono">get_executor</span> looks up the table, instantiates, and returns an executor.</p>
+<div class="flow">
+<div class="node"><div class="nt">tool.tool_type</div><div class="nd">the label on the tool</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">get_executor</div><div class="nd">look up _executor_map</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">the concrete executor</div><div class="nd">LettaCore / Sandbox …</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">execute(...)</div><div class="nd">actually run the tool</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">ToolExecutionResult</div><div class="nd">one unified result</div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">The loop only says "call this tool"; <strong>how</strong> it runs is decided by <span class="mono">ToolType</span> + the factory: in-process / sandbox / connect to an MCP server — one and the same <span class="mono">execute</span> interface, hiding three runtimes.</span></div>
+<p>Keep the <strong>end</strong> of the flow in mind too: whichever route it takes, every executor returns the same <span class="mono">ToolExecutionResult</span>. The differences are hidden in the middle while the exit stays uniform — that is exactly the shape of <strong>polymorphism</strong>.</p>
+<p>In implementation, <span class="mono">_executor_map</span> is a <span class="mono">ClassVar</span> — a class-level dict shared by every instance. Looking it up is a plain <span class="mono">dict.get(key, default)</span>: a hit returns the mapped executor class, a miss returns the second argument, <span class="mono">SandboxToolExecutor</span>. One short line that is both a "dispatch table" and a "safety net."</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">the factory (simplified)</span></div><pre><span class="kw">class</span> <span class="fn">ToolExecutorFactory</span>:
+    _executor_map = {
+        ToolType.LETTA_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MEMORY_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_SLEEPTIME_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MULTI_AGENT_CORE: SandboxToolExecutor,
+        ToolType.LETTA_BUILTIN: LettaBuiltinToolExecutor,
+        ToolType.LETTA_FILES_CORE: LettaFileToolExecutor,
+        ToolType.EXTERNAL_MCP: ExternalMCPToolExecutor,
+    }
+    <span class="kw">def</span> <span class="fn">get_executor</span>(cls, tool_type, ...):
+        cls_ = cls._executor_map.<span class="fn">get</span>(tool_type, SandboxToolExecutor)   <span class="cm"># unmapped -> fall back to sandbox</span>
+        <span class="kw">return</span> cls_(...)
+</pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Look at that <span class="mono">.get(tool_type, SandboxToolExecutor)</span> line inside <span class="mono">get_executor</span>: <strong>any type not in the table falls through to the sandbox</strong>. <span class="mono">custom</span>, <span class="mono">letta_voice_sleeptime_core</span>, and both deprecated externals (<span class="mono">external_langchain / external_composio</span>) land here that way — and <span class="mono">letta_multi_agent_core</span> runs in the sandbox too, just via an explicit entry. So "a custom tool = runs in the sandbox" is the <strong>default</strong>, not a special case.</span></div>
+<p>This is the classic <strong>factory pattern</strong>: it gathers "<em>which implementation to actually use</em>" into one place, so the caller just asks for "an executor" without needing to know which class sits behind it or how it is built. Want to add a tool type later? Register one line in <span class="mono">_executor_map</span> — and not a single word of the loop or the entry has to change.</p>
+<h2>The real entry: ToolExecutionManager</h2>
+<p>The factory only "picks the person." The thing the agent loop actually calls is <span class="mono">ToolExecutionManager::execute_tool_async</span>: it uses the factory to get an executor, then <strong>times</strong> the call, <strong>truncates</strong> an over-long return, <strong>wraps</strong> exceptions into a result object, and hands it all back to the loop.</p>
+<p>Why cram all this drudgery into the entry? Because a tool is the most "uncontrollable" link in an agent — it might read a database, run code, or hit the network, with wildly varying latency and failure modes. Collecting timing, truncation, and exception-wrapping into this one entry layer means the loop needn't fuss over each tool separately; the observability of per-step latency and the stability of "never blow up, never throw" stay centralized and under control.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">the entry (simplified)</span></div><pre><span class="kw">async def</span> <span class="fn">execute_tool_async</span>(self, function_name, function_args, tool, ...):
+    executor = ToolExecutorFactory.<span class="fn">get_executor</span>(tool.tool_type, ...)
+    result = <span class="kw">await</span> executor.<span class="fn">execute</span>(function_name, function_args, tool, actor, ...)
+    <span class="kw">if</span> len(return_str) > tool.return_char_limit:   <span class="cm"># truncate if too long</span>
+        ...
+    <span class="kw">return</span> result   <span class="cm"># ToolExecutionResult(status, func_return, stdout, stderr, ...)</span>
+</pre></div>
+<div class="note tip"><span class="ni">🧭</span><span class="nx">Tell the two layers apart: the factory only answers "<strong>which executor</strong>," while <span class="mono">ToolExecutionManager</span> is the <strong>entry</strong> the loop truly calls — it does the timing, the truncation past <span class="mono">return_char_limit</span>, and the uniform wrapping of exceptions into <span class="mono">ToolExecutionResult(status="error")</span>.</span></div>
+<p>So what does that unified return value <span class="mono">ToolExecutionResult</span> look like? It carries <span class="mono">status</span> (success or failure), <span class="mono">func_return</span> (the tool's return value), <span class="mono">stdout / stderr</span> (whatever ran printed), plus fields like <span class="mono">sandbox_config_fingerprint</span>. Whether core ran it in-process or a sandbox ran it, the loop receives this same shell — which is exactly why the entry bothers to normalize everything into it.</p>
+<h2>Five executors, each minding its patch</h2>
+<p>Counting the ones named in the factory table plus the fallback, there are five executors in all. The table below lines up "label → executor → category → typical tools."</p>
+<table class="t">
+<tr><th>ToolType</th><th>Executor</th><th>Category</th><th>Typical tools</th></tr>
+<tr><td class="mono">letta_core</td><td class="mono">LettaCoreToolExecutor</td><td>in-process</td><td class="mono">send_message · conversation_search</td></tr>
+<tr><td class="mono">letta_memory_core</td><td class="mono">LettaCoreToolExecutor</td><td>in-process · memory</td><td class="mono">core_memory_append · core_memory_replace</td></tr>
+<tr><td class="mono">letta_builtin</td><td class="mono">LettaBuiltinToolExecutor</td><td>controlled built-in</td><td class="mono">run_code · web_search · fetch_webpage</td></tr>
+<tr><td class="mono">letta_files_core</td><td class="mono">LettaFileToolExecutor</td><td>files</td><td class="mono">open_files · grep_files</td></tr>
+<tr><td class="mono">external_mcp</td><td class="mono">ExternalMCPToolExecutor</td><td>external server</td><td class="mono">MCP tools</td></tr>
+<tr><td class="mono">custom (fallback)</td><td class="mono">SandboxToolExecutor</td><td>sandbox</td><td class="mono">your custom tools</td></tr>
+</table>
+<p>Let's spell out what each of these five executors does:</p>
+<ul>
+<li><span class="mono">LettaCoreToolExecutor</span>: it takes on all three patches — core, <strong>memory</strong>, and sleeptime — and runs every one of them <strong>in-process</strong>. The core-memory edits <span class="mono">core_memory_append / core_memory_replace</span> execute right here, no sandbox detour, lowest latency.</li>
+<li><span class="mono">LettaBuiltinToolExecutor</span>: runs the platform's built-in tools — <span class="mono">run_code</span> executes code, <span class="mono">web_search</span> searches the web, <span class="mono">fetch_webpage</span> grabs a page — a set of "controlled" utilities.</li>
+<li><span class="mono">LettaFileToolExecutor</span>: dedicated to file tools such as <span class="mono">open_files</span> and <span class="mono">grep_files</span>, serving "read a file into context" and "search within files."</li>
+<li><span class="mono">ExternalMCPToolExecutor</span>: the only "reach-outward" executor; it forwards the call to an external MCP server and runs not one line of business code locally.</li>
+<li><span class="mono">SandboxToolExecutor</span>: the <strong>fallback</strong> for custom tools and every unmapped type, throwing unfamiliar code into an isolated sandbox to run — how it runs and why it dares to is the subject of Lesson 20.</li>
+</ul>
+<p>Walk the dispatch with three examples. The model wants <span class="mono">core_memory_append</span> (type <span class="mono">letta_memory_core</span>): the factory hands it to <span class="mono">LettaCoreToolExecutor</span>, editing memory on the spot in-process. It wants <span class="mono">run_code</span> (<span class="mono">letta_builtin</span>): handed to <span class="mono">LettaBuiltinToolExecutor</span> for controlled execution. It wants your own <span class="mono">calculate_invoice</span> (unsorted, landing in <span class="mono">custom</span>): the factory can't find it in the table and falls back to <span class="mono">SandboxToolExecutor</span>, into the sandbox. One identical call, three completely different fates.</p>
+<p>They all inherit the base class <span class="mono">tool_executor_base.py::ToolExecutor</span>, with the uniform signature <span class="mono">async def execute(...) -&gt; ToolExecutionResult</span>. Note that the memory tool <span class="mono">core_memory_append</span> also belongs to <span class="mono">LettaCoreToolExecutor</span> and runs <strong>in-process</strong>, never in a sandbox.</p>
+<div class="note info"><span class="ni">🧩</span><span class="nx">The beauty of a uniform interface: the loop recognizes only one signature, <span class="mono">execute(...) -&gt; ToolExecutionResult</span>. Whether underneath it edits memory, runs code, or connects to an external server, it all "looks the same" to the loop — so it can call, time, record, and feed the result back into the conversation for any tool, all alike.</span></div>
+<p>In-process versus into-the-sandbox is, at heart, a "trust versus speed" trade-off. Trusted core tools (edit memory, send a message) run straight in the process — fastest and simplest; custom code of unknown origin must be isolated first, accepting slower and clunkier over letting it touch the server's memory and permissions. Letting the "type" express that trade-off is the cleverest part of this design.</p>
+
+<div class="cute">
+<div class="row"><span class="emoji">🏭</span><span class="lab">sort by ToolType</span><span class="arrow">→</span><span class="emoji">🧠</span><span class="bubble">core · in-process</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">the same factory</span><span class="arrow">→</span><span class="emoji">🔧</span><span class="bubble">builtin · built-in</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">different belts</span><span class="arrow">→</span><span class="emoji">📁</span><span class="bubble">files · files</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">each its own way</span><span class="arrow">→</span><span class="emoji">🔌</span><span class="bubble">mcp · external</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">the fallback lane</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">sandbox · sandbox</span></div>
+<div class="cap">The factory puts each tool on the right belt by ToolType: in-process, built-in, files, external, sandbox.</div>
+</div>
+
+<p>So "dispatch" can be closed in one sentence: <strong>a tool arrives wearing its type label, the factory sends it to the matching executor by that label, each executor runs its own runtime, and they all emit the same kind of result</strong>. Next we look at the most special belt of all — the one to the outside world, MCP.</p>
+<h2>MCP: connecting to an external tool server</h2>
+<p>The previous four categories all run inside Letta's own house. <strong>MCP</strong> (Model Context Protocol) is different: the tool actually lives on an <strong>external server</strong>, and Letta is merely a client that <strong>forwards</strong> the call and fetches the result back.</p>
+<p>Such a tool's <span class="mono">tool_type</span> is <span class="mono">external_mcp</span>, and it is also tagged <span class="mono">mcp:&lt;server&gt;</span> (set by <span class="mono">ToolCreate.from_mcp</span>). At execution time <span class="mono">ExternalMCPToolExecutor</span> pulls the target server name out of the tag and hands it to <span class="mono">MCPManager</span> to connect, run, and then disconnect.</p>
+<div class="note tip"><span class="ni">🌐</span><span class="nx">MCP is an <strong>open protocol</strong>: anyone can write an MCP server exposing a batch of tools (query a database, send email, call an internal API…). On Letta's side you only register the server and import the tools, and the agent can call them — while the tool's implementation details stay entirely opaque to Letta.</span></div>
+<div class="vflow">
+<div class="step"><div class="num">1</div><div class="sc"><h4>MCP tool</h4><p>tagged <span class="mono">mcp:&lt;server&gt;</span>, type <span class="mono">external_mcp</span></p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>ExternalMCPToolExecutor</h4><p>parses the target server name from the tag</p></div></div>
+<div class="step"><div class="num">3</div><div class="sc"><h4>MCPManager.execute_mcp_server_tool</h4><p>the single entry, owning the whole connection lifecycle</p></div></div>
+<div class="step"><div class="num">4</div><div class="sc"><h4>connect → execute → cleanup</h4><p>a fresh connection each time, dropped when done, never reused</p></div></div>
+</div>
+<p>Read that vertical flow as one chain: the tool comes in wearing its <span class="mono">mcp:&lt;server&gt;</span> tag, the executor parses the server name out of the tag, and <span class="mono">MCPManager</span> connects, sends the call across, takes the result back, and disconnects. Throughout, Letta executes no tool logic of its own — it only "relays."</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/mcp_tool_executor.py</span><span class="ln">MCP execution (simplified)</span></div><pre><span class="kw">async def</span> <span class="fn">execute</span>(self, function_name, function_args, tool, ...):
+    server = <span class="fn">_tag_to_server</span>(tool.tags)        <span class="cm"># pull the server name from the "mcp:&lt;server&gt;" tag</span>
+    resp, ok = <span class="kw">await</span> MCPManager().<span class="fn">execute_mcp_server_tool</span>(
+        server, tool_name=function_name, tool_args=function_args, ...)   <span class="cm"># connect to the external server</span>
+    <span class="kw">return</span> ToolExecutionResult(status=<span class="st">"success"</span> <span class="kw">if</span> ok <span class="kw">else</span> <span class="st">"error"</span>, func_return=resp)
+</pre></div>
+<div class="cellgroup"><div class="cg-cap"><b>Three MCP transports · MCPServerType</b></div><div class="cells"><span class="cell hl">stdio</span><span class="sep">·</span><span class="cell">sse</span><span class="sep">·</span><span class="cell">streamable_http</span></div></div>
+<p>Seen another way, MCP fully decouples "the tool" from "the process that runs the tool": implementation, dependencies, and secrets all stay on the tool's own server, and Letta only initiates the call through the protocol. A third party can therefore package a whole set of abilities into one MCP server and plug it into any agent.</p>
+<p>The cost is that every call must <strong>connect and disconnect on the spot</strong> — <span class="mono">connect → execute → cleanup</span> end to end. The upside is stateless, clean, and mutually non-interfering; the downside is connection overhead, so MCP suits "external abilities used now and then" rather than a high-frequency hot path.</p>
+<div class="note info"><span class="ni">🔌</span><span class="nx">Two counterintuitive points: MCP execution <strong>does not go through the sandbox</strong> (it connects to an external server, it isn't running code locally); and every call <strong>opens a fresh connection</strong> (<span class="mono">connect → execute → cleanup</span>). The real transport clients live in <span class="mono">letta/services/mcp/</span>, <strong>not</strong> <span class="mono">functions/mcp_client/</span> — the latter only holds config types and exceptions.</span></div>
+<p>Remember MCP in a sentence: <strong>the tool is at someone else's place; Letta calls on it</strong>. It extends the agent's reach while leaving the risk of "running third-party code" on the third party's side — a different security philosophy from the local sandbox.</p>
+<p>Put another way: the previous four executors are like "working in different rooms of your own house," whereas MCP is like "phoning for takeout" — the work happens at someone else's place, and you only place the order and receive the delivery. This also explains why MCP skips the sandbox: the sandbox exists to isolate "unfamiliar code running in your house," but MCP's code never runs in your house at all.</p>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p><strong>"One call, several runtimes behind it."</strong> From the vantage of Lesson 14's loop, "call a tool" is forever one uniform line of code.</p>
+<p>Yet underneath they differ wildly: edit core memory in-process (<span class="mono">LettaCore</span>), shell out to run unfamiliar code in a sandbox venv (<span class="mono">Sandbox</span>), open a network connection to an MCP server (<span class="mono">ExternalMCP</span>). <span class="mono">ToolType</span> + the factory is the <strong>polymorphism</strong> that hides those differences.</p>
+<p>And another counterintuitive truth: there are only <strong>5 executor classes</strong> for <strong>11 ToolTypes</strong>. <span class="mono">_executor_map</span> wires 7 types explicitly (several share <span class="mono">LettaCore</span>), and the remaining 4 — <span class="mono">custom</span>, voice-sleeptime, and the two deprecated externals — <strong>fall back to <span class="mono">SandboxToolExecutor</span></strong>. So "custom = sandbox" is the default, not a special case.</p>
+<p>Every executor, finally, returns the same <span class="mono">ToolExecutionResult</span> — the very type used for a tool-rule violation back in Lesson 16. Uniform exit, differences kept inward.</p>
+<p>It is clearer set against the whole tool chain: Lessons 17 and 18 gave a tool "a schema, the ability to be seen," and this lesson gets a tool "correctly run." The model's end is always a uniform function call, yet the system's end quietly makes one <strong>runtime choice by type</strong> — that is exactly what a good abstraction looks like: simple on top, flexible underneath.</p>
+<p>Put differently, <span class="mono">ToolType</span> writes "what tool I am" into data, and the factory writes "which tool runs which way" into logic — a kind of <strong>data-driven dispatch</strong>. To change how some class of tool runs, you needn't touch the loop; you only change its type, or one line of mapping in <span class="mono">_executor_map</span>.</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p>If you want to read the source yourself, this lesson touches few files; line them up along the "dispatch chain":</p>
+<p>The factory and the entry both live in <span class="mono">letta/services/tool_executor/tool_execution_manager.py</span>: <span class="mono">ToolExecutorFactory</span> picks the executor, <span class="mono">ToolExecutionManager</span> is the real entry.</p>
+<p>The executor base class is <span class="mono">tool_executor_base.py::ToolExecutor</span>; the five implementations: <span class="mono">core_tool_executor.py::LettaCoreToolExecutor</span>, <span class="mono">builtin_tool_executor.py::LettaBuiltinToolExecutor</span>, <span class="mono">files_tool_executor.py::LettaFileToolExecutor</span>, <span class="mono">mcp_tool_executor.py::ExternalMCPToolExecutor</span>, <span class="mono">sandbox_tool_executor.py::SandboxToolExecutor</span>.</p>
+<p>The type is defined in <span class="mono">schemas/enums.py::ToolType</span>; MCP config in <span class="mono">functions/mcp_client/types.py</span>, with clients and manager in <span class="mono">services/mcp/</span> plus <span class="mono">services/mcp_manager.py::MCPManager</span>; <span class="mono">ToolExecutionResult</span> in <span class="mono">schemas/tool_execution_result.py</span>.</p>
+</div>
+<p>This lesson really keeps making the same point: a good system locks "change" inside a small box. Tools vary endlessly, but the variation is gathered into just two places — the "type label" and the "factory mapping"; beyond those, the loop, the entry, and the result object all stay unchanged. So adding a tool kind or swapping a runtime has a tiny blast radius — that is the value of cutting complexity by location.</p>
+
+<div class="card warn"><div class="tag">⚠️ Common misconceptions</div>
+<p>The traps easiest to fall into here:</p>
+<ul>
+<li><strong>Thinking every type has its own dedicated executor</strong> — there are only 5 executor classes for 11 types; <span class="mono">_executor_map</span> wires 7 explicitly and the rest fall back to the sandbox.</li>
+<li><strong>Thinking the factory is the entry</strong> — the real entry is <span class="mono">ToolExecutionManager</span>; the factory only "picks."</li>
+<li><strong>Thinking the MCP client is in <span class="mono">functions/mcp_client/</span></strong> — that holds only config types; the clients are in <span class="mono">services/mcp/</span>.</li>
+<li><strong>Thinking only custom tools go to the sandbox</strong> — <span class="mono">letta_voice_sleeptime_core</span> and the multi-agent tools go there too.</li>
+<li><strong>Easter egg</strong>: <span class="mono">ExternalComposioToolExecutor</span> is in fact never wired up (<span class="mono">external_composio</span> is deprecated and falls back to the sandbox) — it is dead code.</li>
+</ul>
+</div>
+
+<p>One more often-overlooked benefit: because every executor emits the same kind of result, error handling gets unified too. Whether a tool throws, returns something over-long, or violates a rule, what the loop sees is always one status-bearing result object, not a motley of exceptions. "Going wrong" thus becomes "a branch of the normal flow," and the loop can keep marching steadily on.</p>
+<h2>Digging a little deeper</h2>
+<p>The four drawers below are for those who want to dig to the bottom: where the label comes from, why the default sandbox is safe, how MCP integrates, and which built-in tools exist (plus a bit of "archaeology").</p>
+<p>These are details that "make you steadier once known but can be skipped on a first read." If you only want the through-line, remembering "type → factory → executor → unified result" is enough; to pry into the implementation, open the drawers below one by one.</p>
+<details class="accordion"><summary>① How is a tool's tool_type decided?</summary><div class="acc-body">
+<p>At the schema layer the default is just <span class="mono">CUSTOM</span>. When <strong>base tools</strong> are registered they're sorted by name: in <span class="mono">tool_manager.py::upsert_base_tools</span>, <span class="mono">name in BASE_TOOLS → LETTA_CORE</span>, <span class="mono">BASE_MEMORY_TOOLS → LETTA_MEMORY_CORE</span>, <span class="mono">BUILTIN_TOOLS → LETTA_BUILTIN</span>, <span class="mono">FILES_TOOLS → LETTA_FILES_CORE</span>, and so on.</p>
+<p>MCP tools are set <strong>explicitly</strong>: <span class="mono">create_mcp_tool_async</span> assigns <span class="mono">tool_type=EXTERNAL_MCP</span> directly. Everything else you write yourself stays at the default <span class="mono">CUSTOM</span>.</p>
+<div class="note tip"><span class="ni">🔖</span><span class="nx">What a tool is <strong>named</strong> often decides <strong>how it gets executed</strong>: the <span class="mono">tool_type</span> fixed at registration follows it all the way until the factory reads it at execution time.</span></div>
+</div></details>
+<details class="accordion"><summary>② Why is "custom defaults to sandbox" a sound security default?</summary><div class="acc-body">
+<p>Because custom tools are <strong>untrusted code</strong> — they could come from anyone. Making "anything unsorted goes to the sandbox" the default means <strong>isolate unless explicitly judged safe (it made it into _executor_map)</strong>. This is the textbook "secure by default" approach.</p>
+<p>Flip it around: if the default were in-process, any tool someone forgot to sort would get server-side execution rights. The fallback sandbox seals exactly that risk.</p>
+<div class="note info"><span class="ni">🛡️</span><span class="nx">This echoes Lesson 18's stance: treat tool code as <strong>untrusted by default</strong>. Lesson 18 was "derive a schema without running it," and this lesson is "throw it to the sandbox when unsure" — two faces of the same security instinct.</span></div>
+</div></details>
+<details class="accordion"><summary>③ How does MCP actually integrate?</summary><div class="acc-body">
+<p>Three transports: <span class="mono">stdio</span> (a local subprocess), <span class="mono">sse</span>, and <span class="mono">streamable_http</span> (remote HTTP), defined in <span class="mono">functions/mcp_client/types.py::MCPServerType</span>, with config classes like <span class="mono">StdioServerConfig</span>.</p>
+<p>Execution traits: <strong>no sandbox</strong>, a <strong>fresh connection every time</strong> (<span class="mono">connect → execute → cleanup</span>). The client implementations live in <span class="mono">services/mcp/</span>, where the factory <span class="mono">MCPManager::get_mcp_client</span> picks the client by transport type.</p>
+<div class="note warn"><span class="ni">📁</span><span class="nx">Easy to muddle: <span class="mono">functions/mcp_client/types.py</span> holds only <strong>config and types</strong>; the real <strong>client implementations</strong> that build connections and send requests are in <span class="mono">services/mcp/</span>. Don't be fooled by the directory name <span class="mono">mcp_client</span>.</span></div>
+</div></details>
+<details class="accordion"><summary>④ Which built-in tools exist? Plus a bit of "archaeology"</summary><div class="acc-body">
+<p>The built-in tools are in <span class="mono">constants.py::BUILTIN_TOOLS</span>: <span class="mono">run_code</span>, <span class="mono">run_code_with_tools</span>, <span class="mono">web_search</span>, <span class="mono">fetch_webpage</span> — all run by <span class="mono">LettaBuiltinToolExecutor</span>.</p>
+<p>An archaeological find: the class <span class="mono">ExternalComposioToolExecutor</span> <strong>exists</strong> yet <strong>never appears in _executor_map</strong>. <span class="mono">external_composio</span> is deprecated and falls back to the sandbox — so that executor is dead code that <strong>can never be selected</strong>.</p>
+<div class="note info"><span class="ni">🔍</span><span class="nx">The lesson of the dig: <strong>a class existing doesn't mean it's used</strong>. To judge whether code is alive, see whether it is actually <strong>wired up</strong> — here, whether it appears in <span class="mono">_executor_map</span>.</span></div>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><span class="mono">ToolType</span> has 11 values, stuck like a label on every <span class="mono">Tool</span>.</li>
+<li><span class="mono">ToolExecutorFactory</span> picks an executor by type; <strong>anything unmapped falls back to <span class="mono">SandboxToolExecutor</span></strong>.</li>
+<li><span class="mono">ToolExecutionManager::execute_tool_async</span> is the real entry (timing, truncation, result-wrapping).</li>
+<li>Runtimes differ: <span class="mono">core</span> in-process, <span class="mono">custom</span> sandbox, <span class="mono">mcp</span> connects to an external server.</li>
+<li>Every executor returns the same <span class="mono">ToolExecutionResult</span>.</li>
+</ul>
+</div>
+
+<div class="cellgroup"><div class="cg-cap"><b>Part 5 strung together · the life of a tool</b></div><div class="cells"><span class="cell">17 define: function+docstring→schema</span><span class="sep">·</span><span class="cell">18 derive: generate without running</span><span class="sep">·</span><span class="cell hl">19 dispatch: execute by type</span><span class="sep">·</span><span class="cell">20 isolate: sandbox+trust boundary</span></div></div>
+
+<p>Look back at Part 5's line: define → derive → dispatch → isolated execution. Lesson 17 turns a function into a schema, Lesson 18 derives the schema without running it, Lesson 19 dispatches a tool to an executor by type, and Lesson 20 covers the most dangerous kind — custom code — and how it actually runs under isolation.</p>
+
+<p>Strung together: the model picks a tool (Lessons 17 and 18 gave it a schema) → the loop calls it (Lesson 14) → the factory dispatches by <span class="mono">ToolType</span> → each executor runs its own way. And a custom tool is handed by default to <span class="mono">SandboxToolExecutor</span>, that is, thrown into the sandbox. But how exactly does the sandbox run, and on what grounds does it dare run a stranger's code? That is Lesson 20, the close of Part 5.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">In one line: this lesson took "running a tool" from a single black-box line and broke it into five crisp links — "type → factory → entry → executor → result." Next lesson we burrow into the most dangerous link of all — the sandbox.</span></div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. After the model emits a tool call, which “execution entry” does the agent loop actually call? And what role does ToolExecutorFactory play?</div>
+  <ol class="opts">
+    <li>The real entry is ToolExecutionManager.execute_tool_async: it uses the factory to obtain an executor, then handles timing, over-length truncation, and wrapping exceptions into a ToolExecutionResult. The factory only “picks an executor by ToolType” and does not run the tool itself</li>
+    <li>The loop calls a concrete executor's execute() directly, with no intermediate manager layer</li>
+    <li>The model itself sends the tool call to the executor over the network, and the server only relays the result</li>
+    <li>The factory ToolExecutorFactory.get_executor both picks the executor and runs the tool directly, so the loop just calls it</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Lesson 19's key layering: ToolExecutorFactory (tool_execution_manager.py) only “picks the person” — it looks up _executor_map by tool.tool_type and returns an executor instance; the entry the loop actually calls is ToolExecutionManager.execute_tool_async in the same file, which first gets the executor from the factory, then uniformly times the call, truncates by return_char_limit, and wraps exceptions into a ToolExecutionResult. So “factory = entry” is a common trap: the factory doesn't run the tool; the manager is the entry.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. You register a Python tool you wrote yourself, calculate_invoice, without sorting it into any built-in category. Which executor runs it by default, and why?</div>
+  <ol class="opts">
+    <li>SandboxToolExecutor. Its type defaults to custom, and custom is not in the factory's _executor_map — get_executor's .get(tool_type, SandboxToolExecutor) falls back to the sandbox executor</li>
+    <li>LettaBuiltinToolExecutor, treating a custom function as a built-in tool</li>
+    <li>Creation fails, because the factory has no executor mapped for custom, so it can't be dispatched</li>
+    <li>LettaCoreToolExecutor, since any tool not specially categorized runs in-process as a “core tool”</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. At the schema layer tool_type defaults to CUSTOM (custom is not name-sorted by upsert_base_tools_async). The factory ToolExecutorFactory._executor_map wires 7 entries explicitly onto 5 executor classes (LETTA_CORE/LETTA_MEMORY_CORE/LETTA_SLEEPTIME_CORE→LettaCore, LETTA_MULTI_AGENT_CORE→Sandbox, LETTA_BUILTIN→LettaBuiltin, LETTA_FILES_CORE→LettaFile, EXTERNAL_MCP→ExternalMCP), and custom is not among them; get_executor falls back via _executor_map.get(tool_type, SandboxToolExecutor), so a custom tool goes to the sandbox by default. It does not fail — the fallback exists precisely for this case.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. When a tool of type external_mcp is called, does its code run inside Letta's local sandbox? Roughly what is the execution path?</div>
+  <ol class="opts">
+    <li>Not in the sandbox. ExternalMCPToolExecutor parses the server name from the mcp:&lt;server&gt; tag and hands it to MCPManager().execute_mcp_server_tool, which connects to the external MCP server (connect → execute → cleanup); Letta runs no tool code locally</li>
+    <li>It runs in-process inside Letta, just like core_memory_append, for the lowest latency</li>
+    <li>Letta downloads the tool's source locally and executes it in a restricted interpreter after importing it</li>
+    <li>It runs in the sandbox. All “external code” is treated as untrusted and uniformly thrown into SandboxToolExecutor for isolated execution</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. MCP has two counterintuitive points: (1) no sandbox — ExternalMCPToolExecutor (mcp_tool_executor.py) connects to an external MCP server and runs no tool code locally; (2) a fresh connection each time — MCPManager.execute_mcp_server_tool goes connect → execute → cleanup with no connection reuse. The real transport clients live in services/mcp/ (stdio/sse/streamable_http); functions/mcp_client/ holds only config types. The sandbox exists to isolate “unfamiliar code running on your machine,” but MCP's code never runs on your machine at all.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. When an agent calls core_memory_append to rewrite core memory, which executor runs it, and in what runtime?</div>
+  <ol class="opts">
+    <li>SandboxToolExecutor, because any “state-writing” tool must be isolated first to avoid polluting server memory</li>
+    <li>LettaCoreToolExecutor, in-process inside Letta. core_memory_append has type letta_memory_core, and the factory maps LETTA_MEMORY_CORE to LettaCoreToolExecutor too — memory tools do not go to the sandbox</li>
+    <li>A dedicated LettaMemoryToolExecutor handles all memory tools</li>
+    <li>LettaBuiltinToolExecutor, treating memory edits as a built-in utility</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The factory's _executor_map maps LETTA_CORE and LETTA_MEMORY_CORE (and LETTA_SLEEPTIME_CORE) all to the same LettaCoreToolExecutor (core_tool_executor.py), which runs core, memory, and sleeptime tools all in-process — so core_memory_append executes in-process at the lowest latency, with no sandbox detour. There is no separate “Memory” executor, and memory tools are not sandboxed for “writing state.”</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. ToolType has 11 values, but there are only 5 executor classes; _executor_map wires only some of those types explicitly. Types not in the table — like custom, letta_voice_sleeptime_core, and the deprecated external_langchain/external_composio — how do they get executed?</div>
+  <ol class="opts">
+    <li>They fall back to LettaCoreToolExecutor and run in-process</li>
+    <li>The factory raises KeyError, and tools of those types cannot be executed</li>
+    <li>Each type has a same-named executor that's simply omitted from _executor_map and loaded dynamically by naming convention at runtime</li>
+    <li>They all fall back to SandboxToolExecutor — get_executor uses _executor_map.get(tool_type, SandboxToolExecutor), so any type not in the table lands in the sandbox. This is “secure by default”: isolate unless explicitly judged safe</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. This is the lesson's biggest trap: _executor_map wires 7 entries explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_SLEEPTIME_CORE → LettaCore; LETTA_MULTI_AGENT_CORE → Sandbox; LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP) onto just 5 executor classes. The other 4 unlisted types (custom, letta_voice_sleeptime_core, external_langchain, external_composio) fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Note letta_multi_agent_core also runs in the sandbox, but by an explicit mapping, not the fallback. Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Use the “hospital triage desk” metaphor to tell lesson 19's execution chain as a whole, and think through three things: (1) Compared with “writing a long if/elif in the loop to decide how to run,” what's better about the ToolType + factory “dispatch by type” design? To add a new tool type later, or to move some class of tool from the sandbox to in-process, what would you change in each case? (2) “Custom defaults to the sandbox” is secure by default, but it also means a built-in tool someone forgot to categorize silently gets slower (one extra sandbox hop). How would you weigh this “safety vs performance” default — would you log a warning whenever execution “hits the fallback”? (3) MCP skips the sandbox and connects/disconnects per call, leaving the risk of “running third-party code” on the external server. Compared with “running custom code in a local sandbox,” how do these two ways of extending capability differ in trust boundary, latency, and failure modes — and when would you pick each?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="18-schema-without-executing.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">不执行就生成 schema</span><span class="lang-en">Deriving the schema without executing</span></div></a><a class="next" href="20-tool-sandbox-security.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">自定义工具沙箱与安全修复</span><span class="lang-en">The tool sandbox &amp; a security fix</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>
