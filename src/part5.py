@@ -449,5 +449,39 @@ LESSON_18 = {"zh": r"""
 </pre></div>
 <div class="cellgroup"><div class="cg-cap"><b>MockFunction 只凑齐三个属性</b></div><div class="cells"><span class="cell hl">__name__ 名字</span><span class="sep">·</span><span class="cell hl">__doc__ docstring</span><span class="sep">·</span><span class="cell hl">__signature__ 参数</span></div></div>
 <div class="note tip"><span class="ni">💡</span><span class="nx">关键在于：一旦显式设好 <span class="mono">__signature__</span>，<span class="mono">inspect.signature(mock)</span> 与 <span class="mono">parse(mock.__doc__)</span> 就能在一段<strong>从未运行过</strong>的代码上照常工作——<span class="mono">inspect</span> 只认这些属性，根本不在乎对象是真函数还是假货。这正是上传工具能<strong>原样复用</strong> <span class="mono">generate_schema</span> 的底层原因。</span></div>
+<h2>AST 静态读了什么</h2>
+<p>真正干活的是 <span class="mono">_parse_function_from_source</span>。它先把源码 <span class="mono">ast.parse</span> 成语法树，从中挑出函数节点，再<strong>逐项重建</strong>一个 <span class="mono">inspect.Signature</span>：参数名取自节点、类型来自注解、默认值用 <span class="mono">ast.literal_eval</span> 安全求值（只认字面量，不执行表达式）。整张签名是"拼"出来的，没有任何一处需要运行原代码。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">_parse_function_from_source（要点）</span></div>
+<pre><span class="kw">def</span> <span class="fn">_parse_function_from_source</span>(src, name):
+    tree = ast.<span class="fn">parse</span>(src)               <span class="cm"># 语法错 -> LettaToolCreateError</span>
+    func = [n <span class="kw">for</span> n <span class="kw">in</span> tree.body <span class="kw">if</span> isinstance(n, ast.FunctionDef)][-<span class="nb">1</span>]  <span class="cm"># 取最后一个函数</span>
+    <span class="cm"># 重建 inspect.Signature：参数名、注解、用 ast.literal_eval 取默认值</span>
+    <span class="cm"># 未定义的 BaseModel 用 type(name, (BaseModel,), {...}) 造桩，不 import</span>
+    <span class="kw">return</span> <span class="fn">MockFunction</span>(func.name, ast.<span class="fn">get_docstring</span>(func), sig)
+</pre></div>
+<div class="note info"><span class="ni">📌</span><span class="nx">一段源码里若有<strong>多个函数</strong>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span>（约定：工具就是文件里最后定义的那个）。配套的 AST 辅助住在 <span class="mono">letta/functions/ast_parsers.py</span>，其中 <span class="mono">resolve_type</span> 用<strong>白名单</strong>解析类型，默认 <span class="mono">allow_unsafe_eval=False</span>，从源头杜绝"借解析之名跑代码"。</span></div>
+
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>一句话概括这门手艺：<strong>"从一段你拒绝运行的代码里，生成它的 schema。"</strong> 读函数签名最朴素的办法是 <span class="mono">import + inspect</span>，可 <span class="mono">import</span> 用户代码＝在你的服务端执行任意代码。Letta 的巧招是：先 <span class="mono">ast.parse</span> 成语法树（只读不跑），再造一个只带 <span class="mono">__name__/__doc__/__signature__</span> 的 <span class="mono">MockFunction</span>，喂给<strong>完全相同</strong>的 <span class="mono">generate_schema</span>。</p>
+<p>结果是：模型拿到一张真 schema，服务器却<strong>一行用户代码都没跑</strong>。连源码里引用的未定义 Pydantic 类型，也用 <span class="mono">type(name,(BaseModel,),{})</span> 造桩，而非 import。它把"安全"巧妙地变成了一道"解析"题——这正是第 20 课沙箱哲学的前奏：<strong>"工具的代码，自始至终不可信。"</strong></p>
+</div>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p>这套机制散落在几处，但脉络清晰：</p>
+<ul>
+<li><strong>派生器三件套</strong>（均在 <span class="mono">letta/functions/functions.py</span>）：<span class="mono">derive_openai_json_schema</span>、<span class="mono">MockFunction</span>、<span class="mono">_parse_function_from_source</span>。</li>
+<li><strong>AST 辅助</strong>：<span class="mono">letta/functions/ast_parsers.py</span>，含 <span class="mono">get_function_name_and_docstring</span> 与白名单类型解析 <span class="mono">resolve_type</span>。</li>
+<li><strong>TypeScript 派生</strong>：<span class="mono">letta/functions/typescript_parser.py::derive_typescript_json_schema</span>。</li>
+<li><strong>接线在创建时</strong>：<span class="mono">letta/services/tool_manager.py</span>（custom 且无 schema → 调用派生）→ <span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>（按 <span class="mono">source_type</span> 分派 Python / TypeScript）。</li>
+</ul>
+</div>
+
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<ul>
+<li><span class="mono">MockFunction</span> 住在 <strong>functions.py</strong>，<strong>不在</strong> <span class="mono">ast_parsers.py</span>——别找错文件。</li>
+<li>多函数源码取<strong>最后一个</strong> <span class="mono">FunctionDef</span>，<strong>不是第一个</strong>。</li>
+<li>TypeScript 工具创建<strong>必须显式传 <span class="mono">json_schema</span></strong>，否则 <span class="mono">ToolCreate</span> 直接报错。</li>
+<li>schema 派生<strong>只在创建时</strong>做，<strong>已不在</strong> pydantic 校验器里：<span class="mono">Tool.refresh_source_code_and_json_schema</span> 对 custom 缺 schema 只<strong>告警</strong>、不再现算。</li>
+</ul>
+</div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
