@@ -951,5 +951,24 @@ LESSON_19 = {"zh": r"""
 <p>串起来看：模型选工具（第 17、18 课给了 schema）→ 循环调用（第 14 课）→ 工厂按 <span class="mono">ToolType</span> 分发 → 执行器各跑各的。而自定义工具默认被交给 <span class="mono">SandboxToolExecutor</span>，也就是丢进<strong>沙箱</strong>。可沙箱到底<strong>怎么跑、凭什么敢跑陌生人的代码</strong>？这就是第 20 课，也是第五部分的收尾。</p>
 <div class="note tip"><span class="ni">🧷</span><span class="nx">小结一句：这一课把"执行工具"从一行黑箱，拆成了"类型 → 工厂 → 入口 → 执行器 → 结果"五个清清楚楚的环节。下一课，我们钻进其中最危险的那个环节——沙箱。</span></div>
 """, "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">When Lesson 14 walked through the agent's execution loop, "running a tool" got barely a single line; Lessons 17 and 18 then grew tools a schema so the model could "see" and call them. But the moment the model actually emits a tool call and the system <strong>has to run it</strong> — that one step we never pried open.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson lays "execution" out flat: when an agent really has to run a tool, how does it know <strong>which way</strong> to run it — call it in-process? throw it into an isolated sandbox? or open a network connection to an external server? The answer hides inside a label called <span class="mono">ToolType</span> and a factory.</p>
+<div class="note info"><span class="ni">❓</span><span class="nx">Read on with one concrete question in mind: when the model says "call <span class="mono">run_code</span>", who exactly, <strong>where</strong>, and <strong>by what means</strong> actually runs that code? The answer is not some single function but a whole mechanism — "type label + factory + executor" — and this lesson takes it apart for you.</span></div>
+
+<div class="card analogy"><div class="tag">🔌 Analogy</div>
+<p>Think of "running a tool" as a hospital's <strong>triage desk</strong>. Everyone shows up to "see a doctor," yet the front desk treats no one itself — it routes you by your <strong>department label</strong> to different places.</p>
+<p>A minor internal complaint goes straight into a consulting room and is seen on the spot (this is <span class="mono">core</span>, run in-process); anything that needs cutting is sent to an isolated <strong>operating room</strong> (this is <span class="mono">sandbox</span>, running unfamiliar code under isolation); a hard case this hospital can't handle is <strong>referred out for a second opinion</strong> (this is <span class="mono">MCP</span>, connecting to an external server).</p>
+<p>The point is this: the triage desk <strong>treats no one</strong>; it does exactly one thing — <strong>route you by type to the right place</strong>. In Letta, that triage desk is the "factory" we are about to meet.</p>
+</div>
+<p>This analogy quietly holds the whole lesson: one phrase, "run a tool," lands as several completely different ways of running; what decides the route is the tool's <strong>type label</strong> and that "triaging" factory. Grasp those two and the "execution" step turns transparent.</p>
+
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Every <span class="mono">Tool</span> carries a <span class="mono">ToolType</span> (11 in all), the equivalent of a "department label" stuck on the tool.</p>
+<p><span class="mono">tool_execution_manager.py::ToolExecutorFactory</span> is that triage desk: it maps a tool to the matching <strong>executor</strong> by its <span class="mono">ToolType</span>. But the entry the agent loop actually calls is <span class="mono">ToolExecutionManager::execute_tool_async</span>, in the very same file.</p>
+<p>The executors each mind their own patch: <span class="mono">core</span> runs in-process, <span class="mono">builtin</span> runs the built-in tools, <span class="mono">files</span> handles files, <span class="mono">mcp</span> connects to external servers, <span class="mono">sandbox</span> runs custom code.</p>
+<p>So this lesson covers just three things: <strong>what ToolType is</strong>, <strong>how the factory picks an executor by it</strong>, and <strong>what each executor actually does</strong>.</p>
+</div>
+
+<div class="note tip"><span class="ni">🗺️</span><span class="nx">You can keep one through-line in view across this lesson: <strong>label (ToolType) → factory (pick the executor) → entry (ToolExecutionManager) → five executors (various runtimes) → one unified result (ToolExecutionResult)</strong>. The sections below follow that line one stop at a time.</span></div>
 <!--ENMORE-->
 """}
