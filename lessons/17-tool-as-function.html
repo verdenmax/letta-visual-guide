@@ -660,7 +660,60 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>So one vague or missing parameter description <strong>directly lowers</strong> the model's odds of using the tool correctly. This is a functional problem, not a code-style one. Letta simply promotes it to a "compile-time error": if any parameter lacks a description, <span class="mono">generate_schema</span> <span class="mono">raise</span>s <span class="mono">ValueError</span> on the spot, the tool can't be built at all, forcing you to say it clearly.</p>
 <p>Remember it in one line: <strong>write the docstring for the model, not for your colleague</strong>. This loops right back to Lesson 4 — a tool is the agent's interface to the world, and the quality of that interface rides on these few lines of description.</p>
 </div>
-<!--ENMORE-->
+<h2>Good docstring vs bad docstring</h2>
+<p>Enough abstract talk — a comparison says it better. The same "send email" tool, written two ways, lands wildly different effects on the model:</p>
+<div class="cols">
+  <div class="col"><h4>🙁 The vague version</h4><p><span class="mono">to (str): the recipient.</span> The model only knows it must pass a string, but should that be an email, a name, or a user ID? It can only guess, and a wrong guess sends to the wrong person.</p></div>
+  <div class="col"><h4>🙂 The clear version</h4><p><span class="mono">to (str): the recipient's full email address, e.g. alice@example.com.</span> The model grasps the format and the example at a glance, and almost never fills it wrong.</p></div>
+</div>
+<p>Notice: the two versions have <strong>identical code</strong>, not one character of the function body changed; the only difference is the docstring. This is exactly why a parameter description is "function" and not "style" — it concretely changes the model's odds of using the tool correctly. One good description beats countless after-the-fact corrections.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Many people treat the docstring as "documentation patched on afterward" and write it carelessly. But in Letta it is <strong>part of the runtime</strong>: write it well and the model uses it accurately; write it poorly and even the smartest model can't be rescued. Please treat it as seriously as code.</span></div>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<ul>
+<li><strong>The function-level description may be missing; parameter descriptions may not.</strong> The whole tool has no overall sentence of description? That's fine — it falls back to <span class="mono">"No description available"</span>. But <strong>every parameter</strong> must have a description (otherwise <span class="mono">ValueError</span>) and a type annotation (otherwise <span class="mono">TypeError</span>).</li>
+<li><strong>Not every type is supported.</strong> A parameterized <span class="mono">Dict[k,v]</span> gives <span class="mono">ValueError</span>, and a general <span class="mono">Union</span> gives <span class="mono">NotImplementedError</span>. When you need structured input, switch to a Pydantic <span class="mono">BaseModel</span>.</li>
+<li><strong>self / agent_state are reserved parameters.</strong> They belong to <span class="mono">TOOL_RESERVED_KWARGS</span>, are skipped outright, and <strong>do not enter</strong> the schema — the model neither sees nor fills them.</li>
+<li><strong>request_heartbeat is not added here.</strong> It is not injected by <span class="mono">generate_schema</span>, but attached separately at runtime (see Lesson 15). Don't hand-write it in the docstring.</li>
+<li><strong>Don't describe self / agent_state in the docstring.</strong> They never enter the schema, so writing them is wasted effort and may even disturb parsing. Describe only the parameters the model actually fills.</li>
+</ul>
+</div>
+<h2>Digging a little deeper</h2>
+<p>That was the main line. Below are four drawers, made specially for anyone who likes to pick at the details — each unfolds as "example / why / source". If you'd rather not dig in, skip straight to this lesson's key points.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">As you read these drawers, hold onto one thread: <strong>anything the model can see comes from the docstring and the signature; anything the model can't see (self, the function body, runtime parameters) is not generate_schema's business.</strong> Hold this thread and the scattered details all find their place.</span></div>
+<details class="accordion"><summary>① Why is the docstring a "contract", not just a comment?</summary><div class="acc-body">
+<p><strong>Example:</strong> you delete <span class="mono">message</span>'s description; the function still runs fine, the unit tests still pass, but this tool <strong>can't be registered into Letta</strong>.</p>
+<p><strong>Why:</strong> from start to finish the model <strong>sees only the schema, never the code</strong>. However good your code comments are, if they don't reach the schema they don't exist — and the schema's parameter descriptions can come only from the docstring. That upgrades the docstring from an "optional comment" to "a contract that must be honored". The model's whole understanding of a parameter rides on this one line; once it turns vague, the model's guesses diverge and the call success rate falls with them.</p>
+<p><strong>Source:</strong> <span class="mono">letta/functions/schema_generator.py::generate_schema</span> fetches each parameter's description in the loop, and if it can't get one, <span class="mono">raise ValueError</span>, blocking the breach at the construction stage.</p>
+</div></details>
+<details class="accordion"><summary>② Where are the boundaries of type mapping? Why don't Dict / Union work?</summary><div class="acc-body">
+<p><strong>Example:</strong> <span class="mono">Optional[str]</span> gets unwrapped to <span class="mono">string</span> and removed from required; but <span class="mono">Dict[str, int]</span> errors directly, and <span class="mono">Union[int, str]</span> errors too.</p>
+<p><strong>Why:</strong> JSON schema needs a clear, validatable structure. A <span class="mono">Dict</span> with key/value types, and an arbitrary <span class="mono">Union</span>, are hard to express unambiguously, so Letta chooses to "error rather than guess". To pass a structured object, define a Pydantic <span class="mono">BaseModel</span>. After all, a fuzzy schema is worse than none — it only lures the model into error after error.</p>
+<p><strong>Source:</strong> <span class="mono">letta/functions/schema_generator.py::type_to_json_schema_type</span> handles each branch by hand; on a <span class="mono">BaseModel</span> it calls its <span class="mono">model_json_schema()</span> to get a nested object.</p>
+</div></details>
+<details class="accordion"><summary>③ What's the difference between self / agent_state and request_heartbeat?</summary><div class="acc-body">
+<p><strong>Example:</strong> a tool signed as <span class="mono">def foo(self, agent_state, x: int)</span> ends up with only <span class="mono">x</span> in the schema. At runtime the model may even "see" a <span class="mono">request_heartbeat</span> parameter, but it isn't in this code.</p>
+<p><strong>Why:</strong> <span class="mono">self</span>/<span class="mono">agent_state</span> are <strong>build-time</strong> reserved parameters — injected by the runtime framework, not meant for the model to fill, so they're skipped when generating the schema. <span class="mono">request_heartbeat</span>, by contrast, is a <strong>runtime</strong> control parameter attached later (deciding whether to keep looping), injected elsewhere, not <span class="mono">generate_schema</span>'s business. In a word: one is "hidden at build time", the other is "attached at run time" — their lifecycles are entirely different.</p>
+<p><strong>Source:</strong> the reserved names live in <span class="mono">TOOL_RESERVED_KWARGS</span>, and <span class="mono">generate_schema</span> hits <span class="mono">continue</span> when it meets them; for <span class="mono">request_heartbeat</span>'s injection see Lesson 15's execution loop.</p>
+</div></details>
+<details class="accordion"><summary>④ If the Google-style validation fails, can the tool never be built?</summary><div class="acc-body">
+<p><strong>Example:</strong> when the docstring format is slightly off-standard (say the <span class="mono">Args:</span> indentation is irregular), you may see only a warning in the log, and the tool <strong>still</strong> builds.</p>
+<p><strong>Why:</strong> there are "two gates, one soft, one hard". The overall Google-style validation is <strong>soft</strong> — its <span class="mono">ValueError</span> is caught by a <span class="mono">try/except</span> and downgraded to <span class="mono">logger.warning</span>, never interrupting. What truly <strong>hard</strong>-blocks you is the per-parameter "has a description, has a type annotation" check inside the loop; those two errors aren't swallowed. So remember the weight: a non-standard format is at most a "reminder", while a parameter with no description or no annotation is the real "hard injury" that stops you.</p>
+<p><strong>Source:</strong> the soft validation is in <span class="mono">letta/functions/schema_generator.py::validate_google_style_docstring</span>, whose exception is caught upstream as a warning; the hard checks remain in <span class="mono">generate_schema</span>'s main loop.</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><strong>Tool = function</strong>: no special base class; an ordinary Python function plus a well-formed docstring is enough.</li>
+<li><strong>generate_schema(signature + docstring) → JSON schema</strong>: auto-generated with <span class="mono">inspect.signature</span> + <span class="mono">docstring_parser</span>.</li>
+<li><strong>The model sees only the schema, not the code</strong>: the function body is completely invisible to the model.</li>
+<li><strong>Each parameter's description + type annotation is a hard contract</strong>: missing description → <span class="mono">ValueError</span>, missing annotation → <span class="mono">TypeError</span>.</li>
+<li><strong>Type mapping is hand-written</strong>: str/int/bool/float/Optional/List/Literal/BaseModel are supported; parameterized Dict and general Union error out.</li>
+<li><strong>self / agent_state are reserved</strong>: they belong to <span class="mono">TOOL_RESERVED_KWARGS</span> and don't enter the schema.</li>
+<li><strong>The schema is persisted</strong>: stored in the Tool's <span class="mono">json_schema</span> field, computed once at registration and reused thereafter.</li>
+</ul>
+</div>
+<p>Turning this lesson around makes it clearer: you're <strong>not</strong> "writing a function and adding comments along the way", you're "writing an interface spec for the model and implementing it along the way". Flip your perspective and every word of the docstring carries weight. The signature gives the interface's shape, the docstring gives its semantics, and together they form the complete, usable tool in the model's eyes.</p>
+<p>One last teaser. From start to finish this lesson assumed one premise: <strong>we already hold a function object</strong> whose signature <span class="mono">inspect</span> can read. But in reality, users often upload <strong>a string of source code</strong> to register a custom tool. The server then faces a thorny requirement: it must still produce the schema while <strong>never running that code</strong>. How does it pull that off? That's exactly the topic of <strong>Lesson 18</strong>.</p>
+
 </div>
   <div class="footnav"><a class="prev" href="16-tool-rules.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">工具规则 Tool Rules</span><span class="lang-en">Tool rules</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
