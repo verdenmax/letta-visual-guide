@@ -1926,6 +1926,121 @@ QUIZZES = {
             },
         ],
     },
+    "22-provider-quirks.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "当某家 provider 的行为跟 OpenAI 略有不同时，它的 client 子类通常重写哪两个方法？",
+                    "en": "When a provider behaves a little differently from OpenAI, which two methods does its client subclass typically override?",
+                },
+                "opts": [
+                    {"zh": "build_request_data + convert_response_to_chat_completion——前者出门时改请求、后者回来时把响应翻成 OpenAI 形状；子类大多是先 super() 拿到标准形状、再就地改几笔 dict",
+                     "en": "build_request_data + convert_response_to_chat_completion — the first edits the request on the way out, the second translates the response back into the OpenAI shape; the subclass usually calls super() for the standard shape, then patches a few dict lines in place"},
+                    {"zh": "request_async + stream_async——真正负责跟网络通信的那两个方法",
+                     "en": "request_async + stream_async — the two methods that actually talk to the network"},
+                    {"zh": "__init__ + _prepare_client_kwargs——子类重写构造与连接初始化",
+                     "en": "__init__ + _prepare_client_kwargs — the subclass rewrites construction and connection setup"},
+                    {"zh": "三方法契约全部，外加工厂 match/case 里那条分支",
+                     "en": "All three contract methods, plus the factory's match/case branch"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "怪癖只关在首尾两步：build_request_data（改请求）和 convert_response_to_chat_completion（改响应）。XAIClient 删掉两个惩罚字段、GroqClient 把 tool_choice 设成 required，都是 super() 之后改一笔 dict 而已。request_async / stream_async 是各家共用的“发送”管道，不是放差异的地方；_prepare_client_kwargs 已在 OpenAIClient 上把 base_url 设好，这些只改字段的子类根本不碰它；更不必重写整个契约或工厂分支。记住这条纪律：差异进子类的这两个方法，循环之上永远是同一个 ChatCompletionResponse。",
+                    "en": "Quirks are caged in just the two end steps: build_request_data (edit request) and convert_response_to_chat_completion (edit response). XAIClient drops two penalty fields, GroqClient forces tool_choice to required — each just patches a dict after super(). request_async / stream_async are the shared “send” pipe, not where differences live; _prepare_client_kwargs already sets base_url on OpenAIClient, so these field-tweaking subclasses never touch it; and there is certainly no need to rewrite the whole contract or the factory branch. Remember the discipline: differences go into these two subclass methods, while above the loop it is always the same ChatCompletionResponse.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "Letta 给一个“只会调函数”的模型模拟内心独白时，这个 thinking 字段被放在每个工具参数的什么位置？是不是可选的？",
+                    "en": "When Letta simulates an inner monologue for a model that “only calls functions”, where in each tool's parameters does the thinking field go, and is it optional?",
+                },
+                "opts": [
+                    {"zh": "排在第一个、且是必填——add_inner_thoughts_to_functions 把 thinking 加成第一个 property，再 required.insert(0, key) 把它排到必填项最前；于是模型必须先写完 thinking，才轮到真正的业务参数",
+                     "en": "First, and required — add_inner_thoughts_to_functions adds thinking as the first property, then required.insert(0, key) puts it at the front of required; so the model must finish writing thinking before any real business parameter"},
+                    {"zh": "排在最后、且可选——追加在真正参数之后，免得打乱它们",
+                     "en": "Last, and optional — appended after the real parameters so it doesn't disrupt them"},
+                    {"zh": "放在工具调用旁边的一个顶层独立字段里，根本不在 parameters 内",
+                     "en": "In a separate top-level field next to the tool call, not inside the parameters at all"},
+                    {"zh": "放在 parameters 里哪都行，顺序无所谓，反正模型会整体规划",
+                     "en": "Anywhere in the parameters; order doesn't matter because the model plans holistically"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "顺序就是一切。LLM 是从左到右按 schema 顺序生成参数的，把 thinking 排在第一个必填字段，等于强迫模型“先写一段推理、再填结构化参数”——先想后调被钉死。helpers.py::add_inner_thoughts_to_functions 两手并用：OrderedDict 让 thinking 当第一个 property，required.insert(0, key) 让它在必填里也排最前。它不是可选的尾巴，也不是 parameters 之外的独立字段。注意 Google 是反例——它把 thinking 追加在最后——但默认/被迫模拟的这条路，永远是排第一。",
+                    "en": "Order is everything. An LLM generates parameters left to right in schema order, so making thinking the first required field forces the model to “write a chunk of reasoning, then fill the structured parameters” — think-before-act is nailed down. helpers.py::add_inner_thoughts_to_functions uses both hands: an OrderedDict makes thinking the first property, and required.insert(0, key) puts it first among required too. It is not an optional tail, nor a field outside parameters. Note Google is the counterexample — it appends thinking last — but the default/forced-simulation path always puts it first.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "哪一个开关决定 Letta 是“注入一段模拟的 thinking”还是“直接用模型的原生推理”？",
+                    "en": "Which single switch decides whether Letta injects a simulated thinking parameter or relies on the model's native reasoning?",
+                },
+                "opts": [
+                    {"zh": "LLMConfig.put_inner_thoughts_in_kwargs——普通工具调用模型为 True（注入/模拟），o1/gpt-5/Claude-4 这类原生推理模型为 False（用它们真的 thinking）",
+                     "en": "LLMConfig.put_inner_thoughts_in_kwargs — True for plain tool-calling models (inject/simulate), False for native-reasoning models like o1/gpt-5/Claude-4 (use their real thinking)"},
+                    {"zh": "is_reasoning_model——循环每一步都重新算一遍的一个布尔值",
+                     "en": "is_reasoning_model — a per-request boolean the loop recomputes each step"},
+                    {"zh": "INNER_THOUGHTS_KWARG——那个存着字符串 “thinking” 的设置项",
+                     "en": "INNER_THOUGHTS_KWARG — the setting that holds the string “thinking”"},
+                    {"zh": "LLMClient.create 里的 match/case——它把推理模型路由到另一个 client",
+                     "en": "The match/case in LLMClient.create — it routes reasoning models to a different client"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "决定权在 put_inner_thoughts_in_kwargs 这一个开关：为 True 就注入一段模拟独白（模型自己不会想），为 False 就退场、直接用模型真正的 reasoning（o1/o3/gpt-5、Claude 3.7/4、ZAI GLM 等）。名字本身就是答案——“把内心独白放进 kwargs（工具参数）里”，为真才需要注入。INNER_THOUGHTS_KWARG 只是那个键名字符串 “thinking”，不是开关；is_reasoning_model 是另一个抽象方法；工厂分派只认 endpoint 类型、不按是否推理路由。同一段注入代码，靠这个布尔值对两类模型给出恰好相反的处理。",
+                    "en": "The decision rests on the single switch put_inner_thoughts_in_kwargs: True injects a simulated monologue (the model can't think on its own), False steps aside and uses the model's real reasoning (o1/o3/gpt-5, Claude 3.7/4, ZAI GLM, etc.). The name is the answer — “put inner thoughts in kwargs (the tool parameters)”, true only when injection is needed. INNER_THOUGHTS_KWARG is merely the key-name string “thinking”, not a switch; is_reasoning_model is a different abstract method; and the factory dispatches on endpoint type, not on whether a model reasons. The same injection code, via this one boolean, gives two kinds of model exactly opposite treatment.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "本课说“内心独白排第一”是默认做法，但有一家偏偏反着来。Google 把 thinking 字段放在哪里？",
+                    "en": "The lesson says “inner monologue first” is the default — but one family breaks it. Where does Google place the thinking field?",
+                },
+                "opts": [
+                    {"zh": "排在最后——Google 把 thinking 追加在末尾（INNER_THOUGHTS_KWARG_VERTEX），是“排第一”规则的反例；GoogleVertexClient 还把字段名另起一套（functionCall / .args）、用 “model” 表示助手角色",
+                     "en": "Last — Google appends thinking at the end (INNER_THOUGHTS_KWARG_VERTEX), the exception to the “first” rule; GoogleVertexClient also renames fields (functionCall / .args) and uses “model” for the assistant role"},
+                    {"zh": "排第一，跟所有人一模一样——Google 遵循同样的约定",
+                     "en": "First, exactly like everyone else — Google follows the same convention"},
+                    {"zh": "Google 根本不用 thinking 字段，它完全靠原生推理",
+                     "en": "Google doesn't use a thinking field at all; it relies purely on native reasoning"},
+                    {"zh": "放在中间——第一个必填字段之后、其余参数之前",
+                     "en": "In the middle, after the first required field but before the rest"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "Google 是被点名的反例：它把 thinking 追加在最后，对应常量 INNER_THOUGHTS_KWARG_VERTEX，而不是像别家那样排第一。这一家处处跟 OpenAI 形状对着干——工具被包成 [{“functionDeclarations”:[...]}]、工具调用叫 functionCall（带 .name / .args）、助手角色名是 “model”——这些差异全被关进 GoogleVertexClient，循环照旧无感。常见误区正是想当然以为“各家都排第一”；真要写一个新 client，第一件事就是去确认它到底把 thinking 放哪儿。它当然也用 thinking、也不会把它塞在中间。",
+                    "en": "Google is the named counterexample: it appends thinking last, via the constant INNER_THOUGHTS_KWARG_VERTEX, rather than first like the others. This family works against the OpenAI shape at every turn — tools are wrapped as [{“functionDeclarations”:[...]}], the tool call is called functionCall (with .name / .args), and the assistant role is named “model” — all caged inside GoogleVertexClient so the loop feels nothing. The classic pitfall is assuming “everyone puts it first”; to write a new client for real, the first thing to do is confirm exactly where it puts thinking. It does use thinking, and it doesn't bury it in the middle.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个 OpenAIClient 怎么能在不为每家单写一个 client 的情况下，服务 25 种 ProviderType 里的约 19 种（openai、ollama、vllm、Groq、xAI……）？",
+                    "en": "How can a single OpenAIClient serve ~19 of 25 ProviderTypes (openai, ollama, vllm, Groq, xAI, …) without a bespoke client for each?",
+                },
+                "opts": [
+                    {"zh": "_prepare_client_kwargs 只把 base_url 设成 llm_config.model_endpoint——同一套 OpenAI SDK 指向不同 URL 就接上不同的家；这些端点大多提供“OpenAI 兼容”接口，于是默认 case _ 兜底回 OpenAIClient",
+                     "en": "_prepare_client_kwargs just sets base_url to llm_config.model_endpoint — the same OpenAI SDK pointed at a different URL connects to a different provider; most expose an “OpenAI-compatible” interface, so the default case _ falls back to OpenAIClient"},
+                    {"zh": "它内部维护一张注册表，把每个 provider 名字映射到一套手写的请求/响应翻译器",
+                     "en": "It maintains an internal registry mapping every provider name to a hand-written request/response translator"},
+                    {"zh": "每家都自带一个 OpenAIClient 子类，根本没有共享的默认实现",
+                     "en": "Each provider ships its own OpenAIClient subclass; there is no shared default"},
+                    {"zh": "它从 model 名字前缀识别出是哪家，再据此改写 payload",
+                     "en": "It detects the provider from the model name prefix and rewrites the payload accordingly"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "诀窍小得离谱：_prepare_client_kwargs 只把 base_url 设成 model_endpoint——同一套 OpenAI SDK，换个 URL 就接上一家。因为这些端点大多本就提供“OpenAI 兼容”接口，请求体/响应体的形状跟 OpenAI 对得上，真正不同的只是服务器地址，所以工厂的 case _ 直接兜底回 OpenAIClient。只有 6 种 ProviderType（anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax）需要非 OpenAI 的 client。那 8 个显式子类是“几乎兼容、但还差一口气”的例外，不是“每个名字配一个子类”；也没有什么手写翻译器注册表，更不靠 model 名字前缀去猜。",
+                    "en": "The trick is absurdly small: _prepare_client_kwargs only sets base_url to model_endpoint — the same OpenAI SDK, a new URL, a new provider connected. Because these endpoints mostly already expose an “OpenAI-compatible” interface, their request/response shapes line up with OpenAI and the only real difference is the server address, so the factory's case _ simply falls back to OpenAIClient. Only 6 ProviderTypes (anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax) need a non-OpenAI client. The 8 explicit subclasses are the “almost compatible but one breath short” exceptions, not “one subclass per name”; there is no hand-written translator registry, and it certainly doesn't guess from the model name prefix.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“一张脸、多张面具”的演员比喻，把第 22 课的“供应商怪癖”完整讲一遍，并想透三件事：(1) 各家怪癖都被关进子类的 build_request_data（改请求）与 convert_response_to_chat_completion（改响应）这首尾两步，中间的发送与编排是所有家共用的。为什么把“易变的差异”锁进窄窄两个方法、把“不变的执行循环”彻底解放，能让“加一家 provider、循环零改动”成立？如果有人图省事，把“解析 Anthropic 内容块”写进了第 14 课的循环里，为什么说“循环里冒出 if 是不是 anthropic”就是抽象漏了的信号？(2) 对没有原生推理的模型，Letta 把一个 thinking 字符串硬塞成每个工具的第一个必填参数，逼模型“先想后调”，再在响应里 unpack 回 message.content。为什么“用结构去逼出行为”比“恳求模型请先想一想”更可靠？而 put_inner_thoughts_in_kwargs 又凭什么对原生推理模型（o1/gpt-5/Claude-4）自动关掉这一注入？(3) Google 把 thinking 追加在最后，是“排第一”默认的反例。为什么说“内心独白排第一”是一条默认、而非铁律？据此，动手写一个全新 client 时，你该最先确认哪几件事，才不会想当然踩坑？",
+                "en": "Use this lesson's “one face, many masks” actor metaphor to tell lesson 22's “provider quirks” as a whole, and think through three things: (1) Every provider's quirks are caged into the subclass's two end steps, build_request_data (edit request) and convert_response_to_chat_completion (edit response), while the sending and orchestration in the middle are shared by everyone. Why does locking the “volatile differences” into two narrow methods and fully freeing the “invariant execution loop” make “add a provider, change the loop by zero lines” hold? If someone took a shortcut and wrote “parse Anthropic content blocks” into the Lesson 14 loop, why is “an if is_anthropic appearing in the loop” a signal that the abstraction has leaked? (2) For models without native reasoning, Letta jams a thinking string in as each tool's first required parameter, forcing the model to “think before acting”, then unpacks it back into message.content on the response. Why is “using structure to force behavior” more reliable than “begging the model to please think first”? And on what basis does put_inner_thoughts_in_kwargs automatically switch that injection off for native-reasoning models (o1/gpt-5/Claude-4)? (3) Google appends thinking last, the counterexample to the “first” default. Why is “inner monologue first” a default rather than an iron law? Given that, when you sit down to write a brand-new client, what should you confirm first so you don't trip on a wrong assumption?",
+            },
+        ],
+    },
 }
 
 
