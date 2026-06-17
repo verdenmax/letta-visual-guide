@@ -912,6 +912,100 @@ QUIZZES = {
             },
         ],
     },
+    "13-agent-state-and-loop.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "AgentLoop.load 是个工厂：同一张存档进来，它靠什么决定这次返回哪个 agent 引擎（V2 还是 V3）？",
+                    "en": "AgentLoop.load is a factory: the same save comes in — what does it use to decide which agent engine (V2 or V3) to return this time?",
+                },
+                "opts": [
+                    {"zh": "读存档里的 agent_state.agent_type 这一个字段当钥匙——整个分派只看它",
+                     "en": "It reads the single field agent_state.agent_type as the key — the whole dispatch looks only at that"},
+                    {"zh": "看当前上下文用了多少 token，超过阈值就改用 V3",
+                     "en": "It looks at how many tokens the current context uses; above a threshold it switches to V3"},
+                    {"zh": "随机挑一个，反正两代接口一样",
+                     "en": "It picks one at random, since both generations share the same interface"},
+                    {"zh": "看 actor（发起请求的用户）的权限等级来决定",
+                     "en": "It decides based on the permission level of the actor (the requesting user)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "AgentLoop.load(agent_state, actor) 只把 agent_state.agent_type 当分派键：letta_v1_agent / sleeptime_agent → LettaAgentV3，其余 → LettaAgentV2（额外开了 sleeptime + 组才走 SleeptimeMultiAgent）。token 用量是第 12 课压缩要管的事，与选引擎无关；actor 只用于权限与归属校验，不参与选类；两代虽都继承 BaseAgentV2、接口一致，但绝不是随机挑。",
+                    "en": "AgentLoop.load(agent_state, actor) uses only agent_state.agent_type as the dispatch key: letta_v1_agent / sleeptime_agent → LettaAgentV3, everything else → LettaAgentV2 (sleeptime + group additionally goes to SleeptimeMultiAgent). Token usage is Lesson 12's compaction concern, unrelated to engine choice; actor is only for permission/ownership checks, not class selection; both generations subclass BaseAgentV2 and share an interface, but selection is never random.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你想让一个新 agent 跑第三代实现 LettaAgentV3。该把 agent_type 设成哪个枚举值？",
+                    "en": "You want a new agent to run the third-generation implementation LettaAgentV3. Which enum value should you set agent_type to?",
+                },
+                "opts": [
+                    {"zh": "letta_v1_agent —— 它就是触发 V3 的值（也是新建 agent 的默认值）；注意“类叫 V3、枚举叫 v1”的错位",
+                     "en": "letta_v1_agent — it's the value that triggers V3 (and the default for new agents); note the “class is V3, enum is v1” mismatch"},
+                    {"zh": "letta_agent_v3 —— 跟类名对齐的那个",
+                     "en": "letta_agent_v3 — the one aligned with the class name"},
+                    {"zh": "letta_v3_agent",
+                     "en": "letta_v3_agent"},
+                    {"zh": "memgpt_v2_agent —— 数字最大的那个",
+                     "en": "memgpt_v2_agent — the one with the biggest number"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "AgentType 里根本没有 letta_agent_v3 或 letta_v3_agent 这种值——照着类名去猜枚举必然落空。触发 LettaAgentV3 的是 letta_v1_agent（也是 CreateAgent.agent_type 的默认值）：“V3”说的是代码第三次重写循环，“v1”说的是 Letta v1 的设计（砍掉心跳与强制工具调用），V3 的代码实现的正是 v1 的设计。memgpt_v2_agent 走的是 V2。",
+                    "en": "AgentType has no letta_agent_v3 or letta_v3_agent value at all — guessing the enum from the class name always fails. What triggers LettaAgentV3 is letta_v1_agent (also the default of CreateAgent.agent_type): “V3” means the third code rewrite of the loop, “v1” means the Letta v1 design (dropping heartbeats and forced tool calls), and the V3 code implements exactly that v1 design. memgpt_v2_agent runs V2.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "AgentState 里，哪个字段决定了“下一轮喂给模型的在窗对话消息有哪些”？",
+                    "en": "In AgentState, which field determines “which in-window conversation messages are fed to the model next round”?",
+                },
+                "opts": [
+                    {"zh": "message_ids —— 一串在窗消息的 id（指针）；正文留在 recall 表里，要用再捞",
+                     "en": "message_ids — a list of in-window message ids (pointers); the text stays in the recall table, fetched when needed"},
+                    {"zh": "blocks —— 核心记忆块里装着完整对话历史",
+                     "en": "blocks — the core memory blocks hold the full conversation history"},
+                    {"zh": "system —— 系统提示里内联了所有历史消息",
+                     "en": "system — the system prompt inlines all historical messages"},
+                    {"zh": "memory —— 它是专门存对话正文的字段",
+                     "en": "memory — it's the field dedicated to storing conversation text"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "message_ids 是“在窗消息的 id 列表”（第 11 课），存的是指针而非正文——这正体现存档“只放指针 + 配置、不放海量正文”的取舍，真正的消息正文在 recall 数据库表里。blocks 是核心记忆块（人设 / 用户 / 自定义，第 8 课），不是对话历史；system 是系统提示；memory 只是 blocks 的废弃别名。",
+                    "en": "message_ids is the “list of in-window message ids” (Lesson 11), storing pointers not text — embodying the save's trade-off of “pointers + config, not bulk text,” with the actual message text in the recall DB table. blocks are core memory blocks (persona / human / custom, Lesson 8), not conversation history; system is the system prompt; memory is merely the deprecated alias of blocks.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "把 AgentState 叫做“存档”，是怎么呼应第 6 课“有状态 vs 无状态”的？",
+                    "en": "Calling AgentState a “save file” — how does that echo Lesson 6's “stateful vs stateless”?",
+                },
+                "opts": [
+                    {"zh": "服务器自己不留记忆：每个请求都把整张存档从数据库水合出来、跑一轮、再写回——所以同一 agent 能在任意进程 / 机器上“读档续玩”",
+                     "en": "The server keeps no memory of its own: every request hydrates the whole save from the DB, runs a round, and writes it back — so the same agent can “load and resume” on any process / machine"},
+                    {"zh": "服务器把每个 agent 的状态常驻在内存对象里，所以一换机器就会丢",
+                     "en": "The server keeps each agent's state in a long-lived in-memory object, so switching machines loses it"},
+                    {"zh": "LLM 自己有状态、会记住上一轮，所以根本不需要存档",
+                     "en": "The LLM is itself stateful and remembers the last round, so no save is needed at all"},
+                    {"zh": "存档只是个缓存，真相一直在模型权重里",
+                     "en": "The save is just a cache; the truth always lives in the model weights"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "第 6 课的要点：LLM 无状态，Letta 把 agent 的状态外化成一张可序列化、可落库的存档。每个请求的固定三拍是“水合 → 跑 → 写回”：现从 ORM 行读出 AgentState，跑完把新消息 / 改动写回库。引擎对象每轮现装现扔、自己不留状态，状态全在存档里——所以同一 agent 能在任意进程 / 机器续跑。常驻内存、“LLM 自己记得”、“真相在权重里”都与这套无状态架构相悖。",
+                    "en": "Lesson 6's point: the LLM is stateless, so Letta externalizes the agent's state into a serializable, persistable save file. Every request's fixed three-beat is “hydrate → run → write back”: read AgentState fresh from the ORM row, then persist new messages / edits back. The engine object is assembled and discarded each round and keeps no state — all state lives in the save — so the same agent resumes on any process / machine. Long-lived memory, “the LLM remembers,” and “truth in the weights” all contradict this stateless architecture.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“游戏存档 + 工厂选引擎”这两个比喻，把第 13 课串成一个完整故事，并想三件事：(1) 为什么要让一个工厂（AgentLoop.load）按 agent_type 选实现，而不是在每个调用点写 if/else？把它和“将来新增一种 agent”连起来说。(2) 类名是 LettaAgentV3、枚举名却是 letta_v1_agent——这种“名字记录历史、行为写在代码里”的错位，会给读代码的人埋下哪些坑？你会怎么避免被带偏？(3) 既然引擎每个请求现装现扔、状态全在存档里，这对“同一 agent 能在任意机器续跑”意味着什么？再把它接回第 6 课的无状态设计。",
+                "en": "Using the two metaphors “game save file + factory picks the engine,” weave Lesson 13 into one coherent story, and think through three things: (1) why have a factory (AgentLoop.load) pick the implementation by agent_type instead of writing if/else at every call site? Connect it to “adding a new agent kind later.” (2) The class is named LettaAgentV3 yet the enum is letta_v1_agent — what traps does this “name records history, behavior lives in code” mismatch set for readers, and how would you avoid being misled? (3) Since the engine is assembled and discarded each request with all state in the save, what does that mean for “the same agent resuming on any machine”? Tie it back to Lesson 6's stateless design.",
+            },
+        ],
+    },
 }
 
 

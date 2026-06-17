@@ -605,7 +605,67 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li><strong>源码</strong>：<span class="mono">schemas/agent.py::AgentState</span>、<span class="mono">agents/agent_loop.py::AgentLoop.load</span>、<span class="mono">schemas/enums.py::AgentType</span>。</li>
   </ul>
 </div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. AgentLoop.load 是个工厂：同一张存档进来，它靠什么决定这次返回哪个 agent 引擎（V2 还是 V3）？</div>
+  <ol class="opts">
+    <li>看 actor（发起请求的用户）的权限等级来决定</li>
+    <li>随机挑一个，反正两代接口一样</li>
+    <li>读存档里的 agent_state.agent_type 这一个字段当钥匙——整个分派只看它</li>
+    <li>看当前上下文用了多少 token，超过阈值就改用 V3</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。AgentLoop.load(agent_state, actor) 只把 agent_state.agent_type 当分派键：letta_v1_agent / sleeptime_agent → LettaAgentV3，其余 → LettaAgentV2（额外开了 sleeptime + 组才走 SleeptimeMultiAgent）。token 用量是第 12 课压缩要管的事，与选引擎无关；actor 只用于权限与归属校验，不参与选类；两代虽都继承 BaseAgentV2、接口一致，但绝不是随机挑。</div></div></div>
+  </details>
 </div>
+<div class="quiz">
+  <div class="qn">2. 你想让一个新 agent 跑第三代实现 LettaAgentV3。该把 agent_type 设成哪个枚举值？</div>
+  <ol class="opts">
+    <li>letta_v1_agent —— 它就是触发 V3 的值（也是新建 agent 的默认值）；注意“类叫 V3、枚举叫 v1”的错位</li>
+    <li>memgpt_v2_agent —— 数字最大的那个</li>
+    <li>letta_v3_agent</li>
+    <li>letta_agent_v3 —— 跟类名对齐的那个</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。AgentType 里根本没有 letta_agent_v3 或 letta_v3_agent 这种值——照着类名去猜枚举必然落空。触发 LettaAgentV3 的是 letta_v1_agent（也是 CreateAgent.agent_type 的默认值）：“V3”说的是代码第三次重写循环，“v1”说的是 Letta v1 的设计（砍掉心跳与强制工具调用），V3 的代码实现的正是 v1 的设计。memgpt_v2_agent 走的是 V2。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. AgentState 里，哪个字段决定了“下一轮喂给模型的在窗对话消息有哪些”？</div>
+  <ol class="opts">
+    <li>system —— 系统提示里内联了所有历史消息</li>
+    <li>message_ids —— 一串在窗消息的 id（指针）；正文留在 recall 表里，要用再捞</li>
+    <li>blocks —— 核心记忆块里装着完整对话历史</li>
+    <li>memory —— 它是专门存对话正文的字段</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。message_ids 是“在窗消息的 id 列表”（第 11 课），存的是指针而非正文——这正体现存档“只放指针 + 配置、不放海量正文”的取舍，真正的消息正文在 recall 数据库表里。blocks 是核心记忆块（人设 / 用户 / 自定义，第 8 课），不是对话历史；system 是系统提示；memory 只是 blocks 的废弃别名。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. 把 AgentState 叫做“存档”，是怎么呼应第 6 课“有状态 vs 无状态”的？</div>
+  <ol class="opts">
+    <li>服务器把每个 agent 的状态常驻在内存对象里，所以一换机器就会丢</li>
+    <li>服务器自己不留记忆：每个请求都把整张存档从数据库水合出来、跑一轮、再写回——所以同一 agent 能在任意进程 / 机器上“读档续玩”</li>
+    <li>存档只是个缓存，真相一直在模型权重里</li>
+    <li>LLM 自己有状态、会记住上一轮，所以根本不需要存档</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。第 6 课的要点：LLM 无状态，Letta 把 agent 的状态外化成一张可序列化、可落库的存档。每个请求的固定三拍是“水合 → 跑 → 写回”：现从 ORM 行读出 AgentState，跑完把新消息 / 改动写回库。引擎对象每轮现装现扔、自己不留状态，状态全在存档里——所以同一 agent 能在任意进程 / 机器续跑。常驻内存、“LLM 自己记得”、“真相在权重里”都与这套无状态架构相悖。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用“游戏存档 + 工厂选引擎”这两个比喻，把第 13 课串成一个完整故事，并想三件事：(1) 为什么要让一个工厂（AgentLoop.load）按 agent_type 选实现，而不是在每个调用点写 if/else？把它和“将来新增一种 agent”连起来说。(2) 类名是 LettaAgentV3、枚举名却是 letta_v1_agent——这种“名字记录历史、行为写在代码里”的错位，会给读代码的人埋下哪些坑？你会怎么避免被带偏？(3) 既然引擎每个请求现装现扔、状态全在存档里，这对“同一 agent 能在任意机器续跑”意味着什么？再把它接回第 6 课的无状态设计。</li>
+  </ul>
+</div>
+</div></div>
   <div class="lang-en">
 <p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
 In Part 3 we took Letta's "memory" apart — three memory tiers, memory blocks, self-editing, compaction. But memory is only the <strong>raw material</strong>: what actually makes an agent <strong>run</strong> is a loop that turns, round after round. Part 4 takes that loop apart, and this lesson is its map.</p>
@@ -879,7 +939,67 @@ Where does the loop start? With two things: a "save file" called <strong>AgentSt
     <li><strong>Source</strong>: <span class="mono">schemas/agent.py::AgentState</span>, <span class="mono">agents/agent_loop.py::AgentLoop.load</span>, <span class="mono">schemas/enums.py::AgentType</span>.</li>
   </ul>
 </div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. AgentLoop.load is a factory: the same save comes in — what does it use to decide which agent engine (V2 or V3) to return this time?</div>
+  <ol class="opts">
+    <li>It decides based on the permission level of the actor (the requesting user)</li>
+    <li>It picks one at random, since both generations share the same interface</li>
+    <li>It reads the single field agent_state.agent_type as the key — the whole dispatch looks only at that</li>
+    <li>It looks at how many tokens the current context uses; above a threshold it switches to V3</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. AgentLoop.load(agent_state, actor) uses only agent_state.agent_type as the dispatch key: letta_v1_agent / sleeptime_agent → LettaAgentV3, everything else → LettaAgentV2 (sleeptime + group additionally goes to SleeptimeMultiAgent). Token usage is Lesson 12's compaction concern, unrelated to engine choice; actor is only for permission/ownership checks, not class selection; both generations subclass BaseAgentV2 and share an interface, but selection is never random.</div></div></div>
+  </details>
 </div>
+<div class="quiz">
+  <div class="qn">2. You want a new agent to run the third-generation implementation LettaAgentV3. Which enum value should you set agent_type to?</div>
+  <ol class="opts">
+    <li>letta_v1_agent — it's the value that triggers V3 (and the default for new agents); note the “class is V3, enum is v1” mismatch</li>
+    <li>memgpt_v2_agent — the one with the biggest number</li>
+    <li>letta_v3_agent</li>
+    <li>letta_agent_v3 — the one aligned with the class name</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. AgentType has no letta_agent_v3 or letta_v3_agent value at all — guessing the enum from the class name always fails. What triggers LettaAgentV3 is letta_v1_agent (also the default of CreateAgent.agent_type): “V3” means the third code rewrite of the loop, “v1” means the Letta v1 design (dropping heartbeats and forced tool calls), and the V3 code implements exactly that v1 design. memgpt_v2_agent runs V2.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. In AgentState, which field determines “which in-window conversation messages are fed to the model next round”?</div>
+  <ol class="opts">
+    <li>system — the system prompt inlines all historical messages</li>
+    <li>message_ids — a list of in-window message ids (pointers); the text stays in the recall table, fetched when needed</li>
+    <li>blocks — the core memory blocks hold the full conversation history</li>
+    <li>memory — it's the field dedicated to storing conversation text</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. message_ids is the “list of in-window message ids” (Lesson 11), storing pointers not text — embodying the save's trade-off of “pointers + config, not bulk text,” with the actual message text in the recall DB table. blocks are core memory blocks (persona / human / custom, Lesson 8), not conversation history; system is the system prompt; memory is merely the deprecated alias of blocks.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. Calling AgentState a “save file” — how does that echo Lesson 6's “stateful vs stateless”?</div>
+  <ol class="opts">
+    <li>The server keeps each agent's state in a long-lived in-memory object, so switching machines loses it</li>
+    <li>The server keeps no memory of its own: every request hydrates the whole save from the DB, runs a round, and writes it back — so the same agent can “load and resume” on any process / machine</li>
+    <li>The save is just a cache; the truth always lives in the model weights</li>
+    <li>The LLM is itself stateful and remembers the last round, so no save is needed at all</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Lesson 6's point: the LLM is stateless, so Letta externalizes the agent's state into a serializable, persistable save file. Every request's fixed three-beat is “hydrate → run → write back”: read AgentState fresh from the ORM row, then persist new messages / edits back. The engine object is assembled and discarded each round and keeps no state — all state lives in the save — so the same agent resumes on any process / machine. Long-lived memory, “the LLM remembers,” and “truth in the weights” all contradict this stateless architecture.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Using the two metaphors “game save file + factory picks the engine,” weave Lesson 13 into one coherent story, and think through three things: (1) why have a factory (AgentLoop.load) pick the implementation by agent_type instead of writing if/else at every call site? Connect it to “adding a new agent kind later.” (2) The class is named LettaAgentV3 yet the enum is letta_v1_agent — what traps does this “name records history, behavior lives in code” mismatch set for readers, and how would you avoid being misled? (3) Since the engine is assembled and discarded each request with all state in the save, what does that mean for “the same agent resuming on any machine”? Tie it back to Lesson 6's stateless design.</li>
+  </ul>
+</div>
+</div></div>
   <div class="footnav"><a class="prev" href="12-context-compaction.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">上下文压缩与记忆压力</span><span class="lang-en">Context compaction &amp; memory pressure</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
