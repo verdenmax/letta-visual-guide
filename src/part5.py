@@ -7,10 +7,12 @@ LESSON_17 = {"zh": r"""
 <p>把工具想成餐厅点菜。<strong>厨房</strong>（你的函数体、真正干活的代码）顾客永远进不去、也看不见。<strong>顾客</strong>（模型）手里只有一张<strong>菜单</strong>——上面写着菜名、一句描述、有哪些可选项。</p>
 <p>模型点菜，靠的全是这张菜单。菜单上写"宫保鸡丁（微辣，可选不要花生）"，它就能点对；要是菜单只写"鸡肉类"、连辣不辣、能不能去花生都不说，顾客只能瞎猜，自然容易点错。这张菜单，就是 <span class="mono">generate_schema</span> 从你的 docstring 拼出来的 JSON schema。</p>
 </div>
+<p>这个类比还能再推一步：菜单不光决定顾客点什么，也决定他<strong>敢不敢点</strong>。描述越具体，模型越有把握调用；描述越含糊，它要么不敢用、要么乱用。后面会看到，Letta 索性用代码强制你把"菜名"写清楚。</p>
 <div class="card macro"><div class="tag">🌍 宏观理解</div>
 <p>一句话抓住本课：<strong>工具 = 函数</strong>。Letta 在 <span class="mono">letta/functions/schema_generator.py::generate_schema</span> 里，用 <span class="mono">inspect.signature</span> 读出函数的参数与类型注解，再用 <span class="mono">docstring_parser</span>（按 Google 风格）解析 docstring，把两者拼成一份 OpenAI 兼容的 JSON schema。模型只认这份 schema。</p>
-<p>所以这一课其实在讲三件环环相扣的事：① schema 是<strong>怎么生成</strong>的；② docstring 为什么是一份<strong>硬契约</strong>（写不全工具就建不出来）；③ Python 类型<strong>怎么映射</strong>成 JSON schema 类型。把这三点串起来，你就懂了"工具"在 Letta 里的真身。</p>
+<p>所以这一课其实在讲三件环环相扣的事：① schema 是<strong>怎么生成</strong>的；② docstring 为什么是一份<strong>硬契约</strong>（写不全工具就建不出来）；③ Python 类型<strong>怎么映射</strong>成 JSON schema 类型。把这三点串起来，你就懂了"工具"在 Letta 里的真身。而这三点共同的地基，正是那句会反复出现的话：<strong>模型只认 schema</strong>。</p>
 </div>
+<p>开始之前先对齐一个预期：这一课不教你怎么"用"工具，而是带你看清工具的<strong>构造</strong>。搞懂了构造，你之后写自定义工具、排查"模型为什么不调用我的工具"，才真正有抓手。</p>
 <p>在动手看代码前，先建立一个核心对照：同一个工具，<strong>你</strong>和<strong>模型</strong>看到的是两样完全不同的东西。你面对的是有逻辑、有实现的函数；模型面对的只是一张抽象的"接口卡片"。</p>
 <div class="cols">
   <div class="col"><h4>👩‍💻 你写的（给人看）</h4><p>完整的 Python 函数：参数、类型注解、docstring，以及真正干活的<strong>函数体</strong>。你关心它怎么实现、会不会出错、返回什么。</p></div>
@@ -44,6 +46,7 @@ LESSON_17 = {"zh": r"""
   <div class="node"><div class="nt">OpenAI JSON schema</div><div class="nd">name / description / parameters</div></div>
 </div>
 <p>整条流水线的核心就在 <span class="mono">letta/functions/schema_generator.py::generate_schema</span>。它做的事可以拆成几步：用 <span class="mono">inspect.signature</span> 拿到每个参数和它的类型注解；用 <span class="mono">docstring_parser</span> 解析 docstring，从中取出每个参数的描述文字；逐个参数把"类型 + 描述"塞进 schema 的 <span class="mono">properties</span>，并判断它该不该进 <span class="mono">required</span>。</p>
+<p>这里有个关键洞察：<span class="mono">generate_schema</span> 不需要<strong>运行</strong>你的函数，只靠<strong>静态读取</strong>签名和 docstring 就能产出 schema。<span class="mono">inspect</span> 看的是函数的"外形"，从不碰它的"内脏"。记住这点，第 18 课"不运行代码也能建 schema"就不会让你意外。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/schema_generator.py</span><span class="ln">generate_schema 核心（简化）</span></div>
 <pre><span class="kw">def</span> <span class="fn">generate_schema</span>(function, name=<span class="kw">None</span>, ...):
     sig = inspect.<span class="fn">signature</span>(function)
@@ -89,6 +92,7 @@ LESSON_17 = {"zh": r"""
 <span class="cell">required（必填参数名列表）</span>
 </div></div>
 <p>蓝色高亮的 <span class="mono">name</span> 和 <span class="mono">description</span> 来自函数名与第一句 docstring；<span class="mono">properties</span> 里每个参数对应一组"类型 + 描述"；<span class="mono">required</span> 则是必填判定链的产物。记住这副骨架，你看任何工具的 schema 都不会迷路。</p>
+<p>顺便破除一个误解：schema 里<strong>没有</strong>你的函数返回类型，也没有函数体的任何信息。<span class="mono">Returns:</span> 那段、你精心写的实现，模型统统看不到。它能依据的，永远只有这副"名字 + 描述 + 参数"的骨架。</p>
 <h2>类型怎么映射</h2>
 <p>schema 里每个参数都得有个 <span class="mono">type</span>，这一步由 <span class="mono">type_to_json_schema_type</span> 完成：它把 Python 的类型注解<strong>手写</strong>地翻译成 JSON schema 类型。这张映射表就是工具能接受哪些参数类型的边界——表里没有的，要么被解包、要么直接报错。</p>
 <table class="t">
@@ -119,6 +123,7 @@ LESSON_17 = {"zh": r"""
 <p>当一个参数本身是"一组字段"——比如一封邮件草稿有收件人、主题、正文——与其把它摊平成三个零散参数，不如打包成一个 Pydantic 模型，让 schema 自带结构。工具签名里只写一个参数 <span class="mono">draft: EmailDraft</span> 就够了。</p>
 <div class="note tip"><span class="ni">💡</span><span class="nx"><span class="mono">generate_schema</span> 遇到 <span class="mono">draft: EmailDraft</span>，会调用 <span class="mono">EmailDraft.model_json_schema()</span>，把 <span class="mono">to / subject / body</span> 连同它们的类型与必填关系，作为一个<strong>嵌套 object</strong> 塞进工具 schema。</span></div>
 <p>这样一来，模型看到的是一个结构清晰的对象，而不是三个互不相干的字符串。更妙的是：字段的增删、类型的约束，全集中在模型定义里，工具签名始终保持干净。这正是为什么遇到结构化入参，官方推荐 Pydantic 模型而非 <span class="mono">Dict</span>。</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">小结类型这一块：能用基础类型就用基础类型，要"可选"用 <span class="mono">Optional</span>，要"多选一"用 <span class="mono">Literal</span>，要"一组字段"用 Pydantic 模型——避开裸 <span class="mono">Dict</span> 和 <span class="mono">Union</span>，你就绕开了绝大多数报错。</span></div>
 <div class="cute"><div class="row">
   <span class="emoji">📝</span><span class="lab">docstring</span>
   <span class="emoji">🔧</span><span class="lab">函数</span>
@@ -139,6 +144,7 @@ LESSON_17 = {"zh": r"""
   <div class="col"><h4>🙂 清楚的写法</h4><p><span class="mono">to (str): 收件人的完整邮箱地址，如 alice@example.com。</span> 模型一眼就懂格式和示例，几乎不会填错。</p></div>
 </div>
 <p>注意：两种写法<strong>代码一模一样</strong>，函数体一字没改，差别只在 docstring。这正是为什么说参数描述是"功能"而非"风格"——它实打实地改变了模型用对工具的概率。一句好描述，胜过事后无数次纠错。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">很多人把 docstring 当成"事后补的文档"，写得敷衍。但在 Letta 里它是<strong>运行时的一部分</strong>：写得好，模型用得准；写得差，再聪明的模型也救不回来。请把它当代码一样认真对待。</span></div>
 <div class="card warn"><div class="tag">⚠️ 常见误区</div>
 <ul>
 <li><strong>函数级描述可以缺，参数描述不能缺。</strong>整个工具没写一句话的总描述？没关系，会回退成 <span class="mono">"No description available"</span>。但<strong>每个参数</strong>必须有描述（否则 <span class="mono">ValueError</span>）和类型注解（否则 <span class="mono">TypeError</span>）。</li>
@@ -179,7 +185,9 @@ LESSON_17 = {"zh": r"""
 <li><strong>每个参数的描述 + 类型注解是硬契约</strong>：缺描述 <span class="mono">ValueError</span>，缺注解 <span class="mono">TypeError</span>。</li>
 <li><strong>类型映射是手写的</strong>：str/int/bool/float/Optional/List/Literal/BaseModel 支持，带参 Dict 与一般 Union 报错。</li>
 <li><strong>self / agent_state 保留</strong>：属 <span class="mono">TOOL_RESERVED_KWARGS</span>，不进 schema。</li>
+<li><strong>schema 会持久化</strong>：存在 Tool 的 <span class="mono">json_schema</span> 字段，注册时算一次、之后复用。</li>
 </ul>
 </div>
+<p>把这一课倒过来想会更清楚：你<strong>不是</strong>在"写一个函数、顺便加注释"，而是在"写一份给模型的接口说明、顺便实现它"。视角一转，docstring 的每个字都有了分量。签名给出接口的形状，docstring 给出接口的语义，两者合起来，才是模型眼里那个完整可用的工具。</p>
 <p>最后留个伏笔。这一课从头到尾都假设了一个前提：<strong>我们手里已经有一个函数对象</strong>，可以让 <span class="mono">inspect</span> 去读它的签名。可现实里，用户常常是上传<strong>一段源码字符串</strong>来注册自定义工具。这时服务端面临一个棘手的要求：要在<strong>绝不运行这段代码</strong>的前提下，仍然把 schema 生成出来。它是怎么做到的？这正是<strong>第 18 课</strong>的主题。</p>
 """, "en": r"""<p>stub</p>"""}
