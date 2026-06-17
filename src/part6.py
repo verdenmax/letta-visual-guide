@@ -1058,6 +1058,55 @@ HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
 <p><span class="mono">llm_chat_completion_wrappers/chatml.py::ChatMLInnerMonologueWrapper</span> — the default wrapper (<span class="mono">DEFAULT_WRAPPER</span>).</p>
 <p><span class="mono">local_llm/function_parser.py::insert_heartbeat</span> and <span class="mono">patch_function</span> — local heartbeat correction (callback to Lesson 15).</p>
 </div>
+<h2>Which Path Is It On Today</h2>
+<p>Draw the "modern" and "legacy" paths side by side and you'll never confuse them again. Modern local backends never touch the chain below:</p>
+<div class="flow">
+  <div class="node"><div class="nt">agent.py::Agent</div><div class="nd">old executor</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">llm_api_tools.py::create</div><div class="nd">old create function</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">else local branch</div><div class="nd">non-cloud fallback</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">get_chat_completion</div><div class="nd">the old GBNF path</div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Memorize the contrast: modern local (ollama/vllm/lmstudio) goes <span class="mono">LLMClient.create → OpenAIClient</span> (Lesson 21's default <span class="mono">case _</span>, no dedicated client); the GBNF route is reached only when the old <span class="mono">agent.py::Agent</span> falls through <span class="mono">llm_api_tools.py::create</span>'s <span class="mono">else</span> local branch.</span></div>
+<h2>Digging a Little Deeper</h2>
+<p>The main thread is complete here. The four drawers below hold the details you'll most likely ask about — open them by interest; leaving them shut doesn't hurt your grasp of the main thread.</p>
+<details class="accordion"><summary>What does GBNF actually do?</summary><div class="acc-body">
+<p>GBNF is a GGML BNF grammar from llama.cpp. It doesn't take part in "understanding"; it does one thing at <strong>the sampling step</strong>: trim the next token's candidate set down to those "the grammar allows right now".</p>
+<p>So the model is led by the grammar at every step: where a <span class="mono">{</span> belongs only a <span class="mono">{</span> can appear, where a field name belongs only those few names can. By the end, the whole output is <strong>necessarily</strong> a legal JSON tree.</p>
+<p>This is its most valuable part: turning "parseable" from a <strong>probability</strong> into a <strong>guarantee</strong> — curing, along the way, the two old ailments of "forgot to call a function / JSON cut off halfway".</p>
+</div></details>
+<details class="accordion"><summary>Why is it called legacy?</summary><div class="acc-body">
+<p>Because OpenAI-compatible won. Once nearly every provider offers an "OpenAI-shaped" tool API, Lesson 21's default <span class="mono">case _ → OpenAIClient</span> can catch a whole crowd of local backends, with no need for the grammar trick.</p>
+<p>There are traces in code too: <span class="mono">LLMClient.create</span> has <strong>no</strong> local-specific client; the <span class="mono">ProviderType</span> enum <strong>no longer</strong> carries entries like <span class="mono">llamacpp / koboldcpp / webui</span> — they've retreated into the old <span class="mono">local_llm</span> path.</p>
+<p>So this lesson covers "how it worked back then, why it's classic", not "this is how things run by default today".</p>
+</div></details>
+<details class="accordion"><summary>What about backends that don't support grammar?</summary><div class="acc-body">
+<p>Only those four — <span class="mono">koboldcpp / llamacpp / webui / webui-legacy</span> — really consume the grammar. The rest (ollama / vllm / lmstudio…) take the grammar and drop it outright.</p>
+<p>They walk on two legs instead: one, the wrapper writes the format requirement into the prompt; two, <span class="mono">json_parser.py::clean_json</span> tolerantly repairs that text on parse.</p>
+<p>To stress again: <span class="mono">clean_json</span> "bends dirty JSON straight as best it can", <strong>not</strong> "ask the model to generate again". It treats the symptom, not the root, but is enough most of the time.</p>
+</div></details>
+<details class="accordion"><summary>How does the wrapper "act out function calling on bare completion"?</summary><div class="acc-body">
+<p>The outbound end: the wrapper uses <span class="mono">_compile_function_block</span> to write the function schema (including the <span class="mono">inner_thoughts</span> description) into the prompt, applies the right template per model family (ChatML, Llama3…), and nudges <span class="mono">first_message</span> a little when needed.</p>
+<p>The inbound end: read the text back into <span class="mono">{function, args}</span> via <span class="mono">clean_json</span>, then lift <span class="mono">inner_thoughts</span> from params into <span class="mono">content</span>.</p>
+<p>The heartbeat is supplied on this path too: <span class="mono">function_parser.py::insert_heartbeat</span> adds <span class="mono">request_heartbeat</span> to memory-class tools, reconnecting to Lesson 15's "should we take another step" judgment.</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>Don't assume GBNF is today's <strong>default</strong> path for local models. It's legacy; modern local backends go through Lesson 21's <span class="mono">OpenAIClient</span>.</p>
+<p>Don't assume runtime GBNF reads some static <span class="mono">.gbnf</span> file. It's <strong>dynamically generated</strong>; <span class="mono">json_func_calls_with_inner_thoughts.gbnf</span> is only a reference sample.</p>
+<p>Don't assume every local backend consumes the grammar. Only the four — <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span> — take effect; the rest drop it outright.</p>
+<p>Don't treat <span class="mono">clean_json</span> as "resample and retry" — it's only tolerant repair on parse, and errors out when it can't bend the text.</p>
+</div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><span class="mono">chat_completion_proxy.py::get_chat_completion</span> is the legacy conductor: pick wrapper → generate GBNF → schema into prompt → call bare completion → parse back to structure → heartbeat correction.</li>
+<li>GBNF constrains tokens at the <strong>sampling level</strong>, making the output necessarily parseable JSON, and forces every branch to carry <span class="mono">inner_thoughts</span>.</li>
+<li>The grammar takes effect only on <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span>; other backends drop it and rely on <span class="mono">clean_json</span> tolerant repair.</li>
+<li>The wrapper is a bidirectional translator: <span class="mono">chat_completion_to_prompt</span> writes the schema out, <span class="mono">output_to_chat_completion_response</span> reads the text back.</li>
+<li>This is the classic MemGPT-era path; modern local backends go through Lesson 21's OpenAI-compatible <span class="mono">OpenAIClient</span>.</li>
+</ul>
+</div>
 <!--ENMORE-->
 """,
 }
