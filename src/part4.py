@@ -1132,7 +1132,7 @@ heartbeat_request = function_args.<span class="fn">pop</span>(<span class="st">"
 
 <div class="cols">
   <div class="col">
-    <h4>🕰️ 老机制（Agent / V2）</h4>
+    <h4>🕰️ 老机制（元老 Agent；V2 类似）</h4>
     <p>schema 里有<strong>必填</strong>的 <span class="mono">request_heartbeat</span>。</p>
     <p>模型设 <span class="mono">true</span> → 注入 <span class="mono">REQ_HEARTBEAT_MESSAGE</span>（role=user）→ 续。</p>
     <p>工具报错 → 注入 <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> → 续。</p>
@@ -1179,7 +1179,7 @@ heartbeat_request = function_args.<span class="fn">pop</span>(<span class="st">"
 
 <p>那循环靠什么续步？靠上一课的 <span class="mono">_decide_continuation</span>：<strong>这一轮调了工具就继续，没调就停</strong>。"调了工具"这个客观动作，取代了"模型举手要心跳"这个主观表态——前者不会忘，于是"模型忘了设"这类 bug 整类消失。</p>
 
-<div class="note tip"><span class="ni">🧠</span><span class="nx">V3 还留了一手防御：就算模型（或某个旧 prompt）<strong>硬塞</strong>进来一个 <span class="mono">request_heartbeat</span>，<span class="mono">letta_agent_v3.py::_handle_ai_response</span> 也会用 <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM, None)</span> 把它<strong>默默丢掉</strong>，绝不让一个残留参数干扰续步判据。</span></div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">V3 还留了一手防御：就算模型（或某个旧 prompt）<strong>硬塞</strong>进来一个 <span class="mono">request_heartbeat</span>，<span class="mono">letta_agent_v3.py::_handle_ai_response</span> 也会用 <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM, None)</span> 把它<strong>默默丢掉</strong>，免得把一个无用参数透传给工具函数——何况 V3 的续步判据根本不看工具参数。</span></div>
 
 <div class="codefile">
   <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">V3 不注入心跳（_get_valid_tools / _handle_ai_response，简化）</span></div>
@@ -1390,7 +1390,7 @@ heartbeat_request = function_args.<span class="fn">pop</span>(<span class="st">"
 
 <div class="cols">
   <div class="col">
-    <h4>🕰️ Old mechanism (Agent / V2)</h4>
+    <h4>🕰️ Old mechanism (elder Agent; V2 similar)</h4>
     <p>The schema has a <strong>required</strong> <span class="mono">request_heartbeat</span>.</p>
     <p>Model sets <span class="mono">true</span> → inject <span class="mono">REQ_HEARTBEAT_MESSAGE</span> (role=user) → continue.</p>
     <p>Tool fails → inject <span class="mono">FUNC_FAILED_HEARTBEAT_MESSAGE</span> → continue.</p>
@@ -1437,7 +1437,7 @@ heartbeat_request = function_args.<span class="fn">pop</span>(<span class="st">"
 
 <p>Then what does the loop step on? On last lesson's <span class="mono">_decide_continuation</span>: <strong>called a tool this round → continue, didn't → stop</strong>. The objective act of "called a tool" replaces the subjective declaration of "the model raised its hand for a heartbeat" — the former can't be forgotten, so the whole bug-class of "the model forgot to set it" vanishes.</p>
 
-<div class="note tip"><span class="ni">🧠</span><span class="nx">V3 keeps one defensive move too: even if the model (or some old prompt) <strong>jams in</strong> a <span class="mono">request_heartbeat</span>, <span class="mono">letta_agent_v3.py::_handle_ai_response</span> uses <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM, None)</span> to <strong>quietly drop it</strong>, never letting a leftover param disturb the continuation criterion.</span></div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">V3 keeps one defensive move too: even if the model (or some old prompt) <strong>jams in</strong> a <span class="mono">request_heartbeat</span>, <span class="mono">letta_agent_v3.py::_handle_ai_response</span> uses <span class="mono">args.pop(REQUEST_HEARTBEAT_PARAM, None)</span> to <strong>quietly drop it</strong>, so a stray flag is never passed through to the tool function — and V3's continuation criterion never reads tool args anyway.</span></div>
 
 <div class="codefile">
   <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v3.py</span><span class="ln">V3 injects no heartbeat (_get_valid_tools / _handle_ai_response, simplified)</span></div>
