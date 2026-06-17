@@ -1527,8 +1527,8 @@ QUIZZES = {
                 ],
                 "answer": 0,
                 "why": {
-                    "zh": "_parse_function_from_source 从 tree.body 收集 ast.FunctionDef 节点，取最后一个（[-1]）——约定是“工具就是文件里最后定义的那个函数”。这是对 AST 节点列表的静态读取，不跑任何代码。它明确不是第一个、也不是“有 docstring 的那个”（被选中的函数要求有 docstring，但选择靠位置），更不会为匹配名字去 import。",
-                    "en": "_parse_function_from_source collects ast.FunctionDef nodes from tree.body and takes the last one ([-1]) — the convention is “the tool is the last function defined in the file.” This is a static read of the AST node list; nothing runs. It is explicitly NOT the first function, and not “the one with a docstring” (a docstring is required on the chosen function, but selection is by position), and nothing is imported to match names.",
+                    "zh": "_parse_function_from_source 用 ast.walk 收集 ast.FunctionDef 节点，取最后一个（[-1]）——约定是“工具就是文件里最后定义的那个函数”。这是对 AST 节点的静态读取，不跑任何代码。它明确不是第一个、也不是“有 docstring 的那个”（被选中的函数要求有 docstring，但选择靠位置），更不会为匹配名字去 import。",
+                    "en": "_parse_function_from_source collects ast.FunctionDef nodes via ast.walk and takes the last one ([-1]) — the convention is “the tool is the last function defined in the file.” This is a static read of the AST nodes; nothing runs. It is explicitly NOT the first function, and not “the one with a docstring” (a docstring is required on the chosen function, but selection is by position), and nothing is imported to match names.",
                 },
             },
             {

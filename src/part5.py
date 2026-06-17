@@ -449,7 +449,7 @@ LESSON_18 = {"zh": r"""
 <p>把上面流程里的第三步 <span class="mono">_parse_function_from_source</span> 单独放大，它内部其实是四个干净利落的小动作：</p>
 <div class="vflow">
 <div class="step"><div class="num">1</div><div class="sc"><h4>ast.parse(src)</h4><p>把源码字符串解析成语法树；语法不合法当场抛 <span class="mono">LettaToolCreateError</span>。</p></div></div>
-<div class="step"><div class="num">2</div><div class="sc"><h4>选出函数节点</h4><p>遍历 <span class="mono">tree.body</span>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span> 当作工具本体。</p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>选出函数节点</h4><p>遍历 <span class="mono">ast.walk(tree)</span>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span> 当作工具本体。</p></div></div>
 <div class="step"><div class="num">3</div><div class="sc"><h4>重建 Signature</h4><p>逐个参数读注解、用 <span class="mono">ast.literal_eval</span> 取字面量默认值，拼出 <span class="mono">inspect.Signature</span>。</p></div></div>
 <div class="step"><div class="num">4</div><div class="sc"><h4>装进 MockFunction</h4><p>把函数名、docstring 与重建好的签名塞进假函数，交还给上层。</p></div></div>
 </div>
@@ -481,19 +481,19 @@ LESSON_18 = {"zh": r"""
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">_parse_function_from_source（要点）</span></div>
 <pre><span class="kw">def</span> <span class="fn">_parse_function_from_source</span>(src, name):
     tree = ast.<span class="fn">parse</span>(src)               <span class="cm"># 语法错 -> LettaToolCreateError</span>
-    func = [n <span class="kw">for</span> n <span class="kw">in</span> tree.body <span class="kw">if</span> isinstance(n, ast.FunctionDef)][-<span class="nb">1</span>]  <span class="cm"># 取最后一个函数</span>
+    func = [n <span class="kw">for</span> n <span class="kw">in</span> ast.<span class="fn">walk</span>(tree) <span class="kw">if</span> isinstance(n, ast.FunctionDef)][-<span class="nb">1</span>]  <span class="cm"># 取最后一个函数</span>
     <span class="cm"># 重建 inspect.Signature：参数名、注解、用 ast.literal_eval 取默认值</span>
-    <span class="cm"># 未定义的 BaseModel 用 type(name, (BaseModel,), {...}) 造桩，不 import</span>
+    <span class="cm"># 源码里定义的 BaseModel 用 type(name, (BaseModel,), {...}) 原地重建成桩，不 import</span>
     <span class="kw">return</span> <span class="fn">MockFunction</span>(func.name, ast.<span class="fn">get_docstring</span>(func), sig)
 </pre></div>
-<p>顺带一提，docstring 不是手撕字符串得来的，而是用 <span class="mono">ast.get_docstring(func)</span> 规规矩矩地取——它能正确处理多行、缩进、转义等细节，比自己写正则稳妥得多。又是一处"让标准库替你把脏活干净利落地干掉"的体现。</p>
-<div class="note info"><span class="ni">📌</span><span class="nx">一段源码里若有<strong>多个函数</strong>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span>（约定：工具就是文件里最后定义的那个）。配套的 AST 辅助住在 <span class="mono">letta/functions/ast_parsers.py</span>，其中 <span class="mono">resolve_type</span> 用<strong>白名单</strong>解析类型，默认 <span class="mono">allow_unsafe_eval=False</span>，从源头杜绝"借解析之名跑代码"。</span></div>
+<p>顺带一提，docstring 是直接从解析出的函数节点上读出来的（它的第一条语句若是字符串，就是 docstring）——纯 AST、不靠正则。Letta 的 AST 辅助 <span class="mono">ast_parsers.py::get_function_name_and_docstring</span> 干脆直接用标准库的 <span class="mono">ast.get_docstring</span> 来做这件事，多行、缩进、转义都替你处理好。</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">一段源码里若有<strong>多个函数</strong>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span>（约定：工具就是文件里最后定义的那个）。相关 AST 辅助住在 <span class="mono">letta/functions/ast_parsers.py</span>，其中 <span class="mono">resolve_type</span> 用<strong>白名单</strong>解析类型、默认 <span class="mono">allow_unsafe_eval=False</span>——不过它是在<strong>之后执行工具、强转模型传来的参数</strong>时才用上，同样守着"不借解析跑代码"的底线。</span></div>
 <p>这里还藏着两个值得记住的"安全阀"。第一个针对默认值：解析器不用 <span class="mono">eval</span>，而用 <span class="mono">ast.literal_eval</span>——后者只接受数字、字符串、列表、字典这类<strong>字面量</strong>，碰到函数调用或任意表达式就直接拒绝，从根上堵死"连求个默认值都能偷跑代码"的缝隙。</p>
-<p>第二个针对类型注解：注解里的名字交给 <span class="mono">ast_parsers.py::resolve_type</span> 按<strong>白名单</strong>翻译成 JSON schema 类型。认识的类型照常映射，不认识的名字<strong>不会</strong>被 import 求值，而是走"造桩或报错"。两道阀门合起来，确保"解析"绝不退化成"执行"。</p>
+<p>第二个针对类型注解：派生时，注解里不认识的名字<strong>不会</strong>被 import 或求值，而是当作普通字符串放过（源码里定义的 BaseModel 则原地造桩）——靠的是 functions.py 内的静态解析，不真去解类型。两道阀门合起来，确保"解析"绝不退化成"执行"。</p>
 
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p>一句话概括这门手艺：<strong>"从一段你拒绝运行的代码里，生成它的 schema。"</strong> 读函数签名最朴素的办法是 <span class="mono">import + inspect</span>，可 <span class="mono">import</span> 用户代码＝在你的服务端执行任意代码。Letta 的巧招是：先 <span class="mono">ast.parse</span> 成语法树（只读不跑），再造一个只带 <span class="mono">__name__/__doc__/__signature__</span> 的 <span class="mono">MockFunction</span>，喂给<strong>完全相同</strong>的 <span class="mono">generate_schema</span>。</p>
-<p>结果是：模型拿到一张真 schema，服务器却<strong>一行用户代码都没跑</strong>。连源码里引用的未定义 Pydantic 类型，也用 <span class="mono">type(name,(BaseModel,),{})</span> 造桩，而非 import。它把"安全"巧妙地变成了一道"解析"题——这正是第 20 课沙箱哲学的前奏：<strong>"工具的代码，自始至终不可信。"</strong></p>
+<p>结果是：模型拿到一张真 schema，服务器却<strong>一行用户代码都没跑</strong>。连源码里定义的 Pydantic 类型，也用 <span class="mono">type(name,(BaseModel,),{})</span> 原地重建成桩，而非 import。它把"安全"巧妙地变成了一道"解析"题——这正是第 20 课沙箱哲学的前奏：<strong>"工具的代码，自始至终不可信。"</strong></p>
 <p>这种"把危险操作转化成安全操作"的思路，在工程上极有价值：它不是给危险行为层层加锁，而是<strong>从设计上让危险根本无从发生</strong>。记住这个套路，你会在很多优秀系统里反复见到它的身影。</p>
 </div>
 <div class="note tip"><span class="ni">🧠</span><span class="nx">记忆钩子：这一课的所有巧思，都能压缩成一句话——<strong>"读它，但绝不跑它。"</strong> 读，靠 AST；接回旧流程，靠 <span class="mono">MockFunction</span>；安全，靠从不 import。</span></div>
@@ -542,8 +542,8 @@ LESSON_18 = {"zh": r"""
 </div></details>
 <details class="accordion"><summary>③ 为什么取最后一个函数？未知类型怎么办？</summary><div class="acc-body">
 <p><strong>示例：</strong>源码里先写了几个辅助函数、最后才是工具本体，于是解析器取<strong>最后一个</strong> <span class="mono">FunctionDef</span>。</p>
-<p><strong>为什么：</strong>约定"工具是文件末尾那个函数"。若签名里引用了某个<strong>未定义</strong>的 Pydantic 模型，就用 <span class="mono">type(name, (BaseModel,), {...})</span> 当场造一个<strong>桩类</strong>顶上，绝不去 <span class="mono">import</span> 真实定义——既能让签名成形，又守住"不跑用户代码"的底线。</p>
-<p><strong>源码：</strong><span class="mono">_parse_function_from_source</span> 配合 <span class="mono">letta/functions/ast_parsers.py::resolve_type</span>（白名单解析）。</p>
+<p><strong>为什么：</strong>约定"工具是文件末尾那个函数"。若源码里<strong>定义</strong>了 Pydantic 模型，就用 <span class="mono">type(name, (BaseModel,), {...})</span> <strong>原地重建</strong>成一个桩类，绝不去 <span class="mono">import</span> 真实定义——既能让签名成形，又守住"不跑用户代码"的底线。</p>
+<p><strong>源码：</strong><span class="mono">_parse_function_from_source</span>（取最后一个 <span class="mono">FunctionDef</span>、<span class="mono">ast.literal_eval</span> 取默认值）；白名单解析 <span class="mono">ast_parsers.py::resolve_type</span> 用于之后的参数强转。</p>
 <p><strong>延伸：</strong>造桩靠 <span class="mono">type(name,(BaseModel,),{})</span> 这一行——它在运行时凭空合成一个类，仅供签名"有个名字可填"，绝不去触碰用户真正想引用的那个定义。</p>
 </div></details>
 <details class="accordion"><summary>④ 派生到底在何时、何地触发？</summary><div class="acc-body">
@@ -626,7 +626,7 @@ LESSON_18 = {"zh": r"""
 <p>Zoom in on the third step above, <span class="mono">_parse_function_from_source</span>, and inside it are four clean little moves:</p>
 <div class="vflow">
 <div class="step"><div class="num">1</div><div class="sc"><h4>ast.parse(src)</h4><p>Parse the source string into a syntax tree; invalid syntax raises <span class="mono">LettaToolCreateError</span> on the spot.</p></div></div>
-<div class="step"><div class="num">2</div><div class="sc"><h4>Pick the function node</h4><p>Walk <span class="mono">tree.body</span> and take the <strong>last</strong> <span class="mono">FunctionDef</span> as the tool body.</p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>Pick the function node</h4><p>Walk <span class="mono">ast.walk(tree)</span> and take the <strong>last</strong> <span class="mono">FunctionDef</span> as the tool body.</p></div></div>
 <div class="step"><div class="num">3</div><div class="sc"><h4>Rebuild the Signature</h4><p>Read each parameter's annotation, take literal defaults via <span class="mono">ast.literal_eval</span>, and assemble an <span class="mono">inspect.Signature</span>.</p></div></div>
 <div class="step"><div class="num">4</div><div class="sc"><h4>Wrap in MockFunction</h4><p>Stuff the function name, docstring, and rebuilt signature into the fake function and hand it back up.</p></div></div>
 </div>
@@ -658,18 +658,18 @@ LESSON_18 = {"zh": r"""
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">_parse_function_from_source (key points)</span></div>
 <pre><span class="kw">def</span> <span class="fn">_parse_function_from_source</span>(src, name):
     tree = ast.<span class="fn">parse</span>(src)               <span class="cm"># syntax error -> LettaToolCreateError</span>
-    func = [n <span class="kw">for</span> n <span class="kw">in</span> tree.body <span class="kw">if</span> isinstance(n, ast.FunctionDef)][-<span class="nb">1</span>]  <span class="cm"># take the last function</span>
+    func = [n <span class="kw">for</span> n <span class="kw">in</span> ast.<span class="fn">walk</span>(tree) <span class="kw">if</span> isinstance(n, ast.FunctionDef)][-<span class="nb">1</span>]  <span class="cm"># take the last function</span>
     <span class="cm"># rebuild inspect.Signature: param names, annotations, defaults via ast.literal_eval</span>
-    <span class="cm"># stub undefined BaseModels via type(name, (BaseModel,), {...}), no import</span>
+    <span class="cm"># rebuild source-defined BaseModels in place via type(name, (BaseModel,), {...}), no import</span>
     <span class="kw">return</span> <span class="fn">MockFunction</span>(func.name, ast.<span class="fn">get_docstring</span>(func), sig)
 </pre></div>
-<p>By the way, the docstring isn't torn out of the string by hand but taken properly via <span class="mono">ast.get_docstring(func)</span> — it correctly handles multi-line text, indentation, escaping, and similar details, far safer than rolling your own regex. Another instance of "let the standard library do the dirty work cleanly for you."</p>
-<div class="note info"><span class="ni">📌</span><span class="nx">If a piece of source has <strong>multiple functions</strong>, it takes the <strong>last</strong> <span class="mono">FunctionDef</span> (convention: the tool is the last function defined in the file). The companion AST helpers live in <span class="mono">letta/functions/ast_parsers.py</span>, where <span class="mono">resolve_type</span> resolves types via a <strong>whitelist</strong> with <span class="mono">allow_unsafe_eval=False</span> by default, shutting off "running code in the name of parsing" at the source.</span></div>
+<p>By the way, the docstring is read straight off the parsed function node (its first statement, if a string literal, is the docstring) — pure AST, no regex. Letta's AST helper <span class="mono">ast_parsers.py::get_function_name_and_docstring</span> uses the stdlib <span class="mono">ast.get_docstring</span> for exactly this, handling multi-line text, indentation, and escaping for you.</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">If a piece of source has <strong>multiple functions</strong>, it takes the <strong>last</strong> <span class="mono">FunctionDef</span> (convention: the tool is the last function defined in the file). The related AST helpers live in <span class="mono">letta/functions/ast_parsers.py</span>, where <span class="mono">resolve_type</span> resolves types via a <strong>whitelist</strong> with <span class="mono">allow_unsafe_eval=False</span> by default — though it kicks in <strong>later, when the tool runs and the model's incoming args are coerced</strong>, holding the same "no code-execution-via-parsing" line.</span></div>
 <p>Two more "safety valves" hide here, worth remembering. The first targets defaults: the parser doesn't use <span class="mono">eval</span> but <span class="mono">ast.literal_eval</span> — which accepts only literals like numbers, strings, lists, and dicts, and outright rejects a function call or arbitrary expression, sealing off the gap of "sneaking code in even while evaluating a default."</p>
-<p>The second targets type annotations: names in the annotations go to <span class="mono">ast_parsers.py::resolve_type</span> to be translated into JSON schema types via a whitelist. Known types map as usual; an unknown name is <strong>not</strong> import-evaluated but routed to "stub or error." Together the two valves ensure "parsing" never degrades into "executing."</p>
+<p>The second targets type annotations: during derivation an unrecognized name is <strong>not</strong> imported or evaluated — it's left as a plain string (and a Pydantic model defined in the source is stubbed in place), via the static parsing in functions.py rather than truly resolving the type. Together the two valves ensure "parsing" never degrades into "executing."</p>
 <div class="card spark"><div class="tag">💡 Design highlight</div>
 <p>One line sums up the craft: <strong>"generate the schema of code you refuse to run."</strong> The plainest way to read a function's signature is <span class="mono">import + inspect</span>, but importing user code = executing arbitrary code on your server. Letta's trick: first <span class="mono">ast.parse</span> into a syntax tree (read-only, no run), then build a <span class="mono">MockFunction</span> carrying only <span class="mono">__name__/__doc__/__signature__</span>, and feed it to the <strong>exact same</strong> <span class="mono">generate_schema</span>.</p>
-<p>The result: the model gets a real schema, yet the server <strong>ran not one line</strong> of user code. Even an undefined Pydantic type referenced in the source is stubbed via <span class="mono">type(name,(BaseModel,),{})</span> rather than imported. It cleverly turns "security" into a "parsing" problem — a prelude to Lesson 20's sandbox philosophy: <strong>"a tool's code is untrusted from start to finish."</strong></p>
+<p>The result: the model gets a real schema, yet the server <strong>ran not one line</strong> of user code. Even a Pydantic type defined in the source is rebuilt in place via <span class="mono">type(name,(BaseModel,),{})</span> as a stub rather than imported. It cleverly turns "security" into a "parsing" problem — a prelude to Lesson 20's sandbox philosophy: <strong>"a tool's code is untrusted from start to finish."</strong></p>
 <p>This idea of "turning a dangerous operation into a safe one" is hugely valuable in engineering: instead of piling locks on dangerous behavior, it makes the danger <strong>impossible to occur by design</strong>. Remember this pattern and you'll see it again and again in many fine systems.</p>
 </div>
 <div class="note tip"><span class="ni">🧠</span><span class="nx">Memory hook: every bit of cleverness in this lesson compresses to one line — <strong>"read it, but never run it."</strong> Reading relies on the AST; reconnecting to the old pipeline relies on <span class="mono">MockFunction</span>; safety relies on never importing.</span></div>
@@ -716,8 +716,8 @@ LESSON_18 = {"zh": r"""
 </div></details>
 <details class="accordion"><summary>③ Why take the last function? What about unknown types?</summary><div class="acc-body">
 <p><strong>Example:</strong> the source has a few helper functions first and the tool body last, so the parser takes the <strong>last</strong> <span class="mono">FunctionDef</span>.</p>
-<p><strong>Why:</strong> the convention is "the tool is the function at the end of the file." If the signature references some <strong>undefined</strong> Pydantic model, a <strong>stub class</strong> is conjured on the spot with <span class="mono">type(name, (BaseModel,), {...})</span> rather than importing the real definition — letting the signature take shape while holding the "don't run user code" line.</p>
-<p><strong>Source:</strong> <span class="mono">_parse_function_from_source</span> together with <span class="mono">letta/functions/ast_parsers.py::resolve_type</span> (whitelist parsing).</p>
+<p><strong>Why:</strong> the convention is "the tool is the function at the end of the file." If the source <strong>defines</strong> a Pydantic model, a <strong>stub class</strong> is rebuilt in place with <span class="mono">type(name, (BaseModel,), {...})</span> rather than importing the real definition — letting the signature take shape while holding the "don't run user code" line.</p>
+<p><strong>Source:</strong> <span class="mono">_parse_function_from_source</span> (last <span class="mono">FunctionDef</span>, defaults via <span class="mono">ast.literal_eval</span>); the whitelist resolver <span class="mono">ast_parsers.py::resolve_type</span> is used later for arg coercion.</p>
 <p><strong>Going further:</strong> the stubbing rests on the one line <span class="mono">type(name,(BaseModel,),{})</span> — it synthesizes a class out of thin air at runtime, just so the signature "has a name to fill in," never touching the definition the user actually meant to reference.</p>
 </div></details>
 <details class="accordion"><summary>④ When and where is derivation actually triggered?</summary><div class="acc-body">
