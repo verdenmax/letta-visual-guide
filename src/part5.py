@@ -11,6 +11,12 @@ LESSON_17 = {"zh": r"""
 <p>一句话抓住本课：<strong>工具 = 函数</strong>。Letta 在 <span class="mono">letta/functions/schema_generator.py::generate_schema</span> 里，用 <span class="mono">inspect.signature</span> 读出函数的参数与类型注解，再用 <span class="mono">docstring_parser</span>（按 Google 风格）解析 docstring，把两者拼成一份 OpenAI 兼容的 JSON schema。模型只认这份 schema。</p>
 <p>所以这一课其实在讲三件环环相扣的事：① schema 是<strong>怎么生成</strong>的；② docstring 为什么是一份<strong>硬契约</strong>（写不全工具就建不出来）；③ Python 类型<strong>怎么映射</strong>成 JSON schema 类型。把这三点串起来，你就懂了"工具"在 Letta 里的真身。</p>
 </div>
+<p>在动手看代码前，先建立一个核心对照：同一个工具，<strong>你</strong>和<strong>模型</strong>看到的是两样完全不同的东西。你面对的是有逻辑、有实现的函数；模型面对的只是一张抽象的"接口卡片"。</p>
+<div class="cols">
+  <div class="col"><h4>👩‍💻 你写的（给人看）</h4><p>完整的 Python 函数：参数、类型注解、docstring，以及真正干活的<strong>函数体</strong>。你关心它怎么实现、会不会出错、返回什么。</p></div>
+  <div class="col"><h4>🤖 模型看到的（给机器读）</h4><p>一份 JSON schema：只有名字、一句描述、每个参数的类型与说明。<strong>函数体被完全抹掉</strong>，模型既看不到实现，也无从知道你内部怎么处理。</p></div>
+</div>
+<p>这条"分界线"贯穿全课：左边是实现细节，右边是对外契约。<span class="mono">generate_schema</span> 干的活，就是把左边<strong>提炼</strong>成右边。理解了这一点，后面所有规则——为什么参数必须有描述、为什么类型有限制——都会变得顺理成章。</p>
 <h2>工具就是一个 Python 函数</h2>
 <p>先看一个真实的基础工具——<span class="mono">send_message</span>，它来自 <span class="mono">letta/functions/function_sets/base.py</span>。这就是 agent 用来"说话"的工具。注意它没有任何特殊基类、没有装饰器，就是一个再普通不过的方法。它身上唯一"特殊"的东西，是那段写得规规矩矩的 Google 风 docstring。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/base.py</span><span class="ln">一个基础工具的样子</span></div>
@@ -24,6 +30,9 @@ LESSON_17 = {"zh": r"""
 <span class="st">    &quot;&quot;&quot;</span>
 </pre></div>
 <p>关键点在 <span class="mono">Args:</span> 段：里面对 <span class="mono">message</span> 写的那句"Message contents. All unicode…"，<strong>就是模型将来看到的参数说明</strong>。函数体长什么样、返回什么，模型一概不知；它能依据的只有这段描述。</p>
+<p>为什么 Letta 不搞一套"工具基类"或装饰器，偏要用裸函数？因为这样<strong>门槛最低</strong>：任何一个普通函数——你写的、第三方库里的、临时拼的——只要 docstring 规范，就能直接变成工具。用<strong>约定</strong>代替了<strong>配置</strong>。</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Google 风 docstring 的三段式很重要：开头一句是<strong>函数总描述</strong>，<span class="mono">Args:</span> 段逐个写<strong>参数描述</strong>，<span class="mono">Returns:</span> 段写返回值。其中只有"总描述"和"每个参数描述"会进 schema；<span class="mono">Returns:</span> 主要是给人看的。</span></div>
+<p>所以你写 docstring 时，真正"对模型生效"的就两处：第一句，和 <span class="mono">Args:</span> 里的每一行。把力气花在这两处，远比纠结 <span class="mono">Returns:</span> 的措辞更划算。</p>
 <h2>从函数到 schema：generate_schema</h2>
 <div class="flow">
   <div class="node"><div class="nt">Python 函数</div><div class="nd">签名 + docstring</div></div>
@@ -47,6 +56,8 @@ LESSON_17 = {"zh": r"""
             required.append(p.name)
 </pre></div>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">这段循环藏着两道"质检关卡"：参数<strong>没有描述</strong>就 <span class="mono">raise ValueError</span>；参数<strong>缺类型注解</strong>则在 <span class="mono">type_to_json_schema_type</span> 里抛 <span class="mono">TypeError</span>。换句话说，docstring 写不全，工具根本建不出来。</span></div>
+<p>把这段循环"读慢一点"：它<strong>逐个参数</strong>走一遍，每个参数都过同样四步——跳过保留名、取描述、定类型、判必填。任何一步出问题，构建就此中止，错误会一路抛到注册工具的调用方。</p>
+<div class="note info"><span class="ni">📌</span><span class="nx">注意 <span class="mono">name=None</span> 这个参数：不显式传名字时，schema 的 <span class="mono">name</span> 默认取 <span class="mono">function.__name__</span>，也就是函数名本身。所以给函数起个好名字，等于给工具起了个好"菜名"，模型一看名字就能猜个八九不离十。</span></div>
 <p>那这台机器最终"吐"出来的成品长什么样？下面就是 <span class="mono">send_message</span> 经 <span class="mono">generate_schema</span> 处理后得到的 JSON schema。对照前面的函数：函数名变成 <span class="mono">name</span>，docstring 第一句变成 <span class="mono">description</span>，参数 <span class="mono">message</span> 连同它的描述进了 <span class="mono">properties</span>，因为没有默认值又被列进 <span class="mono">required</span>。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">生成结果 · JSON schema</span><span class="ln">模型真正看到的东西</span></div>
 <pre>{
@@ -65,6 +76,16 @@ LESSON_17 = {"zh": r"""
 }
 </pre></div>
 <div class="note tip"><span class="ni">👉</span><span class="nx">把这份 JSON 和最前面那段 Python 对照着看：你会发现里面<strong>每一个字</strong>都来自函数签名或 docstring，没有一处是凭空多出来的。这就是"docstring 即说明书"的字面含义。</span></div>
+<p>不管工具多复杂，生成出的 schema 永远是同一副"骨架"。把它拆开看，就这么几个固定零件：</p>
+<div class="cellgroup"><div class="cg-cap"><b>一份工具 schema 的解剖</b></div>
+<div class="cells">
+<span class="cell hl">name</span><span class="sep">·</span>
+<span class="cell hl">description</span><span class="sep">·</span>
+<span class="cell">parameters.type = object</span><span class="sep">·</span>
+<span class="cell">properties（逐参数：type + description）</span><span class="sep">·</span>
+<span class="cell">required（必填参数名列表）</span>
+</div></div>
+<p>蓝色高亮的 <span class="mono">name</span> 和 <span class="mono">description</span> 来自函数名与第一句 docstring；<span class="mono">properties</span> 里每个参数对应一组"类型 + 描述"；<span class="mono">required</span> 则是必填判定链的产物。记住这副骨架，你看任何工具的 schema 都不会迷路。</p>
 <h2>类型怎么映射</h2>
 <p>schema 里每个参数都得有个 <span class="mono">type</span>，这一步由 <span class="mono">type_to_json_schema_type</span> 完成：它把 Python 的类型注解<strong>手写</strong>地翻译成 JSON schema 类型。这张映射表就是工具能接受哪些参数类型的边界——表里没有的，要么被解包、要么直接报错。</p>
 <table class="t">
@@ -119,5 +140,25 @@ LESSON_17 = {"zh": r"""
 <p><strong>为什么：</strong>JSON schema 需要明确、可校验的结构。带键值类型的 <span class="mono">Dict</span> 和任意 <span class="mono">Union</span> 难以无歧义地表达，于是 Letta 选择"宁可报错也不猜"。要传结构化对象，就定义一个 Pydantic <span class="mono">BaseModel</span>。</p>
 <p><strong>源码：</strong><span class="mono">letta/functions/schema_generator.py::type_to_json_schema_type</span> 手写处理各分支；遇到 <span class="mono">BaseModel</span> 时调用其 <span class="mono">model_json_schema()</span> 得到嵌套 object。</p>
 </div></details>
-<!--ZHMORE-->
+<details class="accordion"><summary>③ self / agent_state 和 request_heartbeat 有什么区别？</summary><div class="acc-body">
+<p><strong>示例：</strong>一个工具签名写成 <span class="mono">def foo(self, agent_state, x: int)</span>，最终 schema 里只有 <span class="mono">x</span>。运行时模型还可能"看到"一个 <span class="mono">request_heartbeat</span> 参数，但它不在这段代码里。</p>
+<p><strong>为什么：</strong><span class="mono">self</span>/<span class="mono">agent_state</span> 是<strong>构建期</strong>的保留参数——它们由运行时框架注入，不该让模型填，所以在生成 schema 时被跳过。而 <span class="mono">request_heartbeat</span> 是<strong>运行期</strong>才附加的控制参数（决定要不要继续循环），由别处注入，不归 <span class="mono">generate_schema</span> 管。</p>
+<p><strong>源码：</strong>保留名记录在 <span class="mono">TOOL_RESERVED_KWARGS</span>，<span class="mono">generate_schema</span> 遇到就 <span class="mono">continue</span>；<span class="mono">request_heartbeat</span> 的注入见第 15 课的执行循环。</p>
+</div></details>
+<details class="accordion"><summary>④ Google 风格校验失败，工具一定建不出来吗？</summary><div class="acc-body">
+<p><strong>示例：</strong>docstring 格式略不标准（比如 <span class="mono">Args:</span> 缩进不规整），你可能只在日志里看到一条 warning，工具<strong>仍然</strong>建得出来。</p>
+<p><strong>为什么：</strong>这里有"软硬两道关"。Google 风格的整体校验是<strong>软</strong>的——它的 <span class="mono">ValueError</span> 被 <span class="mono">try/except</span> 捕获后降级成 <span class="mono">logger.warning</span>，不会中断。真正<strong>硬</strong>挡人的，是循环里逐参数的"有没有描述、有没有类型注解"检查，那两个错误不会被吞。</p>
+<p><strong>源码：</strong>软校验在 <span class="mono">letta/functions/schema_generator.py::validate_google_style_docstring</span>，其异常被上层 catch 成告警；硬检查仍在 <span class="mono">generate_schema</span> 主循环里。</p>
+</div></details>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><strong>工具 = 函数</strong>：没有特殊基类，普通 Python 函数加规范 docstring 即可。</li>
+<li><strong>generate_schema(签名 + docstring) → JSON schema</strong>：用 <span class="mono">inspect.signature</span> + <span class="mono">docstring_parser</span> 自动生成。</li>
+<li><strong>模型只看 schema，不看代码</strong>：函数体对模型完全不可见。</li>
+<li><strong>每个参数的描述 + 类型注解是硬契约</strong>：缺描述 <span class="mono">ValueError</span>，缺注解 <span class="mono">TypeError</span>。</li>
+<li><strong>类型映射是手写的</strong>：str/int/bool/float/Optional/List/Literal/BaseModel 支持，带参 Dict 与一般 Union 报错。</li>
+<li><strong>self / agent_state 保留</strong>：属 <span class="mono">TOOL_RESERVED_KWARGS</span>，不进 schema。</li>
+</ul>
+</div>
+<p>最后留个伏笔。这一课从头到尾都假设了一个前提：<strong>我们手里已经有一个函数对象</strong>，可以让 <span class="mono">inspect</span> 去读它的签名。可现实里，用户常常是上传<strong>一段源码字符串</strong>来注册自定义工具。这时服务端面临一个棘手的要求：要在<strong>绝不运行这段代码</strong>的前提下，仍然把 schema 生成出来。它是怎么做到的？这正是<strong>第 18 课</strong>的主题。</p>
 """, "en": r"""<p>stub</p>"""}
