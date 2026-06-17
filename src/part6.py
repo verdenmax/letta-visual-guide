@@ -366,20 +366,25 @@ LESSON_21 = {"zh": r"""
 LESSON_22 = {"zh": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">上一课我们把"统一契约"立在了纸面上：一个工厂按类型选 client，三方法把差异收敛成 OpenAI 形状。可纸面平整，不等于底下风平浪静——<strong>各家 LLM 的脾气其实大不相同</strong>：Anthropic 要你贴 <span class="mono">cache_control</span> 缓存标记、Google 连字段名都另起一套、有的模型干脆没有原生推理能力。</p>
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课要回答的就是：这些五花八门的怪癖，到底<strong>怎么被一个个关进各自的 client 子类里</strong>——关到第 13 到 16 课那套执行循环之上、对它们一无所知、也根本无需知道。这是统一契约真正开始"兑现红利"的一课。</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">说"兑现红利"不夸张：上一课花力气立的那套统一形状，到这一课才真正显出价值——正因为有它兜底，各家的怪癖才有地方可藏，而不必摊到循环里碍眼。</span></div>
 <div class="card analogy"><div class="tag">🔌 生活类比</div>
 <p>想象一个演员，<strong>一张脸</strong>，按不同场次戴上不同面具登台。那张脸，就是上一课的 <span class="mono">OpenAIClient</span>；而一个个面具，就是各家 provider 的子类。</p>
 <p>妙处在于：<strong>换面具不用换脸</strong>。大多数子类要做的，只是把面具上某一处改一改——通常就是换个 <span class="mono">base_url</span>，顶多再顺手抹掉或补上一两个字段。</p>
 <p>于是同一张脸，戴上 Groq 的面具就去演 Groq，戴上 xAI 的面具就去演 xAI。台下的循环始终只看到"那个演员"，至于这场他戴的是哪张面具，循环全程不关心。</p>
 <p>这条类比藏着本课的主张：<strong>怪癖不该摊在循环里到处都是，而该被收进各自的面具</strong>——也就是子类那两个被重写的方法里。</p>
+<p>这副面具的比喻还能再推一步：面具越薄越好——子类写得越少，意味着复用得越彻底、要单独维护的"特例"也越少。Letta 大多数子类都只有寥寥几行，正是这个道理。</p>
 </div>
 <div class="card macro"><div class="tag">🌍 宏观理解</div>
 <p>一句话抓住本课：<strong>怪癖只藏在两个方法里，循环之上永远是同一种形状</strong>。</p>
 <p>先看复用有多狠：<span class="mono">OpenAIClient</span> 一个类，被 <strong>8 个显式子类</strong>外加默认 <span class="mono">case _</span> 共同复用，诀窍只是换一个 <span class="mono">base_url</span>——同一套 OpenAI SDK，指向不同 URL 就接上不同的家。</p>
 <p>再看怪癖关在哪：子类<strong>只重写两个方法</strong>——<span class="mono">build_request_data</span>（出门前改请求）与 <span class="mono">convert_response_to_chat_completion</span>（回来后改响应），常常是先 <span class="mono">super()</span> 拿到 OpenAI 形状、再就地改几笔。</p>
 <p>本课最妙的一手怪招，是把<strong>内心独白硬塞成工具的第一个参数</strong> <span class="mono">thinking</span>，响应时再 <span class="mono">unpack</span> 抽回消息正文；外加 Anthropic 独有的 cache / thinking / batch 三件套。这几样，就是下面要逐个拆开的对象。</p>
+<p>把这四件事记成一条链：<strong>复用省掉重复、两方法关住差异、内心独白补出思考、开关切换模拟与原生</strong>。下面三个小节顺着这条链走，最后再单看 Anthropic 这个怪癖最密集的家族。</p>
+<p>这条链也是一道"<strong>抽象的防线</strong>"：每往里走一层，外面的代码就少操一份心。循环不必懂 provider，记忆 / 工具 / 压缩等模块更不必——它们只跟统一形状打交道。</p>
 </div>
 <h2>OpenAIClient：一个类服务多家</h2>
 <p>先看最省事的那条路——大量 provider 根本不需要新写 client，它们直接复用 <span class="mono">OpenAIClient</span>。把整条继承谱系画出来，三大家族一目了然。</p>
+<p>看图先约定一个方法：把每个 client 想成"基类定骨架、子类补细节"。骨架（三方法的契约）只在三个家族基类里各写一遍，子类拿来就用，顶多覆盖其中一两个方法。</p>
 <div class="layers">
   <div class="layer l-core"><div class="lh"><span class="badge">抽象基类</span><span class="name">LLMClientBase</span></div>
     <div class="ld">定义三方法契约（上一课）。下面三大家族都从它派生，各自实现一套"出门改请求、回来改响应"。</div></div>
@@ -393,6 +398,8 @@ LESSON_22 = {"zh": r"""
 <p>看这棵树就懂了：真正"从零写"的只有三个家族基类，其余全是站在它们肩膀上的薄薄一层子类。OpenAI 家族尤其夸张——一个基类背后挂着 8 个子类，还兜着所有没列名的 provider。</p>
 <div class="cellgroup"><div class="cg-cap"><b>OpenAIClient 的 8 个显式子类</b></div><div class="cells"><span class="cell hl">AzureClient</span><span class="sep">·</span><span class="cell">BasetenClient</span><span class="sep">·</span><span class="cell">DeepseekClient</span><span class="sep">·</span><span class="cell">FireworksClient</span><span class="sep">·</span><span class="cell">GroqClient</span><span class="sep">·</span><span class="cell">TogetherClient</span><span class="sep">·</span><span class="cell">XAIClient</span><span class="sep">·</span><span class="cell">ZAIClient</span></div></div>
 <div class="note info"><span class="ni">💡</span><span class="nx">一个类服务多家的诀窍：<span class="mono">OpenAIClient._prepare_client_kwargs</span> 只把 <span class="mono">base_url</span> 设成 <span class="mono">llm_config.model_endpoint</span>——同一套 OpenAI SDK，换个 URL 就接上一家。约 <strong>19/25</strong> 的 <span class="mono">ProviderType</span> 最终落到 <span class="mono">OpenAIClient</span> 或其子类，仅 6 种不用（anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax）。</span></div>
+<p>为什么"只换一个 <span class="mono">base_url</span>"就够用？因为这些 provider 大多直接对外提供 <strong>OpenAI 兼容</strong>的接口：请求体、响应体的形状本就和 OpenAI 对得上，真正不同的只是服务器地址。Letta 抓住这一点，把它们统统划进默认那一档，连子类都省了。</p>
+<p>需要单独写子类的，往往是那些"OpenAI 兼容、但还差一口气"的家——某个模型不认某个参数、或多要一个字段。这时子类才登场，<span class="mono">super()</span> 之后补这一口气就好，不必从头另起炉灶。</p>
 <h2>子类只改两个方法</h2>
 <p>那 8 个子类里头到底写了什么？答案出奇地短：<strong>大多只动两个方法</strong>。下面这个 <span class="mono">XAIClient</span> 就是典型——先调 <span class="mono">super()</span> 拿到标准 OpenAI 请求，再只针对自家某个模型删掉两个惩罚字段。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/xai_client.py</span><span class="ln">一个子类只在 super() 之后改字段（简化）</span></div>
@@ -406,6 +413,8 @@ LESSON_22 = {"zh": r"""
 </pre></div>
 <p>换个子类，套路一模一样，只是改的字段不同：<span class="mono">GroqClient</span> 会把 <span class="mono">tool_choice</span> 强制设成 <span class="mono">required</span>，逼模型每步必须调一个工具。改哪一笔因家而异，但"先 super、再就地改"这条骨架始终不变。</p>
 <div class="note tip"><span class="ni">💡</span><span class="nx">共性模式记一句：<strong>怪癖只关在 <span class="mono">build_request_data</span> 与 <span class="mono">convert_response_to_chat_completion</span> 这两处</strong>。<span class="mono">send_llm_request_async</span> 之上的那段循环，无论底下是 xAI 还是 Groq，看到的永远是同一个统一的 <span class="mono">ChatCompletionResponse</span>。</span></div>
+<p>反过来想更清楚：要是这些惩罚字段、<span class="mono">tool_choice</span> 之类的特例漏进了循环，循环里就会冒出一片 <span class="mono">if 是不是 xAI</span>、<span class="mono">if 是不是 Groq</span> 的分支——正是上一课反复警告的"抽象漏了"。把它们牢牢关进子类，循环才配得上"干净"二字。</p>
+<p>还要留意：怪癖既可能在<strong>出门时</strong>改（<span class="mono">build_request_data</span> 动请求），也可能在<strong>回来时</strong>改（<span class="mono">convert_response_to_chat_completion</span> 动响应）。前者管"我们怎么问"，后者管"它的回答被翻译成什么"，两头各守一道关口。</p>
 <h2>核心怪招：把内心独白塞成工具参数</h2>
 <p>现在拆本课最精彩的一招。很多模型只会"调函数"，并不会先吐一段思考。Letta 偏要它们<strong>先想后调</strong>——办法是把一个叫 <span class="mono">thinking</span> 的字符串，硬塞成每个工具的<strong>第一个参数</strong>。</p>
 <div class="vflow">
@@ -414,6 +423,7 @@ LESSON_22 = {"zh": r"""
   <div class="step"><div class="num">3</div><div class="sc"><h4>拆回</h4><p>响应里 <span class="mono">unpack_inner_thoughts_from_kwargs</span> 把 <span class="mono">thinking</span> 从工具参数里 pop 出来，塞进 <span class="mono">message.content</span>。</p></div></div>
 </div>
 <p>于是一个"只会调函数"的模型，被硬生生挤出了一条思维链：思考成了参数的一部分，模型不得不先写出来。等响应回来，这段思考又被抽回助手消息正文——对下游而言，就跟模型"本来就会想"一模一样。</p>
+<p>这里有个容易忽略的妙处：<strong>这段思考对模型自己也有用</strong>。被逼着先写一遍推理，等于给后面的参数选择做了铺垫——很多时候，模型正是借这一步把"该调哪个工具、传什么参数"想清楚的。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/helpers.py</span><span class="ln">把内心独白排成第一个参数（简化）</span></div>
 <pre><span class="kw">def</span> <span class="fn">add_inner_thoughts_to_functions</span>(functions, inner_thoughts_key, ..., put_inner_thoughts_first=<span class="kw">True</span>):
     <span class="kw">for</span> f <span class="kw">in</span> functions:
@@ -423,8 +433,12 @@ LESSON_22 = {"zh": r"""
             new_props.<span class="fn">update</span>(f[<span class="st">"parameters"</span>][<span class="st">"properties"</span>])
             f[<span class="st">"parameters"</span>][<span class="st">"required"</span>].<span class="fn">insert</span>(<span class="nb">0</span>, inner_thoughts_key)   <span class="cm"># required 也排最前</span>
 </pre></div>
+<p>举个具体例子：注入之后，<span class="mono">send_message</span> 这个工具的参数顺序会变成 <span class="mono">thinking</span> 在前、<span class="mono">message</span> 在后。模型想调用它，就<strong>必须先生成一段 thinking 文本</strong>，再生成真正要发出的消息——这一步怎么都跳不过去。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">键名 <span class="mono">INNER_THOUGHTS_KWARG = "thinking"</span> 定义在 <span class="mono">letta/settings.py</span>（<strong>不在</strong> <span class="mono">constants.py</span>，那里放的是描述文字）。反向拆解走 <span class="mono">helpers.py::unpack_inner_thoughts_from_kwargs</span>：从 tool_call 的参数里 <span class="mono">pop</span> 出 <span class="mono">thinking</span>，再塞回 <span class="mono">message.content</span>。</span></div>
+<p>这一招的精髓，是<strong>用结构去逼出行为</strong>：不是恳求模型"请先想一想"，而是把"想"做成它绕不开的第一个必填字段。结构一立，思考就成了刚需，而不再依赖模型的自觉。</p>
+<p>还有个收尾动作别忘了：拆回 thinking 之后，工具调用的参数里就<strong>不该再留</strong>这个字段，否则真正执行工具时会凭空多出一个它不认识的参数。<span class="mono">unpack</span> 既是"取出思考"，也是"清理现场"。</p>
 <div class="cute"><div class="row"><span class="emoji">🎭🎭🎭</span><span class="lab">三张面具</span><span class="arrow">→</span><span class="emoji">🙂</span><span class="bubble">同一张脸</span></div><div class="cap">同一个 OpenAIClient，只换 base_url / 几个字段，就服务一堆供应商</div></div>
+<p>这张萌图想说的就一句：复用不是偷懒，而是把"相同的部分"真正只写一遍。脸只有三张（三个家族基类），面具却能挂一大把——多接一家，多戴一张面具即可。</p>
 <h2>开关：模拟推理 vs 原生推理</h2>
 <p>注入这招并不是对所有模型都开。有的模型本来就会推理，再塞一个假的 <span class="mono">thinking</span> 反而画蛇添足。于是 <span class="mono">LLMConfig.put_inner_thoughts_in_kwargs</span> 这个开关会<strong>自动翻转</strong>。</p>
 <div class="cellgroup"><div class="cg-cap"><b>put_inner_thoughts_in_kwargs 怎么翻转</b></div><div class="cells"><span class="cell hl">原生推理 (o1/gpt-5/Claude-4) → False</span><span class="sep">·</span><span class="cell">普通工具调用 → True（模拟一个）</span></div></div>
@@ -434,6 +448,7 @@ LESSON_22 = {"zh": r"""
   <div class="col"><h4>🎭 普通工具调用 → 开</h4><p>只会调函数、不会先思考的模型，<span class="mono">=True</span>：注入一个 <span class="mono">thinking</span> 参数，给它模拟出一段思维链。</p></div>
 </div>
 <div class="note tip"><span class="ni">💡</span><span class="nx">为什么非要排<strong>第一个</strong>？因为参数是按顺序生成的——把 <span class="mono">thinking</span> 放最前，等于强迫模型"<strong>先写一段推理，再填结构化参数</strong>"。顺序一换，先想后调这件事就落了空。</span></div>
+<p>这种"自动翻转"，是抽象优雅的又一处体现：同一段注入代码，既照顾了只会调函数的小模型，也不去打扰自带推理的大模型，区别仅在一个布尔值。你几乎不用操心它，Letta 会按模型替你拨好。</p>
 <h2>Anthropic 三大怪癖</h2>
 <p>Anthropic 是少数没法靠 <span class="mono">OpenAIClient</span> 糊弄过去的家族，它有三样很扎眼的怪癖，全被关在 <span class="mono">AnthropicClient</span> 里。先用一张表把它们摆开。</p>
 <table class="t">
@@ -451,11 +466,15 @@ data[<span class="st">"tools"</span>][-<span class="nb">1</span>][<span class="s
 data[<span class="st">"thinking"</span>] = {<span class="st">"type"</span>: <span class="st">"enabled"</span>, <span class="st">"budget_tokens"</span>: budget}
 data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 </pre></div>
+<p>响应方向也得翻译回去：Anthropic 把内容拆成 <span class="mono">text</span> / <span class="mono">tool_use</span> / <span class="mono">thinking</span> 三类块，<span class="mono">convert</span> 再把它们拼回 OpenAI 的 <span class="mono">tool_calls</span> 与 <span class="mono">reasoning_content</span>。出门改一次、回来改一次，恰好对称。</p>
+<p>这也是为什么 Anthropic 值得单开一节：别家大多只改请求里的零星字段，它却在请求与响应<strong>两端</strong>都动了真格——缓存标记、思考预算、批量接口、内容块翻译，样样都要 client 亲自接管。</p>
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p>上一课那纸契约，<strong>红利正是在这一课兑现</strong>的。每家 provider 的"怪脾气"都被隔离进两个方法——<span class="mono">build</span> 改请求、<span class="mono">convert</span> 改响应，循环之上一无所知。</p>
 <p>最妙的怪癖是"把内心独白塞成工具参数"：对没有原生推理的模型，Letta 强制每次工具调用都把一个 <span class="mono">thinking</span> 字符串排成<strong>第一个参数</strong>，于是模型"先想后调"，再在响应里把它抽回助手消息——硬是从一个"只会调函数"的模型里挤出了思维链。</p>
 <p>而 <span class="mono">put_inner_thoughts_in_kwargs</span> 会<strong>自动翻转</strong>：原生推理模型（o1/gpt-5/Claude-4）→ 关，用它们真的 thinking；普通工具调用模型 → 开，模拟一个。同一个抽象，对两类模型给出恰好相反的处理。</p>
 <p>同一招 MemGPT 内心独白，就这样在一整座 provider 动物园里活了下来。而第 23 课的本地路径，还会用<strong>语法约束</strong>把它再实现一遍——那是后话。</p>
+<p>往大里看，这是"适配器模式"最划算的一种用法：把易变的部分（各家怪癖）锁进子类窄窄的两个方法，把不变的部分（执行循环）彻底解放。改动的半径，被牢牢摁在 client 内部，外面的世界毫不知情。</p>
+<p>说到底，这一课讲的不是某一家的奇技淫巧，而是<strong>"差异该放在哪"这件事的纪律</strong>：放进子类，系统就稳；漏进循环，系统就乱。每一处怪癖，都是对这条纪律的一次小小检验。</p>
 </div>
 <div class="card detail"><div class="tag">🔬 落到代码</div>
 <p><span class="mono">llm_api/openai_client.py::OpenAIClient</span>——<span class="mono">_prepare_client_kwargs</span> 把 <span class="mono">base_url</span> 设成 endpoint；外加 8 个子类（Azure/Baseten/Deepseek/Fireworks/Groq/Together/XAI/ZAI）。</p>
@@ -469,5 +488,45 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <p><strong>Google 是反例</strong>：它把 <span class="mono">thinking</span> 追加在<strong>最后</strong>，不是最前——别想当然以为各家都排第一。</p>
 <p><span class="mono">AnthropicClient</span> 自己<strong>也是</strong>复用基类（Bedrock/MiniMax 继承它）；而 <span class="mono">OpenAIClient</span> 的显式子类是 <strong>8 个</strong>，不是 12。</p>
 </div>
-<!--ZHMORE-->
+<h2>再挖深一点</h2>
+<p>主线到这里就完整了。下面四个抽屉，专门收那些你大概率会追问的细节——按兴趣展开即可，不展开也不影响对主线的理解。</p>
+<details class="accordion"><summary>内心独白为什么要排第一？又怎么 unpack 回 content？</summary><div class="acc-body">
+<p>排第一是为了"先想后调"。LLM 生成参数是<strong>从左到右、按顺序</strong>来的；把 <span class="mono">thinking</span> 放在第一个，模型就必须先吐一段推理，才轮到填真正的业务参数。等于用参数顺序，把"思考在动作之前"这件事钉死。</p>
+<p>注入由 <span class="mono">add_inner_thoughts_to_functions</span> 完成：它用 <span class="mono">OrderedDict</span> 把 <span class="mono">thinking</span> 塞成第一个 property，又 <span class="mono">required.insert(0, key)</span> 让它在必填项里也排最前。两手一起，模型躲不掉。</p>
+<p>拆回则走 <span class="mono">unpack_inner_thoughts_from_kwargs</span>：响应回来后，把 <span class="mono">thinking</span> 从工具调用参数里 <span class="mono">pop</span> 出来，写进 <span class="mono">message.content</span>。于是下游看到的，是一个普通的"先有思考、再有工具调用"的助手消息。</p>
+<p>这也回答了一个常见疑问：为什么不让模型在普通文本里思考就好？因为工具调用模型的输出<strong>已经被约束成 JSON 参数</strong>，自由发挥的文本无处安放；把思考做成一个参数字段，是在这种约束下挤出思维链的唯一干净办法。</p>
+</div></details>
+<details class="accordion"><summary>put_inner_thoughts_in_kwargs：到底谁关谁开？</summary><div class="acc-body">
+<p>这个开关回答一个问题：<strong>这模型需不需要我替它造一段思考？</strong>需要就开（<span class="mono">=True</span>，模拟），不需要就关（<span class="mono">=False</span>，用原生）。</p>
+<p>自带推理的会被关掉：Anthropic 3.7/4、OpenAI 的 o1/o3/gpt-5、ZAI 的 GLM 等。它们本就会产出真正的 reasoning，再注入一个假 <span class="mono">thinking</span> 纯属添乱。</p>
+<p>普通工具调用模型则打开，由 Letta 注入一段模拟的内心独白。一个开关，把"两类截然不同的模型"收进了同一套代码路径。</p>
+<p>顺带一提：这个开关通常由模型句柄或默认配置替你决定，不用手工去拨。Letta 心里清楚哪些 provider 自带推理、哪些不会，于是预先把 <span class="mono">put_inner_thoughts_in_kwargs</span> 设成合适的值。</p>
+<p>记住这个对应就不会乱：<strong>开 = 模拟</strong>（注入假 thinking），<strong>关 = 原生</strong>（用真 reasoning）。名字里的 "in_kwargs" 说的正是"把内心独白放进工具参数里"——为真才需要注入。</p>
+</div></details>
+<details class="accordion"><summary>Anthropic 的三处 cache_control + thinking + batch</summary><div class="acc-body">
+<p><span class="mono">cache_control</span> 一共贴三处：最后一个 tool、system 的末块、messages 里末条消息的末块。被标 <span class="mono">{"type":"ephemeral"}</span> 的前缀可被缓存，重复请求命中就省钱省延迟。</p>
+<p>extended thinking 打开时，<span class="mono">data["thinking"]</span> 被设成 enabled（带 <span class="mono">budget_tokens</span>）或 adaptive，且<strong>温度被强制为 1</strong>；需要时还会按需拼 beta 头。</p>
+<p>batch 是唯一真接线的：基类的批量方法留成 <span class="mono">NotImplementedError</span>，只有 <span class="mono">AnthropicClient</span> 用 <span class="mono">client.beta.messages.batches.create</span> 实现了它。响应侧再把 text/tool_use/thinking 三类块翻成 OpenAI 形状。</p>
+<p>这三处位置也不是随便挑的：它们都落在请求里<strong>最稳定、最值得缓存</strong>的前缀上——工具定义、系统提示、历史消息。越靠前越不变的内容，缓存命中带来的省钱省延迟就越可观。</p>
+<p>顺便说一句 beta 头：开启 adaptive thinking、interleaved thinking 或 1M 上下文这些较新能力时，<span class="mono">AnthropicClient</span> 会按需把对应的 beta 标识拼进请求头——这也是它远比"换个 base_url"复杂的原因之一。</p>
+</div></details>
+<details class="accordion"><summary>Google 的反例：处处跟 OpenAI 形状对着干</summary><div class="acc-body">
+<p>最该记的一点：Google 把内心独白 <span class="mono">thinking</span> <strong>追加在最后</strong>（<span class="mono">INNER_THOUGHTS_KWARG_VERTEX</span>），而不是像别家那样排第一。</p>
+<p>字段名也另起一套：工具被包成 <span class="mono">[{"functionDeclarations":[...]}]</span>，模型的工具调用叫 <span class="mono">functionCall</span>（带 <span class="mono">.name</span> / <span class="mono">.args</span>），转换时映射成 OpenAI 的 <span class="mono">tool_calls</span>。</p>
+<p>连角色名都不同：Google 用 <span class="mono">"model"</span> 表示助手，<span class="mono">convert</span> 时要把它改写成 <span class="mono">"assistant"</span>。这些差异全被关在 <span class="mono">GoogleVertexClient</span> 里，循环照旧无感。</p>
+<p>把 Google 拎出来当反例，是想提醒一件事：<strong>"内心独白排第一"并非铁律</strong>，而是 Letta 面向大多数 provider 的默认做法。真要写一个新 client，第一件事就是去确认它究竟把 thinking 放在哪儿。</p>
+</div></details>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>子类一般只重写 <span class="mono">build_request_data</span> + <span class="mono">convert_response_to_chat_completion</span> 两个方法，常 <span class="mono">super()</span> 后改 dict。</li>
+<li><span class="mono">OpenAIClient</span> 一个类服务多家：8 个显式子类 + 默认 case，靠换 <span class="mono">base_url</span>。</li>
+<li>内心独白被注入成工具的<strong>第一个参数</strong> <span class="mono">thinking</span>，响应时 <span class="mono">unpack</span> 回 <span class="mono">message.content</span>。</li>
+<li><span class="mono">put_inner_thoughts_in_kwargs</span> 决定<strong>模拟还是用原生推理</strong>：自带推理→关，普通工具调用→开。</li>
+<li>Anthropic 三大怪癖：<span class="mono">cache_control</span> 提示缓存、extended thinking、batch。</li>
+<li>Google 是反例：把 <span class="mono">thinking</span> 追加在<strong>最后</strong>，不是最前。</li>
+</ul>
+</div>
+<p><strong>小结一下：</strong>云端 provider 的怪癖，就这样被一一关进子类的那两个方法里。可要是来一个<strong>连原生 function calling 都没有</strong>的本地模型呢？它又怎么被"教会"调工具？下一课，第 23 课，讲本地模型与 <span class="mono">GBNF</span> 受限解码——看 Letta 怎么用语法把"可解析"从概率变成保证。</p>
+<p>带着这一课的两条直觉往下走会更顺：<strong>差异关进子类、思考可以被构造</strong>。下一课你会看到，当模型连"调工具"都不会时，Letta 是怎么用一套语法把它从头教起的。</p>
+
 """, "en": r"""<p>stub</p>"""}
