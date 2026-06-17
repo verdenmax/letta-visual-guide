@@ -392,7 +392,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
         <span class="kw">if</span> p.default <span class="kw">is</span> inspect.Parameter.empty <span class="kw">and</span> <span class="kw">not</span> is_optional(p.annotation):
             required.append(p.name)
 </pre></div>
-<div class="note warn"><span class="ni">⚠️</span><span class="nx">这段循环藏着两道"质检关卡"：参数<strong>没有描述</strong>就 <span class="mono">raise ValueError</span>；参数<strong>缺类型注解</strong>则在 <span class="mono">type_to_json_schema_type</span> 里抛 <span class="mono">TypeError</span>。换句话说，docstring 写不全，工具根本建不出来。</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">这段循环藏着两道"质检关卡"：参数<strong>没有描述</strong>就 <span class="mono">raise ValueError</span>；参数<strong>缺类型注解</strong>则由 <span class="mono">generate_schema</span> 直接抛 <span class="mono">TypeError</span>。换句话说，docstring 写不全，工具根本建不出来。</span></div>
 <p>把这段循环"读慢一点"：它<strong>逐个参数</strong>走一遍，每个参数都过同样四步——跳过保留名、取描述、定类型、判必填。任何一步出问题，构建就此中止，错误会一路抛到注册工具的调用方。</p>
 <div class="note info"><span class="ni">📌</span><span class="nx">注意 <span class="mono">name=None</span> 这个参数：不显式传名字时，schema 的 <span class="mono">name</span> 默认取 <span class="mono">function.__name__</span>，也就是函数名本身。所以给函数起个好名字，等于给工具起了个好"菜名"，模型一看名字就能猜个八九不离十。</span></div>
 <p>顺带说说这份 schema 的"出身"：它遵循 OpenAI 的 function-calling 规范——顶层是 <span class="mono">name</span> 和 <span class="mono">description</span>，参数统一包在 <span class="mono">parameters</span> 里，且 <span class="mono">type</span> 恒为 <span class="mono">object</span>。各家主流模型大多兼容这套格式，于是 Letta 拿它当"通用语"，一份 schema 喂给不同模型都能认。</p>
@@ -435,7 +435,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <tr><td class="mono">float</td><td class="mono">number</td><td>浮点</td></tr>
 <tr><td class="mono">Optional[X]</td><td class="mono">X</td><td>解包成 X，并移出 required</td></tr>
 <tr><td class="mono">List[X]</td><td class="mono">array</td><td>带 items 类型</td></tr>
-<tr><td class="mono">Literal[...]</td><td class="mono">enum</td><td>枚举可选值</td></tr>
+<tr><td class="mono">Literal[...]</td><td class="mono">string + enum</td><td>枚举可选值</td></tr>
 <tr><td class="mono">BaseModel</td><td class="mono">object</td><td>调 model_json_schema()</td></tr>
 <tr><td class="mono">Dict[k,v]</td><td class="mono">✗</td><td>带参字典 → ValueError</td></tr>
 <tr><td class="mono">Union[...]</td><td class="mono">✗</td><td>一般 Union → NotImplementedError</td></tr>
@@ -455,7 +455,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>当一个参数本身是"一组字段"——比如一封邮件草稿有收件人、主题、正文——与其把它摊平成三个零散参数，不如打包成一个 Pydantic 模型，让 schema 自带结构。工具签名里只写一个参数 <span class="mono">draft: EmailDraft</span> 就够了。</p>
 <div class="note tip"><span class="ni">💡</span><span class="nx"><span class="mono">generate_schema</span> 遇到 <span class="mono">draft: EmailDraft</span>，会调用 <span class="mono">EmailDraft.model_json_schema()</span>，把 <span class="mono">to / subject / body</span> 连同它们的类型与必填关系，作为一个<strong>嵌套 object</strong> 塞进工具 schema。</span></div>
 <p>这样一来，模型看到的是一个结构清晰的对象，而不是三个互不相干的字符串。更妙的是：字段的增删、类型的约束，全集中在模型定义里，工具签名始终保持干净。这正是为什么遇到结构化入参，官方推荐 Pydantic 模型而非 <span class="mono">Dict</span>。</p>
-<div class="note info"><span class="ni">📌</span><span class="nx">小结类型这一块：能用基础类型就用基础类型，要"可选"用 <span class="mono">Optional</span>，要"多选一"用 <span class="mono">Literal</span>，要"一组字段"用 Pydantic 模型——避开裸 <span class="mono">Dict</span> 和 <span class="mono">Union</span>，你就绕开了绝大多数报错。</span></div>
+<div class="note info"><span class="ni">📌</span><span class="nx">小结类型这一块：能用基础类型就用基础类型，要"可选"用 <span class="mono">Optional</span>，要"多选一"用 <span class="mono">Literal</span>，要"一组字段"用 Pydantic 模型——避开带参 <span class="mono">Dict[k,v]</span> 和一般 <span class="mono">Union</span>，你就绕开了绝大多数报错。</span></div>
 <div class="cute"><div class="row">
   <span class="emoji">📝</span><span class="lab">docstring</span>
   <span class="emoji">🔧</span><span class="lab">函数</span>
@@ -659,7 +659,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
         <span class="kw">if</span> p.default <span class="kw">is</span> inspect.Parameter.empty <span class="kw">and</span> <span class="kw">not</span> is_optional(p.annotation):
             required.append(p.name)
 </pre></div>
-<div class="note warn"><span class="ni">⚠️</span><span class="nx">This loop hides two "quality gates": a parameter with <strong>no description</strong> triggers <span class="mono">raise ValueError</span>; a parameter <strong>missing its type annotation</strong> throws <span class="mono">TypeError</span> inside <span class="mono">type_to_json_schema_type</span>. Put another way, an incomplete docstring means the tool simply can't be built.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">This loop hides two "quality gates": a parameter with <strong>no description</strong> triggers <span class="mono">raise ValueError</span>; a parameter <strong>missing its type annotation</strong> makes <span class="mono">generate_schema</span> raise <span class="mono">TypeError</span> directly. Put another way, an incomplete docstring means the tool simply can't be built.</span></div>
 <p>Read this loop "a little slower": it walks <strong>each parameter</strong> in turn, and every parameter passes the same four steps — skip the reserved name, fetch the description, fix the type, decide required. If any step goes wrong, construction halts right there, and the error propagates all the way up to whoever is registering the tool.</p>
 <div class="note info"><span class="ni">📌</span><span class="nx">Note the <span class="mono">name=None</span> parameter: when you don't pass a name explicitly, the schema's <span class="mono">name</span> defaults to <span class="mono">function.__name__</span>, the function name itself. So giving a function a good name is like giving the tool a good "dish name" — one glance at the name and the model can guess most of it.</span></div>
 <p>A word on this schema's "pedigree": it follows OpenAI's function-calling spec — <span class="mono">name</span> and <span class="mono">description</span> at the top, parameters all wrapped under <span class="mono">parameters</span>, and <span class="mono">type</span> fixed to <span class="mono">object</span>. Most mainstream models accept this format, so Letta treats it as a "lingua franca": one schema feeds different models and they all recognize it.</p>
@@ -702,7 +702,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <tr><td class="mono">float</td><td class="mono">number</td><td>floating point</td></tr>
 <tr><td class="mono">Optional[X]</td><td class="mono">X</td><td>unwrapped to X, removed from required</td></tr>
 <tr><td class="mono">List[X]</td><td class="mono">array</td><td>carries an items type</td></tr>
-<tr><td class="mono">Literal[...]</td><td class="mono">enum</td><td>enumerated allowed values</td></tr>
+<tr><td class="mono">Literal[...]</td><td class="mono">string + enum</td><td>enumerated allowed values</td></tr>
 <tr><td class="mono">BaseModel</td><td class="mono">object</td><td>calls model_json_schema()</td></tr>
 <tr><td class="mono">Dict[k,v]</td><td class="mono">✗</td><td>parameterized dict → ValueError</td></tr>
 <tr><td class="mono">Union[...]</td><td class="mono">✗</td><td>general Union → NotImplementedError</td></tr>
@@ -722,7 +722,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>When a parameter is itself "a set of fields" — say an email draft has a recipient, a subject, and a body — rather than flatten it into three scattered parameters, it's better to pack it into a Pydantic model so the schema carries its own structure. In the tool signature, a single parameter <span class="mono">draft: EmailDraft</span> is enough.</p>
 <div class="note tip"><span class="ni">💡</span><span class="nx">When <span class="mono">generate_schema</span> meets <span class="mono">draft: EmailDraft</span>, it calls <span class="mono">EmailDraft.model_json_schema()</span>, placing <span class="mono">to / subject / body</span> along with their types and required relations into the tool schema as one <strong>nested object</strong>.</span></div>
 <p>This way, what the model sees is a clearly structured object, not three unrelated strings. Better still: adding or removing fields, and constraining types, all live in the model definition, while the tool signature stays clean. This is exactly why, for structured inputs, the official recommendation is a Pydantic model rather than <span class="mono">Dict</span>.</p>
-<div class="note info"><span class="ni">📌</span><span class="nx">Summing up the type section: use basic types when you can, use <span class="mono">Optional</span> for "optional", use <span class="mono">Literal</span> for "one of several", use a Pydantic model for "a set of fields" — steer clear of bare <span class="mono">Dict</span> and <span class="mono">Union</span> and you sidestep the vast majority of errors.</span></div>
+<div class="note info"><span class="ni">📌</span><span class="nx">Summing up the type section: use basic types when you can, use <span class="mono">Optional</span> for "optional", use <span class="mono">Literal</span> for "one of several", use a Pydantic model for "a set of fields" — steer clear of parameterized <span class="mono">Dict[k,v]</span> and general <span class="mono">Union</span> and you sidestep the vast majority of errors.</span></div>
 <div class="cute"><div class="row">
   <span class="emoji">📝</span><span class="lab">docstring</span>
   <span class="emoji">🔧</span><span class="lab">function</span>
