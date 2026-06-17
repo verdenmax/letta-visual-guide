@@ -1669,8 +1669,8 @@ QUIZZES = {
             },
             {
                 "q": {
-                    "zh": "ToolType 共有 11 种，但工厂的 _executor_map 里只显式列了 5 个条目。剩下那些类型（比如 letta_voice_sleeptime_core、letta_multi_agent_core、external_composio）会怎样被执行？",
-                    "en": "ToolType has 11 values, but the factory's _executor_map lists only 5 entries explicitly. How do the remaining types (e.g. letta_voice_sleeptime_core, letta_multi_agent_core, external_composio) get executed?",
+                    "zh": "ToolType 共有 11 种，但工厂只有 5 个执行器类；_executor_map 只显式接线了其中一部分类型。像 custom、letta_voice_sleeptime_core、以及弃用的 external_langchain/external_composio 这些没进表的类型，会怎样被执行？",
+                    "en": "ToolType has 11 values, but there are only 5 executor classes; _executor_map wires only some of those types explicitly. Types not in the table — like custom, letta_voice_sleeptime_core, and the deprecated external_langchain/external_composio — how do they get executed?",
                 },
                 "opts": [
                     {"zh": "全部兜底走 SandboxToolExecutor——get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor)，凡是没在表里的类型一律落到沙箱。这是“默认安全”：除非明确认定安全，否则隔离",
@@ -1684,8 +1684,8 @@ QUIZZES = {
                 ],
                 "answer": 0,
                 "why": {
-                    "zh": "这正是本课最大的“陷阱”：_executor_map 只显式列 5 个（LETTA_CORE、LETTA_MEMORY_CORE、LETTA_BUILTIN、LETTA_FILES_CORE、EXTERNAL_MCP），其余 6 种类型（custom、letta_multi_agent_core、letta_voice_sleeptime_core、external_langchain、external_composio 等）都靠 get_executor 的 .get(tool_type, SandboxToolExecutor) 兜底走沙箱。彩蛋：ExternalComposioToolExecutor 这个类存在却没被接线（external_composio 弃用、兜底沙箱），是永远不会被选中的死代码。既不会 KeyError，也没有“按命名动态加载”。",
-                    "en": "This is the lesson's biggest trap: _executor_map lists only 5 explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP), and the other 6 types (custom, letta_multi_agent_core, letta_voice_sleeptime_core, external_langchain, external_composio, etc.) all fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”",
+                    "zh": "这正是本课最大的“陷阱”：_executor_map 显式接线了 7 个条目（LETTA_CORE、LETTA_MEMORY_CORE、LETTA_SLEEPTIME_CORE → LettaCore；LETTA_MULTI_AGENT_CORE → Sandbox；LETTA_BUILTIN、LETTA_FILES_CORE、EXTERNAL_MCP），映射到 5 个执行器类。其余 4 种没进表的类型（custom、letta_voice_sleeptime_core、external_langchain、external_composio）靠 get_executor 的 .get(tool_type, SandboxToolExecutor) 兜底走沙箱。注意 letta_multi_agent_core 也在沙箱跑，但它是被显式映射的，不是兜底。彩蛋：ExternalComposioToolExecutor 这个类存在却没被接线（external_composio 弃用、兜底沙箱），是永远不会被选中的死代码。既不会 KeyError，也没有“按命名动态加载”。",
+                    "en": "This is the lesson's biggest trap: _executor_map wires 7 entries explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_SLEEPTIME_CORE → LettaCore; LETTA_MULTI_AGENT_CORE → Sandbox; LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP) onto just 5 executor classes. The other 4 unlisted types (custom, letta_voice_sleeptime_core, external_langchain, external_composio) fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Note letta_multi_agent_core also runs in the sandbox, but by an explicit mapping, not the fallback. Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”",
                 },
             },
         ],

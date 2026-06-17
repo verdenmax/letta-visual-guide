@@ -592,7 +592,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </details>
 </div>
 <div class="quiz">
-  <div class="qn">5. ToolType 共有 11 种，但工厂的 _executor_map 里只显式列了 5 个条目。剩下那些类型（比如 letta_voice_sleeptime_core、letta_multi_agent_core、external_composio）会怎样被执行？</div>
+  <div class="qn">5. ToolType 共有 11 种，但工厂只有 5 个执行器类；_executor_map 只显式接线了其中一部分类型。像 custom、letta_voice_sleeptime_core、以及弃用的 external_langchain/external_composio 这些没进表的类型，会怎样被执行？</div>
   <ol class="opts">
     <li>它们回退到 LettaCoreToolExecutor，在进程内直跑</li>
     <li>工厂会抛 KeyError，这些类型的工具无法被执行</li>
@@ -601,7 +601,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
-    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。这正是本课最大的“陷阱”：_executor_map 只显式列 5 个（LETTA_CORE、LETTA_MEMORY_CORE、LETTA_BUILTIN、LETTA_FILES_CORE、EXTERNAL_MCP），其余 6 种类型（custom、letta_multi_agent_core、letta_voice_sleeptime_core、external_langchain、external_composio 等）都靠 get_executor 的 .get(tool_type, SandboxToolExecutor) 兜底走沙箱。彩蛋：ExternalComposioToolExecutor 这个类存在却没被接线（external_composio 弃用、兜底沙箱），是永远不会被选中的死代码。既不会 KeyError，也没有“按命名动态加载”。</div></div></div>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。这正是本课最大的“陷阱”：_executor_map 显式接线了 7 个条目（LETTA_CORE、LETTA_MEMORY_CORE、LETTA_SLEEPTIME_CORE → LettaCore；LETTA_MULTI_AGENT_CORE → Sandbox；LETTA_BUILTIN、LETTA_FILES_CORE、EXTERNAL_MCP），映射到 5 个执行器类。其余 4 种没进表的类型（custom、letta_voice_sleeptime_core、external_langchain、external_composio）靠 get_executor 的 .get(tool_type, SandboxToolExecutor) 兜底走沙箱。注意 letta_multi_agent_core 也在沙箱跑，但它是被显式映射的，不是兜底。彩蛋：ExternalComposioToolExecutor 这个类存在却没被接线（external_composio 弃用、兜底沙箱），是永远不会被选中的死代码。既不会 KeyError，也没有“按命名动态加载”。</div></div></div>
   </details>
 </div>
 <div class="card spark">
@@ -659,6 +659,8 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     _executor_map = {
         ToolType.LETTA_CORE: LettaCoreToolExecutor,
         ToolType.LETTA_MEMORY_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_SLEEPTIME_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MULTI_AGENT_CORE: SandboxToolExecutor,
         ToolType.LETTA_BUILTIN: LettaBuiltinToolExecutor,
         ToolType.LETTA_FILES_CORE: LettaFileToolExecutor,
         ToolType.EXTERNAL_MCP: ExternalMCPToolExecutor,
@@ -667,7 +669,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
         cls_ = cls._executor_map.<span class="fn">get</span>(tool_type, SandboxToolExecutor)   <span class="cm"># unmapped -> fall back to sandbox</span>
         <span class="kw">return</span> cls_(...)
 </pre></div>
-<div class="note warn"><span class="ni">⚠️</span><span class="nx">Look at that <span class="mono">.get(tool_type, SandboxToolExecutor)</span> line inside <span class="mono">get_executor</span>: <strong>any type not in the table falls through to the sandbox</strong>. <span class="mono">custom</span>, <span class="mono">letta_voice_sleeptime_core</span>, the multi-agent tools, and both deprecated externals all land here. So "a custom tool = runs in the sandbox" is the <strong>default</strong>, not a special case.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Look at that <span class="mono">.get(tool_type, SandboxToolExecutor)</span> line inside <span class="mono">get_executor</span>: <strong>any type not in the table falls through to the sandbox</strong>. <span class="mono">custom</span>, <span class="mono">letta_voice_sleeptime_core</span>, and both deprecated externals (<span class="mono">external_langchain / external_composio</span>) land here that way — and <span class="mono">letta_multi_agent_core</span> runs in the sandbox too, just via an explicit entry. So "a custom tool = runs in the sandbox" is the <strong>default</strong>, not a special case.</span></div>
 <p>This is the classic <strong>factory pattern</strong>: it gathers "<em>which implementation to actually use</em>" into one place, so the caller just asks for "an executor" without needing to know which class sits behind it or how it is built. Want to add a tool type later? Register one line in <span class="mono">_executor_map</span> — and not a single word of the loop or the entry has to change.</p>
 <h2>The real entry: ToolExecutionManager</h2>
 <p>The factory only "picks the person." The thing the agent loop actually calls is <span class="mono">ToolExecutionManager::execute_tool_async</span>: it uses the factory to get an executor, then <strong>times</strong> the call, <strong>truncates</strong> an over-long return, <strong>wraps</strong> exceptions into a result object, and hands it all back to the loop.</p>
@@ -741,7 +743,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="card spark"><div class="tag">💡 Design highlight</div>
 <p><strong>"One call, several runtimes behind it."</strong> From the vantage of Lesson 14's loop, "call a tool" is forever one uniform line of code.</p>
 <p>Yet underneath they differ wildly: edit core memory in-process (<span class="mono">LettaCore</span>), shell out to run unfamiliar code in a sandbox venv (<span class="mono">Sandbox</span>), open a network connection to an MCP server (<span class="mono">ExternalMCP</span>). <span class="mono">ToolType</span> + the factory is the <strong>polymorphism</strong> that hides those differences.</p>
-<p>And another counterintuitive truth: the factory <strong>lists only 5 explicitly</strong>, while everything else <strong>falls back to <span class="mono">SandboxToolExecutor</span></strong> — "custom = sandbox" is the default, not a special case.</p>
+<p>And another counterintuitive truth: there are only <strong>5 executor classes</strong> for <strong>11 ToolTypes</strong>. <span class="mono">_executor_map</span> wires 7 types explicitly (several share <span class="mono">LettaCore</span>), and the remaining 4 — <span class="mono">custom</span>, voice-sleeptime, and the two deprecated externals — <strong>fall back to <span class="mono">SandboxToolExecutor</span></strong>. So "custom = sandbox" is the default, not a special case.</p>
 <p>Every executor, finally, returns the same <span class="mono">ToolExecutionResult</span> — the very type used for a tool-rule violation back in Lesson 16. Uniform exit, differences kept inward.</p>
 <p>It is clearer set against the whole tool chain: Lessons 17 and 18 gave a tool "a schema, the ability to be seen," and this lesson gets a tool "correctly run." The model's end is always a uniform function call, yet the system's end quietly makes one <strong>runtime choice by type</strong> — that is exactly what a good abstraction looks like: simple on top, flexible underneath.</p>
 <p>Put differently, <span class="mono">ToolType</span> writes "what tool I am" into data, and the factory writes "which tool runs which way" into logic — a kind of <strong>data-driven dispatch</strong>. To change how some class of tool runs, you needn't touch the loop; you only change its type, or one line of mapping in <span class="mono">_executor_map</span>.</p>
@@ -758,7 +760,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="card warn"><div class="tag">⚠️ Common misconceptions</div>
 <p>The traps easiest to fall into here:</p>
 <ul>
-<li><strong>Thinking every type has its own dedicated executor</strong> — the factory's <span class="mono">_executor_map</span> lists only 5; the rest fall back to the sandbox.</li>
+<li><strong>Thinking every type has its own dedicated executor</strong> — there are only 5 executor classes for 11 types; <span class="mono">_executor_map</span> wires 7 explicitly and the rest fall back to the sandbox.</li>
 <li><strong>Thinking the factory is the entry</strong> — the real entry is <span class="mono">ToolExecutionManager</span>; the factory only "picks."</li>
 <li><strong>Thinking the MCP client is in <span class="mono">functions/mcp_client/</span></strong> — that holds only config types; the clients are in <span class="mono">services/mcp/</span>.</li>
 <li><strong>Thinking only custom tools go to the sandbox</strong> — <span class="mono">letta_voice_sleeptime_core</span> and the multi-agent tools go there too.</li>
@@ -861,7 +863,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </details>
 </div>
 <div class="quiz">
-  <div class="qn">5. ToolType has 11 values, but the factory's _executor_map lists only 5 entries explicitly. How do the remaining types (e.g. letta_voice_sleeptime_core, letta_multi_agent_core, external_composio) get executed?</div>
+  <div class="qn">5. ToolType has 11 values, but there are only 5 executor classes; _executor_map wires only some of those types explicitly. Types not in the table — like custom, letta_voice_sleeptime_core, and the deprecated external_langchain/external_composio — how do they get executed?</div>
   <ol class="opts">
     <li>They fall back to LettaCoreToolExecutor and run in-process</li>
     <li>The factory raises KeyError, and tools of those types cannot be executed</li>
@@ -870,7 +872,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
-    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. This is the lesson's biggest trap: _executor_map lists only 5 explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP), and the other 6 types (custom, letta_multi_agent_core, letta_voice_sleeptime_core, external_langchain, external_composio, etc.) all fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”</div></div></div>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. This is the lesson's biggest trap: _executor_map wires 7 entries explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_SLEEPTIME_CORE → LettaCore; LETTA_MULTI_AGENT_CORE → Sandbox; LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP) onto just 5 executor classes. The other 4 unlisted types (custom, letta_voice_sleeptime_core, external_langchain, external_composio) fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Note letta_multi_agent_core also runs in the sandbox, but by an explicit mapping, not the fallback. Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”</div></div></div>
   </details>
 </div>
 <div class="card spark">

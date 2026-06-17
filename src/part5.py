@@ -998,6 +998,8 @@ LESSON_19 = {"zh": r"""
     _executor_map = {
         ToolType.LETTA_CORE: LettaCoreToolExecutor,
         ToolType.LETTA_MEMORY_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_SLEEPTIME_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MULTI_AGENT_CORE: SandboxToolExecutor,
         ToolType.LETTA_BUILTIN: LettaBuiltinToolExecutor,
         ToolType.LETTA_FILES_CORE: LettaFileToolExecutor,
         ToolType.EXTERNAL_MCP: ExternalMCPToolExecutor,
@@ -1006,7 +1008,7 @@ LESSON_19 = {"zh": r"""
         cls_ = cls._executor_map.<span class="fn">get</span>(tool_type, SandboxToolExecutor)   <span class="cm"># unmapped -> fall back to sandbox</span>
         <span class="kw">return</span> cls_(...)
 </pre></div>
-<div class="note warn"><span class="ni">⚠️</span><span class="nx">Look at that <span class="mono">.get(tool_type, SandboxToolExecutor)</span> line inside <span class="mono">get_executor</span>: <strong>any type not in the table falls through to the sandbox</strong>. <span class="mono">custom</span>, <span class="mono">letta_voice_sleeptime_core</span>, the multi-agent tools, and both deprecated externals all land here. So "a custom tool = runs in the sandbox" is the <strong>default</strong>, not a special case.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Look at that <span class="mono">.get(tool_type, SandboxToolExecutor)</span> line inside <span class="mono">get_executor</span>: <strong>any type not in the table falls through to the sandbox</strong>. <span class="mono">custom</span>, <span class="mono">letta_voice_sleeptime_core</span>, and both deprecated externals (<span class="mono">external_langchain / external_composio</span>) land here that way — and <span class="mono">letta_multi_agent_core</span> runs in the sandbox too, just via an explicit entry. So "a custom tool = runs in the sandbox" is the <strong>default</strong>, not a special case.</span></div>
 <p>This is the classic <strong>factory pattern</strong>: it gathers "<em>which implementation to actually use</em>" into one place, so the caller just asks for "an executor" without needing to know which class sits behind it or how it is built. Want to add a tool type later? Register one line in <span class="mono">_executor_map</span> — and not a single word of the loop or the entry has to change.</p>
 <h2>The real entry: ToolExecutionManager</h2>
 <p>The factory only "picks the person." The thing the agent loop actually calls is <span class="mono">ToolExecutionManager::execute_tool_async</span>: it uses the factory to get an executor, then <strong>times</strong> the call, <strong>truncates</strong> an over-long return, <strong>wraps</strong> exceptions into a result object, and hands it all back to the loop.</p>
@@ -1080,7 +1082,7 @@ LESSON_19 = {"zh": r"""
 <div class="card spark"><div class="tag">💡 Design highlight</div>
 <p><strong>"One call, several runtimes behind it."</strong> From the vantage of Lesson 14's loop, "call a tool" is forever one uniform line of code.</p>
 <p>Yet underneath they differ wildly: edit core memory in-process (<span class="mono">LettaCore</span>), shell out to run unfamiliar code in a sandbox venv (<span class="mono">Sandbox</span>), open a network connection to an MCP server (<span class="mono">ExternalMCP</span>). <span class="mono">ToolType</span> + the factory is the <strong>polymorphism</strong> that hides those differences.</p>
-<p>And another counterintuitive truth: the factory <strong>lists only 5 explicitly</strong>, while everything else <strong>falls back to <span class="mono">SandboxToolExecutor</span></strong> — "custom = sandbox" is the default, not a special case.</p>
+<p>And another counterintuitive truth: there are only <strong>5 executor classes</strong> for <strong>11 ToolTypes</strong>. <span class="mono">_executor_map</span> wires 7 types explicitly (several share <span class="mono">LettaCore</span>), and the remaining 4 — <span class="mono">custom</span>, voice-sleeptime, and the two deprecated externals — <strong>fall back to <span class="mono">SandboxToolExecutor</span></strong>. So "custom = sandbox" is the default, not a special case.</p>
 <p>Every executor, finally, returns the same <span class="mono">ToolExecutionResult</span> — the very type used for a tool-rule violation back in Lesson 16. Uniform exit, differences kept inward.</p>
 <p>It is clearer set against the whole tool chain: Lessons 17 and 18 gave a tool "a schema, the ability to be seen," and this lesson gets a tool "correctly run." The model's end is always a uniform function call, yet the system's end quietly makes one <strong>runtime choice by type</strong> — that is exactly what a good abstraction looks like: simple on top, flexible underneath.</p>
 <p>Put differently, <span class="mono">ToolType</span> writes "what tool I am" into data, and the factory writes "which tool runs which way" into logic — a kind of <strong>data-driven dispatch</strong>. To change how some class of tool runs, you needn't touch the loop; you only change its type, or one line of mapping in <span class="mono">_executor_map</span>.</p>
@@ -1097,7 +1099,7 @@ LESSON_19 = {"zh": r"""
 <div class="card warn"><div class="tag">⚠️ Common misconceptions</div>
 <p>The traps easiest to fall into here:</p>
 <ul>
-<li><strong>Thinking every type has its own dedicated executor</strong> — the factory's <span class="mono">_executor_map</span> lists only 5; the rest fall back to the sandbox.</li>
+<li><strong>Thinking every type has its own dedicated executor</strong> — there are only 5 executor classes for 11 types; <span class="mono">_executor_map</span> wires 7 explicitly and the rest fall back to the sandbox.</li>
 <li><strong>Thinking the factory is the entry</strong> — the real entry is <span class="mono">ToolExecutionManager</span>; the factory only "picks."</li>
 <li><strong>Thinking the MCP client is in <span class="mono">functions/mcp_client/</span></strong> — that holds only config types; the clients are in <span class="mono">services/mcp/</span>.</li>
 <li><strong>Thinking only custom tools go to the sandbox</strong> — <span class="mono">letta_voice_sleeptime_core</span> and the multi-agent tools go there too.</li>
