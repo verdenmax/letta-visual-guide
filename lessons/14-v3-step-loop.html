@@ -1,90 +1,20 @@
-"""Shared HTML shell (CSS design system + navigation) for the Letta visual guide."""
-
-import base64
-
-# ---- favicon (inline SVG, base64) ----
-_FAVICON_SVG = (
-    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
-    "<rect width='32' height='32' rx='7' fill='#6d5efc'/>"
-    "<text x='16' y='22' font-family='system-ui,sans-serif' font-size='15'"
-    " font-weight='800' fill='#fff' text-anchor='middle'>L</text></svg>"
-)
-FAVICON = "data:image/svg+xml;base64," + base64.b64encode(_FAVICON_SVG.encode()).decode()
-
-
-def esc(s):
-    """Escape plain text for an HTML text/attribute context.
-
-    For chrome/meta strings that are NOT meant to carry inline markup (page
-    titles, descriptions). Do NOT use on lesson body content or bi() inputs,
-    which may legitimately contain inline tags.
-    """
-    return (
-        str(s).replace("&", "&amp;").replace("<", "&lt;")
-        .replace(">", "&gt;").replace('"', "&quot;")
-    )
-
-
-def head_meta(title, description, og_type="website"):
-    """SEO / social meta tags + favicon for a page <head>."""
-    t = esc(title)
-    d = esc(description)
-    return (
-        f'<meta name="description" content="{d}">\n'
-        f'<meta name="theme-color" content="#6d5efc">\n'
-        f'<link rel="icon" type="image/svg+xml" href="{FAVICON}">\n'
-        f'<meta property="og:type" content="{og_type}">\n'
-        f'<meta property="og:site_name" content="Letta 图解教程">\n'
-        f'<meta property="og:title" content="{t}">\n'
-        f'<meta property="og:description" content="{d}">\n'
-        f'<meta name="twitter:card" content="summary">\n'
-        f'<meta name="twitter:title" content="{t}">\n'
-        f'<meta name="twitter:description" content="{d}">'
-    )
-
-
-# Ordered list of all pages:
-# (filename, title_zh, title_en, part_zh, part_en)
-PAGES = [
-    ("01-what-is-letta.html", "Letta / MemGPT 是什么", "What is Letta / MemGPT",
-     "第一部分 · 宏观全景", "Part 1 · The Big Picture"),
-    ("02-project-map.html", "项目全景地图", "The project map",
-     "第一部分 · 宏观全景", "Part 1 · The Big Picture"),
-    ("03-message-lifecycle.html", "一条消息的生命周期", "Lifecycle of one message",
-     "第一部分 · 宏观全景", "Part 1 · The Big Picture"),
-    ("04-agent-and-tools.html", "LLM agent 与 tool calling 基础", "LLM agents & tool calling",
-     "第二部分 · 前置基础", "Part 2 · Foundations"),
-    ("05-context-window.html", "上下文窗口的根本问题", "The context-window problem",
-     "第二部分 · 前置基础", "Part 2 · Foundations"),
-    ("06-stateful-vs-stateless.html", "有状态 vs 无状态", "Stateful vs stateless",
-     "第二部分 · 前置基础", "Part 2 · Foundations"),
-    ("07-memory-tiers.html", "记忆三层总览", "The three memory tiers",
-     "第三部分 · 记忆系统", "Part 3 · The memory system"),
-    ("08-memory-blocks.html", "记忆块 Memory Blocks", "Memory blocks",
-     "第三部分 · 记忆系统", "Part 3 · The memory system"),
-    ("09-self-editing-memory.html", "自我编辑记忆 = 改写系统提示", "Self-editing memory = rewriting the system prompt",
-     "第三部分 · 记忆系统", "Part 3 · The memory system"),
-    ("10-archival-memory.html", "归档记忆与向量检索", "Archival memory & vector search",
-     "第三部分 · 记忆系统", "Part 3 · The memory system"),
-    ("11-recall-memory.html", "回忆记忆与对话历史", "Recall memory & conversation history",
-     "第三部分 · 记忆系统", "Part 3 · The memory system"),
-    ("12-context-compaction.html", "上下文压缩与记忆压力", "Context compaction & memory pressure",
-     "第三部分 · 记忆系统", "Part 3 · The memory system"),
-    ("13-agent-state-and-loop.html", "AgentState 与 AgentLoop 工厂", "AgentState & the AgentLoop factory",
-     "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
-    ("14-v3-step-loop.html", "V3 步进循环", "The V3 step loop",
-     "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
-]
-
-
-def bi(zh, en):
-    """Inline bilingual pair; only the active language is shown (CSS-controlled)."""
-    return f'<span class="lang-zh">{zh}</span><span class="lang-en">{en}</span>'
-
-
-INDEX_FILE = "index.html"
-
-CSS = r"""
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>14 · V3 步进循环 / The V3 step loop - Letta 图解教程</title>
+<meta name="description" content="第四部分 · Agent 执行循环｜V3 步进循环 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="14 · V3 步进循环 / The V3 step loop - Letta 图解教程">
+<meta property="og:description" content="第四部分 · Agent 执行循环｜V3 步进循环 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="14 · V3 步进循环 / The V3 step loop - Letta 图解教程">
+<meta name="twitter:description" content="第四部分 · Agent 执行循环｜V3 步进循环 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
@@ -386,39 +316,27 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 .timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
   color: var(--blue); font-weight: 700; }
 .timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
-"""
-
-SEARCH_JS = """
-(function(){
-  var q=document.getElementById('q'); if(!q) return;
-  var toc=document.querySelector('.toc');
-  var empty=document.getElementById('tocempty');
-  var count=document.getElementById('qcount');
-  var links=[].slice.call(toc.querySelectorAll('a'));
-  var heads=[].slice.call(toc.querySelectorAll('.toc-part'));
-  links.forEach(function(a){ a.setAttribute('data-s',(a.textContent||'').toLowerCase()); });
-  function run(){
-    var t=(q.value||'').toLowerCase().trim(), n=0;
-    links.forEach(function(a){
-      var hit=!t||a.getAttribute('data-s').indexOf(t)>=0;
-      a.classList.toggle('hide',!hit); if(hit)n++;
-    });
-    heads.forEach(function(h){
-      var el=h.nextElementSibling, any=false;
-      while(el && !el.classList.contains('toc-part')){
-        if(el.tagName==='A' && !el.classList.contains('hide')){any=true;break;}
-        el=el.nextElementSibling;
-      }
-      h.classList.toggle('hide',!any);
-    });
-    empty.classList.toggle('show', !!t && n===0);
-    count.textContent = t ? String(n) : '';
-  }
-  q.addEventListener('input',run);
-})();
-"""
-
-LANG_JS = """
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第四部分 · Agent 执行循环</span><span class="lang-en">Part 4 · The agent execution loop</span></span>
+    <span class="pill">14 / 14</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第四部分 · Agent 执行循环</span><span class="lang-en">Part 4 · The agent execution loop</span></div>
+    <h1><span class="lang-zh">V3 步进循环</span><span class="lang-en">The V3 step loop</span></h1>
+  </div>
+  <div class="lang-zh"><p>stub</p></div>
+  <div class="lang-en"><p>stub</p></div>
+  <div class="footnav"><a class="prev" href="13-agent-state-and-loop.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">AgentState 与 AgentLoop 工厂</span><span class="lang-en">AgentState &amp; the AgentLoop factory</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
 function lvgSetLang(l){
   l=(l==='en')?'en':'zh';
   var d=document.documentElement;
@@ -428,191 +346,5 @@ function lvgSetLang(l){
 function lvgToggleLang(){
   lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
 }
-"""
-
-# Runs in <head> before first paint to avoid a flash of the wrong language.
-LANG_BOOT = (
-    "<script>try{var l=localStorage.getItem('lvg-lang');"
-    "if(l==='en'){document.documentElement.dataset.lang='en';"
-    "document.documentElement.lang='en';}}catch(e){}</script>"
-)
-
-
-def page(filename, content, home_href="../index.html"):
-    """Wrap one lesson's bilingual content in the full HTML shell.
-
-    ``content`` is a dict ``{"zh": html, "en": html}``. Both are emitted; CSS
-    shows only the active language. Navigation uses plain relative ``href``
-    links so the site works via file:// and any static server (lessons share
-    one directory; home defaults to ``../index.html``).
-    """
-    idx = next(i for i, p in enumerate(PAGES) if p[0] == filename)
-    fname, title_zh, title_en, part_zh, part_en = PAGES[idx]
-    total = len(PAGES)
-    pct = int((idx + 1) / total * 100)
-    home = home_href
-
-    if idx > 0:
-        p = PAGES[idx - 1]
-        prev_link = (
-            f'<a class="prev" href="{p[0]}"><div class="dir">{bi("← 上一课", "← Prev")}</div>'
-            f'<div class="ttl">{bi(esc(p[1]), esc(p[2]))}</div></a>'
-        )
-    else:
-        prev_link = (
-            f'<a class="prev" href="{home}"><div class="dir">{bi("← 返回", "← Back")}</div>'
-            f'<div class="ttl">{bi("目录", "Contents")}</div></a>'
-        )
-    if idx + 1 < total:
-        p = PAGES[idx + 1]
-        next_link = (
-            f'<a class="next" href="{p[0]}"><div class="dir">{bi("下一课 →", "Next →")}</div>'
-            f'<div class="ttl">{bi(esc(p[1]), esc(p[2]))}</div></a>'
-        )
-    else:
-        next_link = (
-            f'<a class="next" href="{home}"><div class="dir">{bi("完成 →", "Done →")}</div>'
-            f'<div class="ttl">{bi("返回目录", "Back to index")}</div></a>'
-        )
-
-    title_tag = f"{idx+1:02d} · {title_zh} / {title_en} - Letta 图解教程"
-    desc = f"{part_zh}｜{title_zh} - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）"
-
-    html = f"""<!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-{LANG_BOOT}
-<title>{esc(title_tag)}</title>
-{head_meta(title_tag, desc, og_type="article")}
-<style>{CSS}</style>
-</head><body>
-<div class="topbar">
-  <div class="topbar-inner">
-    <a class="home" href="{home}">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
-    <span class="pill">{bi(esc(part_zh), esc(part_en))}</span>
-    <span class="pill">{idx+1:02d} / {total:02d}</span>
-    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
-  </div>
-  <div class="progress"><span style="width:{pct}%"></span></div>
-</div>
-<div class="wrap">
-  <div class="hero">
-    <div class="part">{bi(esc(part_zh), esc(part_en))}</div>
-    <h1><span class="lang-zh">{esc(title_zh)}</span><span class="lang-en">{esc(title_en)}</span></h1>
-  </div>
-  <div class="lang-zh">{content["zh"]}</div>
-  <div class="lang-en">{content["en"]}</div>
-  <div class="footnav">{prev_link}{next_link}</div>
-</div>
-<script>{LANG_JS}</script>
-</body></html>"""
-    return html
-
-
-# Per-lesson TOC subtitle: filename -> (zh, en). Missing entries render blank.
-SUBTITLES = {
-    "01-what-is-letta.html": ("LLM 无状态 + 上下文有限 · 有状态记忆 agent",
-                              "Stateless LLM + finite context; stateful memory agents"),
-    "02-project-map.html": ("目录导览 · 三层架构（REST -> services -> ORM/DB）",
-                            "Directory tour; 3-layer architecture (REST -> services -> ORM/DB)"),
-    "03-message-lifecycle.html": ("POST -> actor -> AgentState -> step 循环 -> 工具/记忆 -> 持久化 -> 响应",
-                                  "POST -> actor -> AgentState -> step loop -> tools/memory -> persist -> response"),
-    "04-agent-and-tools.html": ("函数调用怎么工作 · ReAct 循环 · 内心独白",
-                                "How function calling works; ReAct loop; inner monologue"),
-    "05-context-window.html": ("token 预算 · prefill/decode · prefix cache · 为什么需要记忆系统",
-                               "token budget; prefill/decode; prefix cache; why a memory system"),
-    "06-stateful-vs-stateless.html": ("AgentState 存档 · prefixed id · schema 与 orm · 对比 OpenAI Assistants",
-                                      "The AgentState save; prefixed ids; schema vs orm; vs OpenAI Assistants"),
-    "07-memory-tiers.html": ("core / recall / archival · 在窗与窗外 · 模型怎么知道自己忘了什么",
-                             "core / recall / archival; in vs out of context; how the agent knows what it forgot"),
-    "08-memory-blocks.html": ("label/value/limit · Memory.compile · 共享块 · 版本历史",
-                              "label/value/limit; Memory.compile; shared blocks; versioning"),
-    "09-self-editing-memory.html": ("core_memory_append/replace · {CORE_MEMORY} 占位符 · 重建第 0 条 · prefix cache",
-                                    "core_memory_append/replace; the {CORE_MEMORY} slot; rebuilding message #0; prefix cache"),
-    "10-archival-memory.html": ("Passage · 嵌入 · insert/search · pgvector / sqlite-vec · tags",
-                                "Passage; embeddings; insert/search; pgvector / sqlite-vec; tags"),
-    "11-recall-memory.html": ("Message · message_ids 在窗 · conversation_search · JSON 信封",
-                              "Message; in-window message_ids; conversation_search; JSON envelopes"),
-    "12-context-compaction.html": ("90% 阈值 · compact_messages · 滑窗摘要 · summary 消息 · 系统提示溢出",
-                                   "the 90% threshold; compact_messages; sliding-window summary; the summary message; system-prompt overflow"),
-    "13-agent-state-and-loop.html": ("一个 agent 的'存档' · 工厂按类型选引擎 · 三代 agent",
-                                     "an agent's 'save file'; the factory picks an engine by type; three generations"),
-    "14-v3-step-loop.html": ("一次 step = 一次 LLM 调用 + 工具执行 · 调了工具就继续 · 最多 50 步",
-                             "one step = one LLM call + tool exec; loop while tools are called; up to 50 steps"),
-}
-
-
-def index_page(lesson_prefix="lessons/"):
-    """Build the bilingual index (table of contents). Always relative links."""
-    order = []   # ordered list of (part_zh, part_en)
-    groups = {}  # part_zh -> [(num, fname, title_zh, title_en), ...]
-    for i, (fname, tz, te, pz, pe) in enumerate(PAGES):
-        if pz not in groups:
-            groups[pz] = []
-            order.append((pz, pe))
-        groups[pz].append((i + 1, fname, tz, te))
-
-    blocks = []
-    for pz, pe in order:
-        blocks.append(f'<div class="toc-part">{bi(esc(pz), esc(pe))}</div>')
-        for num, fname, tz, te in groups[pz]:
-            sz, se = SUBTITLES.get(fname, ("", ""))
-            blocks.append(
-                f'<a href="{lesson_prefix}{fname}"><span class="n">{num:02d}</span>'
-                f'<span class="tt"><span class="lang-zh">{esc(tz)}</span>'
-                f'<span class="lang-en">{esc(te)}</span></span>'
-                f'<span class="ts"><span class="lang-zh">{esc(sz)}</span>'
-                f'<span class="lang-en">{esc(se)}</span></span></a>'
-            )
-    toc = "\n".join(blocks)
-    total = len(PAGES)
-    nparts = len(order)
-
-    title_tag = "Letta 图解教程 · 从零理解整个项目 / Letta Visual Guide"
-    desc = ("从零理解整个 Letta（原 MemGPT）项目的中英双语图解教程：宏观结构、记忆系统、"
-            "agent 执行循环、工具与 LLM provider、服务端与持久化，每课配真实源码对应、折叠深挖与设计亮点。")
-
-    return f"""<!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-{LANG_BOOT}
-<title>{esc(title_tag)}</title>
-{head_meta(title_tag, desc, og_type="website")}
-<style>{CSS}</style>
-</head><body>
-<div class="topbar">
-  <div class="topbar-inner">
-    <span class="home">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></span>
-    <span class="pill"><span class="lang-zh">共 {total} 课 · {nparts} 个部分</span><span class="lang-en">{total} lesson{'' if total == 1 else 's'} · {nparts} part{'' if nparts == 1 else 's'}</span></span>
-    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
-  </div>
-  <div class="progress"><span style="width:100%"></span></div>
-</div>
-<div class="wrap">
-  <div class="hero index">
-    <div class="part">{bi("从零开始 · 面向完全新手", "From scratch · for complete beginners")}</div>
-    <h1><span class="lang-zh">用图解理解整个 Letta 项目</span><span class="lang-en">Understand the whole Letta project, visually</span></h1>
-    <p class="lead"><span class="lang-zh">这套教程带你<strong>层层深入</strong>：先建立<strong>宏观全景</strong>，再打牢<strong>前置基础</strong>，
-    然后深入 Letta 的灵魂——<strong>三层记忆系统</strong>与 <strong>agent 执行循环</strong>，再到<strong>工具、LLM provider、服务端与持久化</strong>。每课配真实源码对应、图解与设计亮点。</span>
-    <span class="lang-en">A layered tour: build the <strong>big picture</strong> first, lay the <strong>foundations</strong>,
-    then dive into Letta's soul - the <strong>three-tier memory system</strong> and the <strong>agent loop</strong> - on to <strong>tools, LLM providers, server &amp; persistence</strong>. Every lesson maps to real source, with diagrams and design insights.</span></p>
-    <div class="legend">
-      <span><i style="background:var(--blue)"></i>{bi("宏观理解", "Big picture")}</span>
-      <span><i style="background:var(--purple)"></i>{bi("细节 / 源码", "Details / source")}</span>
-      <span><i style="background:var(--amber)"></i>{bi("生活类比", "Analogy")}</span>
-      <span><i style="background:var(--accent)"></i>{bi("关键要点", "Key points")}</span>
-    </div>
-    <p style="margin:.8rem 0 0;color:var(--faint);font-size:.8rem">{bi("📌 对照 Letta 仓库真实源码核实（锚定 v0.16.8）· 源码引用以“文件 + 符号名”为主（行号随上游更新而变）", "📌 Verified against the real Letta source (anchored at v0.16.8); references cite file + symbol (line numbers drift upstream)")}</p>
-  </div>
-  <div class="toc-search">
-    <input id="q" type="search" placeholder="🔎 搜索课程 / Search lessons" autocomplete="off" aria-label="search">
-    <span class="qcount" id="qcount"></span>
-  </div>
-  <div class="toc">{toc}</div>
-  <div class="toc-empty" id="tocempty">{bi("没有匹配的课程，换个关键词试试。", "No matching lessons, try another keyword.")}</div>
-</div>
-<script>{LANG_JS}</script>
-<script>{SEARCH_JS}</script>
-</body></html>"""
+</script>
+</body></html>

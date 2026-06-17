@@ -556,3 +556,9 @@ Where does the loop start? With two things: a "save file" called <strong>AgentSt
 </div>
 """,
 }
+
+
+LESSON_14 = {
+    "zh": r"""<p>stub</p>""",
+    "en": r"""<p>stub</p>""",
+}
