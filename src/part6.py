@@ -699,6 +699,30 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 
 LESSON_23 = {
     "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第六部分走到收尾。前两课我们先立好了统一契约（第 21 课），又把各家云厂商的怪癖一个个关进子类（第 22 课）。可还剩一种最硬的情况没碰：一个连<strong>原生 function calling 都没有</strong>的本地模型，它只会"续写文本"，你要怎么让它去调一个工具？</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就来还原 MemGPT 时代那个经典戏法：先把工具的 schema 当成文本塞进提示，再用一套 <span class="mono">GBNF</span> 语法去<strong>约束解码器本身</strong>，让模型采样时压根吐不出非法 token、只能吐出合法 JSON。先打个预防针——这是一条 legacy 老路径。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>这是 legacy 路径</strong>：现代本地后端（ollama/vllm/lmstudio）走第 21 课的 OpenAI 兼容 <span class="mono">OpenAIClient</span>；GBNF 受限解码只在旧 <span class="mono">Agent</span> 兜底路径、且仅 <span class="mono">llamacpp/koboldcpp/webui</span> 生效。讲的是"它怎么 work、为什么经典"，不是"现在默认这么跑"。</span></div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>给只会续写的模型，用语法逼出可解析的 JSON</strong>。</p>
+<p>先把话说在前头——这是一条<strong>历史 / 次要路径</strong>。现代本地后端（ollama / vllm / lmstudio）早就提供"OpenAI 兼容"端点，走的是第 21 课那个默认 <span class="mono">case _ → OpenAIClient</span>，根本没有专属 client。</p>
+<p>GBNF 这条路只在<strong>兜底</strong>时才被走到：旧的 <span class="mono">agent.py::Agent</span> 在 <span class="mono">LLMClient.create</span> 之后，经 <span class="mono">llm_api_tools.py::create</span> 的 <span class="mono">else</span>（本地）分支，调到 <span class="mono">chat_completion_proxy.py::get_chat_completion</span>。</p>
+<p>它的流程是一条链：选 wrapper →（名字带 <span class="mono">grammar</span> 才）动态生成 GBNF → wrapper 把函数 schema 塞进<strong>提示文本</strong> → 调"裸 completion"后端 → 把文本<strong>解析回</strong> <span class="mono">{function, params}</span> → 心跳补正。</p>
+<p>记住一句话：<strong>schema 进提示，语法管采样，文本再解析回结构</strong>。这就是本课要逐环拆开的全部。</p>
+</div>
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>把"给只会续写的模型加上 function calling"想象成这样：你面前是一个<strong>只会接话的小孩</strong>，你递一句，他就顺着往下写一句，他压根不懂什么叫"调用工具"。</p>
+<p>第一招很直白：把工具长什么样、有哪些参数，<strong>写成说明书直接抄进题面</strong>，再叮嘱一句"请照这个格式输出 JSON"。这就是 wrapper 把 schema 塞进提示。</p>
+<p>可光靠叮嘱不保险——他可能写跑题、JSON 还少个括号。于是有了第二招，也是真正的妙手：给他一张<strong>镂空钢板</strong>盖在纸上，笔只能落进挖空的格子里，<strong>物理上写不出</strong>格子外的字。</p>
+<p>这张钢板，就是 <span class="mono">GBNF</span> 语法。它不"劝"模型守格式，而是直接卡住采样：每一步只允许语法合法的 token，于是落笔必然成形。</p>
+</div>
+<p>所以本课其实就讲三件环环相扣的事：<strong>schema 怎么进提示</strong>、<strong>GBNF 怎么卡住采样</strong>、<strong>文本又怎么被解析回结构</strong>。下面逐个拆开，但先回答一个最该问的问题。</p>
+<h2>为什么光把 schema 写进提示还不够</h2>
+<p>把"只靠提示叮嘱"和"提示再加语法卡死"两个世界并排摆出来，最能看清 GBNF 的价值到底在哪。</p>
+<div class="cols">
+  <div class="col"><h4>😬 只靠提示叮嘱</h4><p>模型"大概率"会照格式来，但仍可能漏字段、JSON 被截断、甚至忘了调函数。解析端只能事后修补，修不动就直接失败。"对不对"是<strong>一个概率</strong>。</p></div>
+  <div class="col"><h4>😌 提示 + GBNF 语法</h4><p>采样阶段就被卡死：每一步只能选语法合法的 token，输出<strong>必然</strong>是可解析的 JSON。"可解析"不再靠运气，而是<strong>被保证</strong>。</p></div>
+</div>
+<p>这一对照几乎就是本课的核心：<strong>把"但愿格式没错"换成"采样器只能选对的 token"</strong>。带着这个对照往下看，后面每一步的用意都会更清楚。</p>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
