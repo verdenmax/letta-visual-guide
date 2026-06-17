@@ -631,7 +631,7 @@ LESSON_14 = {
     valid_tools = <span class="kw">await</span> self.<span class="fn">_get_valid_tools</span>()
     force = self.tool_rules_solver.<span class="fn">should_force_tool_call</span>()
     messages = <span class="kw">await</span> self.<span class="fn">_refresh_messages</span>(messages)  <span class="cm"># 擦内心独白，不重建系统提示</span>
-    <span class="kw">while True</span>:                            <span class="cm"># 撑爆就压缩重试</span>
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(max_retries + <span class="nb">1</span>):       <span class="cm"># 撑爆就压缩重试（有上限）</span>
         <span class="kw">try</span>:
             <span class="kw">async for</span> chunk <span class="kw">in</span> llm_adapter.<span class="fn">invoke_llm</span>(messages, valid_tools):
                 <span class="kw">yield</span> chunk
@@ -709,7 +709,7 @@ LESSON_14 = {
 
 <div class="card spark">
   <div class="tag">💡 设计亮点</div>
-  <strong>"Agent"听着玄，落到代码里就是一个带预算的 for 循环：调模型 → 跑工具 → 问"还继续吗" → 重复，最多 50 次。</strong>而那句"还继续吗"的判据反直觉地简单——它不看模型"说没说想继续"，只看模型这一轮"<strong>有没有调工具</strong>"：调了，说明活没干完，继续；没调，说明该把话筒还给用户，结束。这正是 <span class="mono">letta_v1_agent</span> 注释里 "no heartbeats"（无心跳）的精髓：上一代要靠模型自己在参数里举手要"心跳"才续步（第 15 课细讲），V3 把这层全省了，只认一个客观信号。还有一处工程细节是"可恢复性"的关键：<strong>先落库，再流式</strong>（<span class="mono">_checkpoint_messages</span> 的注释明说"持久化要在流式之前"）。哪怕进程在吐字吐到一半时崩了，这一步的消息也已经写进了 <span class="mono">AgentState</span>——下次读档就能接着跑（正好呼应第 13 课那张"存档"）。<strong>朴素的循环、客观的判据、先存后吐的纪律——三样加起来，就是 V3 "稳"的全部秘密。</strong>
+  <strong>"Agent"听着玄，落到代码里就是一个带预算的 for 循环：调模型 → 跑工具 → 问"还继续吗" → 重复，最多 50 次。</strong>而那句"还继续吗"的判据反直觉地简单——它不看模型"说没说想继续"，只看模型这一轮"<strong>有没有调工具</strong>"：调了，说明活没干完，继续；没调，说明该把话筒还给用户，结束。这正是 <span class="mono">letta_v1_agent</span> 注释里 "no heartbeats"（无心跳）的精髓：上一代要靠模型自己在参数里举手要"心跳"才续步（第 15 课细讲），V3 把这层全省了，只认一个客观信号。还有一处工程细节是"可恢复性"的关键：<strong>先落库，再流式</strong>（<span class="mono">_checkpoint_messages</span> 的注释明说"持久化要在流式之前"）。哪怕进程在<strong>把这一步结果流式吐回去时</strong>崩了，这一步的消息（连同已执行的工具副作用）也早已落库——下次读档就能接着跑，不会把同一步的工具再跑一遍（正好呼应第 13 课那张"存档"）。<strong>朴素的循环、客观的判据、先存后吐的纪律——三样加起来，就是 V3 "稳"的全部秘密。</strong>
 </div>
 
 <h2>停下来的理由：StopReasonType</h2>
@@ -857,7 +857,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
     valid_tools = <span class="kw">await</span> self.<span class="fn">_get_valid_tools</span>()
     force = self.tool_rules_solver.<span class="fn">should_force_tool_call</span>()
     messages = <span class="kw">await</span> self.<span class="fn">_refresh_messages</span>(messages)  <span class="cm"># wipe monologue, don't rebuild system prompt</span>
-    <span class="kw">while True</span>:                            <span class="cm"># overflow -> compact -> retry</span>
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(max_retries + <span class="nb">1</span>):       <span class="cm"># overflow -> compact -> retry (bounded)</span>
         <span class="kw">try</span>:
             <span class="kw">async for</span> chunk <span class="kw">in</span> llm_adapter.<span class="fn">invoke_llm</span>(messages, valid_tools):
                 <span class="kw">yield</span> chunk
@@ -935,7 +935,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
 
 <div class="card spark">
   <div class="tag">💡 Design spark</div>
-  <strong>"Agent" sounds mystical, but in code it's a budgeted for loop: call the model → run a tool → ask "keep going?" → repeat, up to 50 times.</strong> And that "keep going?" criterion is counterintuitively simple — it doesn't look at whether the model "said it wants to continue," only at whether the model "<strong>called a tool</strong>" this round: called one → the work isn't done, continue; didn't → time to hand the mic back to the user, end. This is the essence of "no heartbeats" in <span class="mono">letta_v1_agent</span>'s comment: the previous generation needed the model to raise its hand for a "heartbeat" in the parameters to step again (lesson 15 goes deep), while V3 drops that whole layer and trusts a single objective signal. One more engineering detail is the key to "recoverability": <strong>persist first, then stream</strong> (<span class="mono">_checkpoint_messages</span>'s comment plainly says "persistence needs to happen before streaming"). Even if the process crashes mid-token, this step's messages are already written into <span class="mono">AgentState</span> — the next load resumes right where it left off (echoing lesson 13's "save file"). <strong>A plain loop, an objective criterion, and the persist-before-stream discipline — those three together are the whole secret of V3's steadiness.</strong>
+  <strong>"Agent" sounds mystical, but in code it's a budgeted for loop: call the model → run a tool → ask "keep going?" → repeat, up to 50 times.</strong> And that "keep going?" criterion is counterintuitively simple — it doesn't look at whether the model "said it wants to continue," only at whether the model "<strong>called a tool</strong>" this round: called one → the work isn't done, continue; didn't → time to hand the mic back to the user, end. This is the essence of "no heartbeats" in <span class="mono">letta_v1_agent</span>'s comment: the previous generation needed the model to raise its hand for a "heartbeat" in the parameters to step again (lesson 15 goes deep), while V3 drops that whole layer and trusts a single objective signal. One more engineering detail is the key to "recoverability": <strong>persist first, then stream</strong> (<span class="mono">_checkpoint_messages</span>'s comment plainly says "persistence needs to happen before streaming"). Even if the process crashes <strong>while streaming this step's results back</strong>, this step's messages (and any tool side effects already executed) are already persisted — the next load resumes without re-running the same step's tools (echoing lesson 13's "save file"). <strong>A plain loop, an objective criterion, and the persist-before-stream discipline — those three together are the whole secret of V3's steadiness.</strong>
 </div>
 
 <h2>Reasons to stop: StopReasonType</h2>
