@@ -1106,5 +1106,43 @@ LESSON_19 = {"zh": r"""
 </div>
 
 <p>One more often-overlooked benefit: because every executor emits the same kind of result, error handling gets unified too. Whether a tool throws, returns something over-long, or violates a rule, what the loop sees is always one status-bearing result object, not a motley of exceptions. "Going wrong" thus becomes "a branch of the normal flow," and the loop can keep marching steadily on.</p>
-<!--ENMORE-->
+<h2>Digging a little deeper</h2>
+<p>The four drawers below are for those who want to dig to the bottom: where the label comes from, why the default sandbox is safe, how MCP integrates, and which built-in tools exist (plus a bit of "archaeology").</p>
+<p>These are details that "make you steadier once known but can be skipped on a first read." If you only want the through-line, remembering "type → factory → executor → unified result" is enough; to pry into the implementation, open the drawers below one by one.</p>
+<details class="accordion"><summary>① How is a tool's tool_type decided?</summary><div class="acc-body">
+<p>At the schema layer the default is just <span class="mono">CUSTOM</span>. When <strong>base tools</strong> are registered they're sorted by name: in <span class="mono">tool_manager.py::upsert_base_tools</span>, <span class="mono">name in BASE_TOOLS → LETTA_CORE</span>, <span class="mono">BASE_MEMORY_TOOLS → LETTA_MEMORY_CORE</span>, <span class="mono">BUILTIN_TOOLS → LETTA_BUILTIN</span>, <span class="mono">FILES_TOOLS → LETTA_FILES_CORE</span>, and so on.</p>
+<p>MCP tools are set <strong>explicitly</strong>: <span class="mono">create_mcp_tool_async</span> assigns <span class="mono">tool_type=EXTERNAL_MCP</span> directly. Everything else you write yourself stays at the default <span class="mono">CUSTOM</span>.</p>
+<div class="note tip"><span class="ni">🔖</span><span class="nx">What a tool is <strong>named</strong> often decides <strong>how it gets executed</strong>: the <span class="mono">tool_type</span> fixed at registration follows it all the way until the factory reads it at execution time.</span></div>
+</div></details>
+<details class="accordion"><summary>② Why is "custom defaults to sandbox" a sound security default?</summary><div class="acc-body">
+<p>Because custom tools are <strong>untrusted code</strong> — they could come from anyone. Making "anything unsorted goes to the sandbox" the default means <strong>isolate unless explicitly judged safe (it made it into _executor_map)</strong>. This is the textbook "secure by default" approach.</p>
+<p>Flip it around: if the default were in-process, any tool someone forgot to sort would get server-side execution rights. The fallback sandbox seals exactly that risk.</p>
+<div class="note info"><span class="ni">🛡️</span><span class="nx">This echoes Lesson 18's stance: treat tool code as <strong>untrusted by default</strong>. Lesson 18 was "derive a schema without running it," and this lesson is "throw it to the sandbox when unsure" — two faces of the same security instinct.</span></div>
+</div></details>
+<details class="accordion"><summary>③ How does MCP actually integrate?</summary><div class="acc-body">
+<p>Three transports: <span class="mono">stdio</span> (a local subprocess), <span class="mono">sse</span>, and <span class="mono">streamable_http</span> (remote HTTP), defined in <span class="mono">functions/mcp_client/types.py::MCPServerType</span>, with config classes like <span class="mono">StdioServerConfig</span>.</p>
+<p>Execution traits: <strong>no sandbox</strong>, a <strong>fresh connection every time</strong> (<span class="mono">connect → execute → cleanup</span>). The client implementations live in <span class="mono">services/mcp/</span>, where the factory <span class="mono">MCPManager::get_mcp_client</span> picks the client by transport type.</p>
+<div class="note warn"><span class="ni">📁</span><span class="nx">Easy to muddle: <span class="mono">functions/mcp_client/types.py</span> holds only <strong>config and types</strong>; the real <strong>client implementations</strong> that build connections and send requests are in <span class="mono">services/mcp/</span>. Don't be fooled by the directory name <span class="mono">mcp_client</span>.</span></div>
+</div></details>
+<details class="accordion"><summary>④ Which built-in tools exist? Plus a bit of "archaeology"</summary><div class="acc-body">
+<p>The built-in tools are in <span class="mono">constants.py::BUILTIN_TOOLS</span>: <span class="mono">run_code</span>, <span class="mono">run_code_with_tools</span>, <span class="mono">web_search</span>, <span class="mono">fetch_webpage</span> — all run by <span class="mono">LettaBuiltinToolExecutor</span>.</p>
+<p>An archaeological find: the class <span class="mono">ExternalComposioToolExecutor</span> <strong>exists</strong> yet <strong>never appears in _executor_map</strong>. <span class="mono">external_composio</span> is deprecated and falls back to the sandbox — so that executor is dead code that <strong>can never be selected</strong>.</p>
+<div class="note info"><span class="ni">🔍</span><span class="nx">The lesson of the dig: <strong>a class existing doesn't mean it's used</strong>. To judge whether code is alive, see whether it is actually <strong>wired up</strong> — here, whether it appears in <span class="mono">_executor_map</span>.</span></div>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><span class="mono">ToolType</span> has 11 values, stuck like a label on every <span class="mono">Tool</span>.</li>
+<li><span class="mono">ToolExecutorFactory</span> picks an executor by type; <strong>anything unmapped falls back to <span class="mono">SandboxToolExecutor</span></strong>.</li>
+<li><span class="mono">ToolExecutionManager::execute_tool_async</span> is the real entry (timing, truncation, result-wrapping).</li>
+<li>Runtimes differ: <span class="mono">core</span> in-process, <span class="mono">custom</span> sandbox, <span class="mono">mcp</span> connects to an external server.</li>
+<li>Every executor returns the same <span class="mono">ToolExecutionResult</span>.</li>
+</ul>
+</div>
+
+<div class="cellgroup"><div class="cg-cap"><b>Part 5 strung together · the life of a tool</b></div><div class="cells"><span class="cell">17 define: function+docstring→schema</span><span class="sep">·</span><span class="cell">18 derive: generate without running</span><span class="sep">·</span><span class="cell hl">19 dispatch: execute by type</span><span class="sep">·</span><span class="cell">20 isolate: sandbox+trust boundary</span></div></div>
+
+<p>Look back at Part 5's line: define → derive → dispatch → isolated execution. Lesson 17 turns a function into a schema, Lesson 18 derives the schema without running it, Lesson 19 dispatches a tool to an executor by type, and Lesson 20 covers the most dangerous kind — custom code — and how it actually runs under isolation.</p>
+
+<p>Strung together: the model picks a tool (Lessons 17 and 18 gave it a schema) → the loop calls it (Lesson 14) → the factory dispatches by <span class="mono">ToolType</span> → each executor runs its own way. And a custom tool is handed by default to <span class="mono">SandboxToolExecutor</span>, that is, thrown into the sandbox. But how exactly does the sandbox run, and on what grounds does it dare run a stranger's code? That is Lesson 20, the close of Part 5.</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">In one line: this lesson took "running a tool" from a single black-box line and broke it into five crisp links — "type → factory → entry → executor → result." Next lesson we burrow into the most dangerous link of all — the sandbox.</span></div>
 """}
