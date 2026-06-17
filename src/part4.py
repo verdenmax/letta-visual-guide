@@ -1820,5 +1820,280 @@ LESSON_16 = {
   </ul>
 </div>
 """,
-    "en": r"""<p>stub</p>""",
+    "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted);margin-top:-.6rem">
+When lesson 14 took the V3 loop apart, <span class="mono">_decide_continuation</span> kept consulting three mysterious judges — <span class="mono">is_terminal_tool</span>, <span class="mono">has_children_tools</span>, <span class="mono">is_continue_tool</span>; and lesson 15 left a dangling promise: who exactly steers these "tool rules" from behind, to be told in lesson 16. This lesson settles that account.</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">
+This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how an agent should use tools" from the <strong>model's conscientiousness</strong> into a <strong>declarative, enforceable</strong> state machine. Three takeaways: 9 rule types, a solver that computes the "legal next step" <strong>fresh</strong> each step, and the cleverest move — if the model picks an illegal tool, the framework <strong>does not execute it</strong> but synthesizes an error and feeds it back for the model to fix itself.</p>
+
+<div class="card analogy">
+  <div class="tag">🚦 Analogy</div>
+  <strong>Think of tool rules as a city's traffic regulations.</strong> <span class="mono">run_first</span> is "you must take this main road first on leaving the depot" — look something up before you open your mouth to reply; <span class="mono">exit_loop</span> is "this is the terminal stop, get off when you arrive" — calling <span class="mono">send_message</span> wraps up the round; <span class="mono">constrain_child_tools</span> is "at this junction you may only turn into these few side roads" — after calling the <em>plan</em> tool, your next step can only be those <em>execute</em> children; <span class="mono">required_before_exit</span> is "clock in before you leave the depot" — you can't exit the loop without having called the settlement tool. The key point: a traffic light <strong>doesn't rely on the driver's conscientiousness</strong>, it's mounted at the junction and enforced by the city — run a red and you've run it; the light won't turn green just because you're in a hurry. Tool rules do the same thing: they move "how to use tools" from the <strong>driver's character</strong> into <strong>hardware at the junction</strong>. However reckless the driver, a red light still stops them.
+</div>
+
+<div class="card macro">
+  <div class="tag">🌍 Big picture</div>
+  <strong>One line to grab this lesson: tool rules are a set of <em>declarative</em> constraints that let the <em>framework</em>, not the model, decide "which tools may be called this step."</strong> It's built from three blocks. First, <strong>9 rule types</strong> (the nine subclasses in <span class="mono">schemas/tool_rule.py</span>, each pinning a <span class="mono">Literal type</span> — a discriminated union keyed on <span class="mono">type</span>) — covering "start / end / next step / rate-limit / must-call / approval." Second, <strong>a solver that computes the legal set live</strong>: <span class="mono">helpers/tool_rule_solver.py::ToolRulesSolver</span> <strong>buckets</strong> the rules and runs <span class="mono">get_allowed_tool_names</span> once per step — on the first step, if init rules are configured it <strong>forces</strong> a return of only the init tools; otherwise it <strong>intersects</strong> the child / parent rules' "legal sets" and then <span class="mono">&amp;</span> the currently available tools. Third, and cleverest: if the model <strong>still</strong> picks an illegal tool, the framework <strong>does not execute it</strong> but, via <span class="mono">agents/helpers.py::_build_rule_violation_result</span>, synthesizes a <span class="mono">[ToolConstraintError]</span> as the "tool return" and feeds it back for the model to fix itself. The constraint thus <strong>guards both ends</strong>: beforehand it trims the tool schema sent to the LLM; afterward it backstops with a synthesized error. Remember the order of these three blocks — <strong>rule declaration → solver computes live → violation backstop</strong> — the three sections below unfold exactly along it.
+
+</div>
+
+<h2>Nine tool rules: the "alphabet" of declarative constraints</h2>
+<p>First, get to know the full "alphabet." All nine rules live in <span class="mono">schemas/tool_rule.py</span> as a <strong>discriminated union</strong> — each subclass pins a <span class="mono">Literal type</span> string, and that <span class="mono">type</span> tells them apart. The enum roster is in <span class="mono">schemas/enums.py::ToolRuleType</span>.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">Clear a trap first: these <span class="mono">type</span> values are <strong>legacy-named</strong> — <span class="mono">run_first</span> / <span class="mono">exit_loop</span> / <span class="mono">constrain_child_tools</span>…, <strong>not</strong> <span class="mono">Init</span> / <span class="mono">Terminal</span> / <span class="mono">Child</span>. The subclass is called <span class="mono">InitToolRule</span>, but its <span class="mono">type</span> string is <span class="mono">run_first</span>. Don't guess the enum value from the subclass name.</span></div>
+
+<table class="t">
+  <tr><th>Enum type</th><th>Subclass</th><th>Key field</th><th>One-line meaning</th></tr>
+  <tr><td class="mono">run_first</td><td class="mono">InitToolRule</td><td class="mono">args</td><td>Tool that must be called as the <strong>first step</strong></td></tr>
+  <tr><td class="mono">exit_loop</td><td class="mono">TerminalToolRule</td><td>—</td><td>Once called, the agent loop <strong>ends</strong></td></tr>
+  <tr><td class="mono">continue_loop</td><td class="mono">ContinueToolRule</td><td>—</td><td>Once called, <strong>force</strong> the loop to continue</td></tr>
+  <tr><td class="mono">conditional</td><td class="mono">ConditionalToolRule</td><td class="mono">child_output_mapping</td><td>Pick the next tool by this tool's <strong>output value</strong></td></tr>
+  <tr><td class="mono">constrain_child_tools</td><td class="mono">ChildToolRule</td><td class="mono">children</td><td>After this tool, <strong>only</strong> the listed children may be called</td></tr>
+  <tr><td class="mono">max_count_per_step</td><td class="mono">MaxCountPerStepToolRule</td><td class="mono">max_count_limit</td><td><strong>How many times</strong> this tool may be called within one step</td></tr>
+  <tr><td class="mono">parent_last_tool</td><td class="mono">ParentToolRule</td><td class="mono">children</td><td>These children may <strong>only follow</strong> that parent tool</td></tr>
+  <tr><td class="mono">required_before_exit</td><td class="mono">RequiredBeforeExitToolRule</td><td>—</td><td>Must be called <strong>at least once</strong> before exiting the loop</td></tr>
+  <tr><td class="mono">requires_approval</td><td class="mono">RequiresApprovalToolRule</td><td>—</td><td>Calling it <strong>pauses for approval</strong> rather than executing directly</td></tr>
+</table>
+
+<p>Group the nine by "what they manage" and they're easy to remember: <span class="mono">run_first</span> manages the <strong>start</strong>, <span class="mono">exit_loop</span> / <span class="mono">continue_loop</span> manage <strong>the end and continuation</strong>, <span class="mono">conditional</span> / <span class="mono">constrain_child_tools</span> / <span class="mono">parent_last_tool</span> manage <strong>where the next step may go</strong>, <span class="mono">max_count_per_step</span> manages <strong>rate-limiting</strong>, <span class="mono">required_before_exit</span> manages <strong>must-call</strong>, and <span class="mono">requires_approval</span> manages <strong>the approval gate</strong>.</p>
+
+<div class="note info"><span class="ni">📌</span><span class="nx">This "discriminated union" is handy for engineering: the <span class="mono">tool_rules</span> stored in the database are just a string of JSON carrying a <span class="mono">type</span> field, and pydantic restores <span class="mono">type="run_first"</span> into an <span class="mono">InitToolRule</span>, <span class="mono">"exit_loop"</span> into a <span class="mono">TerminalToolRule</span>…  one field, nine subclasses each in place, and adding a new rule type later won't break old data.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/tool_rule.py</span><span class="ln">a few subclass definitions (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">InitToolRule</span>(BaseToolRule):                <span class="cm"># run_first: must be called first</span>
+    type: Literal[<span class="st">"run_first"</span>] = <span class="st">"run_first"</span>
+    args: <span class="nb">dict</span> | <span class="kw">None</span> = <span class="kw">None</span>                    <span class="cm"># optional: args prefilled for the first step</span>
+
+<span class="kw">class</span> <span class="fn">TerminalToolRule</span>(BaseToolRule):            <span class="cm"># exit_loop: calling it ends the loop</span>
+    type: Literal[<span class="st">"exit_loop"</span>] = <span class="st">"exit_loop"</span>
+
+<span class="kw">class</span> <span class="fn">ChildToolRule</span>(BaseToolRule):               <span class="cm"># constrain_child_tools: restrict the next step</span>
+    type: Literal[<span class="st">"constrain_child_tools"</span>] = <span class="st">"constrain_child_tools"</span>
+    children: <span class="nb">list</span>[<span class="nb">str</span>]                          <span class="cm"># after this tool, only these children may be called</span>
+
+<span class="kw">class</span> <span class="fn">MaxCountPerStepToolRule</span>(BaseToolRule):     <span class="cm"># max_count_per_step: rate-limit</span>
+    type: Literal[<span class="st">"max_count_per_step"</span>] = <span class="st">"max_count_per_step"</span>
+    max_count_limit: <span class="nb">int</span>                       <span class="cm"># max calls within one step</span>
+</pre></div>
+
+<p>Worth flagging a "beyond the basics" capability: rules don't only <strong>restrict</strong> tools, they can also <strong>prefill arguments</strong> — <span class="mono">InitToolRule.args</span> can preload concrete arguments for the first-step tool, and <span class="mono">ChildToolRule.child_arg_nodes</span> can constrain the argument values of child tools. Beyond basic use, this detail makes a rule more expressive than a "whitelist": it says not just "who may be called" but "roughly how to fill it in."</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">The nine subclasses share one base class, <span class="mono">BaseToolRule</span>, which offers two things: the method <span class="mono">get_valid_tools(tool_call_history, available_tools, last_function_response)</span> ("which tools this rule allows right now," returning a set), and the property <span class="mono">requires_force_tool_call</span> (whether to compel the model to call a tool this step). It's through this uniform interface that the solver computes all nine rules together, <strong>treating them alike</strong>.</span></div>
+
+<h2>ToolRulesSolver: computing the "legal next step" fresh each step</h2>
+<p>Rules are static declarations; what actually "runs" them is <span class="mono">ToolRulesSolver</span>. It hangs on the V2 base class — <span class="mono">self.tool_rules_solver = ToolRulesSolver(tool_rules=agent_state.tool_rules)</span> — and V3 inherits and reuses it directly. At construction, <span class="mono">model_post_init</span> <strong>buckets</strong> the rules by <span class="mono">isinstance</span>.</p>
+
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Bucket</h4><p>By type into <span class="mono">init</span> / <span class="mono">child_based</span> (Child+Conditional+MaxCount) / <span class="mono">parent</span> / <span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required</span> / <span class="mono">approval</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>First step, and init rules configured?</h4><p>Yes → return <span class="mono">[r.tool_name for r in init_tool_rules]</span> <strong>directly</strong>, ignoring every other rule.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Else take the child + parent buckets</h4><p>For each rule call <span class="mono">get_valid_tools(history, available, last return)</span>, each yielding a "legal set."</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Intersect ∩ available tools</h4><p><span class="mono">set.intersection(...)</span> then <span class="mono">&amp;</span> available, giving this step's true <strong>legal set</strong>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Trim the schema sent to the LLM</h4><p>V3 <span class="mono">_get_valid_tools</span> shrinks the tool JSON by the legal set; <span class="mono">should_force_tool_call()</span> then sets forced / auto.</p></div></div>
+</div>
+
+<p>The core method is <span class="mono">get_allowed_tool_names(available_tools, error_on_empty=True, last_function_response=None)</span>. It has just two forks: either "force the init tools on the first step," or "intersect the legal sets of the relevant rules." The beauty of the intersection gets its own treatment below — for now just remember: <strong>the legal set is computed fresh each step, not fixed once and for all</strong>. Because <span class="mono">tool_call_history</span> is updated by <span class="mono">register_tool_call</span> on every tool call, the "legal set" that child rules and rate-limit rules see on the next step shifts accordingly.</p>
+
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">The easiest thing to get backwards: <span class="mono">get_allowed_tool_names</span> <strong>intersects only child + parent rules</strong> to shrink the tool set. The <span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required_before_exit</span> / <span class="mono">requires_approval</span> buckets <strong>never enter the intersection</strong> — they don't shrink "which may be called," they sway "how it proceeds after a call" <strong>inside the loop</strong>. The solver's docstring says it verbatim: Continue / Terminal / RequiredBeforeExit rules apply in the agent loop, not to restrict tools.</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/helpers/tool_rule_solver.py</span><span class="ln">get_allowed_tool_names core (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">get_allowed_tool_names</span>(self, available_tools, error_on_empty=<span class="nb">True</span>,
+                           last_function_response=<span class="kw">None</span>) -> <span class="nb">list</span>:
+    <span class="cm"># first step with init rules configured -> force only the init tools</span>
+    <span class="kw">if</span> <span class="kw">not</span> self.tool_call_history <span class="kw">and</span> self.init_tool_rules:
+        <span class="kw">return</span> [r.tool_name <span class="kw">for</span> r <span class="kw">in</span> self.init_tool_rules]
+
+    <span class="cm"># else: intersect each child + parent rule's "legal set"</span>
+    relevant = self.child_based_tool_rules + self.parent_tool_rules
+    <span class="kw">if</span> <span class="kw">not</span> relevant:
+        <span class="kw">return</span> <span class="nb">list</span>(available_tools)
+    allowed = <span class="nb">set</span>.<span class="fn">intersection</span>(*[
+        r.<span class="fn">get_valid_tools</span>(self.tool_call_history, available_tools,
+                           last_function_response)
+        <span class="kw">for</span> r <span class="kw">in</span> relevant
+    ])
+    <span class="kw">return</span> <span class="nb">list</span>(allowed <span class="kw">&amp;</span> <span class="nb">set</span>(available_tools))   <span class="cm"># then &amp; the available tools once more</span>
+</pre></div>
+
+<p>Once the legal set is computed, V3's <span class="mono">_get_valid_tools</span> uses it to <strong>trim</strong> the batch of tool JSON schemas actually sent to the LLM — illegal tools never appear before the model's eyes. Meanwhile <span class="mono">should_force_tool_call()</span> decides whether this step is <strong>forced</strong> (compelling the model to call a tool, e.g. the init first step) or <strong>auto</strong> (letting the model roam free); terminal tools are handled through <span class="mono">runtime_override_tool_json_schema</span> (the rewrite gate seen in lesson 15).</p>
+
+<div class="note tip"><span class="ni">🧠</span><span class="nx">The legal set is <strong>dynamic</strong>: each time a tool executes, the solver records it into <span class="mono">tool_call_history</span> via <span class="mono">register_tool_call</span>, and the "legal set" that the next step's child / parent / rate-limit rules see narrows accordingly. So each step's "callable range" is <strong>computed and trimmed live</strong>, not fixed at the start — which is also why <span class="mono">get_valid_tools</span> must pass in both "the call history" and "the last return."</span></div>
+
+<div class="cute">
+  <div class="row">
+    <span class="emoji">🚦</span><span class="lab">Junction · solver</span>
+    <span class="arrow">→</span>
+    <span class="emoji">🧰</span><span class="bubble">Right now only these few tools show green</span>
+    <span class="bubble">The red ones are trimmed out of the schema</span>
+  </div>
+  <div class="cap">The solver computes the "legal set" each step, like signaling tools at a junction — red-light tools the model never even sees (trimmed from the schema), making fewer mistakes at the source</div>
+</div>
+
+<h2>Violations aren't executed: synthesize an error and feed it back</h2>
+<p>Trim the schema and does the model surely obey? Not necessarily — it may still ignore the constraint and pick an illegal tool anyway (an old prompt, a hallucination, or simply not reading the schema). Here the second line of defense steps in: <strong>a violating tool is not executed</strong>.</p>
+
+<div class="flow">
+  <div class="node"><div class="nt">Model picks tool X</div><div class="nd">This round the LLM decides to call X</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Is X in the legal set?</div><div class="nd">name not in valid_tool_names?</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">In → execute normally</div><div class="nd">Run the tool + register_tool_call to record</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Not in → synthesize an error (not executed)</div><div class="nd">_build_rule_violation_result makes [ToolConstraintError], fed back for self-correction</div></div>
+</div>
+
+<p>This decision happens in <span class="mono">letta_agent_v3.py::_handle_ai_response</span>: it first computes <span class="mono">tool_rule_violated = name not in valid_tool_names</span>. On a violation it <strong>skips execution</strong> and instead calls <span class="mono">_build_rule_violation_result</span> to craft an error message that "pretends to be a tool return." Reading that message, the model understands it picked wrong and which few it should re-pick from.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx">A division of labor worth savoring: the error string <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span> is assembled in the <strong>agent layer</strong> (<span class="mono">agents/helpers.py</span>), <strong>not in the solver</strong>. The solver only supplies an extra one-line <strong>hint</strong> via <span class="mono">guess_rule_violation</span> (a guess at which rule you probably violated); assembling and feeding back is the agent's job. The responsibilities are cut cleanly: the solver "computes the legal set," the agent "explains the violation to the model."</span></div>
+
+<div class="codefile">
+  <div class="cf-head"><span class="dot"></span><span class="path">letta/agents/helpers.py</span><span class="ln">_build_rule_violation_result: synthesize an error on a violation (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">_build_rule_violation_result</span>(tool_name, valid_tools, tool_rules_solver):
+    <span class="cm"># note: the error string is built in the agent layer, not in the solver</span>
+    hint = tool_rules_solver.<span class="fn">guess_rule_violation</span>(tool_name)
+    msg = (<span class="st">f"[ToolConstraintError] Cannot call {tool_name}, "</span>
+           <span class="st">f"valid tools include: {valid_tools}."</span>)
+    <span class="kw">if</span> hint:
+        msg += <span class="st">f" Hint: {hint}"</span>
+    <span class="cm"># don't execute the tool; feed this "error" back as its return to the model</span>
+    <span class="kw">return</span> <span class="fn">ToolExecutionResult</span>(status=<span class="st">"error"</span>, func_return=msg)
+</pre></div>
+
+<p>Why is this move elegant? Because it turns a "violation" from a <strong>crash</strong> into a <strong>lesson</strong>. Better still, it dovetails with lesson 14: a violation <strong>still counts as "a tool was called this round"</strong> — so <span class="mono">_decide_continuation</span>'s "called a tool → continue" criterion holds, the loop naturally takes another lap, and the chance to correct is handed right back to the model. That minimalist loop in lesson 14 dared to be minimal precisely because of this.</p>
+
+<div class="cols">
+  <div class="col">
+    <h4>🛡️ Beforehand · shrink the schema</h4>
+    <p><span class="mono">get_allowed_tool_names</span> computes the legal set live.</p>
+    <p>V3 <span class="mono">_get_valid_tools</span> trims the tool JSON sent to the LLM accordingly.</p>
+    <p>Illegal tools never appear → fewer mis-selections at the <strong>source</strong>.</p>
+    <p class="mono" style="font-size:.82rem">Constraint shifted earlier: hide red-light tools from the model</p>
+  </div>
+  <div class="col">
+    <h4>🧯 Afterward · synthesize an error</h4>
+    <p>If the model <strong>still</strong> picks an illegal tool anyway.</p>
+    <p><span class="mono">_build_rule_violation_result</span> makes a <span class="mono">[ToolConstraintError]</span>.</p>
+    <p>Not executed, fed back as the tool return → the model <strong>self-corrects</strong>.</p>
+    <p class="mono" style="font-size:.82rem">Constraint backstop: run a red light and you still don't pass</p>
+  </div>
+</div>
+
+<h2>How rules sway "continue / stop" (continuing from lesson 14)</h2>
+<p>The same solver, besides "computing the legal set," also feeds lesson 14's <span class="mono">_decide_continuation</span> for the continuation decision. The buckets of rules that don't shrink the tool set show their effect right here.</p>
+
+<table class="t">
+  <tr><th>Rule</th><th>Solver method</th><th>Effect in the loop</th></tr>
+  <tr><td class="mono">exit_loop (terminal)</td><td class="mono">is_terminal_tool</td><td>Called → <strong>stop</strong>, stop reason <span class="mono">tool_rule</span></td></tr>
+  <tr><td class="mono">constrain_child / continue</td><td class="mono">has_children_tools / is_continue_tool</td><td>Hit → <strong>continue</strong>, force another lap</td></tr>
+  <tr><td class="mono">required_before_exit</td><td class="mono">get_uncalled_required_tools</td><td>Not yet called → <strong>force continue</strong>, make the model call it first</td></tr>
+  <tr><td class="mono">requires_approval</td><td class="mono">is_requires_approval_tool</td><td>Hit → <strong>stop</strong>, stop reason <span class="mono">requires_approval</span></td></tr>
+</table>
+
+<p>Take the <span class="mono">requires_approval</span> gate alone: when it hits, the loop <strong>doesn't execute</strong> the tool but stops, records the stop reason <span class="mono">StopReasonType.requires_approval</span>, and persists an "approval request" message built by <span class="mono">create_approval_request_message_from_llm_response(...)</span>. Once a human approves, the next entry is an <span class="mono">is_approval_response</span>, which <strong>bypasses</strong> the violation check and lets it through — this connects to lesson 15's "tool rules can override the heartbeat flag" and matches the stop reasons lesson 14 listed.</p>
+
+<div class="note tip"><span class="ni">✅</span><span class="nx">Tie lessons 14, 15, and 16 together: lesson 14's loop dared to use a criterion as simple as "called a tool → continue," and lesson 15 dared to delete <span class="mono">request_heartbeat</span> entirely — <strong>because tool rules backstop them from behind</strong>. The black-and-white decisions of terminal, must-call, and approval are welded declaratively into the rules, so the loop itself can stay minimal.</span></div>
+
+<div class="card spark">
+  <div class="tag">💡 Design highlight</div>
+  <strong>Tool rules upgrade "how an agent should use tools" from the model's conscientiousness into a declarative, enforceable state machine — and two beautiful designs hide inside.</strong> First, <strong>the constraint is "computed"</strong>: each step the <span class="mono">ToolRulesSolver</span> <strong>intersects</strong> the legal sets of all relevant rules to get "only these few are allowed right now," then <strong>trims</strong> the tool schema sent to the LLM accordingly — illegal tools never enter the model's view, cutting mis-selection at the <strong>source</strong>. Second, <strong>a violation is a lesson, not a crash</strong>: should the model still pick an illegal tool, the framework <strong>doesn't execute it</strong> but returns <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span> as that tool's "return value," letting the model read it and correct itself. The constraint thus <strong>guards both ends</strong> — shrink the schema beforehand, synthesize an error as a backstop afterward — disciplining an "unleashed LLM" into an "executor that works to spec." This is exactly why lesson 14's minimalist loop ("called a tool → continue") dared to be minimal: tool rules shouldered the grunt work for it.
+</div>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <strong>Four anchors, one chain.</strong> The <strong>nine subclasses</strong> are in <span class="mono">schemas/tool_rule.py</span> (each pinning a <span class="mono">Literal type</span> — a discriminated union keyed on <span class="mono">type</span>), the enum roster in <span class="mono">schemas/enums.py::ToolRuleType</span>, and the base-class interface is <span class="mono">BaseToolRule.get_valid_tools</span> plus the property <span class="mono">requires_force_tool_call</span>. The <strong>solver</strong> is <span class="mono">helpers/tool_rule_solver.py::ToolRulesSolver</span>: <span class="mono">model_post_init</span> buckets, the core is <span class="mono">get_allowed_tool_names</span>, plus <span class="mono">is_terminal_tool</span> / <span class="mono">has_children_tools</span> / <span class="mono">is_continue_tool</span> / <span class="mono">has_required_tools_been_called</span> / <span class="mono">is_requires_approval_tool</span> / <span class="mono">should_force_tool_call</span> / <span class="mono">register_tool_call</span> / <span class="mono">guess_rule_violation</span>. The <strong>violation synthesis</strong> is in <span class="mono">agents/helpers.py::_build_rule_violation_result</span>. The <strong>wiring is in V3</strong>: <span class="mono">letta_agent_v3.py::_get_valid_tools</span> (trim the schema), <span class="mono">_handle_ai_response</span> (check <span class="mono">tool_rule_violated</span>), <span class="mono">_decide_continuation</span> (read terminal / child / continue / required); the solver hangs on the V2 base, <span class="mono">self.tool_rules_solver = ToolRulesSolver(tool_rules=agent_state.tool_rules)</span>.
+</div>
+
+<div class="card warn">
+  <div class="tag">⚠️ Common pitfalls</div>
+  <strong>Four points not to misremember.</strong> First, <strong>a violating tool is not executed</strong> — <span class="mono">_build_rule_violation_result</span> swaps it for a <strong>synthesized error</strong> fed back to the model, <em>not</em> "actually run, then errored." Second, <span class="mono">get_allowed_tool_names</span> <strong>intersects only child + parent rules</strong> to shrink the tool set; <span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required</span> / <span class="mono">approval</span> <strong>don't shrink</strong> it — they act inside the loop. Third, the enum values are <strong>legacy-named</strong>: <span class="mono">run_first</span> / <span class="mono">exit_loop</span> / <span class="mono">constrain_child_tools</span>…, <em>not</em> <span class="mono">Init</span> / <span class="mono">Terminal</span> / <span class="mono">Child</span>. Fourth, Letta does <strong>no cycle / conflict detection</strong> — only per-rule pydantic validation (<span class="mono">ChildToolRule.child_arg_nodes</span> ⊆ children; <span class="mono">ConditionalToolRule</span> needs at least one mapping) plus <span class="mono">agent_manager_helper.py::check_supports_structured_output</span> erroring when more than one init rule is configured. Whether rules clash, the framework won't cover for you — the configurer must think it through. A reminder, too: tool rules are a <strong>double-edged sword</strong> — wielded well they orchestrate precisely, misconfigured there's no fuse to stop you.
+</div>
+
+<h2>Digging a little deeper</h2>
+
+<details class="accordion"><summary>The nine rules, each in one line with a mini example</summary><div class="acc-body">
+<ul>
+<li><strong>run_first (Init):</strong> force the first step — <span class="mono">archival_memory_search</span> before <span class="mono">send_message</span>, look something up before you open your mouth.</li>
+<li><strong>exit_loop (Terminal):</strong> calling it wraps up — <span class="mono">send_message</span> is often set as the terminal tool.</li>
+<li><strong>continue_loop (Continue):</strong> calling it forces another lap, not letting the loop stop.</li>
+<li><strong>conditional:</strong> pick the next step by this tool's output — like a state machine's transition function, <span class="mono">child_output_mapping</span> maps an output value to the next tool.</li>
+<li><strong>constrain_child_tools (Child):</strong> after <em>plan</em> you may only call the <em>execute</em> children, welding "plan first, then execute" in place.</li>
+<li><strong>max_count_per_step:</strong> rate-limit — stop the model from spamming the same tool ten times in one step.</li>
+<li><strong>parent_last_tool (Parent):</strong> these children may only be called <strong>immediately after</strong> a given parent tool.</li>
+<li><strong>required_before_exit:</strong> must have been called before exit — e.g. <span class="mono">log_result</span> must run before finishing.</li>
+<li><strong>requires_approval:</strong> pause for a human to approve before calling — a safety catch for dangerous operations like dropping a database or transferring money.</li>
+</ul>
+</div></details>
+
+<details class="accordion"><summary>How does the <span class="mono">conditional</span> rule pick the next step by "output value"?</summary><div class="acc-body">
+<p><strong>Example:</strong> a <span class="mono">classify</span> tool returns <span class="mono">"refund"</span> or <span class="mono">"complaint"</span>. <span class="mono">ConditionalToolRule</span>'s <span class="mono">child_output_mapping</span> maps <span class="mono">"refund"</span> to <span class="mono">process_refund</span> and <span class="mono">"complaint"</span> to <span class="mono">escalate</span>, with <span class="mono">default_child</span> as the fallback for the unmatched case.</p>
+<p><strong>Why designed this way:</strong> it makes "who to call next" a <strong>function of this tool's output</strong> — effectively a built-in <strong>state machine</strong> at the tool-rule layer, so the model needn't remember the branching logic itself.</p>
+<p><strong>How it enters the legal set:</strong> it's bucketed into <span class="mono">child_based_tool_rules</span>, and <span class="mono">get_valid_tools</span> reads <span class="mono">last_function_response</span> (the previous tool's return) to decide which child to allow — exactly why the legal set must pass "the last return" in too.</p>
+<p><strong>Where in source:</strong> <span class="mono">schemas/tool_rule.py::ConditionalToolRule</span> (a pydantic validator requires at least one mapping); bucketing in <span class="mono">tool_rule_solver.py::model_post_init</span>.</p>
+</div></details>
+
+<details class="accordion"><summary>Why does the "legal set" use <strong>intersection</strong>, not union?</summary><div class="acc-body">
+<p><strong>Example:</strong> configure both a <span class="mono">ChildToolRule</span> (after A, only B/C) and a <span class="mono">MaxCountPerStepToolRule</span> (C at most once per step, and already called). Both are active: <span class="mono">{B,C} ∩ ({B,C} minus the rate-limited C) = {B}</span>.</p>
+<p><strong>Why designed this way:</strong> when several rules are active at once, "legal" must satisfy <strong>all of them simultaneously</strong> — intersection means "only what they all allow counts." A union would let through a tool that some rule plainly forbids, rendering the constraint toothless.</p>
+<p><strong>Where in source:</strong> in <span class="mono">tool_rule_solver.py::get_allowed_tool_names</span>, <span class="mono">set.intersection(*[r.get_valid_tools(...) for r in child_based + parent])</span> then <span class="mono">&amp; available</span>.</p>
+</div></details>
+
+<details class="accordion"><summary>Why don't rules like terminal / required <strong>shrink</strong> the tool set?</summary><div class="acc-body">
+<p><strong>Example:</strong> a <span class="mono">TerminalToolRule</span> marks <span class="mono">send_message</span> as terminal, but doesn't remove it from "callable tools" — you can of course still call it; it's just that <strong>after calling it</strong> the loop stops.</p>
+<p><strong>Why designed this way:</strong> shrinking the tool set (<span class="mono">get_allowed_tool_names</span>) answers one question only — "which tools are legally allowed next." Terminal / continue / required / approval govern "<strong>how the loop proceeds after a call</strong>" — actions inside the loop, not a tool filter. Keeping the two apart keeps the logic clean.</p>
+<p><strong>Where in source:</strong> only <span class="mono">child_based_tool_rules + parent_tool_rules</span> enter the intersection; the other buckets are read in <span class="mono">_decide_continuation</span> (lesson 14).</p>
+</div></details>
+
+<details class="accordion"><summary>Why "synthesize an error" on a violation instead of raising an exception?</summary><div class="acc-body">
+<p><strong>Example:</strong> the model ignores the constraint and picks an illegal tool. A bare <span class="mono">raise</span> would crash the whole step, and the user sees a baffling error.</p>
+<p><strong>Why designed this way:</strong> <span class="mono">_build_rule_violation_result</span> turns a violation into a <span class="mono">status="error"</span> tool return — its content is <span class="mono">[ToolConstraintError] Cannot call X, valid tools include: [...]</span>. Reading that "return," the model knows it picked wrong and which few to re-pick from. The loop isn't interrupted; the model self-corrects.</p>
+<p><strong>Connecting to lesson 14:</strong> a violation <strong>still counts as "a tool was called this round"</strong> — so <span class="mono">_decide_continuation</span> rules "called a tool → continue," the loop takes another lap, and the model gets its chance to correct. That's the backing behind lesson 14's minimalist loop daring to be minimal.</p>
+<p><strong>Where in source:</strong> <span class="mono">agents/helpers.py::_build_rule_violation_result</span>; the solver only supplies a one-line hint via <span class="mono">guess_rule_violation</span>.</p>
+</div></details>
+
+<details class="accordion"><summary>The full <span class="mono">requires_approval</span> flow (continuing lesson 14's stop reasons)</summary><div class="acc-body">
+<p><strong>Example:</strong> the model wants to call <span class="mono">delete_all_records</span>, a tool configured with <span class="mono">requires_approval</span>.</p>
+<p><strong>Flow:</strong> <span class="mono">is_requires_approval_tool(name)</span> is true → the loop <strong>doesn't execute</strong> the tool but stops, records the stop reason <span class="mono">StopReasonType.requires_approval</span>, and persists an "approval request" message built by <span class="mono">create_approval_request_message_from_llm_response(...)</span>.</p>
+<p><strong>Resume:</strong> after a human approves, the next entry is an <span class="mono">is_approval_response</span>, which <strong>bypasses</strong> the violation check and lets execution through.</p>
+<p><strong>Connecting to lesson 14:</strong> this is one of the stop reasons lesson 14 listed — <span class="mono">requires_approval</span> lets the loop pause gracefully at "waiting for a human" rather than barging through a dangerous operation.</p>
+</div></details>
+
+<h2>Wrap-up: Part 4 now closes the loop</h2>
+<p>This lesson got you the agent loop's "traffic code": 9 declarative rules, a <span class="mono">ToolRulesSolver</span> that computes the legal set each step (force init on the first step, else intersect child+parent ∩ available), and the "violations aren't executed, synthesize an error and feed it back for self-correction" backstop design.</p>
+
+<p>Thread all of <strong>Part 4</strong> together — from "how an agent is saved" to "how it executes by the rules":</p>
+
+<div class="cellgroup">
+  <div class="cg-cap"><b>Part 4 at a glance (13–16)</b>: state → loop → continuation signal → tool constraints</div>
+  <div class="cells">
+    <span class="cell hl">13 AgentState / factory</span>
+    <span class="sep">·</span>
+    <span class="cell">14 V3 step loop</span>
+    <span class="sep">·</span>
+    <span class="cell">15 heartbeat → no-heartbeat</span>
+    <span class="sep">→</span>
+    <span class="cell hl">16 tool rules</span>
+  </div>
+</div>
+
+<p>Replay block by block: lesson 13 gave the agent's <strong>save file</strong> (<span class="mono">AgentState</span>) and the factory that picks an engine by type; lesson 14 ran that save as a <strong>step loop</strong> (one LLM call + tool execution, called a tool → continue); lesson 15 traced how the loop's <strong>continuation signal</strong> evolved from "the model raising its hand for a heartbeat" to "the framework checking whether a tool was called"; lesson 16 adds the last block — <strong>tool constraints</strong>, so the loop not only "runs" but "runs to spec." <strong>State → loop → continuation signal → tool constraints</strong>: with all four in place, the agent execution loop truly closes.</p>
+
+<div class="note info"><span class="ni">👉</span><span class="nx"><strong>Bridging back and forward:</strong> the <span class="mono">is_terminal_tool</span> / <span class="mono">has_children_tools</span> / <span class="mono">is_continue_tool</span> that lesson 14's <span class="mono">_decide_continuation</span> kept checking finally land in this lesson; lesson 15 said "the old mechanism's heartbeat flag can be overridden by tool rules," and what overrides it is exactly methods like <span class="mono">has_children_tools</span> (force continue) / <span class="mono">is_terminal_tool</span> (force stop). The three lessons are really telling different facets of the same loop.</span></div>
+
+<p>Memorize one chain on your way out: <strong>9 rule types declare the constraints → the solver computes the legal set each step (init on the first step, else intersect child+parent) → trim the tool schema sent to the LLM → if the model still violates, synthesize a [ToolConstraintError], don't execute, feed it back for self-correction → terminal/required/approval sway continue-vs-stop inside _decide_continuation</strong>. Hold this chain and you've truly grasped "tool rules."</p>
+
+<div class="card key">
+  <div class="tag">✅ Key points</div>
+  <ul>
+    <li><strong>What tool rules are</strong>: a set of <strong>declarative</strong> constraints, 9 <span class="mono">ToolRuleType</span> values (<span class="mono">run_first / exit_loop / continue_loop / conditional / constrain_child_tools / max_count_per_step / parent_last_tool / required_before_exit / requires_approval</span>), defined in <span class="mono">schemas/tool_rule.py</span>.</li>
+    <li><strong>The solver computes the legal set live</strong>: <span class="mono">ToolRulesSolver.get_allowed_tool_names</span> — force the init tools on the first step; otherwise intersect the child + parent rules' <span class="mono">get_valid_tools</span>, then <span class="mono">&amp;</span> available tools. Computed each step, shifting as <span class="mono">register_tool_call</span> updates the history.</li>
+    <li><strong>Shrink the schema beforehand</strong>: V3 <span class="mono">_get_valid_tools</span> uses the legal set to trim the tools sent to the LLM, cutting mis-selection at the source; <span class="mono">should_force_tool_call()</span> decides forced / auto.</li>
+    <li><strong>Backstop afterward</strong>: the model still picks an illegal tool → <span class="mono">_build_rule_violation_result</span> synthesizes a <span class="mono">[ToolConstraintError]</span> (<span class="mono">status="error"</span>) fed back as the return, <strong>not executed</strong>; a violation still counts as "called a tool," so the loop continues and the model self-corrects.</li>
+    <li><strong>Connecting to lesson 14</strong>: <span class="mono">_decide_continuation</span> uses <span class="mono">is_terminal_tool</span> → stop with <span class="mono">tool_rule</span>, <span class="mono">has_children_tools</span> / <span class="mono">is_continue_tool</span> → continue, uncalled <span class="mono">required_before_exit</span> → force continue; <span class="mono">requires_approval</span> → stop with <span class="mono">requires_approval</span> + an approval message.</li>
+    <li><strong>Don't misremember</strong>: a violating tool isn't executed; only child / parent enter the intersection; the enums are <span class="mono">run_first</span> etc., not <span class="mono">Init</span>; the error string is built in the agent layer, not in the solver.</li>
+    <li><strong>Source</strong>: <span class="mono">schemas/tool_rule.py</span>, <span class="mono">helpers/tool_rule_solver.py::ToolRulesSolver</span>, <span class="mono">agents/helpers.py::_build_rule_violation_result</span>, <span class="mono">letta_agent_v3.py::_get_valid_tools / _handle_ai_response / _decide_continuation</span>.</li>
+  </ul>
+</div>
+""",
 }
