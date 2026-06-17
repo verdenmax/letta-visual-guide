@@ -383,6 +383,8 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     _executor_map = {
         ToolType.LETTA_CORE: LettaCoreToolExecutor,
         ToolType.LETTA_MEMORY_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_SLEEPTIME_CORE: LettaCoreToolExecutor,
+        ToolType.LETTA_MULTI_AGENT_CORE: SandboxToolExecutor,
         ToolType.LETTA_BUILTIN: LettaBuiltinToolExecutor,
         ToolType.LETTA_FILES_CORE: LettaFileToolExecutor,
         ToolType.EXTERNAL_MCP: ExternalMCPToolExecutor,
@@ -391,7 +393,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
         cls_ = cls._executor_map.<span class="fn">get</span>(tool_type, SandboxToolExecutor)   <span class="cm"># 未映射 -> 兜底沙箱</span>
         <span class="kw">return</span> cls_(...)
 </pre></div>
-<div class="note warn"><span class="ni">⚠️</span><span class="nx">看 <span class="mono">get_executor</span> 那行的 <span class="mono">.get(tool_type, SandboxToolExecutor)</span>：<strong>没在表里的类型，一律兜底走沙箱</strong>。<span class="mono">custom</span>、<span class="mono">letta_voice_sleeptime_core</span>、多 agent、两个弃用的 external 全落这里。所以"自定义工具＝在沙箱里跑"是<strong>默认</strong>，不是特例。</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">看 <span class="mono">get_executor</span> 那行的 <span class="mono">.get(tool_type, SandboxToolExecutor)</span>：<strong>没在表里的类型，一律兜底走沙箱</strong>。<span class="mono">custom</span>、<span class="mono">letta_voice_sleeptime_core</span>、两个弃用的 external 这 4 种落这里（<span class="mono">letta_multi_agent_core</span> 则是<strong>显式</strong>映射到沙箱，不算兜底）。所以"自定义工具＝在沙箱里跑"是<strong>默认</strong>，不是特例。</span></div>
 <p>这其实是经典的<strong>工厂模式</strong>：把"<em>到底用哪一种实现</em>"收拢到一处，调用方只管开口要"一个执行器"，不必知道背后是哪个类、怎么构造。日后想加一种工具类型，往 <span class="mono">_executor_map</span> 里登记一行即可，循环和入口的代码一个字都不用改。</p>
 
 <h2>真正的入口：ToolExecutionManager</h2>
@@ -469,7 +471,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p><strong>"一次调用，背后是好几种运行时。"</strong> 从第 14 课循环的视角看，"调一个工具"永远是统一的一行代码。</p>
 <p>可底下却天差地别：进程内改核心记忆（<span class="mono">LettaCore</span>）、shell 出去在沙箱 venv 里跑陌生代码（<span class="mono">Sandbox</span>）、开一条网络连接到 MCP 服务器（<span class="mono">ExternalMCP</span>）。<span class="mono">ToolType</span> + 工厂，就是把这些差异藏起来的<strong>多态</strong>。</p>
-<p>还有个反直觉真相：工厂只<strong>显式列了 5 个</strong>，其余<strong>全部兜底走 <span class="mono">SandboxToolExecutor</span></strong>——"自定义＝沙箱"是默认，不是特例。</p>
+<p>还有个反直觉真相：11 种 <span class="mono">ToolType</span> 其实只对应 <strong>5 个执行器类</strong>——<span class="mono">_executor_map</span> 显式登记了 <strong>7 条</strong>（多种类型共用 <span class="mono">LettaCore</span>），剩下 4 种（<span class="mono">custom</span>、voice-sleeptime、两个弃用 external）才<strong>兜底走 <span class="mono">SandboxToolExecutor</span></strong>。"自定义＝沙箱"是默认，不是特例。</p>
 <p>而所有执行器，最后都返回同一个 <span class="mono">ToolExecutionResult</span>——正是第 16 课工具规则违规时用的那个类型。出口统一，差异内敛。</p>
 <p>放进整条工具链看更清楚：第 17、18 课让工具"有了 schema、能被看见"，这一课让工具"被正确地跑起来"。模型那端永远是统一的函数调用，系统这端却悄悄做了一次<strong>按类型的运行时选择</strong>——这正是好抽象的样子：上层简单，下层灵活。</p>
 <p>换句话说，<span class="mono">ToolType</span> 把"我是什么工具"写进数据，工厂把"什么工具用什么方式跑"写进逻辑——这是一种<strong>数据驱动的分发</strong>。想改变某类工具的跑法，不必动循环，只要改它的类型、或改 <span class="mono">_executor_map</span> 里的一行映射。</p>
@@ -487,7 +489,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="card warn"><div class="tag">⚠️ 常见误区</div>
 <p>这一课最容易踩的几个坑：</p>
 <ul>
-<li><strong>以为每种类型都有专属执行器</strong>——工厂 <span class="mono">_executor_map</span> 只列 5 个，其余兜底沙箱。</li>
+<li><strong>以为每种类型都有专属执行器</strong>——11 种类型只对应 5 个执行器类；<span class="mono">_executor_map</span> 显式登记 7 条，其余 4 种兜底沙箱。</li>
 <li><strong>以为工厂就是入口</strong>——真正入口是 <span class="mono">ToolExecutionManager</span>，工厂只负责"选"。</li>
 <li><strong>以为 MCP 客户端在 <span class="mono">functions/mcp_client/</span></strong>——那里只有配置类型，客户端在 <span class="mono">services/mcp/</span>。</li>
 <li><strong>以为只有自定义工具走沙箱</strong>——<span class="mono">letta_voice_sleeptime_core</span> 和多 agent 工具也走沙箱。</li>
