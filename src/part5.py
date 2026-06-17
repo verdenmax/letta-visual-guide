@@ -468,8 +468,11 @@ LESSON_18 = {"zh": r"""
 </pre></div>
 <div class="cellgroup"><div class="cg-cap"><b>MockFunction 只凑齐三个属性</b></div><div class="cells"><span class="cell hl">__name__ 名字</span><span class="sep">·</span><span class="cell hl">__doc__ docstring</span><span class="sep">·</span><span class="cell hl">__signature__ 参数</span></div></div>
 <div class="note tip"><span class="ni">💡</span><span class="nx">关键在于：一旦显式设好 <span class="mono">__signature__</span>，<span class="mono">inspect.signature(mock)</span> 与 <span class="mono">parse(mock.__doc__)</span> 就能在一段<strong>从未运行过</strong>的代码上照常工作——<span class="mono">inspect</span> 只认这些属性，根本不在乎对象是真函数还是假货。这正是上传工具能<strong>原样复用</strong> <span class="mono">generate_schema</span> 的底层原因。</span></div>
+<p>还有个细节别放过：<span class="mono">__call__</span> 被<strong>故意</strong>写成抛 <span class="mono">NotImplementedError</span>。<span class="mono">MockFunction</span> 的唯一使命是"供 <span class="mono">inspect</span> 读取属性"，它不该、也不能被真正调用。万一某段代码手滑把它当工具执行，会立刻炸出清晰的错误，而不是悄悄返回 <span class="mono">None</span> 把 bug 藏起来——这是典型的<strong>防御性设计</strong>。</p>
+<p>这背后是 Python 的<strong>鸭子类型</strong>哲学："像鸭子一样走路、像鸭子一样叫，就当它是鸭子。" <span class="mono">inspect</span> 不查血统、只看属性：你拿得出 <span class="mono">__signature__</span>，它就把你当一个有签名的对象对待。<span class="mono">MockFunction</span> 正是吃准了这一点，用最小的"伪装"骗过了一整套本为真函数设计的工具链。</p>
 <h2>AST 静态读了什么</h2>
 <p>真正干活的是 <span class="mono">_parse_function_from_source</span>。它先把源码 <span class="mono">ast.parse</span> 成语法树，从中挑出函数节点，再<strong>逐项重建</strong>一个 <span class="mono">inspect.Signature</span>：参数名取自节点、类型来自注解、默认值用 <span class="mono">ast.literal_eval</span> 安全求值（只认字面量，不执行表达式）。整张签名是"拼"出来的，没有任何一处需要运行原代码。</p>
+<p>举个具体例子：用户上传一个签名为 <span class="mono">def lookup(city: str = "NYC")</span> 的工具。解析器读树之后得到——函数名 <span class="mono">lookup</span>、参数 <span class="mono">city</span> 类型为 <span class="mono">str</span>、默认值 <span class="mono">"NYC"</span>，再加上 docstring 里那句描述。这些全部来自"读结构"，函数体里真正干活的那行逻辑<strong>一次都没跑过</strong>。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">_parse_function_from_source（要点）</span></div>
 <pre><span class="kw">def</span> <span class="fn">_parse_function_from_source</span>(src, name):
     tree = ast.<span class="fn">parse</span>(src)               <span class="cm"># 语法错 -> LettaToolCreateError</span>
@@ -479,6 +482,8 @@ LESSON_18 = {"zh": r"""
     <span class="kw">return</span> <span class="fn">MockFunction</span>(func.name, ast.<span class="fn">get_docstring</span>(func), sig)
 </pre></div>
 <div class="note info"><span class="ni">📌</span><span class="nx">一段源码里若有<strong>多个函数</strong>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span>（约定：工具就是文件里最后定义的那个）。配套的 AST 辅助住在 <span class="mono">letta/functions/ast_parsers.py</span>，其中 <span class="mono">resolve_type</span> 用<strong>白名单</strong>解析类型，默认 <span class="mono">allow_unsafe_eval=False</span>，从源头杜绝"借解析之名跑代码"。</span></div>
+<p>这里还藏着两个值得记住的"安全阀"。第一个针对默认值：解析器不用 <span class="mono">eval</span>，而用 <span class="mono">ast.literal_eval</span>——后者只接受数字、字符串、列表、字典这类<strong>字面量</strong>，碰到函数调用或任意表达式就直接拒绝，从根上堵死"连求个默认值都能偷跑代码"的缝隙。</p>
+<p>第二个针对类型注解：注解里的名字交给 <span class="mono">ast_parsers.py::resolve_type</span> 按<strong>白名单</strong>翻译成 JSON schema 类型。认识的类型照常映射，不认识的名字<strong>不会</strong>被 import 求值，而是走"造桩或报错"。两道阀门合起来，确保"解析"绝不退化成"执行"。</p>
 
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p>一句话概括这门手艺：<strong>"从一段你拒绝运行的代码里，生成它的 schema。"</strong> 读函数签名最朴素的办法是 <span class="mono">import + inspect</span>，可 <span class="mono">import</span> 用户代码＝在你的服务端执行任意代码。Letta 的巧招是：先 <span class="mono">ast.parse</span> 成语法树（只读不跑），再造一个只带 <span class="mono">__name__/__doc__/__signature__</span> 的 <span class="mono">MockFunction</span>，喂给<strong>完全相同</strong>的 <span class="mono">generate_schema</span>。</p>
@@ -506,6 +511,9 @@ LESSON_18 = {"zh": r"""
 <p>工具不只能用 Python 写。<span class="mono">letta/functions/typescript_parser.py::derive_typescript_json_schema</span> 负责 TS：它<strong>不走 AST</strong>，而是用<strong>正则</strong>扫描 <span class="mono">export function</span> 的签名，再从 <span class="mono">JSDoc</span> 注释里取参数描述；参数名后带 <span class="mono">?</span> 视为可选。</p>
 <p>类型映射更粗放：<span class="mono">union</span> 一律映射成 <span class="mono">string</span>，<span class="mono">any</span> 也落到 <span class="mono">string</span>。源类型由 <span class="mono">letta/schemas/enums.py::ToolSourceType</span> 枚举给出，有 <span class="mono">python / typescript / json</span> 三种。</p>
 <div class="note info"><span class="ni">👉</span><span class="nx">但有个硬约束：TS 工具在 API 创建时<strong>必须</strong>自带 <span class="mono">json_schema</span>（<span class="mono">ToolCreate.validate_typescript_requires_schema</span>，缺了就 <span class="mono">ValueError</span>）。所以"自动派生 schema"这条路<strong>主要服务 Python 工具</strong>；TS 的 schema 通常由调用方显式给出。</span></div>
+<p>顺手厘清 <span class="mono">source_type</span> 的角色：它就是一张"语言标签"，告诉派生器这段源码该用哪把解析器——Python 走 AST、TypeScript 走正则，而 JSON 则表示"schema 我已经给你了，不用派生"。</p>
+<div class="cellgroup"><div class="cg-cap"><b>ToolSourceType 的三种取值</b></div><div class="cells"><span class="cell hl">python · 走 AST 派生</span><span class="sep">·</span><span class="cell">typescript · 走正则，需显式 schema</span><span class="sep">·</span><span class="cell">json · 直接提供 schema</span></div></div>
+<p>那为什么 TS 偏偏要"必须显式给 schema"？因为正则能稳妥覆盖的 TypeScript 语法面，远不如 Python 的 AST 完整、严谨。与其在复杂类型上猜错，不如让调用方把权威 schema 直接交出来。于是"自动派生"这条便利通道，主力服务的始终是 Python。</p>
 
 <h2>再挖深一点</h2>
 <p>把几个最容易卡住的"为什么"摊开来讲，每条都给示例、原因和源码出处。</p>
@@ -539,6 +547,8 @@ LESSON_18 = {"zh": r"""
 <li><strong>派生只在创建时做</strong>：接线在 <span class="mono">tool_manager</span> → <span class="mono">tool_schema_generator</span>，已不在 pydantic 校验器里。</li>
 </ul>
 </div>
+
+<p>回头看这一课，它其实只讲了一件事：<strong>把"安全"重新表述成"解析"</strong>。一旦你拒绝运行用户代码，"读懂它"就从一个运行时问题变成了一个纯文本分析问题——而文本分析，正是 AST 的拿手好戏。<span class="mono">MockFunction</span> 则像一座桥，让分析出来的零件无缝接回第 17 课那套成熟的生成器。</p>
 
 <p>至此，工具有了 schema、能被模型"看见"并发起调用。可当 agent <strong>真要执行</strong>一个工具时，它怎么知道"该用哪种方式跑它"——是直接在进程内调用、丢进沙箱隔离执行、还是连去一台外部服务器？这就是<strong>第 19 课"工具分发与执行"</strong>要回答的问题。</p>
 
