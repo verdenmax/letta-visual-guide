@@ -1176,7 +1176,7 @@ LESSON_20 = {"zh": r"""
   <div class="step"><div class="num">3</div><div class="sc"><h4>兜底本地</h4><p>都没有 → <strong>Local</strong>：在本机建一个隔离 venv，用子进程跑。开发期最常见。</p></div></div>
 </div>
 <p>三种沙箱不是冗余，而是<strong>隔离强度与部署成本的权衡</strong>。本地 venv 零依赖、最快，但和服务端共享内核，隔离最弱；E2B、Modal 把代码送进云端独立容器，隔离强，但要联网和配额。所以同一段工具，开发期可能跑在本地，生产期被切到 Modal——这正是"在哪跑"必须可配置的原因。</p>
-<div class="note info"><span class="ni">💡</span><span class="nx">类型定义在 <span class="mono">schemas/enums.py::SandboxType</span>（<span class="mono">E2B / MODAL / LOCAL</span>）；选择逻辑落在 <span class="mono">sandbox_tool_executor.py</span>，全局开关是 <span class="mono">settings.py::ToolSettings.sandbox_type</span>。关键点是：无论选哪个，下面这套"生成脚本 + 信任边界 + 帧校验"的玩法<strong>三种沙箱完全一致</strong>，差别只在外层容器。</span></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">类型定义在 <span class="mono">schemas/enums.py::SandboxType</span>（<span class="mono">E2B / MODAL / LOCAL</span>）；选择逻辑落在 <span class="mono">sandbox_tool_executor.py</span>，全局开关是 <span class="mono">settings.py::ToolSettings.sandbox_type</span>。关键点是：本课的"生成脚本 + 信任边界"主要讲<strong>本地沙箱</strong>这条路；marker+长度+MD5 帧是<strong>本地特有</strong>（E2B 改用 base64、Modal 走原生部署直接返回结构化 dict、连脚本都不生成）。但<strong>"信任边界"这条原则三种沙箱通用</strong>——回程数据一律不当可信代码反序列化。</span></div>
 <p>顺便提一句配置：<span class="mono">LocalSandboxConfig</span> 还能调 <span class="mono">sandbox_dir</span>、<span class="mono">use_venv</span>、<span class="mono">venv_name</span>、<span class="mono">pip_requirements</span> 等，决定本地沙箱具体怎么落地。但这些都是"怎么跑"的旋钮，不改"信谁"的边界。</p>
 <h2>生成的沙箱脚本：把工具包起来跑</h2>
 <p>沙箱不会"直接调用"用户函数。服务端会<strong>现拼一段 Python 脚本</strong>，把所有需要的东西内联进去，再让沙箱整段执行。这段脚本由 <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span> 拼出来。</p>
@@ -1225,12 +1225,13 @@ sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn"
   <tr><td class="mono">JSON_PAYLOAD</td><td class="mono">LENGTH 字节</td><td>真正的结果：工具返回值 + agent_state 的 JSON</td></tr>
 </table>
 <div class="cellgroup"><div class="cg-cap"><b>stdout 帧布局</b></div><div class="cells"><span class="cell hl">MARKER(16)</span><span class="sep">·</span><span class="cell">LENGTH(4)</span><span class="sep">·</span><span class="cell">MD5(32)</span><span class="sep">·</span><span class="cell">JSON_PAYLOAD</span></div></div>
-<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/local_sandbox.py</span><span class="ln">parse_out_function_results_markers（简化）</span></div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">local_sandbox.py · helpers/tool_parser_helper.py</span><span class="ln">parse_out_function_results_markers + parse_stdout_best_effort（简化）</span></div>
 <pre>pos = data.<span class="fn">find</span>(MARKER)                       <span class="cm"># 在嘈杂 stdout 里定位真结果</span>
 length = struct.<span class="fn">unpack</span>(<span class="st">"&gt;I"</span>, data[p:p+<span class="nb">4</span>])[<span class="nb">0</span>]
 payload = data[start : start+length]
 <span class="kw">if</span> hashlib.<span class="fn">md5</span>(payload).<span class="fn">hexdigest</span>() != checksum:
     <span class="kw">raise</span> <span class="fn">Exception</span>(<span class="st">"Function ran, but output is corrupted."</span>)
+<span class="cm"># —— 下面两行其实在 helpers/tool_parser_helper.py::parse_stdout_best_effort 里 ——</span>
 result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON，绝不 pickle.loads</span>
 agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic 重水合</span>
 </pre></div>
@@ -1299,7 +1300,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 </div></details>
 <details class="accordion"><summary>④ 本地 venv 怎么跑？E2B/Modal 有何不同？</summary><div class="acc-body">
 <p>本地 <span class="mono">AsyncToolSandboxLocal</span>：按需 <span class="mono">venv.create(with_pip=True)</span> 建或复用虚拟环境、<span class="mono">pip install -r</span> 装依赖，脚本写临时 <span class="mono">.py</span>，用 <span class="mono">asyncio.create_subprocess_exec</span> 起子进程跑，超时是 <span class="mono">tool_sandbox_timeout</span>（默认 180s）。</p>
-<p>差异只在外层：E2B 回程会多包一层 base64；Modal 返回的是结构化 dict。但"生成脚本 + 信任边界 + 帧校验"这套主干，在三种沙箱里是一致的。</p>
+<p>差异不止在外层：本地用 marker+长度+MD5 帧；<strong>E2B 改用 base64 编码</strong>（不是多包一层，是另一条路径）；<strong>Modal 直接返回结构化 dict</strong>，连生成脚本和帧都没有。三者真正<strong>共用的是"信任边界"原则</strong>——去程可信、回程一律 JSON / 结构化、绝不 pickle.loads。</p>
 <p>也正因为本地沙箱与服务端共享内核，它的隔离是"够用级"而非"强保证"：能挡住误伤和大多数意外，但要跑完全不可信的代码，应切到 E2B 或 Modal 的容器级隔离。</p>
 <p>超时到了会怎样？子进程被杀、本次调用按失败处理，不会把服务端拖死。临时脚本文件用完即清，venv 则可复用，省去每次重新建环境的开销。</p>
 </div></details>
@@ -1346,7 +1347,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
   <div class="step"><div class="num">3</div><div class="sc"><h4>Fall back to local</h4><p>Neither → <strong>Local</strong>: build an isolated venv on the host and run it in a subprocess. The most common case during development.</p></div></div>
 </div>
 <p>The three sandboxes are not redundant; they are a <strong>trade-off between isolation strength and deployment cost</strong>. A local venv has zero dependencies and is fastest, but shares the kernel with the server and isolates the least; E2B and Modal ship code into a dedicated cloud container — strong isolation, yet they need network access and quota. So the same tool may run locally in development and be switched to Modal in production — exactly why "where to run" must be configurable.</p>
-<div class="note info"><span class="ni">💡</span><span class="nx">The type is defined in <span class="mono">schemas/enums.py::SandboxType</span> (<span class="mono">E2B / MODAL / LOCAL</span>); the selection logic lives in <span class="mono">sandbox_tool_executor.py</span>, and the global switch is <span class="mono">settings.py::ToolSettings.sandbox_type</span>. The key point: whichever you pick, the "generate script + trust boundary + frame check" machinery below is <strong>identical across all three sandboxes</strong> — the only difference is the outer container.</span></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">The type is defined in <span class="mono">schemas/enums.py::SandboxType</span> (<span class="mono">E2B / MODAL / LOCAL</span>); the selection logic lives in <span class="mono">sandbox_tool_executor.py</span>, and the global switch is <span class="mono">settings.py::ToolSettings.sandbox_type</span>. The key point: this lesson's "generate script + trust boundary" walkthrough is mainly the <strong>local</strong> path; the marker+length+MD5 frame is <strong>local-only</strong> (E2B uses base64 instead, and Modal returns a native structured dict via deployment — no generated script at all). But the <strong>trust-boundary principle is universal</strong> across all three — none of them deserializes the return as trusted code.</span></div>
 <p>A configuration aside: <span class="mono">LocalSandboxConfig</span> can also tune <span class="mono">sandbox_dir</span>, <span class="mono">use_venv</span>, <span class="mono">venv_name</span>, <span class="mono">pip_requirements</span> and more, deciding how the local sandbox is actually laid down. But these are all "how to run" knobs; they do not change the "whom to trust" boundary.</p>
 <h2>The generated sandbox script: wrap the tool and run it</h2>
 <p>The sandbox does not "directly call" the user's function. The server assembles a Python script on the fly, inlines everything it needs, and then lets the sandbox execute the whole thing. That script is assembled by <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span>.</p>
@@ -1394,12 +1395,13 @@ sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn"
   <tr><td class="mono">JSON_PAYLOAD</td><td class="mono">LENGTH bytes</td><td>the real result: the tool's return value + agent_state as JSON</td></tr>
 </table>
 <div class="cellgroup"><div class="cg-cap"><b>stdout frame layout</b></div><div class="cells"><span class="cell hl">MARKER(16)</span><span class="sep">·</span><span class="cell">LENGTH(4)</span><span class="sep">·</span><span class="cell">MD5(32)</span><span class="sep">·</span><span class="cell">JSON_PAYLOAD</span></div></div>
-<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/local_sandbox.py</span><span class="ln">parse_out_function_results_markers (simplified)</span></div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">local_sandbox.py · helpers/tool_parser_helper.py</span><span class="ln">parse_out_function_results_markers + parse_stdout_best_effort (simplified)</span></div>
 <pre>pos = data.<span class="fn">find</span>(MARKER)                       <span class="cm"># locate the real result in noisy stdout</span>
 length = struct.<span class="fn">unpack</span>(<span class="st">"&gt;I"</span>, data[p:p+<span class="nb">4</span>])[<span class="nb">0</span>]
 payload = data[start : start+length]
 <span class="kw">if</span> hashlib.<span class="fn">md5</span>(payload).<span class="fn">hexdigest</span>() != checksum:
     <span class="kw">raise</span> <span class="fn">Exception</span>(<span class="st">"Function ran, but output is corrupted."</span>)
+<span class="cm"># —— the next two lines are actually in helpers/tool_parser_helper.py::parse_stdout_best_effort ——</span>
 result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON, never pickle.loads</span>
 agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic re-hydrate</span>
 </pre></div>
@@ -1467,7 +1469,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 </div></details>
 <details class="accordion"><summary>④ How does the local venv run? How do E2B/Modal differ?</summary><div class="acc-body">
 <p>Local <span class="mono">AsyncToolSandboxLocal</span>: on demand <span class="mono">venv.create(with_pip=True)</span> builds or reuses a virtual environment, <span class="mono">pip install -r</span> installs dependencies, the script is written to a temporary <span class="mono">.py</span>, and <span class="mono">asyncio.create_subprocess_exec</span> spawns a subprocess to run it, with the timeout being <span class="mono">tool_sandbox_timeout</span> (default 180s).</p>
-<p>The differences are only in the outer layer: E2B wraps the return in an extra base64 layer; Modal returns a structured dict. But the "generate script + trust boundary + frame check" backbone is identical across all three sandboxes.</p>
+<p>The differences are more than skin-deep: local uses the marker+length+MD5 frame; <strong>E2B uses base64 encoding instead</strong> (a different path, not an extra layer); <strong>Modal returns a structured dict directly</strong>, with no generated script or frame at all. What the three genuinely <strong>share is the trust-boundary principle</strong> — trusted on the way in, JSON/structured on the way back, never pickle.loads.</p>
 <p>Precisely because the local sandbox shares the kernel with the server, its isolation is "good enough" rather than a "strong guarantee": it can block accidents and most mishaps, but to run fully untrusted code you should switch to the container-level isolation of E2B or Modal.</p>
 <p>What happens when the timeout hits? The subprocess is killed and this call is treated as a failure, without dragging the server down. The temporary script file is cleaned up after use, while the venv can be reused, saving the cost of rebuilding the environment each time.</p>
 </div></details>
