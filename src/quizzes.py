@@ -1236,6 +1236,121 @@ QUIZZES = {
             },
         ],
     },
+    "16-tool-rules.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "agent 循环刚开始、还没调过任何工具时，是哪种工具规则能“强制”第一步只能调某个（些）特定工具？ToolRulesSolver 又是怎么处理它的？",
+                    "en": "At the very start of the agent loop, before any tool has been called, which tool rule can “force” the first step to call only a specific tool (or tools)? And how does ToolRulesSolver handle it?",
+                },
+                "opts": [
+                    {"zh": "run_first（子类 InitToolRule）；get_allowed_tool_names 一看 tool_call_history 为空且配了 init 规则，就直接返回 [r.tool_name for r in init_tool_rules]，别的规则一概不算",
+                     "en": "run_first (subclass InitToolRule); when get_allowed_tool_names sees an empty tool_call_history with init rules configured, it returns [r.tool_name for r in init_tool_rules] directly, ignoring every other rule"},
+                    {"zh": "exit_loop（TerminalToolRule）；它把第一步钉死在终止工具上",
+                     "en": "exit_loop (TerminalToolRule); it pins the first step onto the terminal tool"},
+                    {"zh": "constrain_child_tools（ChildToolRule）；首步只能调它列出的 children",
+                     "en": "constrain_child_tools (ChildToolRule); the first step may only call its listed children"},
+                    {"zh": "required_before_exit（RequiredBeforeExitToolRule）；它要求第一步必须是结算类工具",
+                     "en": "required_before_exit (RequiredBeforeExitToolRule); it requires the first step to be a settlement-type tool"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "run_first 对应子类 InitToolRule，是唯一“强制首步”的规则。get_allowed_tool_names 的第一条岔路就是：if not self.tool_call_history and self.init_tool_rules → return [r.tool_name for r in self.init_tool_rules]，首步直接锁定 init 工具、其他规则一律不参与。exit_loop 管的是“调到就停”（终点，不是起点），constrain_child_tools 约束的是“调完某父工具后的下一步”（要先有父调用），required_before_exit 只要求“退出前至少调一次”、并不限定它是第一步。别被子类名误导：枚举值是 run_first 而非 Init。",
+                    "en": "run_first maps to the subclass InitToolRule, the only “force the first step” rule. get_allowed_tool_names's first fork is exactly: if not self.tool_call_history and self.init_tool_rules → return [r.tool_name for r in self.init_tool_rules], locking the first step onto the init tools and excluding every other rule. exit_loop governs “called → stop” (the end, not the start), constrain_child_tools constrains “the next step after a given parent tool” (a parent call must come first), and required_before_exit only demands “at least one call before exit,” not that it be the first step. Don't be misled by the subclass name: the enum value is run_first, not Init.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "模型无视裁剪后的 schema，硬挑了一个不在合法集里的工具。框架会怎么处理这次调用？",
+                    "en": "The model ignores the trimmed schema and picks a tool that isn't in the legal set. How does the framework handle that call?",
+                },
+                "opts": [
+                    {"zh": "不执行该工具：_handle_ai_response 算出 tool_rule_violated = name not in valid_tool_names，转而调 _build_rule_violation_result 合成一条 status=\"error\" 的 [ToolConstraintError] 当作“工具返回”喂回模型，让它自纠",
+                     "en": "It doesn't execute the tool: _handle_ai_response computes tool_rule_violated = name not in valid_tool_names, then calls _build_rule_violation_result to synthesize a status=\"error\" [ToolConstraintError] as the “tool return” fed back to the model for self-correction"},
+                    {"zh": "照样执行该工具，只是在结果后面附一句警告，提醒模型下次别这么调",
+                     "en": "It runs the tool anyway, just appending a warning after the result to remind the model not to do it next time"},
+                    {"zh": "直接抛出异常、终止整个 step，让用户看到报错",
+                     "en": "It raises an exception outright, terminating the whole step so the user sees the error"},
+                    {"zh": "静默丢弃这次调用，既不执行也不回任何消息，直接进入下一步",
+                     "en": "It silently drops the call, neither executing nor returning any message, and moves straight to the next step"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "违规工具绝不执行。判定在 letta_agent_v3.py::_handle_ai_response：tool_rule_violated = name not in valid_tool_names；为真则跳过执行，改由 agents/helpers.py::_build_rule_violation_result 合成一条 ToolExecutionResult(status=\"error\", func_return=\"[ToolConstraintError] Cannot call X, valid tools include: [...]\")，当作那个工具的“返回值”喂回模型。它既不是“先执行再警告”，也不是直接 raise 崩掉 step（那样用户只会看到莫名其妙的报错），更不是静默丢弃——而是把违规变成一次“教学”，循环继续、给模型重挑的机会。错误字符串在 agent 层拼，solver 只通过 guess_rule_violation 供一句 hint。",
+                    "en": "A violating tool is never executed. The decision is in letta_agent_v3.py::_handle_ai_response: tool_rule_violated = name not in valid_tool_names; if true it skips execution and instead has agents/helpers.py::_build_rule_violation_result synthesize a ToolExecutionResult(status=\"error\", func_return=\"[ToolConstraintError] Cannot call X, valid tools include: [...]\") fed back as that tool's “return value.” It's neither “run then warn,” nor a bare raise that crashes the step (which would only show the user a baffling error), nor a silent drop — it turns the violation into a “lesson,” continuing the loop and giving the model a chance to re-pick. The error string is assembled in the agent layer; the solver only supplies a one-line hint via guess_rule_violation.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "ToolRulesSolver.get_allowed_tool_names 在算“这一步合法工具集”时，到底对哪些规则求交集来缩小工具集？",
+                    "en": "When ToolRulesSolver.get_allowed_tool_names computes “this step's legal tool set,” which rules does it actually intersect to shrink the tool set?",
+                },
+                "opts": [
+                    {"zh": "只对 child 类（Child/Conditional/MaxCount）+ parent 规则求交，再 & 可用工具；terminal / continue / required_before_exit / requires_approval 根本不进交集",
+                     "en": "Only the child family (Child/Conditional/MaxCount) + parent rules are intersected, then & available tools; terminal / continue / required_before_exit / requires_approval never enter the intersection"},
+                    {"zh": "对全部 9 种规则一视同仁地求交集",
+                     "en": "All 9 rule types are intersected, treated alike"},
+                    {"zh": "只对 terminal + required_before_exit 求交，因为它们决定循环能否结束",
+                     "en": "Only terminal + required_before_exit are intersected, since they decide whether the loop can end"},
+                    {"zh": "对 init + requires_approval 求交，其余规则在别处处理",
+                     "en": "init + requires_approval are intersected, with the rest handled elsewhere"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "缩小工具集只看 child + parent 两类。源码里 relevant = self.child_based_tool_rules + self.parent_tool_rules（child_based 桶含 Child/Conditional/MaxCount），对每条调 get_valid_tools 求交，再 & available。terminal / continue / required_before_exit / requires_approval 这几桶不参与交集——solver 文档字符串明说它们“在 agent 循环里生效，不用来限制工具”，它们的作用体现在 _decide_continuation 的续步/停止判断里。init 规则则走另一条岔路（首步强制），不在这步的交集里。所以“全部 9 种求交”或“terminal 参与缩集”都是典型记反。",
+                    "en": "Shrinking the tool set looks only at the child + parent families. In source, relevant = self.child_based_tool_rules + self.parent_tool_rules (the child_based bucket holds Child/Conditional/MaxCount); each rule's get_valid_tools is intersected, then & available. The terminal / continue / required_before_exit / requires_approval buckets don't join the intersection — the solver's docstring states they “apply in the agent loop, not to restrict tools,” and their effect shows up in _decide_continuation's continue/stop decision. The init rules take the other fork (first-step forcing), not this step's intersection. So “intersect all 9” or “terminal shrinks the set” are classic reversals.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "某工具配了 requires_approval。模型这一步要调它时，agent 循环会停下，停止原因（StopReasonType）记成什么？随后又发生什么？",
+                    "en": "A tool is configured with requires_approval. When the model goes to call it this step, the agent loop stops — what stop reason (StopReasonType) is recorded, and what happens next?",
+                },
+                "opts": [
+                    {"zh": "停止原因记 requires_approval：循环不执行该工具，持久化一条 create_approval_request_message_from_llm_response(...) 造的“审批请求”消息；人批准后下一次以 is_approval_response 进来，绕过违规检查放行",
+                     "en": "The stop reason is requires_approval: the loop doesn't execute the tool, persists an “approval request” message from create_approval_request_message_from_llm_response(...); after a human approves, the next entry comes in as an is_approval_response that bypasses the violation check and proceeds"},
+                    {"zh": "停止原因记 tool_rule，和终止工具一样，因为两者都让循环停下",
+                     "en": "The stop reason is tool_rule, same as a terminal tool, since both stop the loop"},
+                    {"zh": "停止原因记 max_steps：审批被当作“步数耗尽”处理",
+                     "en": "The stop reason is max_steps: approval is treated as “steps exhausted”"},
+                    {"zh": "不记停止原因，循环照常执行工具，只是事后发一封审批邮件",
+                     "en": "No stop reason is recorded; the loop runs the tool as usual and just sends an approval email afterward"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "命中 is_requires_approval_tool 时，循环停在 StopReasonType.requires_approval（不是 tool_rule，也不是 max_steps）。它不执行该工具，而是持久化一条由 create_approval_request_message_from_llm_response(...) 生成的“审批请求”消息，把控制权交给人。等批准后，下一次请求以 is_approval_response 进入，它绕过违规检查直接放行执行——这正对上第 14 课列的停止原因表，也接上第 15 课“工具规则可覆盖默认行为”。注意区分：终止工具 exit_loop 停在 tool_rule，requires_approval 停在 requires_approval，两者停止原因不同。",
+                    "en": "When is_requires_approval_tool hits, the loop stops at StopReasonType.requires_approval (not tool_rule, not max_steps). It doesn't execute the tool but persists an “approval request” message generated by create_approval_request_message_from_llm_response(...), handing control to a human. After approval, the next request enters as an is_approval_response that bypasses the violation check and proceeds — matching lesson 14's stop-reason table and connecting to lesson 15's “tool rules can override default behavior.” Note the distinction: a terminal tool (exit_loop) stops at tool_rule, while requires_approval stops at requires_approval — different stop reasons.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "关于 9 种 ToolRuleType 的“枚举值”和“子类名”，下面哪个说法是对的？",
+                    "en": "About the 9 ToolRuleType “enum values” and “subclass names,” which statement is correct?",
+                },
+                "opts": [
+                    {"zh": "枚举值是历史命名 run_first / exit_loop / constrain_child_tools 等，而子类才叫 InitToolRule / TerminalToolRule / ChildToolRule——别照子类名去猜枚举值",
+                     "en": "The enum values are legacy-named run_first / exit_loop / constrain_child_tools etc., while the subclasses are InitToolRule / TerminalToolRule / ChildToolRule — don't guess the enum value from the subclass name"},
+                    {"zh": "枚举值就是 Init / Terminal / Child，和子类名前缀完全一致",
+                     "en": "The enum values are Init / Terminal / Child, exactly matching the subclass name prefixes"},
+                    {"zh": "枚举值和子类名是同一个字符串，框架不区分二者",
+                     "en": "The enum value and the subclass name are the same string; the framework doesn't distinguish them"},
+                    {"zh": "根本没有枚举，规则全靠子类的 isinstance 判断，没有 type 字段",
+                     "en": "There's no enum at all; rules rely solely on isinstance of the subclass, with no type field"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这是最容易踩的命名坑。枚举 schemas/enums.py::ToolRuleType 用的是历史名：run_first / exit_loop / continue_loop / conditional / constrain_child_tools / max_count_per_step / parent_last_tool / required_before_exit / requires_approval。而子类（schemas/tool_rule.py）叫 InitToolRule / TerminalToolRule / ChildToolRule…，每个子类 pin 死一个 Literal type 字符串（如 InitToolRule.type == \"run_first\"）。所以枚举值不是 Init/Terminal/Child；type 字符串与子类名也不是同一个串；更不是“没有 type”——恰恰相反，正是这个 type 字段构成了 pydantic 的判别联合，让一串带 type 的 JSON 能各归各的子类。",
+                    "en": "This is the easiest naming trap. The enum schemas/enums.py::ToolRuleType uses legacy names: run_first / exit_loop / continue_loop / conditional / constrain_child_tools / max_count_per_step / parent_last_tool / required_before_exit / requires_approval. The subclasses (schemas/tool_rule.py) are InitToolRule / TerminalToolRule / ChildToolRule…, each pinning a Literal type string (e.g. InitToolRule.type == \"run_first\"). So the enum values are not Init/Terminal/Child; the type string and the subclass name aren't the same string; and it's not “no type” — on the contrary, that very type field forms pydantic's discriminated union, letting a string of JSON with a type field resolve to the right subclass.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“城市交通规则”这个比喻，把第 16 课的工具规则系统讲成一个完整故事，并想三件事：(1) 为什么要把“agent 该怎么用工具”从“模型的自觉”搬成“路口的硬件”（声明式、可强制）？事前裁 schema 和事后合成错误这“两道防线”各自防住了什么？只留一道行不行？(2) get_allowed_tool_names 为什么“只对 child + parent 求交”来缩工具集，而把 terminal / continue / required / approval 留给 _decide_continuation？“缩工具集”和“决定循环怎么走”为什么要拆成两件事？(3) Letta 故意不做“环/冲突检测”，只逐条 pydantic 校验。把这把“双刃剑”交给配置者，好处和风险各在哪？如果你要给一个真实 agent 配规则，你会怎么自查规则之间不打架？",
+                "en": "Using the “city traffic rules” metaphor, tell lesson 16's tool-rule system as one coherent story, and think through three things: (1) why move “how an agent should use tools” from “the model's conscientiousness” into “hardware at the junction” (declarative, enforceable)? What does each of the “two lines of defense” — trimming the schema beforehand and synthesizing an error afterward — guard against? Would keeping only one line do? (2) Why does get_allowed_tool_names “intersect only child + parent” to shrink the tool set, leaving terminal / continue / required / approval to _decide_continuation? Why split “shrink the tool set” and “decide how the loop proceeds” into two separate things? (3) Letta deliberately does no “cycle/conflict detection,” only per-rule pydantic validation. Handing this “double-edged sword” to the configurer — where are the benefits and the risks? If you were configuring rules for a real agent, how would you self-check that the rules don't clash?",
+            },
+        ],
+    },
 }
 
 
