@@ -392,11 +392,12 @@ LESSON_17 = {"zh": r"""
 LESSON_18 = {"zh": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">第 17 课有一个悄悄藏起来的前提：我们<strong>已经握着一个 Python 函数对象</strong>，可以直接 <span class="mono">inspect.signature</span> 读它的签名。可现实里，用户注册自定义工具时，递给服务器的往往不是函数对象，而是<strong>一段源码字符串</strong>。</p>
 
-<p class="lead" style="font-size:1.06rem;color:var(--muted)">于是冒出一个棘手的要求：要在<strong>绝不运行这段代码</strong>的前提下，照样产出它的 JSON schema。既要"读懂"这段陌生代码的形状，又一行都不能跑——这才是本课真正的难点。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">于是冒出一个棘手的要求：要在<strong>绝不运行这段代码</strong>的前提下，照样产出它的 JSON schema。既要"读懂"这段陌生代码的形状，又一行都不能跑——这才是本课真正的难点。第 17 课解决的是"已有函数对象"的简单情形，本课要啃的，是"只有一段源码字符串"的硬核情形。</p>
 
 <div class="card analogy"><div class="tag">🔌 生活类比</div>
 <p>想象你在仓库验收一批陌生的电子产品。最稳妥的办法不是<strong>拆封、通电、试用</strong>——万一里头是"诈弹"呢？而是<strong>不拆封就验货</strong>：只读包装外印的"成分表 / 规格参数"，照着这些信息建档入库。</p>
 <p>给 schema 派生器读源码，就是这种"读规格不通电"：只看函数的<strong>签名与 docstring</strong>（外印的规格），绝不 <span class="mono">import</span> 运行它（通电试用）。这段代码是用户上传的，谁也不知道它通电后会做什么。</p>
+<p>更妙的是，这张"规格表"还自带防伪：包装上印的信息若对不上（源码语法错、参数缺注解），验货当场就能打回，根本不必通电就知道这批货不合格。读源码派生 schema 也一样——很多问题在"读"的阶段就被拦下了，压根轮不到"跑"。</p>
 </div>
 <div class="card macro"><div class="tag">🌍 宏观理解</div>
 <p>Letta 的答案是 <span class="mono">letta/functions/functions.py::derive_openai_json_schema(source_code, name=None)</span>。它的套路只有三步：先用<strong>纯 AST 解析</strong>把源码读成语法树，再据此造一个 <span class="mono">MockFunction</span>（只带 <span class="mono">__name__ / __doc__ / __signature__</span> 三件套），最后把这个"假函数"喂给<strong>第 17 课里那个一模一样的</strong> <span class="mono">generate_schema</span>。</p>
@@ -406,6 +407,7 @@ LESSON_18 = {"zh": r"""
 <li><span class="mono">MockFunction</span> 凭什么能<strong>骗过 <span class="mono">inspect</span></strong>？</li>
 <li>AST 究竟<strong>静态读</strong>到了哪些东西？</li>
 </ul>
+<p>留意这三步全程<strong>只读不写、只解析不执行</strong>。下面几节就顺着这三个问题往下挖：先看 import 为何危险，再看 <span class="mono">MockFunction</span> 如何伪装，最后看 AST 到底读了哪些字段。</p>
 </div>
 
 <p>为什么"绝不运行"是条不容商量的红线？因为 Letta 是<strong>多租户</strong>服务：同一个进程里可能同时跑着许多用户的工具。只要有一段上传代码在 import 时越界，受害的就不只是它自己的会话，而是整台服务器和上面所有人的数据。把执行权牢牢攥在自己手里，是这类平台的生存底线。</p>
@@ -425,6 +427,7 @@ LESSON_18 = {"zh": r"""
 <tr><td class="mono">能拿到什么</td><td>真函数对象与真实签名</td><td>节点信息：函数名、参数、注解、docstring</td></tr>
 <tr><td class="mono">坏代码的下场</td><td>已经跑了，覆水难收</td><td>顶多语法错，抛 LettaToolCreateError</td></tr>
 </table>
+<p>有人会反问：那我先把代码丢进一个受限沙箱、再 import 不就行了？可以，但成本与风险都高得多——你得维护沙箱、限制系统调用、还得承担逃逸风险。而"只为拿一张 schema"这件小事，根本不值得动用那么重的武器。能用"读"解决的，就别用"跑"。</p>
 <div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">用户源码</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="lab">AST 只读不跑</span><span class="arrow">→</span><span class="emoji">📜</span><span class="bubble">我读你，但绝不跑你</span></div><div class="cap">派生器只"阅读"代码的形状，把它翻译成一张 schema，自始至终不让这段代码运行一行。</div></div>
 
 <h2>派生流程：纯 AST + 复用 generate_schema</h2>
@@ -450,11 +453,13 @@ LESSON_18 = {"zh": r"""
 <div class="step"><div class="num">3</div><div class="sc"><h4>重建 Signature</h4><p>逐个参数读注解、用 <span class="mono">ast.literal_eval</span> 取字面量默认值，拼出 <span class="mono">inspect.Signature</span>。</p></div></div>
 <div class="step"><div class="num">4</div><div class="sc"><h4>装进 MockFunction</h4><p>把函数名、docstring 与重建好的签名塞进假函数，交还给上层。</p></div></div>
 </div>
+<p>第一步的 <span class="mono">ast.parse</span> 还顺手当了"守门员"：源码若有语法错误，解析阶段就抛 <span class="mono">LettaToolCreateError</span>，把坏代码挡在创建环节之外。注意它<strong>只检查语法、不检查语义</strong>——能解析成树就放行；至于工具跑起来对不对，那是后面执行阶段才操心的事。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">派生入口（简化）</span></div>
 <pre><span class="kw">def</span> <span class="fn">derive_openai_json_schema</span>(source_code: str, name=<span class="kw">None</span>):
     mock = <span class="fn">_parse_function_from_source</span>(source_code, name)  <span class="cm"># 纯 AST，绝不 exec</span>
     <span class="kw">return</span> <span class="fn">generate_schema</span>(mock, name=name)            <span class="cm"># 复用第 17 课的生成器</span>
 </pre></div>
+<p>请记住这条主线：派生器<strong>没有重写</strong>任何 schema 生成逻辑。它干的活，是把一段源码"翻译"成一个 <span class="mono">generate_schema</span> 能接受的输入；真正生成 schema 的，仍是第 17 课那台机器。少一处实现，就少一处会与另一处跑偏的风险。</p>
 <h2>MockFunction：骗过 inspect 的"假函数"</h2>
 <p>问题来了：<span class="mono">generate_schema</span> 期待的是一个<strong>真函数对象</strong>，它要对其调用 <span class="mono">inspect.signature</span>、读 <span class="mono">__doc__</span>。可我们手里只有从 AST 抽出来的零件，并没有真函数。Letta 的办法是临时<strong>捏一个"假函数"</strong>——<span class="mono">MockFunction</span>，只把 <span class="mono">inspect</span> 关心的几个属性凑齐，剩下的一概不管。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">MockFunction</span></div>
@@ -481,6 +486,7 @@ LESSON_18 = {"zh": r"""
     <span class="cm"># 未定义的 BaseModel 用 type(name, (BaseModel,), {...}) 造桩，不 import</span>
     <span class="kw">return</span> <span class="fn">MockFunction</span>(func.name, ast.<span class="fn">get_docstring</span>(func), sig)
 </pre></div>
+<p>顺带一提，docstring 不是手撕字符串得来的，而是用 <span class="mono">ast.get_docstring(func)</span> 规规矩矩地取——它能正确处理多行、缩进、转义等细节，比自己写正则稳妥得多。又是一处"让标准库替你把脏活干净利落地干掉"的体现。</p>
 <div class="note info"><span class="ni">📌</span><span class="nx">一段源码里若有<strong>多个函数</strong>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span>（约定：工具就是文件里最后定义的那个）。配套的 AST 辅助住在 <span class="mono">letta/functions/ast_parsers.py</span>，其中 <span class="mono">resolve_type</span> 用<strong>白名单</strong>解析类型，默认 <span class="mono">allow_unsafe_eval=False</span>，从源头杜绝"借解析之名跑代码"。</span></div>
 <p>这里还藏着两个值得记住的"安全阀"。第一个针对默认值：解析器不用 <span class="mono">eval</span>，而用 <span class="mono">ast.literal_eval</span>——后者只接受数字、字符串、列表、字典这类<strong>字面量</strong>，碰到函数调用或任意表达式就直接拒绝，从根上堵死"连求个默认值都能偷跑代码"的缝隙。</p>
 <p>第二个针对类型注解：注解里的名字交给 <span class="mono">ast_parsers.py::resolve_type</span> 按<strong>白名单</strong>翻译成 JSON schema 类型。认识的类型照常映射，不认识的名字<strong>不会</strong>被 import 求值，而是走"造桩或报错"。两道阀门合起来，确保"解析"绝不退化成"执行"。</p>
@@ -488,7 +494,9 @@ LESSON_18 = {"zh": r"""
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p>一句话概括这门手艺：<strong>"从一段你拒绝运行的代码里，生成它的 schema。"</strong> 读函数签名最朴素的办法是 <span class="mono">import + inspect</span>，可 <span class="mono">import</span> 用户代码＝在你的服务端执行任意代码。Letta 的巧招是：先 <span class="mono">ast.parse</span> 成语法树（只读不跑），再造一个只带 <span class="mono">__name__/__doc__/__signature__</span> 的 <span class="mono">MockFunction</span>，喂给<strong>完全相同</strong>的 <span class="mono">generate_schema</span>。</p>
 <p>结果是：模型拿到一张真 schema，服务器却<strong>一行用户代码都没跑</strong>。连源码里引用的未定义 Pydantic 类型，也用 <span class="mono">type(name,(BaseModel,),{})</span> 造桩，而非 import。它把"安全"巧妙地变成了一道"解析"题——这正是第 20 课沙箱哲学的前奏：<strong>"工具的代码，自始至终不可信。"</strong></p>
+<p>这种"把危险操作转化成安全操作"的思路，在工程上极有价值：它不是给危险行为层层加锁，而是<strong>从设计上让危险根本无从发生</strong>。记住这个套路，你会在很多优秀系统里反复见到它的身影。</p>
 </div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">记忆钩子：这一课的所有巧思，都能压缩成一句话——<strong>"读它，但绝不跑它。"</strong> 读，靠 AST；接回旧流程，靠 <span class="mono">MockFunction</span>；安全，靠从不 import。</span></div>
 <div class="card detail"><div class="tag">🔬 落到代码</div>
 <p>这套机制散落在几处，但脉络清晰：</p>
 <ul>
@@ -497,6 +505,7 @@ LESSON_18 = {"zh": r"""
 <li><strong>TypeScript 派生</strong>：<span class="mono">letta/functions/typescript_parser.py::derive_typescript_json_schema</span>。</li>
 <li><strong>接线在创建时</strong>：<span class="mono">letta/services/tool_manager.py</span>（custom 且无 schema → 调用派生）→ <span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>（按 <span class="mono">source_type</span> 分派 Python / TypeScript）。</li>
 </ul>
+<p>一句话串起来：<strong>创建时</strong>由 <span class="mono">tool_manager</span> 触发，<strong>派生</strong>落在 <span class="mono">functions.py</span> 三件套，<strong>类型解析</strong>靠 <span class="mono">ast_parsers.py</span>，<strong>语言分派</strong>看 <span class="mono">source_type</span>。顺着这条线读源码，基本不会迷路。</p>
 </div>
 
 <div class="card warn"><div class="tag">⚠️ 常见误区</div>
@@ -505,6 +514,7 @@ LESSON_18 = {"zh": r"""
 <li>多函数源码取<strong>最后一个</strong> <span class="mono">FunctionDef</span>，<strong>不是第一个</strong>。</li>
 <li>TypeScript 工具创建<strong>必须显式传 <span class="mono">json_schema</span></strong>，否则 <span class="mono">ToolCreate</span> 直接报错。</li>
 <li>schema 派生<strong>只在创建时</strong>做，<strong>已不在</strong> pydantic 校验器里：<span class="mono">Tool.refresh_source_code_and_json_schema</span> 对 custom 缺 schema 只<strong>告警</strong>、不再现算。</li>
+<li><span class="mono">ast.literal_eval</span> 只认<strong>字面量</strong>；别误以为它能求值任意默认值表达式，那正是它"安全"的原因。</li>
 </ul>
 </div>
 <h2>TypeScript 工具</h2>
@@ -514,28 +524,33 @@ LESSON_18 = {"zh": r"""
 <p>顺手厘清 <span class="mono">source_type</span> 的角色：它就是一张"语言标签"，告诉派生器这段源码该用哪把解析器——Python 走 AST、TypeScript 走正则，而 JSON 则表示"schema 我已经给你了，不用派生"。</p>
 <div class="cellgroup"><div class="cg-cap"><b>ToolSourceType 的三种取值</b></div><div class="cells"><span class="cell hl">python · 走 AST 派生</span><span class="sep">·</span><span class="cell">typescript · 走正则，需显式 schema</span><span class="sep">·</span><span class="cell">json · 直接提供 schema</span></div></div>
 <p>那为什么 TS 偏偏要"必须显式给 schema"？因为正则能稳妥覆盖的 TypeScript 语法面，远不如 Python 的 AST 完整、严谨。与其在复杂类型上猜错，不如让调用方把权威 schema 直接交出来。于是"自动派生"这条便利通道，主力服务的始终是 Python。</p>
+<p>顺带交代 <span class="mono">JSDoc</span> 的角色：TS 解析器从 <span class="mono">/** ... */</span> 注释里取每个参数的描述，就像 Python 从 docstring 取描述一样——给模型看的"说明"，两种语言殊途同归，都放在注释里。区别只在抽取方式：一个用正则扫文本，一个用 AST 读结构。</p>
 
 <h2>再挖深一点</h2>
 <p>把几个最容易卡住的"为什么"摊开来讲，每条都给示例、原因和源码出处。</p>
 <details class="accordion"><summary>① 为什么用 AST，而不直接 import？</summary><div class="acc-body">
-<p><strong>示例：</strong>用户源码在函数定义之外、顶层写了一行 <span class="mono">os.system("rm -rf /")</span>，只要你 <span class="mono">import</span> 它，这行就在你的服务器上跑了。</p>
+<p><strong>示例：</strong>用户源码在函数定义之外、顶层写了一行 <span class="mono">os.system("rm -rf /")</span>，只要你 <span class="mono">import</span> 它，这行就在你的服务器上跑了。注意：函数<strong>根本没被调用</strong>，仅仅"导入"就足以触发，这正是顶层代码可怕的地方。</p>
 <p><strong>为什么：</strong><span class="mono">import</span> 会执行模块的<strong>顶层代码</strong>，等于把服务器交给陌生人，是标准的 RCE。<span class="mono">ast.parse</span> 则只把源码读成<strong>语法树</strong>——纯静态、零副作用，看一千遍也不会触发任何执行。安全的本质，是"只读不跑"。</p>
 <p><strong>源码：</strong><span class="mono">letta/functions/functions.py::_parse_function_from_source</span> 全程基于 <span class="mono">ast</span>，没有一处 <span class="mono">exec/import</span>。</p>
+<p><strong>延伸：</strong>正因如此，Letta 把"不可信代码"当成贯穿整个工具系统的第一性原则——从派生 schema 到第 20 课的沙箱执行，都是这条原则的不同侧面。</p>
 </div></details>
 <details class="accordion"><summary>② MockFunction 凭什么骗过 inspect？</summary><div class="acc-body">
 <p><strong>示例：</strong><span class="mono">inspect.signature(mock)</span> 照样返回完整签名，哪怕 <span class="mono">mock</span> 从未被当作真函数定义过、调用它还会直接抛 <span class="mono">NotImplementedError</span>。</p>
 <p><strong>为什么：</strong><span class="mono">inspect</span> 读签名时只看对象的 <span class="mono">__signature__</span> 属性，读文档只看 <span class="mono">__doc__</span>——它<strong>根本不验证</strong>对象是不是"真函数"。只要这几个属性齐了，它就照常工作。这正是上传工具能原样复用 <span class="mono">generate_schema</span> 的关键。</p>
 <p><strong>源码：</strong><span class="mono">letta/functions/functions.py::MockFunction</span> 在 <span class="mono">__init__</span> 里手动设好这三个属性。</p>
+<p><strong>延伸：</strong>这也解释了为什么不必"真造一个函数"：<span class="mono">generate_schema</span> 要的从来不是可执行性，而是<strong>可描述性</strong>——签名与文档齐了，描述就齐了。</p>
 </div></details>
 <details class="accordion"><summary>③ 为什么取最后一个函数？未知类型怎么办？</summary><div class="acc-body">
 <p><strong>示例：</strong>源码里先写了几个辅助函数、最后才是工具本体，于是解析器取<strong>最后一个</strong> <span class="mono">FunctionDef</span>。</p>
 <p><strong>为什么：</strong>约定"工具是文件末尾那个函数"。若签名里引用了某个<strong>未定义</strong>的 Pydantic 模型，就用 <span class="mono">type(name, (BaseModel,), {...})</span> 当场造一个<strong>桩类</strong>顶上，绝不去 <span class="mono">import</span> 真实定义——既能让签名成形，又守住"不跑用户代码"的底线。</p>
 <p><strong>源码：</strong><span class="mono">_parse_function_from_source</span> 配合 <span class="mono">letta/functions/ast_parsers.py::resolve_type</span>（白名单解析）。</p>
+<p><strong>延伸：</strong>造桩靠 <span class="mono">type(name,(BaseModel,),{})</span> 这一行——它在运行时凭空合成一个类，仅供签名"有个名字可填"，绝不去触碰用户真正想引用的那个定义。</p>
 </div></details>
 <details class="accordion"><summary>④ 派生到底在何时、何地触发？</summary><div class="acc-body">
-<p><strong>示例：</strong>你创建一个 custom Python 工具却没给 <span class="mono">json_schema</span>，服务器就在<strong>创建流程</strong>里替你把 schema 派生出来。</p>
+<p><strong>示例：</strong>你创建一个 custom Python 工具却没给 <span class="mono">json_schema</span>，服务器就在<strong>创建流程</strong>里替你把 schema 派生出来。反过来，若你已经给了 schema，这一步就被跳过——派生只是"缺啥补啥"的兜底。</p>
 <p><strong>为什么：</strong>接线落在 <span class="mono">tool_manager</span>（判断 custom 且缺 schema）→ <span class="mono">generate_schema_for_tool_creation</span>（按 <span class="mono">source_type</span> 分派 Python / TS）。它<strong>已不在</strong> pydantic 校验器里，所以一次创建只算一次；而 TS 因为必须显式给 schema，通常不会落到自动派生这一支。</p>
 <p><strong>源码：</strong><span class="mono">letta/services/tool_manager.py</span>、<span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>。</p>
+<p><strong>延伸：</strong>把派生放在创建时、而非每次校验时，既省去重复计算，也让 schema 成为一份"创建那一刻定下、之后稳定不变"的契约。</p>
 </div></details>
 <div class="card key"><div class="tag">✅ 本课要点</div>
 <ul>
@@ -546,10 +561,11 @@ LESSON_18 = {"zh": r"""
 <li><strong>TS 工具必须显式给 <span class="mono">json_schema</span></strong>：自动派生主要服务 Python。</li>
 <li><strong>派生只在创建时做</strong>：接线在 <span class="mono">tool_manager</span> → <span class="mono">tool_schema_generator</span>，已不在 pydantic 校验器里。</li>
 </ul>
+<p>把这几条连起来看：<strong>不运行</strong>是原则，<strong>AST 解析</strong>是手段，<strong>MockFunction</strong>是适配器，<strong>复用 generate_schema</strong>是收益。四者环环相扣，缺一不可——这正是一个"安全又省事"的设计该有的样子。</p>
 </div>
 
 <p>回头看这一课，它其实只讲了一件事：<strong>把"安全"重新表述成"解析"</strong>。一旦你拒绝运行用户代码，"读懂它"就从一个运行时问题变成了一个纯文本分析问题——而文本分析，正是 AST 的拿手好戏。<span class="mono">MockFunction</span> 则像一座桥，让分析出来的零件无缝接回第 17 课那套成熟的生成器。</p>
 
-<p>至此，工具有了 schema、能被模型"看见"并发起调用。可当 agent <strong>真要执行</strong>一个工具时，它怎么知道"该用哪种方式跑它"——是直接在进程内调用、丢进沙箱隔离执行、还是连去一台外部服务器？这就是<strong>第 19 课"工具分发与执行"</strong>要回答的问题。</p>
+<p>至此，工具有了 schema、能被模型"看见"并发起调用。可当 agent <strong>真要执行</strong>一个工具时，它怎么知道"该用哪种方式跑它"——是直接在进程内调用、丢进沙箱隔离执行、还是连去一台外部服务器？这就是<strong>第 19 课"工具分发与执行"</strong>要回答的问题。换句话说，schema 解决的是"模型怎么理解工具"，而执行要解决的是"系统怎么安全地把工具跑起来"——这个故事，才刚刚讲到一半。</p>
 
 """, "en": r"""<p>stub</p>"""}
