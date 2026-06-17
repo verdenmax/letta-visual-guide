@@ -68,7 +68,7 @@ LESSON_21 = {"zh": r"""
   <div class="step"><div class="num">2</div><div class="sc"><h4>request_async</h4><p>把请求体发出去，拿回这一家的<strong>原始响应</strong>。async 方法，返回一个 dict。</p></div></div>
   <div class="step"><div class="num">3</div><div class="sc"><h4>convert_response_to_chat_completion</h4><p>把原始响应<strong>翻译成 OpenAI 形状</strong>的 ChatCompletionResponse。async 方法。</p></div></div>
 </div>
-<p>这三步谁来串？是 <span class="mono">send_llm_request</span>——它名字里没带 async，<strong>实际却是个 async 方法</strong>，依次调用三方法，并把任何一步抛出的异常都交给 <span class="mono">handle_llm_error</span> 兜底。</p>
+<p>这三步谁来串？是 <span class="mono">send_llm_request</span>——它名字里没带 async，<strong>实际却是个 async 方法</strong>，依次调用三方法，并把<strong>网络请求那一步</strong>（<span class="mono">request_async</span>）抛出的异常交给 <span class="mono">handle_llm_error</span> 兜底。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/llm_client_base.py</span><span class="ln">三方法 + send_llm_request 编排（简化）</span></div>
 <pre><span class="kw">class</span> <span class="fn">LLMClientBase</span>:
     <span class="nb">@abstractmethod</span>
@@ -248,7 +248,7 @@ LESSON_21 = {"zh": r"""
   <div class="step"><div class="num">2</div><div class="sc"><h4>request_async</h4><p>Send the request body off and get back <strong>this provider's</strong> raw response. An async method that returns a dict.</p></div></div>
   <div class="step"><div class="num">3</div><div class="sc"><h4>convert_response_to_chat_completion</h4><p>Translate the raw response <strong>into the OpenAI shape</strong> — a ChatCompletionResponse. An async method.</p></div></div>
 </div>
-<p>Who strings the three steps together? <span class="mono">send_llm_request</span> — its name carries no <span class="mono">async</span>, yet it is <strong>actually an async method</strong>. It calls the three methods in order and hands any exception thrown by any step to <span class="mono">handle_llm_error</span> as the catch-all.</p>
+<p>Who strings the three steps together? <span class="mono">send_llm_request</span> — its name carries no <span class="mono">async</span>, yet it is <strong>actually an async method</strong>. It calls the three methods in order and hands any exception from the <strong>request step</strong> (<span class="mono">request_async</span>) to <span class="mono">handle_llm_error</span> as the catch-all.</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/llm_client_base.py</span><span class="ln">the three methods + send_llm_request orchestration (simplified)</span></div>
 <pre><span class="kw">class</span> <span class="fn">LLMClientBase</span>:
     <span class="nb">@abstractmethod</span>
