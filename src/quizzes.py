@@ -1213,8 +1213,8 @@ QUIZZES = {
                     "en": "About “which generations continue via heartbeats,” which statement is correct?",
                 },
                 "opts": [
-                    {"zh": "元老 Agent 和第二代 V2 都还在用心跳（V2 的 _get_valid_tools 传 True，_handle_ai_response 里 continue_stepping = request_heartbeat），只有第三代 V3 把它彻底删掉",
-                     "en": "Both the elder Agent and the second-gen V2 still use heartbeats (V2's _get_valid_tools passes True, and continue_stepping = request_heartbeat in _handle_ai_response); only the third-gen V3 removes it entirely"},
+                    {"zh": "元老 Agent 和第二代 V2 都还在用心跳（V2 的 _get_valid_tools 传 True，_decide_continuation 里 continue_stepping = request_heartbeat），只有第三代 V3 把它彻底删掉",
+                     "en": "Both the elder Agent and the second-gen V2 still use heartbeats (V2's _get_valid_tools passes True, and continue_stepping = request_heartbeat in _decide_continuation); only the third-gen V3 removes it entirely"},
                     {"zh": "心跳是被全盘否定的旧设计，V2 和 V3 都已经不用了",
                      "en": "Heartbeats are a wholly rejected old design that both V2 and V3 have dropped"},
                     {"zh": "只有元老 Agent 用心跳，V2 和 V3 都改用了 _decide_continuation",
@@ -1224,8 +1224,8 @@ QUIZZES = {
                 ],
                 "answer": 0,
                 "why": {
-                    "zh": "别把“心跳”当成被否定的旧设计——同代的 V2 依然在用。letta_agent_v2.py::_get_valid_tools 传 request_heartbeat=True，其 _handle_ai_response 里 continue_stepping = request_heartbeat，续步判据仍由模型的心跳标志驱动。只有 V3（letta_v1_agent，注释 \"no heartbeats or forced tool calls\"）才把心跳整套拿掉、改用 _decide_continuation。所以不是“V2/V3 都不用”，不是“只有 Agent 用”，更不是“三代都用、只换名字”。一参之差（_get_valid_tools 传 True 还是 False）正是 V2 与 V3 的分水岭。",
-                    "en": "Don't treat “heartbeats” as a rejected old design — the same-era V2 still uses them. letta_agent_v2.py::_get_valid_tools passes request_heartbeat=True, and continue_stepping = request_heartbeat in its _handle_ai_response, so continuation is still driven by the model's heartbeat flag. Only V3 (letta_v1_agent, comment \"no heartbeats or forced tool calls\") removes the whole heartbeat machinery and switches to _decide_continuation. So it's not “neither V2 nor V3,” not “only Agent,” and not “all three with just a rename.” One param's difference (_get_valid_tools passing True vs False) is the watershed between V2 and V3.",
+                    "zh": "别把“心跳”当成被否定的旧设计——同代的 V2 依然在用。letta_agent_v2.py::_get_valid_tools 传 request_heartbeat=True，其 _decide_continuation 里 continue_stepping = request_heartbeat，续步判据仍由模型的心跳标志驱动。只有 V3（letta_v1_agent，注释 \"no heartbeats or forced tool calls\"）才把心跳整套拿掉——它重写 _decide_continuation，去掉该参数、默认继续。所以不是“V2/V3 都不用”，不是“只有 Agent 用”，更不是“三代都用、只换名字”。一参之差（_get_valid_tools 传 True 还是 False）正是 V2 与 V3 的分水岭。",
+                    "en": "Don't treat “heartbeats” as a rejected old design — the same-era V2 still uses them. letta_agent_v2.py::_get_valid_tools passes request_heartbeat=True, and continue_stepping = request_heartbeat in its _decide_continuation, so continuation is still driven by the model's heartbeat flag. Only V3 (letta_v1_agent, comment \"no heartbeats or forced tool calls\") removes the whole heartbeat machinery — it overrides _decide_continuation to drop that param and default to continue. So it's not “neither V2 nor V3,” not “only Agent,” and not “all three with just a rename.” One param's difference (_get_valid_tools passing True vs False) is the watershed between V2 and V3.",
                 },
             },
         ],

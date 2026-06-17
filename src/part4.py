@@ -1196,7 +1196,7 @@ args = <span class="fn">_safe_load_tool_call_str</span>(tc.function.arguments)
 args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None</span>)   <span class="cm"># 续步只看"调没调工具"</span>
 </pre></div>
 
-<p>可别以为"心跳"是被全盘否定的设计——同代的<strong>第二代 V2 依然在用</strong>。<span class="mono">letta_agent_v2.py::_get_valid_tools</span> 传的是 <span class="mono">request_heartbeat=True</span>，它的 <span class="mono">_handle_ai_response</span> 里 <span class="mono">continue_stepping = request_heartbeat</span>，续步判据仍由模型的心跳标志驱动。只有 V3（<span class="mono">letta_v1_agent</span>，注释 "no heartbeats or forced tool calls"）才把它彻底拿掉。</p>
+<p>可别以为"心跳"是被全盘否定的设计——同代的<strong>第二代 V2 依然在用</strong>。<span class="mono">letta_agent_v2.py::_get_valid_tools</span> 传的是 <span class="mono">request_heartbeat=True</span>，它的 <span class="mono">_decide_continuation</span> 里 <span class="mono">continue_stepping = request_heartbeat</span>，续步判据仍由模型的心跳标志驱动。只有 V3（<span class="mono">letta_v1_agent</span>，注释 "no heartbeats or forced tool calls"）才把它彻底拿掉。</p>
 
 <table class="t">
   <tr><th>实现</th><th>给工具加 request_heartbeat？</th><th>靠什么续步</th></tr>
@@ -1454,7 +1454,7 @@ args = <span class="fn">_safe_load_tool_call_str</span>(tc.function.arguments)
 args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None</span>)   <span class="cm"># continuation only looks at "was a tool called"</span>
 </pre></div>
 
-<p>Don't assume "heartbeats" are a wholly rejected design — the same-era second generation, <strong>V2, still uses them</strong>. <span class="mono">letta_agent_v2.py::_get_valid_tools</span> passes <span class="mono">request_heartbeat=True</span>, and in its <span class="mono">_handle_ai_response</span>, <span class="mono">continue_stepping = request_heartbeat</span> — continuation is still driven by the model's heartbeat flag. Only V3 (<span class="mono">letta_v1_agent</span>, comment "no heartbeats or forced tool calls") removes it entirely.</p>
+<p>Don't assume "heartbeats" are a wholly rejected design — the same-era second generation, <strong>V2, still uses them</strong>. <span class="mono">letta_agent_v2.py::_get_valid_tools</span> passes <span class="mono">request_heartbeat=True</span>, and in its <span class="mono">_decide_continuation</span>, <span class="mono">continue_stepping = request_heartbeat</span> — continuation is still driven by the model's heartbeat flag. Only V3 (<span class="mono">letta_v1_agent</span>, comment "no heartbeats or forced tool calls") removes it entirely.</p>
 
 <table class="t">
   <tr><th>Implementation</th><th>Add request_heartbeat to tools?</th><th>What it steps on</th></tr>
