@@ -414,5 +414,40 @@ LESSON_18 = {"zh": r"""
 <div class="col"><h4>❌ import + inspect</h4><p>把源码当模块加载，会<strong>执行顶层代码</strong>。等于让陌生人在你服务器上跑任意命令，安全边界直接失守。</p></div>
 <div class="col"><h4>✅ ast.parse</h4><p>把源码解析成<strong>语法树</strong>，<strong>纯静态、只读不跑</strong>。语法树就是结构化的"代码长相"，读它不会触发任何副作用。</p></div>
 </div>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">用户源码</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="lab">AST 只读不跑</span><span class="arrow">→</span><span class="emoji">📜</span><span class="bubble">我读你，但绝不跑你</span></div><div class="cap">派生器只"阅读"代码的形状，把它翻译成一张 schema，自始至终不让这段代码运行一行。</div></div>
+
+<h2>派生流程：纯 AST + 复用 generate_schema</h2>
+<div class="flow">
+<div class="node"><div class="nt">source_code</div><div class="nd">用户上传的源码字符串</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">ast.parse（不跑）</div><div class="nd">解析成语法树，纯静态</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">_parse_function_from_source</div><div class="nd">从树里抽出签名与 docstring</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">MockFunction</div><div class="nd">只带三件套的假函数</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">generate_schema</div><div class="nd">第 17 课的同一个生成器</div></div>
+<div class="arrow">→</div>
+<div class="node"><div class="nt">JSON schema</div><div class="nd">模型能看懂的工具契约</div></div>
+</div>
+<p>这条流水线最妙的地方，是末端那个 <span class="mono">generate_schema</span> 跟第 17 课<strong>一字不差</strong>。原生工具走的是"函数对象 → generate_schema"，上传工具走的是"源码 → MockFunction → generate_schema"——两条路在最后一步<strong>汇合到同一个生成器</strong>，schema 的口径因此完全一致。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">派生入口（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">derive_openai_json_schema</span>(source_code: str, name=<span class="kw">None</span>):
+    mock = <span class="fn">_parse_function_from_source</span>(source_code, name)  <span class="cm"># 纯 AST，绝不 exec</span>
+    <span class="kw">return</span> <span class="fn">generate_schema</span>(mock, name=name)            <span class="cm"># 复用第 17 课的生成器</span>
+</pre></div>
+<h2>MockFunction：骗过 inspect 的"假函数"</h2>
+<p>问题来了：<span class="mono">generate_schema</span> 期待的是一个<strong>真函数对象</strong>，它要对其调用 <span class="mono">inspect.signature</span>、读 <span class="mono">__doc__</span>。可我们手里只有从 AST 抽出来的零件，并没有真函数。Letta 的办法是临时<strong>捏一个"假函数"</strong>——<span class="mono">MockFunction</span>，只把 <span class="mono">inspect</span> 关心的几个属性凑齐，剩下的一概不管。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">MockFunction</span></div>
+<pre><span class="kw">class</span> <span class="fn">MockFunction</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, name, docstring, signature):
+        self.__name__ = name
+        self.__doc__ = docstring
+        self.__signature__ = signature        <span class="cm"># 设了它，inspect.signature 就照常工作</span>
+    <span class="kw">def</span> <span class="fn">__call__</span>(self, *a, **k):
+        <span class="kw">raise</span> <span class="fn">NotImplementedError</span>(<span class="st">"mock function cannot be called"</span>)
+</pre></div>
+<div class="cellgroup"><div class="cg-cap"><b>MockFunction 只凑齐三个属性</b></div><div class="cells"><span class="cell hl">__name__ 名字</span><span class="sep">·</span><span class="cell hl">__doc__ docstring</span><span class="sep">·</span><span class="cell hl">__signature__ 参数</span></div></div>
+<div class="note tip"><span class="ni">💡</span><span class="nx">关键在于：一旦显式设好 <span class="mono">__signature__</span>，<span class="mono">inspect.signature(mock)</span> 与 <span class="mono">parse(mock.__doc__)</span> 就能在一段<strong>从未运行过</strong>的代码上照常工作——<span class="mono">inspect</span> 只认这些属性，根本不在乎对象是真函数还是假货。这正是上传工具能<strong>原样复用</strong> <span class="mono">generate_schema</span> 的底层原因。</span></div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
