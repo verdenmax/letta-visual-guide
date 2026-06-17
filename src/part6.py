@@ -1003,6 +1003,61 @@ HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
 <div class="cute"><div class="row"><span class="emoji">🔡🔣🔤</span><span class="lab">jumbled tokens</span><span class="arrow">→</span><span class="emoji">📐</span><span class="bubble">only legal JSON gets out</span></div><div class="cap">GBNF is like a stencil: a crowd of messy tokens want in, but only the legal { } -shaped JSON tokens can pass</div></div>
 <div class="note info"><span class="ni">💡</span><span class="nx">That <span class="mono">inner_thoughts</span> field is no decoration: the grammar forces it into every branch, and on parse it's lifted from <span class="mono">params</span> into <span class="mono">message.content</span> — exactly the local version of Lesson 15's "inner monologue".</span></div>
 <p>This point is key: on the local path, <span class="mono">inner_thoughts</span> isn't written "voluntarily" by the model — it's <strong>hard-required</strong> by the grammar. That promotes Lesson 15's "inner monologue" convention from a prompt-level request to a grammar-level mandate.</p>
+<h2>Not Every Backend Accepts This Grammar</h2>
+<p>Here's the most easily overlooked limit: GBNF constrained decoding really fires on only <strong>four backends</strong>. The rest take the grammar and <strong>drop</strong> it, falling back on another way to guarantee JSON.</p>
+<table class="t">
+<tr><th>Backend</th><th>grammar</th><th>How JSON is guaranteed</th></tr>
+<tr><td class="mono">llamacpp / koboldcpp / webui / webui-legacy</td><td>grammar passed in</td><td>constrained decoding: output <strong>necessarily</strong> parseable</td></tr>
+<tr><td class="mono">ollama / vllm / lmstudio …</td><td>grammar dropped</td><td>prompt format + <span class="mono">clean_json</span> tolerant repair</td></tr>
+</table>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't treat <span class="mono">clean_json</span> as "resampling / retry". It's the tolerant repair of <span class="mono">json_parser.py::clean_json</span>: it tries hard to bend the model's dirty text into legal JSON, and errors out when it truly can't — rather than asking the model to regenerate.</span></div>
+<p>Plainly: a backend that "drops the grammar" loses that sampling insurance, and can only bet on the model behaving, with <span class="mono">clean_json</span> as a net. Most modern local models are conversational enough to bet on; but versus the four grammar backends' "hard guarantee", these are ultimately two tiers.</p>
+<p>So the same legacy path is a <strong>"sampling-level hard guarantee"</strong> for the four grammar backends, but degrades to a <strong>"parse-level best-effort repair"</strong> for the rest. The former cures the root, the latter treats the symptom.</p>
+<p>Why exactly these four? Because only their sampling interfaces expose an entry point that accepts a grammar (all descending from llama.cpp). ollama, vllm and the like share similar internals, but externally offer only the "OpenAI-compatible" set and don't accept GBNF.</p>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>This is really MemGPT's original magic, and a beautiful reinterpretation of "function calling".</p>
+<p>Before OpenAI's tool API unified the field, how could you get a model that only "continues text" to call a function?</p>
+<p>The first step is easy to imagine: stuff the function schema into the prompt as text and ask for JSON. The hard part is the second — use a <strong>GBNF grammar to constrain the decoder itself</strong>, so that while sampling the model literally <strong>cannot</strong> emit any illegal token, only a legal <span class="mono">{"function":…, "params":{"inner_thoughts":…}}</span>.</p>
+<p>Constrained decoding swaps "hopefully the format came out right" for "the sampler can only pick grammar-legal tokens" — parseability, upgraded from a probability to a guarantee.</p>
+<p>This is also exactly why it later became legacy: once every provider could speak OpenAI's tool API (Lesson 21's universal shape), compatible backends no longer needed this grammar trick.</p>
+<p>But it remains the <strong>conceptual origin</strong> of Letta's reliable structured output. One end echoes Lesson 21 (the OpenAI shape won), the other echoes Lesson 15 (<span class="mono">inner_thoughts</span> and the heartbeat).</p>
+</div>
+<h2>wrapper: "Acting Out" Function Calling on Bare Completion</h2>
+<p>Grammar governs "what shape comes out", so who handles the two ends — "telling the model about the tools" and "reading text back into structure"? The wrapper. Its abstract base class is <span class="mono">wrapper_base.py::LLMChatCompletionWrapper</span>, with just two methods.</p>
+<p>On one end <span class="mono">chat_completion_to_prompt</span> writes the function schema (along with the <span class="mono">inner_thoughts</span> description) into the prompt; on the other, <span class="mono">output_to_chat_completion_response</span> parses the model's returned text back into <span class="mono">{function, args}</span>.</p>
+<p>Both methods hang on the abstract base, marked <span class="mono">@abstractmethod</span>. In other words, any new wrapper that wants in is forced to fill both ends — "how to write out" and "how to read back" — and can't be instantiated if either is missing.</p>
+<p>Which wrapper to pick is decided by <span class="mono">utils.py::get_available_wrappers()</span>: a name with <span class="mono">grammar</span> builds a grammar along the way, one with <span class="mono">noforce</span> puts <span class="mono">inner_thoughts</span> at the top level. The default is <span class="mono">ChatMLInnerMonologueWrapper</span>.</p>
+<p>Why split by model family? Because different bases have different "chat templates": ChatML uses markers like <span class="mono">&lt;|im_start|&gt;</span> to separate roles, while Llama3 has its own set. The wrapper must apply the right template for the model to recognize which span is system and which is user.</p>
+<p>Below, look at the skeleton of the "parse back to structure" end — it's where the <span class="mono">clean_json</span> tolerant repair above is actually called.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/llm_chat_completion_wrappers/chatml.py</span><span class="ln">output_to_chat_completion_response (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">output_to_chat_completion_response</span>(self, raw_llm_output) -&gt; ChatCompletionResponse:
+    <span class="cm"># 1) first bend the dirty text into JSON (tolerant repair, not resampling)</span>
+    data = <span class="fn">clean_json</span>(raw_llm_output)
+
+    <span class="cm"># 2) pull out the function name and params</span>
+    function_name = data[<span class="st">"function"</span>]
+    function_params = data[<span class="st">"params"</span>]
+
+    <span class="cm"># 3) lift inner_thoughts from params into message.content (callback to Lesson 15)</span>
+    inner_thoughts = function_params.pop(<span class="st">"inner_thoughts"</span>, <span class="kw">None</span>)
+
+    message = {
+        <span class="st">"role"</span>: <span class="st">"assistant"</span>,
+        <span class="st">"content"</span>: inner_thoughts,
+        <span class="st">"function_call"</span>: {<span class="st">"name"</span>: function_name,
+                          <span class="st">"arguments"</span>: json.<span class="fn">dumps</span>(function_params)},
+    }
+    <span class="kw">return</span> <span class="fn">ChatCompletionResponse</span>(choices=[Choice(message=message)])
+</pre></div>
+<p>See these three steps and you see the wrapper's essence: a <strong>bidirectional translator</strong> — on the way out it writes tools as plain words into the prompt, on the way back it reads plain words into a <span class="mono">function_call</span>. The model, start to finish, only "continues text".</p>
+<p>The translator's slickest part is moving the "can it do function calling" capability <strong>off the model and outside</strong>. The model is still the same continue-only model; the skill is "wired on" for it by the proxy layer.</p>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">local_llm/chat_completion_proxy.py::get_chat_completion</span> — the legacy conductor, stringing the seven steps.</p>
+<p><span class="mono">local_llm/grammars/gbnf_grammar_generator.py::generate_grammar_and_documentation</span> — dynamically generates GBNF at runtime.</p>
+<p><span class="mono">llm_chat_completion_wrappers/wrapper_base.py::LLMChatCompletionWrapper</span> — the abstract base, two methods.</p>
+<p><span class="mono">llm_chat_completion_wrappers/chatml.py::ChatMLInnerMonologueWrapper</span> — the default wrapper (<span class="mono">DEFAULT_WRAPPER</span>).</p>
+<p><span class="mono">local_llm/function_parser.py::insert_heartbeat</span> and <span class="mono">patch_function</span> — local heartbeat correction (callback to Lesson 15).</p>
+</div>
 <!--ENMORE-->
 """,
 }
