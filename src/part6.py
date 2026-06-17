@@ -326,5 +326,38 @@ LESSON_21 = {"zh": r"""
 <p><span class="mono">convert_response_to_chat_completion</span> is <strong>async</strong>; don't call it as a synchronous function. And "three methods" is only a teaching simplification of 8 abstract methods.</p>
 <p>Although the entire <span class="mono">LLMConfig</span> class is deprecated, it is <strong>still being consumed</strong> — don't assume that because it is tagged "deprecated" it is dead code you can route around.</p>
 </div>
-<!--ENMORE-->
+<h2>Dig a little deeper</h2>
+<p>The main thread is complete at this point. The four drawers below collect the details you are likely to ask about — expand them as your interest dictates; leaving them closed costs you nothing on the main thread.</p>
+<details class="accordion"><summary>Why pick OpenAI's shape, of all shapes, as the "lingua franca"?</summary><div class="acc-body">
+<p>Because it has long been the de facto standard of this field. A vast number of third-party tools, client SDKs, and observability and evaluation platforms read and write messages, tool calls and usage by the <span class="mono">ChatCompletion</span> set of fields by default. Choosing it as the intermediate format means Letta plugs into this whole ready-made ecosystem the moment it is born.</p>
+<p>Think of it in reverse: if you built your own "neutral format", then every provider you onboard and every external tool you integrate would have to translate once more between the two formats, and the maintenance cost would only snowball. Rather than that, stand directly on a widely accepted standard — it is the least-effort and least-error-prone move.</p>
+<p>The cost is that it binds Letta fairly tightly to OpenAI's shape; but given how widespread that shape is, the trade is clearly very worthwhile.</p>
+<p>Don't misread this as "the OpenAI shape is the most perfect format". It is not necessarily the most elegant, but it wins on being universal enough and popular enough — in engineering, "everyone recognizes it" is often worth more than "the prettiest design".</p>
+</div></details>
+<details class="accordion"><summary>How many methods is "three methods" really?</summary><div class="acc-body">
+<p>Strictly, it is <strong>8</strong> <span class="mono">@abstractmethod</span>s. Besides this lesson's main-thread three — build, request_async, convert — there are also the synchronous <span class="mono">request</span>, the vector-embedding <span class="mono">request_embeddings</span>, the streaming <span class="mono">stream_async</span>, the reasoning-model check <span class="mono">is_reasoning_model</span>, and the unified error handling <span class="mono">handle_llm_error</span>.</p>
+<p>This lesson picks only those three because together they answer the most central question: how does a plain chat request collapse all the way from "each provider's format" into "one unified shape". The rest cover side scenarios — sync, embeddings, streaming and exceptions — and their mechanisms are broadly alike, so there is no rush to look at them until you actually need them.</p>
+<p>One more detail worth mentioning: precisely because all 8 methods are tagged <span class="mono">@abstractmethod</span>, if a concrete client misses implementing even one of them, the class errors out the moment it is instantiated. It amounts to using the type system to force every provider to fill the contract honestly and completely.</p>
+</div></details>
+<details class="accordion"><summary>What's the difference between send_llm_request and send_llm_request_async?</summary><div class="acc-body">
+<p><span class="mono">send_llm_request</span> runs the <strong>full three steps</strong>: first <span class="mono">build_request_data</span> assembles the request body, then <span class="mono">request_async</span> sends it off, and finally <span class="mono">convert</span> turns it into the unified shape. Hand it the messages and config, and it manages everything from start to finish.</p>
+<p><span class="mono">send_llm_request_async</span>, by contrast, takes a <strong>pre-built</strong> <span class="mono">request_data</span>, so it skips the first step and runs only the latter two — "send the request + convert the shape". It suits scenarios where the request body was already assembled elsewhere and you want to reuse it directly, sparing the cost of reassembly.</p>
+<p>When would you use the latter? In batch processing or retries after failure, say, where the request body was constructed long ago and you only want to send it again at a different moment — skipping the repeated build is both less work and avoids the parameter drift a re-assembly might introduce.</p>
+</div></details>
+<details class="accordion"><summary>How do providers' wildly varied errors collapse into one unified exception?</summary><div class="acc-body">
+<p>It relies on that eighth abstract method, <span class="mono">handle_llm_error</span>. The base class provides a usable default implementation: it maps connection-type errors thrown by <span class="mono">httpx</span> into <span class="mono">LLMConnectionError</span>, and catches the remaining unknown errors as <span class="mono">LLMError</span>, so the upper layer at least receives one unified exception type.</p>
+<p><span class="mono">OpenAIClient</span> adds one more concrete layer on top: it maps a "context too long" <span class="mono">context_length_exceeded</span> into <span class="mono">ContextWindowExceededError</span> (defined in <span class="mono">letta/errors.py</span>), tying right back to the context pressure and compaction from Lessons 12 and 14. So the loop only needs to catch these unified exceptions, and never has to recognize each provider's own error codes and message formats.</p>
+<p>The real point of this mapping layer is that the upper layer faces only a <strong>stable vocabulary of exceptions</strong>: when the loop sees <span class="mono">ContextWindowExceededError</span> it triggers compaction, without caring in the slightest whether it was originally thrown by OpenAI, Anthropic or someone else.</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>The factory <span class="mono">LLMClient.create</span> picks a client by <span class="mono">model_endpoint_type</span>; anything not listed explicitly defaults to <span class="mono">OpenAIClient</span>.</li>
+<li>The core three methods — build / request_async / convert — are strung together by <span class="mono">send_llm_request</span>, which is itself an async method.</li>
+<li>The output is uniformly an OpenAI-shaped <span class="mono">ChatCompletionResponse</span>, the universal intermediate format running through the whole system.</li>
+<li>The agent loop cannot see which provider sits underneath; from start to finish it only knows this one shape.</li>
+<li><span class="mono">LLMConfig</span> carries the connection config (including the dispatch-driving <span class="mono">model_endpoint_type</span>); the whole class is deprecated but still a live path.</li>
+</ul>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Close the lesson in one line: <strong>the endpoint type picks the client, the three methods collapse the differences into the OpenAI shape, and the loop knows only this one</strong>. These three clauses are the very foundation on which all the "quirk isolation" in the next two lessons rests.</span></div>
+<p>The contract is now on paper, but the providers' "quirks" have not vanished with it — Anthropic's prompt caching, Google's request format, force-injecting an inner monologue into a model with no native reasoning… where exactly are these differences hidden, and how do they avoid polluting the loop above? The next lesson, Lesson 22, takes up "isolating provider quirks".</p>
 """}

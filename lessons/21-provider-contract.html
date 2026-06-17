@@ -513,7 +513,187 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="note info"><span class="ni">💡</span><span class="nx">一句话收束本课：<strong>endpoint 类型选 client，三方法把差异收敛成 OpenAI 形状，循环只认这一种</strong>。这三句，正是后面两课所有"怪癖隔离"赖以成立的地基。</span></div>
 <p>契约这张纸立好了，可各家供应商的"怪脾气"并没就此消失——Anthropic 的提示缓存、Google 的请求格式、给没有原生推理能力的模型<strong>硬注入一段内心独白</strong>……这些差异究竟被藏在哪、又是怎么做到不污染上面那套循环的？下一课，第 22 课就来讲"provider 怪癖的隔离"。</p>
 </div>
-  <div class="lang-en"><p>stub</p></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">For the last five parts we have treated "call the LLM" as a one-liner — hand the messages over, wait for the reply to come back. Reality is far messier: Letta supports <strong>more than twenty providers</strong> at once — from OpenAI, Anthropic and Google to Groq, all the way down to local models running on your own machine — and what their requests look like, what their responses look like, even the names of their error fields, all differ.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson answers a single question: how do you tuck that pile of wildly different behaviour <strong>neatly behind one unified interface</strong>, so the execution loop from Lessons 13–16 never knows — and never needs to care — which provider it is actually talking to. This is the opening of Part 6.</p>
+<div class="card analogy"><div class="tag">🔌 Real-world analogy</div>
+<p>Picture the simultaneous interpretation at a UN General Assembly. On the floor, each nation's delegate speaks their own language — one in French, one in Arabic, one in Chinese — and nobody accommodates anyone else. Each of those delegates is one <span class="mono">provider</span>.</p>
+<p>But you, down in the audience, hear only <strong>one</strong> working language in your headset. The secret lives in the interpretation booth: whatever a delegate says, the interpreter turns it into the same language before it reaches your ears, so understanding that one language is all you need.</p>
+<p>The "working language" Letta settles on is the <strong>OpenAI response shape</strong>. The agent loop in the audience only has to understand this one, and it makes no difference who takes the floor — and that "interpretation booth" is exactly the three-method client we will take apart in this lesson.</p>
+<p>Hidden in this analogy is a key principle: <strong>unification is not about forcing everyone to become the same — it is about adding one layer of translation in the middle</strong>. The delegates go on speaking their own languages; all that changes is that "it passes through interpretation before it reaches your ears".</p>
+<p>And precisely because that translation layer sits in the middle, the day a new delegate who speaks Swahili shows up, the audience has nothing to relearn — which is exactly the refrain this lesson keeps repeating: "add a provider, change the loop by zero lines".</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Grab this lesson in one sentence: <strong>one field drives one factory, and one set of three methods collapses the differences into one shape</strong>.</p>
+<p>The field that drives the dispatch is <span class="mono">llm_config.model_endpoint_type</span>. It is passed into <span class="mono">LLMClient.create</span>, where a <span class="mono">match/case</span> picks out the concrete client class; anything not listed explicitly falls through to the default <span class="mono">OpenAIClient</span>.</p>
+<p>The chosen client inherits from <span class="mono">LLMClientBase</span>, whose core is three methods — <span class="mono">build_request_data</span> / <span class="mono">request_async</span> / <span class="mono">convert_response_to_chat_completion</span> — strung together by <span class="mono">send_llm_request</span>. No matter which provider sits underneath, what comes out is always an OpenAI-shaped <span class="mono">ChatCompletionResponse</span>.</p>
+<p>Remember the three layers as one line: <strong>field → factory → three methods → unified shape</strong>. The rest of this lesson is just spelling out each link of that chain, one at a time.</p>
+</div>
+<p>So this lesson really covers three interlocking things: <strong>how the factory picks a client</strong>, <strong>how the three methods do their work</strong>, and <strong>why everyone ends up looking like OpenAI</strong>. Let's take them apart one by one.</p>
+<h2>First, a question: why do we need this abstraction</h2>
+<p>Before we take the factory apart, let's get clear on "what happens without it". Putting the two worlds — with it and without it — side by side is what makes the case clearest.</p>
+<div class="cols">
+  <div class="col"><h4>😵 Without a unified abstraction</h4><p>The execution loop fills up with <span class="mono">if provider == ...</span> branches: building requests is written per provider, parsing responses is written per provider, and even reading the token usage means remembering what each provider's fields are called. Every provider you add rewrites the loop once more, and dirties it a little further.</p></div>
+  <div class="col"><h4>😌 With a unified abstraction</h4><p>The loop programs against one interface and one shape. "Which provider exactly" is pressed entirely down into the factory and the three methods, so the loop writes no branches and never has to change as providers come and go — clean and stable.</p></div>
+</div>
+<p>That contrast is almost the whole value of this lesson: fence "the part that varies by provider" inside the client, and set "the loop that is the same for everyone" completely free. Keep this contrast in mind as you read on, and the intent behind every later design choice becomes clearer.</p>
+<h2>The factory: pick a client by endpoint type</h2>
+<p>Start with the "pick a client" step. The entry point of the whole adaptation is one overview diagram: the agent loop hands a request off, the factory selects a concrete client by <span class="mono">model_endpoint_type</span>, the three methods run, and a unified-shape response is handed back to the loop.</p>
+<div class="flow">
+  <div class="node"><div class="nt">agent loop</div><div class="nd">only knows the OpenAI shape</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">LLMClient.create</div><div class="nd">pick client by model_endpoint_type</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">three methods</div><div class="nd">build / request / convert</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">ChatCompletionResponse</div><div class="nd">universal intermediate format</div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">In one line: <strong>pick one data shape as the "lingua franca" and make every provider translate into it</strong>. The loop learns only this one language, and no number of added providers forces a change.</span></div>
+<p>The factory itself is thin — it is <strong>not</strong> a client, it sends no request of its own, it only "manufactures the right client by type". Put differently, it is a triage desk: it does not treat you, it only sorts you, and hands you off to the right specialist.</p>
+<p>Here is the simplified dispatch logic: a <span class="mono">@staticmethod</span> that runs <span class="mono">match</span> on <span class="mono">provider_type</span>, returns the matching client case by case, and finally falls back with <span class="mono">case _</span>.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/llm_client.py</span><span class="ln">LLMClient.create dispatch (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">LLMClient</span>:
+    <span class="nb">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">create</span>(provider_type, put_inner_thoughts_first=<span class="kw">True</span>, actor=<span class="kw">None</span>):
+        <span class="kw">match</span> provider_type:                 <span class="cm"># = llm_config.model_endpoint_type</span>
+            <span class="kw">case</span> ProviderType.anthropic:     <span class="kw">return</span> <span class="fn">AnthropicClient</span>(...)
+            <span class="kw">case</span> ProviderType.google_vertex: <span class="kw">return</span> <span class="fn">GoogleVertexClient</span>(...)
+            <span class="kw">case</span> ProviderType.groq:          <span class="kw">return</span> <span class="fn">GroqClient</span>(...)
+            <span class="cm"># … a dozen-odd cases …</span>
+            <span class="kw">case</span> _:                          <span class="kw">return</span> <span class="fn">OpenAIClient</span>(...)   <span class="cm"># default: openai/ollama/vllm/… all land here</span>
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx"><span class="mono">LLMClient</span> is not itself a client; it only <strong>manufactures</strong> clients. The dispatch relies on <span class="mono">llm_config.model_endpoint_type</span> — and because <span class="mono">ProviderType(str, Enum)</span> is essentially a string, <span class="mono">match/case</span> can match on it directly.</span></div>
+<p>Laying the dispatch out as a table is more intuitive. Note the last row: a whole crowd of common endpoints actually <strong>share</strong> that default client — not every provider needs its own class.</p>
+<table class="t">
+<tr><th>model_endpoint_type</th><th>client selected</th></tr>
+<tr><td class="mono">anthropic</td><td class="mono">AnthropicClient</td></tr>
+<tr><td class="mono">google_vertex</td><td class="mono">GoogleVertexClient</td></tr>
+<tr><td class="mono">groq</td><td class="mono">GroqClient</td></tr>
+<tr><td class="mono">openrouter</td><td class="mono">OpenAIClient (explicit)</td></tr>
+<tr><td class="mono">openai / ollama / vllm / …</td><td class="mono">OpenAIClient (default case _)</td></tr>
+</table>
+<p>Why do so many providers land in that default bucket? Because most of them are already compatible with OpenAI's interface — local inference frameworks (ollama, vllm, lmstudio…) almost all expose an "OpenAI-compatible" endpoint, so Letta only has to send the request to a different <span class="mono">model_endpoint</span>, and the same <span class="mono">OpenAIClient</span> can serve a whole crowd of them.</p>
+<p>Look at that dozen-odd <span class="mono">case</span>s from another angle: they are really an "exceptions list" — only providers whose behaviour genuinely differs from OpenAI need a separate entry, and the rest are all handled as "OpenAI-compatible" by default. The shorter the list, the more universal the standard.</p>
+<h2>The three-method contract</h2>
+<p>Once a client is chosen, the real work is done by the three methods it inherits from <span class="mono">LLMClientBase</span>. Lined up vertically, they form a smooth three-step pipeline: assemble the request → send the request → convert the shape.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>build_request_data</h4><p>Assemble the messages, tools and config into the request body <strong>this provider</strong> understands. A synchronous method that returns a dict.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>request_async</h4><p>Send the request body off and get back <strong>this provider's</strong> raw response. An async method that returns a dict.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>convert_response_to_chat_completion</h4><p>Translate the raw response <strong>into the OpenAI shape</strong> — a ChatCompletionResponse. An async method.</p></div></div>
+</div>
+<p>Who strings the three steps together? <span class="mono">send_llm_request</span> — its name carries no <span class="mono">async</span>, yet it is <strong>actually an async method</strong>. It calls the three methods in order and hands any exception thrown by any step to <span class="mono">handle_llm_error</span> as the catch-all.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/llm_client_base.py</span><span class="ln">the three methods + send_llm_request orchestration (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">LLMClientBase</span>:
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">def</span> <span class="fn">build_request_data</span>(self, agent_type, messages, llm_config, tools, ...) -&gt; dict: ...
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">async def</span> <span class="fn">request_async</span>(self, request_data, llm_config) -&gt; dict: ...
+    <span class="nb">@abstractmethod</span>
+    <span class="kw">async def</span> <span class="fn">convert_response_to_chat_completion</span>(self, response_data, ...) -&gt; ChatCompletionResponse: ...
+
+    <span class="kw">async def</span> <span class="fn">send_llm_request</span>(self, ...):           <span class="cm"># orchestration: string the three steps</span>
+        data = self.<span class="fn">build_request_data</span>(...)
+        <span class="kw">try</span>:    resp = <span class="kw">await</span> self.<span class="fn">request_async</span>(data, llm_config)
+        <span class="kw">except</span> Exception <span class="kw">as</span> e: <span class="kw">raise</span> self.<span class="fn">handle_llm_error</span>(e, llm_config)
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">convert_response_to_chat_completion</span>(resp, ...)
+</pre></div>
+<div class="note tip"><span class="ni">💡</span><span class="nx">"Three methods" is a <strong>teaching simplification</strong>. <span class="mono">LLMClientBase</span> actually has 8 abstract methods; the other 5 are <span class="mono">request</span> (sync) / <span class="mono">request_embeddings</span> / <span class="mono">stream_async</span> / <span class="mono">is_reasoning_model</span> / <span class="mono">handle_llm_error</span>. This lesson grabs only the "data shape" through-line.</span></div>
+<p>Notice the division of labour in this pipeline: step 1 knows "what format this provider wants", step 3 knows "what format this provider replies in". <strong>All provider differences are locked into these two end steps</strong>, while the sending and orchestration in the middle are shared by every provider.</p>
+<p>This is where the abstract base class earns its keep: it cuts "the part that varies" apart from "the part that stays fixed". What varies is how the request body is assembled and how the response is parsed; what stays fixed is the skeleton "assemble first, then send, then convert, and map errors into one unified exception". To onboard a new provider, you only fill in those two varying methods.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Watch the sync/async split across the three methods: <span class="mono">build_request_data</span> is pure assembly and touches no network, so it is <strong>synchronous</strong>; the network-waiting <span class="mono">request_async</span>, and the <span class="mono">convert</span> that then processes the response, are both <strong>async</strong>.</span></div>
+<h2>The OpenAI shape = the universal intermediate format</h2>
+<p>The most critical of the three methods is the third. Whether the layer below is Anthropic's content blocks, Google's <span class="mono">functionCall</span>, or a stretch of plain text spat out by a local model, <span class="mono">convert_*</span> collapses it into one and the same type — <span class="mono">ChatCompletionResponse</span>.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/schemas/openai/chat_completion_response.py</span><span class="ln">the universal intermediate format (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">ChatCompletionResponse</span>(BaseModel):    <span class="cm"># whichever provider, it all converts to this</span>
+    id: str
+    choices: List[Choice]                  <span class="cm"># Choice(message, finish_reason, ...)</span>
+    created: int
+    model: Optional[str]
+    usage: UsageStatistics
+    object: Literal[<span class="st">"chat.completion"</span>] = <span class="st">"chat.completion"</span>
+</pre></div>
+<p>With this unified exit, the loop from Lesson 14 can safely <strong>read only fixed fields</strong>: take the message and tool calls from <span class="mono">choices</span>, take the token usage from <span class="mono">usage</span>, never first asking "which provider replied this time".</p>
+<p>A note on streaming: <span class="mono">stream_async</span> returns the OpenAI SDK's <span class="mono">AsyncStream[ChatCompletionChunk]</span> — even the "generate-as-you-go" chunk format is collapsed onto OpenAI's set as well.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Think of <span class="mono">convert_*</span> as the interpreter's final step: whatever arrived earlier — nested JSON, or plain text laced with markers — is at this step transcribed into the same standard form, and whoever fetches it downstream sees the very same layout.</span></div>
+<div class="cute"><div class="row"><span class="emoji">🔌🔌🔌</span><span class="lab">each provider's response</span><span class="arrow">→</span><span class="emoji">🟢</span><span class="bubble">one unified socket</span></div><div class="cap">differently shaped plugs → adapter → one unified socket (the OpenAI shape): the loop reads only this one</div></div>
+<h2>What exactly sits inside the unified shape</h2>
+<p>Since the whole system communicates through <span class="mono">ChatCompletionResponse</span>, it is worth a minute to see clearly its most critical cells — because the loop advances precisely by reading these few cells.</p>
+<div class="cellgroup"><div class="cg-cap"><b>the cells the loop reads most</b></div><div class="cells"><span class="cell hl">choices[].message</span><span class="sep">·</span><span class="cell">choices[].finish_reason</span><span class="sep">·</span><span class="cell">usage.total_tokens</span><span class="sep">·</span><span class="cell">model</span><span class="sep">·</span><span class="cell">id</span></div></div>
+<p>Of these, <span class="mono">message</span> holds the assistant reply and the tool calls, and the loop in Lesson 14 decides "whether to run another step" exactly from it; <span class="mono">usage</span> in turn feeds the context-pressure statistics, echoing the compaction decision from Lesson 12. However strange a provider's raw response, as long as these cells are filled in faithfully, the loop above runs as usual.</p>
+<p>Conversely, this is also the acceptance test set for every new client: as long as your <span class="mono">convert_*</span> fills these cells correctly and completely, you are wired in; fill them incompletely, and the loop gives itself away the instant it reaches for a field.</p>
+<h2>LLMConfig: the "connection profile" each agent carries</h2>
+<p>The factory needs <span class="mono">model_endpoint_type</span> — but where does that value come from? From the <span class="mono">LLMConfig</span> every agent carries with it — a connection-profile card that says "connect to this provider, use this model, with this window size".</p>
+<div class="cellgroup"><div class="cg-cap"><b>LLMConfig key fields</b></div><div class="cells"><span class="cell hl">model_endpoint_type</span><span class="sep">·</span><span class="cell">model</span><span class="sep">·</span><span class="cell">model_endpoint</span><span class="sep">·</span><span class="cell">context_window</span><span class="sep">·</span><span class="cell">put_inner_thoughts_in_kwargs</span><span class="sep">·</span><span class="cell">max_tokens</span><span class="sep">·</span><span class="cell">enable_reasoner</span></div></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">This card hangs on <span class="mono">AgentState.llm_config</span> (calling back to Lesson 13). The whole <span class="mono">LLMConfig</span> class is <strong>marked deprecated</strong> and points toward <span class="mono">ModelSettings</span>, yet it is still the live abstraction the factory and the base class consume; within it, <span class="mono">model_endpoint_type</span> is the very item that drives the dispatch.</span></div>
+<p>Trace the chain and it all connects: <span class="mono">AgentState</span> carries the <span class="mono">LLMConfig</span>, the loop pulls <span class="mono">model_endpoint_type</span> out of it and hands it to the factory, the factory builds the client from that, and the client then uses the remaining fields (<span class="mono">model_endpoint</span>, <span class="mono">context_window</span>, <span class="mono">max_tokens</span>…) to assemble this provider's request. One line is now wired end to end.</p>
+<p>And precisely for that reason, "switching providers" in Letta is often just <strong>swapping one <span class="mono">LLMConfig</span></strong>: change <span class="mono">model_endpoint_type</span> and <span class="mono">model_endpoint</span>, and the factory naturally dispatches to a different client, with not a single line of loop code touched.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">This card also carries a few "behaviour switches" the next two lessons of this part will use: <span class="mono">put_inner_thoughts_in_kwargs</span> decides whether to stuff the inner monologue into a tool argument (Lesson 22), <span class="mono">enable_reasoner</span> and <span class="mono">reasoning_effort</span> control reasoning strength, and <span class="mono">provider_category</span> distinguishes platform-included quota from BYOK (bring-your-own-key).</span></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>This is a lesson that pushes the <strong>adapter pattern to its limit</strong>. The loop from Lessons 13–16 never, from start to finish, knows who it is talking to — and the secret is one sentence: <strong>settle on one data shape as the "lingua franca" and make every provider translate itself into it</strong>.</p>
+<p>So Anthropic's content blocks, Google's <span class="mono">functionCall</span>, and the plain text a local model spits out all collapse into the same <span class="mono">ChatCompletionResponse</span>, and the loop just reads it. Want to add a twentieth provider? Write a subclass, implement three methods, and change not one line of the loop.</p>
+<p>An even more "surrender-style" move is that default <span class="mono">case _ → OpenAIClient</span>: since the industry long ago enshrined OpenAI's shape as the de facto standard, Letta simply makes "OpenAI-compatible" the <strong>default assumption</strong>. This also echoes Lesson 14's loop consuming <span class="mono">usage</span> and the response, and the way <span class="mono">handle_llm_error</span> in Lessons 12 and 14 maps a context overflow into <span class="mono">ContextWindowExceededError</span>.</p>
+<p>The cleverest thing about this approach is its "contagiousness": once the OpenAI shape is set as the internal currency, modules like memory, tools, compaction and persistence all deal with this one shape only, and none of them needs to know which provider sits below — the abstraction's dividend spreads outward, layer by layer.</p>
+<p>No wonder the maintainers are willing to sacrifice a little "purity" for it: trading a shape that is perhaps imperfect but understood by everyone for "add a provider without changing the loop, add a module without asking about the provider" is, in engineering terms, an almost sure-win bargain.</p>
+</div>
+<h2>Recap: run the factory and the three methods together once</h2>
+<p>With the abstraction explained, walking through a concrete pass makes it feel more solid. Suppose some agent's <span class="mono">LLMConfig</span> has <span class="mono">model_endpoint_type</span> = <span class="mono">groq</span>, and the loop is about to send one request — three things happen behind the scenes.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>pick the client</h4><p>The loop pulls out <span class="mono">groq</span> and passes it to <span class="mono">LLMClient.create</span>; the <span class="mono">match</span> hits <span class="mono">GroqClient</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>build + send</h4><p><span class="mono">build_request_data</span> assembles the request body Groq wants, and <span class="mono">request_async</span> sends it off and gets back the raw response.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>convert the shape</h4><p><span class="mono">convert_*</span> translates Groq's response into a <span class="mono">ChatCompletionResponse</span> and hands it back to the loop.</p></div></div>
+</div>
+<p>From the loop's point of view, the whole trip only hands out one request and collects back one <span class="mono">ChatCompletionResponse</span>. The fact that "this run went through Groq" is completely walled off inside the factory and the three methods, and the loop feels nothing throughout.</p>
+<p>Swap <span class="mono">groq</span> for <span class="mono">anthropic</span>, <span class="mono">google_vertex</span>, or simply a local <span class="mono">ollama</span>, and the "subject" of the three steps above becomes a different client, but <strong>the shape is exactly the same</strong> and the loop code likewise does not change by a single character — this is the most direct dividend of a unified contract.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Remember this cause and effect: <strong>the shape is unified first, the loop is simple second</strong>. Precisely because the three methods guarantee a consistent exit shape, the loop in Lesson 14 dares to be written so cleanly — it never reserves any branch for "which provider this time".</span></div>
+<p>You can even use this as a debugging instinct: if a check like <span class="mono">if is_anthropic</span> shows up inside the loop, the abstraction has most likely leaked — the right home for that logic is some client's <span class="mono">build</span> or <span class="mono">convert</span>, not crawling up into the loop.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">The next two cards gather up the real code locations this lesson touches, along with a few of the easiest pitfalls to step on — handy for self-checking later or digging into the source.</span></div>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">llm_api/llm_client.py::LLMClient.create</span> — <span class="mono">match/case</span> dispatch, default <span class="mono">OpenAIClient</span>.</p>
+<p><span class="mono">llm_api/llm_client_base.py::LLMClientBase</span> — the three methods + <span class="mono">send_llm_request</span> orchestration.</p>
+<p><span class="mono">schemas/openai/chat_completion_response.py::ChatCompletionResponse</span> — the universal intermediate format.</p>
+<p><span class="mono">schemas/llm_config.py::LLMConfig</span> — deprecated but still a live path; for error mapping see <span class="mono">OpenAIClient.handle_llm_error → ContextWindowExceededError</span> (defined in <span class="mono">letta/errors.py</span>).</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ Common misconceptions</div>
+<p>The factory dispatches on <span class="mono">model_endpoint_type</span> (a <span class="mono">ProviderType</span> string), <strong>not</strong> on the <span class="mono">LLMConfig</span> object itself.</p>
+<p>Providers not listed explicitly (<span class="mono">openai</span>/<span class="mono">ollama</span>/<span class="mono">vllm</span>…) are <strong>not unhandled</strong>; they all land in the default <span class="mono">case _ → OpenAIClient</span>.</p>
+<p><span class="mono">convert_response_to_chat_completion</span> is <strong>async</strong>; don't call it as a synchronous function. And "three methods" is only a teaching simplification of 8 abstract methods.</p>
+<p>Although the entire <span class="mono">LLMConfig</span> class is deprecated, it is <strong>still being consumed</strong> — don't assume that because it is tagged "deprecated" it is dead code you can route around.</p>
+</div>
+<h2>Dig a little deeper</h2>
+<p>The main thread is complete at this point. The four drawers below collect the details you are likely to ask about — expand them as your interest dictates; leaving them closed costs you nothing on the main thread.</p>
+<details class="accordion"><summary>Why pick OpenAI's shape, of all shapes, as the "lingua franca"?</summary><div class="acc-body">
+<p>Because it has long been the de facto standard of this field. A vast number of third-party tools, client SDKs, and observability and evaluation platforms read and write messages, tool calls and usage by the <span class="mono">ChatCompletion</span> set of fields by default. Choosing it as the intermediate format means Letta plugs into this whole ready-made ecosystem the moment it is born.</p>
+<p>Think of it in reverse: if you built your own "neutral format", then every provider you onboard and every external tool you integrate would have to translate once more between the two formats, and the maintenance cost would only snowball. Rather than that, stand directly on a widely accepted standard — it is the least-effort and least-error-prone move.</p>
+<p>The cost is that it binds Letta fairly tightly to OpenAI's shape; but given how widespread that shape is, the trade is clearly very worthwhile.</p>
+<p>Don't misread this as "the OpenAI shape is the most perfect format". It is not necessarily the most elegant, but it wins on being universal enough and popular enough — in engineering, "everyone recognizes it" is often worth more than "the prettiest design".</p>
+</div></details>
+<details class="accordion"><summary>How many methods is "three methods" really?</summary><div class="acc-body">
+<p>Strictly, it is <strong>8</strong> <span class="mono">@abstractmethod</span>s. Besides this lesson's main-thread three — build, request_async, convert — there are also the synchronous <span class="mono">request</span>, the vector-embedding <span class="mono">request_embeddings</span>, the streaming <span class="mono">stream_async</span>, the reasoning-model check <span class="mono">is_reasoning_model</span>, and the unified error handling <span class="mono">handle_llm_error</span>.</p>
+<p>This lesson picks only those three because together they answer the most central question: how does a plain chat request collapse all the way from "each provider's format" into "one unified shape". The rest cover side scenarios — sync, embeddings, streaming and exceptions — and their mechanisms are broadly alike, so there is no rush to look at them until you actually need them.</p>
+<p>One more detail worth mentioning: precisely because all 8 methods are tagged <span class="mono">@abstractmethod</span>, if a concrete client misses implementing even one of them, the class errors out the moment it is instantiated. It amounts to using the type system to force every provider to fill the contract honestly and completely.</p>
+</div></details>
+<details class="accordion"><summary>What's the difference between send_llm_request and send_llm_request_async?</summary><div class="acc-body">
+<p><span class="mono">send_llm_request</span> runs the <strong>full three steps</strong>: first <span class="mono">build_request_data</span> assembles the request body, then <span class="mono">request_async</span> sends it off, and finally <span class="mono">convert</span> turns it into the unified shape. Hand it the messages and config, and it manages everything from start to finish.</p>
+<p><span class="mono">send_llm_request_async</span>, by contrast, takes a <strong>pre-built</strong> <span class="mono">request_data</span>, so it skips the first step and runs only the latter two — "send the request + convert the shape". It suits scenarios where the request body was already assembled elsewhere and you want to reuse it directly, sparing the cost of reassembly.</p>
+<p>When would you use the latter? In batch processing or retries after failure, say, where the request body was constructed long ago and you only want to send it again at a different moment — skipping the repeated build is both less work and avoids the parameter drift a re-assembly might introduce.</p>
+</div></details>
+<details class="accordion"><summary>How do providers' wildly varied errors collapse into one unified exception?</summary><div class="acc-body">
+<p>It relies on that eighth abstract method, <span class="mono">handle_llm_error</span>. The base class provides a usable default implementation: it maps connection-type errors thrown by <span class="mono">httpx</span> into <span class="mono">LLMConnectionError</span>, and catches the remaining unknown errors as <span class="mono">LLMError</span>, so the upper layer at least receives one unified exception type.</p>
+<p><span class="mono">OpenAIClient</span> adds one more concrete layer on top: it maps a "context too long" <span class="mono">context_length_exceeded</span> into <span class="mono">ContextWindowExceededError</span> (defined in <span class="mono">letta/errors.py</span>), tying right back to the context pressure and compaction from Lessons 12 and 14. So the loop only needs to catch these unified exceptions, and never has to recognize each provider's own error codes and message formats.</p>
+<p>The real point of this mapping layer is that the upper layer faces only a <strong>stable vocabulary of exceptions</strong>: when the loop sees <span class="mono">ContextWindowExceededError</span> it triggers compaction, without caring in the slightest whether it was originally thrown by OpenAI, Anthropic or someone else.</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>The factory <span class="mono">LLMClient.create</span> picks a client by <span class="mono">model_endpoint_type</span>; anything not listed explicitly defaults to <span class="mono">OpenAIClient</span>.</li>
+<li>The core three methods — build / request_async / convert — are strung together by <span class="mono">send_llm_request</span>, which is itself an async method.</li>
+<li>The output is uniformly an OpenAI-shaped <span class="mono">ChatCompletionResponse</span>, the universal intermediate format running through the whole system.</li>
+<li>The agent loop cannot see which provider sits underneath; from start to finish it only knows this one shape.</li>
+<li><span class="mono">LLMConfig</span> carries the connection config (including the dispatch-driving <span class="mono">model_endpoint_type</span>); the whole class is deprecated but still a live path.</li>
+</ul>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Close the lesson in one line: <strong>the endpoint type picks the client, the three methods collapse the differences into the OpenAI shape, and the loop knows only this one</strong>. These three clauses are the very foundation on which all the "quirk isolation" in the next two lessons rests.</span></div>
+<p>The contract is now on paper, but the providers' "quirks" have not vanished with it — Anthropic's prompt caching, Google's request format, force-injecting an inner monologue into a model with no native reasoning… where exactly are these differences hidden, and how do they avoid polluting the loop above? The next lesson, Lesson 22, takes up "isolating provider quirks".</p>
+</div>
   <div class="footnav"><a class="prev" href="20-tool-sandbox-security.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">自定义工具沙箱与安全修复</span><span class="lang-en">The tool sandbox &amp; a security fix</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
