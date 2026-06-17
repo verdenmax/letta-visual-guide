@@ -24,4 +24,5 @@ CONTENT = {
     "12-context-compaction.html": part3.LESSON_12,
     "13-agent-state-and-loop.html": part4.LESSON_13,
     "14-v3-step-loop.html": part4.LESSON_14,
+    "15-heartbeat-to-no-heartbeat.html": part4.LESSON_15,
 }

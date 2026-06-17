@@ -74,6 +74,8 @@ PAGES = [
      "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
     ("14-v3-step-loop.html", "V3 步进循环", "The V3 step loop",
      "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
+    ("15-heartbeat-to-no-heartbeat.html", "从 heartbeat 到无 heartbeat", "From heartbeat to no-heartbeat",
+     "第四部分 · Agent 执行循环", "Part 4 · The agent execution loop"),
 ]
 
 
@@ -540,6 +542,8 @@ SUBTITLES = {
                                      "an agent's 'save file'; the factory picks an engine by type; three generations"),
     "14-v3-step-loop.html": ("一次 step = 一次 LLM 调用 + 工具执行 · 调了工具就继续 · 最多 50 步",
                              "one step = one LLM call + tool exec; loop while tools are called; up to 50 steps"),
+    "15-heartbeat-to-no-heartbeat.html": ("MemGPT 的 request_heartbeat 链式 · V3 为什么拿掉它 · 前后对比",
+                                          "MemGPT's request_heartbeat chaining; why V3 drops it; before/after"),
 }
 
 

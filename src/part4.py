@@ -1012,3 +1012,5 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
 </div>
 """,
 }
+
+LESSON_15 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}
