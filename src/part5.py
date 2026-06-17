@@ -154,6 +154,9 @@ LESSON_17 = {"zh": r"""
 <li><strong>别在 docstring 里描述 self / agent_state。</strong>它们根本不进 schema，写了也是白写，反而可能干扰解析。只描述模型真正要填的那些参数就好。</li>
 </ul>
 </div>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<strong>一条主线，几个锚点。</strong>生成器是 <span class="mono">letta/functions/schema_generator.py::generate_schema(function, name=None, …)</span>——内部 <span class="mono">inspect.signature</span> 取签名、<span class="mono">docstring_parser.parse</span> 读 Google 风 docstring、手写的 <span class="mono">type_to_json_schema_type</span> 做类型映射。逐参数的硬校验也在这里：缺描述 <span class="mono">raise ValueError</span>、缺注解 <span class="mono">TypeError</span>；而 <span class="mono">validate_google_style_docstring</span> 只是<strong>告警</strong>（其 <span class="mono">ValueError</span> 被 catch 成 warning）。保留参数清单是 <span class="mono">letta/constants.py::TOOL_RESERVED_KWARGS = ["self", "agent_state"]</span>。示例 docstring 看 <span class="mono">letta/functions/function_sets/base.py</span>（<span class="mono">send_message</span> / <span class="mono">archival_memory_insert</span> 等）。顺着这串符号读，你能把"函数 → schema"完整走通。
+</div>
 <h2>再挖深一点</h2>
 <p>上面是主线。下面四个抽屉，专门给想抠细节的你——每个都按"示例 / 为什么 / 源码"展开。不想深究可以直接跳到本课要点。</p>
 <div class="note tip"><span class="ni">🧠</span><span class="nx">读这几个抽屉时抓住一条主线：<strong>凡是模型能看到的，都来自 docstring 与签名；凡是模型看不到的（self、函数体、运行时参数），都不归 generate_schema 管。</strong>抓住这条线，零碎的细节就有了归处。</span></div>
@@ -343,6 +346,9 @@ LESSON_17 = {"zh": r"""
 <li><strong>request_heartbeat is not added here.</strong> It is not injected by <span class="mono">generate_schema</span>, but attached separately at runtime (see Lesson 15). Don't hand-write it in the docstring.</li>
 <li><strong>Don't describe self / agent_state in the docstring.</strong> They never enter the schema, so writing them is wasted effort and may even disturb parsing. Describe only the parameters the model actually fills.</li>
 </ul>
+</div>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<strong>One through-line, a few anchors.</strong> The generator is <span class="mono">letta/functions/schema_generator.py::generate_schema(function, name=None, …)</span> — inside, <span class="mono">inspect.signature</span> reads the signature, <span class="mono">docstring_parser.parse</span> parses the Google-style docstring, and a hand-written <span class="mono">type_to_json_schema_type</span> does the type mapping. The per-parameter hard checks live here too: missing description → <span class="mono">raise ValueError</span>, missing annotation → <span class="mono">TypeError</span>; while <span class="mono">validate_google_style_docstring</span> only <strong>warns</strong> (its <span class="mono">ValueError</span> is caught and logged). The reserved-param list is <span class="mono">letta/constants.py::TOOL_RESERVED_KWARGS = ["self", "agent_state"]</span>. For example docstrings, see <span class="mono">letta/functions/function_sets/base.py</span> (<span class="mono">send_message</span> / <span class="mono">archival_memory_insert</span>, etc.). Follow this chain of symbols and you can walk "function → schema" end to end.
 </div>
 <h2>Digging a little deeper</h2>
 <p>That was the main line. Below are four drawers, made specially for anyone who likes to pick at the details — each unfolds as "example / why / source". If you'd rather not dig in, skip straight to this lesson's key points.</p>
