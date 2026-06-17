@@ -1370,5 +1370,41 @@ sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn"
 </pre></div>
 <div class="note info"><span class="ni">💡</span><span class="nx">Why inline the source <strong>verbatim</strong> instead of importing the user's module? Because that module simply does not exist inside the sandbox — the tool source lives only in the database. Inlined, the script is self-contained, and the sandbox needs only a clean interpreter to run it. The script also calls <span class="mono">coerce_dict_args_by_annotations(...)</span> to coerce each argument to the right type per its annotation, avoiding string/number mismatches.</span></div>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">agent_state</span> goes through <span class="mono">pickle.dumps</span> (server-built, sandbox <span class="mono">loads</span>); but <strong>the call arguments are inlined literals (<span class="mono">repr()</span>), not pickle</strong>. In the entire script, <span class="mono">agent_state</span> is the only thing that uses pickle — a distinction we will lean on repeatedly later.</span></div>
+<h2>Trust boundary: direction decides serialization</h2>
+<p>Now place the two channels side by side. <strong>One script, two directions, two serializations</strong> — not arbitrary, but trust speaking.</p>
+<div class="cols">
+  <div class="col"><h4>⬇️ server → sandbox</h4><p>Uses <span class="mono">pickle</span> to pass <span class="mono">agent_state</span>. <strong>Trusted</strong>: the server pickles an object it built itself, and the sandbox only loads it. Privilege flows toward the low-trust side, so there is no "deserializing untrusted input" problem.</p></div>
+  <div class="col"><h4>⬆️ sandbox → server</h4><p>Uses only <span class="mono">JSON</span> + <span class="mono">marker+length+MD5</span>. <strong>Untrusted</strong>: the sandbox just ran arbitrary user code, so its stdout must never be <span class="mono">pickle.loads</span>'d — it can only be read as data.</p></div>
+</div>
+<p>Why can the downward leg use pickle? Because the object being deserialized was built by the server itself; the sandbox receives data, not an attack surface. Even if the sandbox wanted to misbehave, it cannot alter "the bytes already pickled in."</p>
+<p>Why must the upward leg be JSON? Because <span class="mono">pickle.loads</span> executes arbitrary code during deserialization. The sandbox ran a stranger's tool, so its output is inherently suspect — read with <span class="mono">json.loads</span>, the worst case is a blob of fake data, not an RCE.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">A counterintuitive point: using pickle on the trusted direction is not "making do" but a <strong>deliberate choice</strong> — it restores a complex object like <span class="mono">agent_state</span> in one shot, sparing hand-written serialization. pickle itself is not the villain; using it on the untrusted direction is.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">A concrete attack: a malicious tool returns, instead of a plain dict, an object carrying a <span class="mono">__reduce__</span>. If the server reads it with <span class="mono">pickle.loads</span>, the moment of deserialization runs the attacker's chosen command — the server falls. Switch to <span class="mono">json.loads</span> and such an object cannot even be expressed; the attack surface is structurally eliminated.</span></div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">⬇️ pickle</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">Insider — let it through</span></div>
+<div class="row"><span class="emoji">🔐</span><span class="lab">⬆️ JSON</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">Outsider — scan with MD5</span></div>
+<div class="cap">Trust = direction: you may pickle.loads data you built yourself; never pickle.loads data coming back across the untrusted boundary.</div></div>
+
+<h2>The return frame: marker + length + MD5</h2>
+<p>The sandbox's stdout is a noisy river: user code may print debug info, may throw a stack trace, may even deliberately print a <strong>fake result</strong>. So the real result is not "the whole stdout" but the small piece <strong>fenced off</strong> by a frame.</p>
+<table class="t">
+  <tr><th>Field</th><th>Size</th><th>Role</th></tr>
+  <tr><td class="mono">MARKER</td><td class="mono">16 bytes</td><td>a uuid5-generated locator anchor that flags "the real result starts here" amid the noise</td></tr>
+  <tr><td class="mono">LENGTH</td><td class="mono">4 bytes '&gt;I'</td><td>big-endian unsigned int telling you how long the payload is, for a precise slice</td></tr>
+  <tr><td class="mono">MD5</td><td class="mono">32 bytes hex</td><td>checksum of the payload, catching tampering and truncation</td></tr>
+  <tr><td class="mono">JSON_PAYLOAD</td><td class="mono">LENGTH bytes</td><td>the real result: the tool's return value + agent_state as JSON</td></tr>
+</table>
+<div class="cellgroup"><div class="cg-cap"><b>stdout frame layout</b></div><div class="cells"><span class="cell hl">MARKER(16)</span><span class="sep">·</span><span class="cell">LENGTH(4)</span><span class="sep">·</span><span class="cell">MD5(32)</span><span class="sep">·</span><span class="cell">JSON_PAYLOAD</span></div></div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/local_sandbox.py</span><span class="ln">parse_out_function_results_markers (simplified)</span></div>
+<pre>pos = data.<span class="fn">find</span>(MARKER)                       <span class="cm"># locate the real result in noisy stdout</span>
+length = struct.<span class="fn">unpack</span>(<span class="st">"&gt;I"</span>, data[p:p+<span class="nb">4</span>])[<span class="nb">0</span>]
+payload = data[start : start+length]
+<span class="kw">if</span> hashlib.<span class="fn">md5</span>(payload).<span class="fn">hexdigest</span>() != checksum:
+    <span class="kw">raise</span> <span class="fn">Exception</span>(<span class="st">"Function ran, but output is corrupted."</span>)
+result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON, never pickle.loads</span>
+agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic re-hydrate</span>
+</pre></div>
+<p>You might ask: why use a "dirty" channel like stdout instead of opening a clean return pipe? Because the sandbox boundary is essentially a <strong>process</strong>, and the most universal, least runtime-fussy bridge between processes is standard output. The cost is that stdout mixes in everything, so a frame is required to fish "the real result" out of the noise.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">What does this frame defend against? A user tool can print <strong>anything</strong> to stdout, including a forged result or a fake marker. The marker fences off the real payload, the length slices it precisely, and MD5 catches tampering/truncation — stacked together, only then dare the server say "what I read is exactly the one the tool actually returned."</span></div>
+<p>The order matters too: <strong>compare MD5 first, then <span class="mono">json.loads</span></strong>. If you parsed first and handled errors later, an attacker could use malformed JSON to trigger the parser's corner-case behavior; verifying integrity first holds "suspicious input" back before parsing.</p>
 <!--ENMORE-->
 """}
