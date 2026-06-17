@@ -654,5 +654,45 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <p><strong>Google is the counterexample</strong>: it appends <span class="mono">thinking</span> <strong>last</strong>, not first — don't assume every provider puts it first.</p>
 <p><span class="mono">AnthropicClient</span> is <strong>also</strong> a reuse base (Bedrock/MiniMax inherit it); and <span class="mono">OpenAIClient</span>'s explicit subclasses number <strong>8</strong>, not 12.</p>
 </div>
-<!--ENMORE-->
+<h2>Dig a Little Deeper</h2>
+<p>The main thread is complete here. The four drawers below hold the details you'll most likely ask about — open them by interest; leaving them shut doesn't hurt your grasp of the main thread.</p>
+<details class="accordion"><summary>Why must the inner monologue come first? And how is it unpacked back into content?</summary><div class="acc-body">
+<p>First is for "think before acting". An LLM generates parameters left to right, in order; put <span class="mono">thinking</span> first and the model must spit out a chunk of reasoning before it gets to fill the real business parameters. It nails "thought before action" using parameter order.</p>
+<p>Injection is done by <span class="mono">add_inner_thoughts_to_functions</span>: it uses an <span class="mono">OrderedDict</span> to slot <span class="mono">thinking</span> in as the first property, and <span class="mono">required.insert(0, key)</span> to put it first among the required fields too. With both hands, the model can't dodge.</p>
+<p>Unpacking goes through <span class="mono">unpack_inner_thoughts_from_kwargs</span>: once the response is back, <span class="mono">pop</span> <span class="mono">thinking</span> out of the tool-call arguments and write it into <span class="mono">message.content</span>. So what downstream sees is an ordinary "thought first, then tool call" assistant message.</p>
+<p>This also answers a common question: why not just let the model think in plain text? Because a tool-calling model's output is <strong>already constrained to JSON parameters</strong>, with nowhere to put free-form text; making thought a parameter field is the only clean way to squeeze a chain of thought out under that constraint.</p>
+</div></details>
+<details class="accordion"><summary>put_inner_thoughts_in_kwargs: who exactly is off, who's on?</summary><div class="acc-body">
+<p>This switch answers one question: <strong>does this model need me to manufacture a thought for it?</strong> If yes, on (<span class="mono">=True</span>, simulate); if no, off (<span class="mono">=False</span>, use native).</p>
+<p>Those that reason natively get switched off: Anthropic 3.7/4, OpenAI's o1/o3/gpt-5, ZAI's GLM, and so on. They already produce real reasoning, so injecting a fake <span class="mono">thinking</span> is pure noise.</p>
+<p>Plain tool-calling models get switched on, and Letta injects a simulated inner monologue. One switch folds "two utterly different kinds of model" into the same code path.</p>
+<p>By the way: this switch is usually decided for you by the model handle or default config, no manual flipping needed. Letta knows which providers reason natively and which don't, so it presets <span class="mono">put_inner_thoughts_in_kwargs</span> to the right value.</p>
+<p>Remember this mapping and you won't get muddled: <strong>on = simulate</strong> (inject fake thinking), <strong>off = native</strong> (use real reasoning). The "in_kwargs" in the name says exactly "put the inner monologue into the tool parameters" — true only when injection is needed.</p>
+</div></details>
+<details class="accordion"><summary>Anthropic's three cache_control spots + thinking + batch</summary><div class="acc-body">
+<p><span class="mono">cache_control</span> is stamped in three spots total: the last tool, the system's last block, and the last block of the last message in messages. A prefix marked <span class="mono">{"type":"ephemeral"}</span> can be cached, so a repeated-request hit saves money and latency.</p>
+<p>When extended thinking is on, <span class="mono">data["thinking"]</span> is set to enabled (with <span class="mono">budget_tokens</span>) or adaptive, and <strong>temperature is forced to 1</strong>; when needed, a beta header is assembled on demand.</p>
+<p>batch is the only one truly wired up: the base class's batch method stays a <span class="mono">NotImplementedError</span>, and only <span class="mono">AnthropicClient</span> implements it with <span class="mono">client.beta.messages.batches.create</span>. The response side then translates the text/tool_use/thinking block types into the OpenAI shape.</p>
+<p>These three spots aren't picked at random: they all land on the request's <strong>most stable, most cache-worthy</strong> prefix — tool definitions, the system prompt, history messages. The further forward and more unchanging the content, the more sizable the money and latency saved on a cache hit.</p>
+<p>A word on the beta header: when enabling newer capabilities like adaptive thinking, interleaved thinking, or 1M context, <span class="mono">AnthropicClient</span> assembles the matching beta identifier into the request header on demand — one of the reasons it's far more complex than "swap a base_url".</p>
+</div></details>
+<details class="accordion"><summary>Google, the counterexample: working against the OpenAI shape at every turn</summary><div class="acc-body">
+<p>The one thing most worth remembering: Google <strong>appends</strong> the inner monologue <span class="mono">thinking</span> <strong>last</strong> (<span class="mono">INNER_THOUGHTS_KWARG_VERTEX</span>), not first like the others.</p>
+<p>The field names are a different set too: tools are wrapped as <span class="mono">[{"functionDeclarations":[...]}]</span>, the model's tool call is called <span class="mono">functionCall</span> (with <span class="mono">.name</span> / <span class="mono">.args</span>), mapped to OpenAI's <span class="mono">tool_calls</span> on conversion.</p>
+<p>Even the role names differ: Google uses <span class="mono">"model"</span> for the assistant, and <span class="mono">convert</span> must rewrite it to <span class="mono">"assistant"</span>. All these differences are caged in <span class="mono">GoogleVertexClient</span>, and the loop feels nothing as usual.</p>
+<p>Holding Google up as a counterexample is meant to remind you of one thing: <strong>"inner monologue first" is no iron law</strong>, but Letta's default for most providers. To write a new client for real, the first thing to do is confirm exactly where it puts thinking.</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>A subclass usually overrides only two methods, <span class="mono">build_request_data</span> + <span class="mono">convert_response_to_chat_completion</span>, often patching the dict after <span class="mono">super()</span>.</li>
+<li><span class="mono">OpenAIClient</span> serves many as one class: 8 explicit subclasses + the default case, by swapping <span class="mono">base_url</span>.</li>
+<li>The inner monologue is injected as a tool's <strong>first parameter</strong> <span class="mono">thinking</span>, and <span class="mono">unpack</span>-ed back into <span class="mono">message.content</span> on the response.</li>
+<li><span class="mono">put_inner_thoughts_in_kwargs</span> decides <strong>simulated vs native reasoning</strong>: native → off, plain tool calling → on.</li>
+<li>Anthropic's three big quirks: <span class="mono">cache_control</span> prompt caching, extended thinking, batch.</li>
+<li>Google is the counterexample: it appends <span class="mono">thinking</span> <strong>last</strong>, not first.</li>
+</ul>
+</div>
+<p><strong>To sum up:</strong> a cloud provider's quirks get caged, one by one, into those two methods of a subclass. But what about a local model that lacks even native function calling? How does it get "taught" to call tools? The next lesson, Lesson 23, covers local models and <span class="mono">GBNF</span> constrained decoding — see how Letta uses grammar to turn "parseable" from a probability into a guarantee.</p>
+<p>Carrying this lesson's two intuitions forward makes the next one smoother: <strong>differences cage into subclasses, and thinking can be constructed</strong>. Next lesson you'll see, when a model can't even "call a tool", how Letta teaches it from scratch with a grammar.</p>
+
 """}

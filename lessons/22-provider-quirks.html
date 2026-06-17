@@ -499,7 +499,173 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <p>带着这一课的两条直觉往下走会更顺：<strong>差异关进子类、思考可以被构造</strong>。下一课你会看到，当模型连"调工具"都不会时，Letta 是怎么用一套语法把它从头教起的。</p>
 
 </div>
-  <div class="lang-en"><p>stub</p></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Last lesson we drew the "unified contract" on paper: one factory picks a client by type, and three methods collapse every difference into the OpenAI shape. But a smooth page doesn't mean calm waters underneath — <strong>each LLM has a very different temperament</strong>: Anthropic wants you to stamp on <span class="mono">cache_control</span> cache markers, Google reinvents even the field names, and some models simply have no native reasoning at all.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">What this lesson answers is exactly this: how these motley quirks get locked away, one by one, into their own client subclasses — locked above the execution loop from Lessons 13–16, which knows nothing about them and never needs to. This is the lesson where the unified contract truly starts to <strong>pay its dividend</strong>.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">"Pay its dividend" is no exaggeration: the unified shape we worked so hard to erect last lesson only proves its worth here — precisely because it has our back, each provider's quirks have somewhere to hide, instead of being smeared across the loop where they'd be an eyesore.</span></div>
+<div class="card analogy"><div class="tag">🔌 Real-life analogy</div>
+<p>Picture an actor, <strong>one face</strong>, stepping on stage in a different mask for each show. That face is last lesson's <span class="mono">OpenAIClient</span>; the masks, one per provider, are the subclasses.</p>
+<p>The beauty is: <strong>swapping the mask doesn't swap the face</strong>. Most subclasses only tweak one spot on the mask — usually just a new <span class="mono">base_url</span>, at most dropping or adding a field or two along the way.</p>
+<p>So the same face, wearing Groq's mask, plays Groq; wearing xAI's mask, plays xAI. The loop in the audience only ever sees "that actor" — which mask he wears tonight, the loop never cares.</p>
+<p>This analogy hides the lesson's thesis: <strong>quirks shouldn't be scattered all over the loop, but tucked into their own masks</strong> — that is, into the subclass's two overridden methods.</p>
+<p>The mask metaphor goes one step further: the thinner the mask the better — the less a subclass writes, the more thoroughly it reuses, and the fewer "special cases" need separate upkeep. Most of Letta's subclasses are just a few lines, for exactly this reason.</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Grab the lesson in one line: <strong>quirks hide in only two methods, and above the loop it's always the same shape</strong>.</p>
+<p>First see how ruthless the reuse is: a single <span class="mono">OpenAIClient</span> class is shared by <strong>8 explicit subclasses</strong> plus the default <span class="mono">case _</span>, and the trick is just swapping one <span class="mono">base_url</span> — the same OpenAI SDK, pointed at a different URL, connects to a different provider.</p>
+<p>Then see where the quirks are caged: a subclass <strong>overrides only two methods</strong> — <span class="mono">build_request_data</span> (edit the request on the way out) and <span class="mono">convert_response_to_chat_completion</span> (edit the response on the way back), often calling <span class="mono">super()</span> for the OpenAI shape, then patching a few lines in place.</p>
+<p>The lesson's slickest stunt is jamming the inner monologue in as a tool's <strong>first parameter</strong> <span class="mono">thinking</span>, then <span class="mono">unpack</span>-ing it back into the message body on the response; plus Anthropic's exclusive cache / thinking / batch trio. These are what we'll pry open one by one below.</p>
+<p>Remember the four as a chain: <strong>reuse kills duplication, two methods cage the differences, the inner monologue supplies the thinking, and a switch toggles simulated vs native</strong>. The next three sections walk this chain, and we close on Anthropic, the family densest with quirks.</p>
+<p>This chain is also a "<strong>line of abstraction defense</strong>": every layer inward, the outer code worries about one less thing. The loop needn't understand providers, and the memory / tools / compaction modules even less — they all deal only with the unified shape.</p>
+</div>
+<h2>OpenAIClient: One Class Serves Many</h2>
+<p>Start with the laziest route — a great many providers need no new client at all; they reuse <span class="mono">OpenAIClient</span> directly. Draw out the whole inheritance tree and the three families jump into view.</p>
+<p>Before the diagram, agree on one mental model: think of each client as "the base class sets the skeleton, the subclass fills the details". The skeleton (the three-method contract) is written once in each of the three family bases; subclasses take it as-is, overriding one or two methods at most.</p>
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">Abstract base</span><span class="name">LLMClientBase</span></div>
+    <div class="ld">Defines the three-method contract (last lesson). All three families below derive from it, each implementing its own "edit request on the way out, edit response on the way back".</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">OpenAI family</span><span class="name">OpenAIClient ← 8 subclasses</span></div>
+    <div class="ld">Azure / Baseten / Deepseek / Fireworks / Groq / Together / XAI / ZAI all inherit it; <span class="mono">openrouter</span> and the default <span class="mono">case _</span> simply reuse it as-is.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">Anthropic family</span><span class="name">AnthropicClient ← Bedrock / MiniMax</span></div>
+    <div class="ld">It is <strong>also</strong> a reuse base: <span class="mono">BedrockClient</span> and <span class="mono">MiniMaxClient</span> inherit it, then each patch their own quirks.</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">Google family</span><span class="name">GoogleVertexClient ← GoogleAIClient</span></div>
+    <div class="ld"><span class="mono">GoogleAIClient</span> inherits <span class="mono">GoogleVertexClient</span>; field names, role names, and where the inner monologue goes are all a different set.</div></div>
+</div>
+<p>The tree makes it obvious: only the three family bases are truly "written from scratch"; everything else is a thin subclass standing on their shoulders. The OpenAI family is especially extreme — one base with 8 subclasses behind it, also catching every unnamed provider.</p>
+<div class="cellgroup"><div class="cg-cap"><b>OpenAIClient's 8 explicit subclasses</b></div><div class="cells"><span class="cell hl">AzureClient</span><span class="sep">·</span><span class="cell">BasetenClient</span><span class="sep">·</span><span class="cell">DeepseekClient</span><span class="sep">·</span><span class="cell">FireworksClient</span><span class="sep">·</span><span class="cell">GroqClient</span><span class="sep">·</span><span class="cell">TogetherClient</span><span class="sep">·</span><span class="cell">XAIClient</span><span class="sep">·</span><span class="cell">ZAIClient</span></div></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">The trick to one class serving many: <span class="mono">OpenAIClient._prepare_client_kwargs</span> only sets <span class="mono">base_url</span> to <span class="mono">llm_config.model_endpoint</span> — the same OpenAI SDK, a new URL, a new provider connected. Roughly <strong>19/25</strong> of <span class="mono">ProviderType</span> end up at <span class="mono">OpenAIClient</span> or a subclass; only 6 don't (anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax).</span></div>
+<p>Why is "just swap one <span class="mono">base_url</span>" enough? Because most of these providers expose an <strong>OpenAI-compatible</strong> interface directly: the request and response shapes already line up with OpenAI, and the only real difference is the server address. Letta seizes on this and sweeps them all into the default arm, sparing even a subclass.</p>
+<p>The ones that need their own subclass are usually those "OpenAI-compatible but one breath short" — some model rejects some parameter, or demands one extra field. Only then does a subclass step in: after <span class="mono">super()</span>, supply that one missing breath, no need to start over from scratch.</p>
+<h2>Subclasses Change Only Two Methods</h2>
+<p>So what's actually inside those 8 subclasses? The answer is surprisingly short: <strong>most touch only two methods</strong>. The <span class="mono">XAIClient</span> below is typical — call <span class="mono">super()</span> for the standard OpenAI request, then, only for one of its own models, delete two penalty fields.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/xai_client.py</span><span class="ln">a subclass changes fields only after super() (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">XAIClient</span>(OpenAIClient):
+    <span class="kw">def</span> <span class="fn">build_request_data</span>(self, ...):
+        data = <span class="kw">super</span>().<span class="fn">build_request_data</span>(...)     <span class="cm"># grab the OpenAI-shaped request first</span>
+        <span class="kw">if</span> <span class="st">"grok-3-mini-"</span> <span class="kw">in</span> model:           <span class="cm"># only this provider's quirk</span>
+            data.<span class="fn">pop</span>(<span class="st">"presence_penalty"</span>, <span class="kw">None</span>)
+            data.<span class="fn">pop</span>(<span class="st">"frequency_penalty"</span>, <span class="kw">None</span>)
+        <span class="kw">return</span> data
+</pre></div>
+<p>Switch subclasses and the pattern is identical, only the edited field differs: <span class="mono">GroqClient</span> forces <span class="mono">tool_choice</span> to <span class="mono">required</span>, compelling the model to call a tool every step. Which line gets edited varies by provider, but the "super first, then patch in place" skeleton never changes.</p>
+<div class="note tip"><span class="ni">💡</span><span class="nx">The shared pattern in one line: <strong>quirks are caged in only two places, <span class="mono">build_request_data</span> and <span class="mono">convert_response_to_chat_completion</span></strong>. The loop above <span class="mono">send_llm_request_async</span>, whether xAI or Groq sits below, always sees the same unified <span class="mono">ChatCompletionResponse</span>.</span></div>
+<p>The reverse is clearer still: if those penalty fields, the <span class="mono">tool_choice</span> special-case and the like leaked into the loop, the loop would sprout a thicket of <span class="mono">if is_xAI</span>, <span class="mono">if is_Groq</span> branches — exactly the "leaked abstraction" last lesson kept warning about. Cage them firmly in the subclass, and only then does the loop deserve the word "clean".</p>
+<p>Note too: a quirk can be edited <strong>on the way out</strong> (<span class="mono">build_request_data</span> touches the request) or <strong>on the way back</strong> (<span class="mono">convert_response_to_chat_completion</span> touches the response). The former governs "how we ask", the latter "what its answer gets translated into" — each end guards its own gate.</p>
+<h2>The Core Trick: Stuff the Inner Monologue into a Tool Parameter</h2>
+<p>Now pry open the lesson's finest move. Many models only "call functions"; they won't spit out a thought first. Letta insists they <strong>think before they act</strong> — by jamming a string named <span class="mono">thinking</span> in as each tool's <strong>first parameter</strong>.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Inject</h4><p><span class="mono">add_inner_thoughts_to_functions</span> adds <span class="mono">thinking</span> as each tool's first property, and slots it to the very front of <span class="mono">required</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Generate</h4><p>The model fills parameters in schema order, so it <strong>writes thinking first</strong>, then the real business parameters — thought is "forced" ahead of action.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Unpack</h4><p>In the response, <span class="mono">unpack_inner_thoughts_from_kwargs</span> pops <span class="mono">thinking</span> out of the tool parameters and tucks it into <span class="mono">message.content</span>.</p></div></div>
+</div>
+<p>So a model that "only calls functions" gets a chain of thought squeezed out of it by force: thinking becomes part of the parameters, and the model has no choice but to write it first. When the response comes back, that thought is drawn back into the assistant message body — to everything downstream, it's exactly as if the model "could think all along".</p>
+<p>Here's an easily missed bonus: <strong>this thought is useful to the model itself</strong>. Being forced to write the reasoning out first paves the way for the parameter choices that follow — often it's precisely this step the model uses to think clearly about "which tool to call, with what arguments".</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/helpers.py</span><span class="ln">put the inner monologue as the first parameter (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">add_inner_thoughts_to_functions</span>(functions, inner_thoughts_key, ..., put_inner_thoughts_first=<span class="kw">True</span>):
+    <span class="kw">for</span> f <span class="kw">in</span> functions:
+        new_props = OrderedDict()
+        <span class="kw">if</span> put_inner_thoughts_first:
+            new_props[inner_thoughts_key] = {<span class="st">"type"</span>: <span class="st">"string"</span>, ...}   <span class="cm"># thinking goes first</span>
+            new_props.<span class="fn">update</span>(f[<span class="st">"parameters"</span>][<span class="st">"properties"</span>])
+            f[<span class="st">"parameters"</span>][<span class="st">"required"</span>].<span class="fn">insert</span>(<span class="nb">0</span>, inner_thoughts_key)   <span class="cm"># required first too</span>
+</pre></div>
+<p>A concrete example: after injection, the <span class="mono">send_message</span> tool's parameter order becomes <span class="mono">thinking</span> first, <span class="mono">message</span> second. To call it, the model <strong>must generate a chunk of thinking text first</strong>, then the message it actually sends — this step simply can't be skipped.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">The key name <span class="mono">INNER_THOUGHTS_KWARG = "thinking"</span> is defined in <span class="mono">letta/settings.py</span> (<strong>not</strong> <span class="mono">constants.py</span>, which holds the description text). The reverse unpacking goes through <span class="mono">helpers.py::unpack_inner_thoughts_from_kwargs</span>: <span class="mono">pop</span> <span class="mono">thinking</span> out of the tool_call's arguments, then tuck it back into <span class="mono">message.content</span>.</span></div>
+<p>The essence of this move is <strong>using structure to force behavior</strong>: not begging the model "please think first", but making "thinking" the first required field it can't get around. Once the structure stands, thought becomes a hard requirement, no longer reliant on the model's self-discipline.</p>
+<p>Don't forget the closing act: once <span class="mono">thinking</span> is unpacked, that field <strong>shouldn't remain</strong> in the tool-call arguments, or executing the tool for real would carry one stray parameter it doesn't recognize. <span class="mono">unpack</span> is both "extract the thought" and "clean up the scene".</p>
+<div class="cute"><div class="row"><span class="emoji">🎭🎭🎭</span><span class="lab">Three masks</span><span class="arrow">→</span><span class="emoji">🙂</span><span class="bubble">One face</span></div><div class="cap">One OpenAIClient, just swapping base_url / a few fields, serves a whole crowd of providers</div></div>
+<p>This little cartoon says just one thing: reuse isn't laziness, it's writing the "identical part" truly only once. There are only three faces (the three family bases), but masks hang by the bunch — to add one more provider, just wear one more mask.</p>
+<h2>The Switch: Simulated vs Native Reasoning</h2>
+<p>The injection trick isn't turned on for every model. Some models reason natively already, and stuffing in a fake <span class="mono">thinking</span> only gilds the lily. So the <span class="mono">LLMConfig.put_inner_thoughts_in_kwargs</span> switch <strong>flips automatically</strong>.</p>
+<div class="cellgroup"><div class="cg-cap"><b>How put_inner_thoughts_in_kwargs flips</b></div><div class="cells"><span class="cell hl">Native reasoning (o1/gpt-5/Claude-4) → False</span><span class="sep">·</span><span class="cell">Plain tool calling → True (simulate one)</span></div></div>
+<p>The flip rule is really one line: <strong>if the model reasons natively, off; if it only calls functions, on</strong>. Side by side it's clearer.</p>
+<div class="cols">
+  <div class="col"><h4>🧠 Native reasoning → off</h4><p>Models that reason natively — o1 / o3 / gpt-5, Claude 3.7/4, ZAI GLM — get <span class="mono">=False</span>: use their real thinking directly, no fake parameter to inject.</p></div>
+  <div class="col"><h4>🎭 Plain tool calling → on</h4><p>Models that only call functions and won't think first get <span class="mono">=True</span>: inject a <span class="mono">thinking</span> parameter to simulate a chain of thought for them.</p></div>
+</div>
+<div class="note tip"><span class="ni">💡</span><span class="nx">Why insist on <strong>first</strong>? Because parameters are generated in order — putting <span class="mono">thinking</span> at the very front forces the model to "<strong>write a chunk of reasoning, then fill the structured parameters</strong>". Reorder it and "think before acting" comes to nothing.</span></div>
+<p>This "auto-flip" is another show of the abstraction's elegance: the same injection code both serves the small models that only call functions and leaves the big models with native reasoning alone — the difference is a single boolean. You hardly have to think about it; Letta sets it for you per model.</p>
+<h2>Anthropic's Three Big Quirks</h2>
+<p>Anthropic is one of the few families that can't be papered over with <span class="mono">OpenAIClient</span>; it has three glaring quirks, all caged inside <span class="mono">AnthropicClient</span>. Lay them out in a table first.</p>
+<table class="t">
+<tr><th>Quirk</th><th>How</th><th>Effect / note</th></tr>
+<tr><td class="mono">cache_control</td><td>stamp a <span class="mono">{"type":"ephemeral"}</span> on the last tool, the system's last block, and the last block of the last message</td><td>incremental prompt caching: a repeated prefix that hits saves money and latency</td></tr>
+<tr><td class="mono">extended thinking</td><td><span class="mono">data["thinking"]={"type":"enabled","budget_tokens":…}</span> or adaptive</td><td>when thinking is on, <span class="mono">temperature=1.0</span> is required</td></tr>
+<tr><td class="mono">batch</td><td><span class="mono">send_llm_batch_request_async → client.beta.messages.batches.create</span></td><td>the only client that overrides the base batch method; the rest still raise NotImplementedError</td></tr>
+<tr><td>content blocks</td><td>the <span class="mono">text / tool_use / thinking</span> block types in the response</td><td>converted to OpenAI's <span class="mono">tool_calls</span> / <span class="mono">reasoning_content</span> shape</td></tr>
+</table>
+<p>Of the three, <span class="mono">batch</span> is especially singular: the base class leaves the batch method as a <span class="mono">NotImplementedError</span>, and only <span class="mono">AnthropicClient</span> actually wires it up. And <span class="mono">cache_control</span> is an optimization unique to Anthropic's billing model — mark the stable, unchanging prefix as cacheable, and the next hit isn't billed again.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/llm_api/anthropic_client.py</span><span class="ln">cache_control and extended thinking (simplified)</span></div>
+<pre><span class="cm"># Prompt caching: stamp an ephemeral mark on the last tool; a hit saves money and latency</span>
+data[<span class="st">"tools"</span>][-<span class="nb">1</span>][<span class="st">"cache_control"</span>] = {<span class="st">"type"</span>: <span class="st">"ephemeral"</span>}
+<span class="cm"># Extended thinking: temperature must be 1 when thinking is on</span>
+data[<span class="st">"thinking"</span>] = {<span class="st">"type"</span>: <span class="st">"enabled"</span>, <span class="st">"budget_tokens"</span>: budget}
+data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
+</pre></div>
+<p>The response direction must translate back too: Anthropic splits content into <span class="mono">text / tool_use / thinking</span> block types, and <span class="mono">convert</span> stitches them back into OpenAI's <span class="mono">tool_calls</span> and <span class="mono">reasoning_content</span>. Edit once on the way out, once on the way back — perfectly symmetric.</p>
+<p>This is why Anthropic deserves its own section: most others only edit a stray field or two in the request, while it does real work on <strong>both ends</strong>, request and response — cache markers, thinking budget, batch interface, content-block translation, every one taken over by the client itself.</p>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>Last lesson's paper contract <strong>pays its dividend right here</strong>. Every provider's "odd temperament" is isolated into two methods — <span class="mono">build</span> edits the request, <span class="mono">convert</span> edits the response — and above the loop, nothing knows.</p>
+<p>The slickest quirk is "stuff the inner monologue into a tool parameter": for models without native reasoning, Letta forces every tool call to slot a <span class="mono">thinking</span> string as the <strong>first parameter</strong>, so the model "thinks before it acts", then draws it back into the assistant message on the response — squeezing a chain of thought out of a model that "only calls functions".</p>
+<p>And <span class="mono">put_inner_thoughts_in_kwargs</span> <strong>flips automatically</strong>: native-reasoning models (o1/gpt-5/Claude-4) → off, use their real thinking; plain tool-calling models → on, simulate one. The same abstraction gives two kinds of model exactly opposite treatment.</p>
+<p>The same MemGPT inner-monologue move thus survives across a whole zoo of providers. And Lesson 23's local path will implement it once more with <strong>grammar constraints</strong> — but that's for later.</p>
+<p>Zoom out and this is the adapter pattern's most cost-effective use: lock the volatile part (each provider's quirks) into the subclass's two narrow methods, and fully free the invariant part (the execution loop). The radius of change is pinned firmly inside the client, and the outside world has no idea.</p>
+<p>In the end, this lesson isn't about any one provider's tricks, but the <strong>discipline of "where differences belong"</strong>: put them in the subclass and the system stays stable; leak them into the loop and the system turns to chaos. Every quirk is a small test of this discipline.</p>
+</div>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">llm_api/openai_client.py::OpenAIClient</span> — <span class="mono">_prepare_client_kwargs</span> sets <span class="mono">base_url</span> to the endpoint; plus 8 subclasses (Azure/Baseten/Deepseek/Fireworks/Groq/Together/XAI/ZAI).</p>
+<p><span class="mono">llm_api/anthropic_client.py::AnthropicClient</span> — cache_control / extended thinking / batch; it is itself the base of <span class="mono">BedrockClient</span> / <span class="mono">MiniMaxClient</span>.</p>
+<p><span class="mono">llm_api/helpers.py::add_inner_thoughts_to_functions</span> and <span class="mono">unpack_inner_thoughts_from_kwargs</span> — inject and unpack the inner monologue.</p>
+<p><span class="mono">settings.py::INNER_THOUGHTS_KWARG</span> is the key name <span class="mono">"thinking"</span>; <span class="mono">llm_api/google_vertex_client.py</span> appends thinking <strong>last</strong>.</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>The injection function is <span class="mono">add_inner_thoughts_to_functions</span> (plural functions), <strong>not</strong> <span class="mono">add_inner_thoughts_to_function_call</span>.</p>
+<p>The key name <span class="mono">INNER_THOUGHTS_KWARG="thinking"</span> is in <span class="mono">settings.py</span>, <strong>not</strong> <span class="mono">constants.py</span> (which holds only description text).</p>
+<p><strong>Google is the counterexample</strong>: it appends <span class="mono">thinking</span> <strong>last</strong>, not first — don't assume every provider puts it first.</p>
+<p><span class="mono">AnthropicClient</span> is <strong>also</strong> a reuse base (Bedrock/MiniMax inherit it); and <span class="mono">OpenAIClient</span>'s explicit subclasses number <strong>8</strong>, not 12.</p>
+</div>
+<h2>Dig a Little Deeper</h2>
+<p>The main thread is complete here. The four drawers below hold the details you'll most likely ask about — open them by interest; leaving them shut doesn't hurt your grasp of the main thread.</p>
+<details class="accordion"><summary>Why must the inner monologue come first? And how is it unpacked back into content?</summary><div class="acc-body">
+<p>First is for "think before acting". An LLM generates parameters left to right, in order; put <span class="mono">thinking</span> first and the model must spit out a chunk of reasoning before it gets to fill the real business parameters. It nails "thought before action" using parameter order.</p>
+<p>Injection is done by <span class="mono">add_inner_thoughts_to_functions</span>: it uses an <span class="mono">OrderedDict</span> to slot <span class="mono">thinking</span> in as the first property, and <span class="mono">required.insert(0, key)</span> to put it first among the required fields too. With both hands, the model can't dodge.</p>
+<p>Unpacking goes through <span class="mono">unpack_inner_thoughts_from_kwargs</span>: once the response is back, <span class="mono">pop</span> <span class="mono">thinking</span> out of the tool-call arguments and write it into <span class="mono">message.content</span>. So what downstream sees is an ordinary "thought first, then tool call" assistant message.</p>
+<p>This also answers a common question: why not just let the model think in plain text? Because a tool-calling model's output is <strong>already constrained to JSON parameters</strong>, with nowhere to put free-form text; making thought a parameter field is the only clean way to squeeze a chain of thought out under that constraint.</p>
+</div></details>
+<details class="accordion"><summary>put_inner_thoughts_in_kwargs: who exactly is off, who's on?</summary><div class="acc-body">
+<p>This switch answers one question: <strong>does this model need me to manufacture a thought for it?</strong> If yes, on (<span class="mono">=True</span>, simulate); if no, off (<span class="mono">=False</span>, use native).</p>
+<p>Those that reason natively get switched off: Anthropic 3.7/4, OpenAI's o1/o3/gpt-5, ZAI's GLM, and so on. They already produce real reasoning, so injecting a fake <span class="mono">thinking</span> is pure noise.</p>
+<p>Plain tool-calling models get switched on, and Letta injects a simulated inner monologue. One switch folds "two utterly different kinds of model" into the same code path.</p>
+<p>By the way: this switch is usually decided for you by the model handle or default config, no manual flipping needed. Letta knows which providers reason natively and which don't, so it presets <span class="mono">put_inner_thoughts_in_kwargs</span> to the right value.</p>
+<p>Remember this mapping and you won't get muddled: <strong>on = simulate</strong> (inject fake thinking), <strong>off = native</strong> (use real reasoning). The "in_kwargs" in the name says exactly "put the inner monologue into the tool parameters" — true only when injection is needed.</p>
+</div></details>
+<details class="accordion"><summary>Anthropic's three cache_control spots + thinking + batch</summary><div class="acc-body">
+<p><span class="mono">cache_control</span> is stamped in three spots total: the last tool, the system's last block, and the last block of the last message in messages. A prefix marked <span class="mono">{"type":"ephemeral"}</span> can be cached, so a repeated-request hit saves money and latency.</p>
+<p>When extended thinking is on, <span class="mono">data["thinking"]</span> is set to enabled (with <span class="mono">budget_tokens</span>) or adaptive, and <strong>temperature is forced to 1</strong>; when needed, a beta header is assembled on demand.</p>
+<p>batch is the only one truly wired up: the base class's batch method stays a <span class="mono">NotImplementedError</span>, and only <span class="mono">AnthropicClient</span> implements it with <span class="mono">client.beta.messages.batches.create</span>. The response side then translates the text/tool_use/thinking block types into the OpenAI shape.</p>
+<p>These three spots aren't picked at random: they all land on the request's <strong>most stable, most cache-worthy</strong> prefix — tool definitions, the system prompt, history messages. The further forward and more unchanging the content, the more sizable the money and latency saved on a cache hit.</p>
+<p>A word on the beta header: when enabling newer capabilities like adaptive thinking, interleaved thinking, or 1M context, <span class="mono">AnthropicClient</span> assembles the matching beta identifier into the request header on demand — one of the reasons it's far more complex than "swap a base_url".</p>
+</div></details>
+<details class="accordion"><summary>Google, the counterexample: working against the OpenAI shape at every turn</summary><div class="acc-body">
+<p>The one thing most worth remembering: Google <strong>appends</strong> the inner monologue <span class="mono">thinking</span> <strong>last</strong> (<span class="mono">INNER_THOUGHTS_KWARG_VERTEX</span>), not first like the others.</p>
+<p>The field names are a different set too: tools are wrapped as <span class="mono">[{"functionDeclarations":[...]}]</span>, the model's tool call is called <span class="mono">functionCall</span> (with <span class="mono">.name</span> / <span class="mono">.args</span>), mapped to OpenAI's <span class="mono">tool_calls</span> on conversion.</p>
+<p>Even the role names differ: Google uses <span class="mono">"model"</span> for the assistant, and <span class="mono">convert</span> must rewrite it to <span class="mono">"assistant"</span>. All these differences are caged in <span class="mono">GoogleVertexClient</span>, and the loop feels nothing as usual.</p>
+<p>Holding Google up as a counterexample is meant to remind you of one thing: <strong>"inner monologue first" is no iron law</strong>, but Letta's default for most providers. To write a new client for real, the first thing to do is confirm exactly where it puts thinking.</p>
+</div></details>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>A subclass usually overrides only two methods, <span class="mono">build_request_data</span> + <span class="mono">convert_response_to_chat_completion</span>, often patching the dict after <span class="mono">super()</span>.</li>
+<li><span class="mono">OpenAIClient</span> serves many as one class: 8 explicit subclasses + the default case, by swapping <span class="mono">base_url</span>.</li>
+<li>The inner monologue is injected as a tool's <strong>first parameter</strong> <span class="mono">thinking</span>, and <span class="mono">unpack</span>-ed back into <span class="mono">message.content</span> on the response.</li>
+<li><span class="mono">put_inner_thoughts_in_kwargs</span> decides <strong>simulated vs native reasoning</strong>: native → off, plain tool calling → on.</li>
+<li>Anthropic's three big quirks: <span class="mono">cache_control</span> prompt caching, extended thinking, batch.</li>
+<li>Google is the counterexample: it appends <span class="mono">thinking</span> <strong>last</strong>, not first.</li>
+</ul>
+</div>
+<p><strong>To sum up:</strong> a cloud provider's quirks get caged, one by one, into those two methods of a subclass. But what about a local model that lacks even native function calling? How does it get "taught" to call tools? The next lesson, Lesson 23, covers local models and <span class="mono">GBNF</span> constrained decoding — see how Letta uses grammar to turn "parseable" from a probability into a guarantee.</p>
+<p>Carrying this lesson's two intuitions forward makes the next one smoother: <strong>differences cage into subclasses, and thinking can be constructed</strong>. Next lesson you'll see, when a model can't even "call a tool", how Letta teaches it from scratch with a grammar.</p>
+
+</div>
   <div class="footnav"><a class="prev" href="21-provider-contract.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">统一 provider 三方法契约</span><span class="lang-en">The unified provider contract</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
