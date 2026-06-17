@@ -1322,5 +1322,53 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <div class="note tip"><span class="ni">🧷</span><span class="nx">如果你只带走一张图，就带"信任＝方向"这张：它不仅解释了沙箱，也是一切"跨信任边界传数据"问题的通用解法——无论对面是沙箱、第三方服务，还是另一个不受控的进程。</span></div>
 <p>下一站是<strong>第六部分 · LLM Provider 抽象</strong>：工具讲完了，我们回到更上游的问题——Letta 怎么用一套统一接口，把 OpenAI、Anthropic 等不同厂商的模型，接进同一个 agent 循环。</p>
 """, "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 19 ended on a cliffhanger: a custom tool — Python source the user wrote themselves — is by default handed to <span class="mono">SandboxToolExecutor</span>, i.e. "thrown into a sandbox." But what gives the sandbox the nerve to run a stranger's code? And once it finishes, how do you safely collect the result back into the server?</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This is Part 5's finale, and the landing point for the whole tool system's "security mindset." We will draw one <strong>trust-boundary diagram</strong> clearly: which leg of the trip you can "pass along freely," which leg "must be verified," and how one real security fix (PR #3343) welds that boundary shut.</p>
+
+<div class="card analogy"><div class="tag">🔌 Real-world analogy</div>
+<p>Think of the sandbox as a prison visitation window. You (the server) want to pass something <strong>in</strong> — it is your own belongings, so you can hand over the original object. Because the risk only flows inward: once something is behind the high wall, however dangerous, it can never reach your side.</p>
+<p>But any parcel the other party (the stranger's code running inside) hands <strong>out</strong>, you must never reach in and take directly. It has to go through the glass, through the scanner, with its seal checked — because you have no idea whether it holds candy or a razor blade.</p>
+<p>All of this lesson's sense of safety rests on one plain rule: <strong>passing in may be the original; collecting out must pass the scanner</strong>. The rest of the engineering merely translates "the original" into <span class="mono">pickle</span> and "the scanner" into <span class="mono">JSON</span> plus a layer of verification.</p>
+<p>The rule looks simple yet is often broken: many "sandboxes" fixate on locking code <em>in</em>, yet forget that "collecting the result" crosses the boundary just the same. Real safety hides precisely in <strong>how you take things back out</strong>.</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>One sentence is enough: <strong>a custom tool is untrusted code</strong>. It does not run in the main process; it is dropped into a sandbox — a local venv, E2B, or Modal, one of three picked by <span class="mono">SandboxType</span>.</p>
+<p>Across the wall there are only two data channels, opposite in direction and opposite in trust. <strong>server→sandbox</strong> uses <span class="mono">pickle</span> (trusted: the server serializes the <span class="mono">agent_state</span> it built itself); <strong>sandbox→server</strong> uses <span class="mono">JSON</span> (untrusted: <strong>never <span class="mono">pickle.loads</span></strong>), with a <span class="mono">marker+length+MD5</span> frame to verify integrity.</p>
+<p>This <strong>trust-boundary diagram</strong> is the whole lesson. And PR #3343 is exactly the real security fix that switched the return channel from pickle to JSON — taking this boundary from "roughly safe" to "welded shut."</p>
+<p>Stressing the sense of direction once more: when data flows from server to sandbox, privilege <strong>narrows</strong> (entering a low-trust zone), so pickle is safe; when data flows from sandbox back to server, privilege <strong>widens</strong> (returning to a high-trust zone), so it must be JSON only. Treat "the direction in which privilege widens" as the red line, and you have memorized the whole diagram.</p>
+</div>
+<h2>Three sandboxes, one pick: where does the code actually run?</h2>
+<p>Before a custom tool runs, Letta first decides "where to run it." This is not random but a short-circuit decision chain: check the tool's own preference first, then the global config, and finally fall back to local.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Check tool.metadata</h4><p>If the tool explicitly marks <span class="mono">sandbox=="modal"</span> and Modal is enabled → use <strong>Modal</strong> (cloud container, strong isolation).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Check the global config</h4><p>Otherwise consult <span class="mono">ToolSettings.sandbox_type</span>: if an <span class="mono">e2b_api_key</span> is set → use <strong>E2B</strong> (cloud micro-sandbox).</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Fall back to local</h4><p>Neither → <strong>Local</strong>: build an isolated venv on the host and run it in a subprocess. The most common case during development.</p></div></div>
+</div>
+<p>The three sandboxes are not redundant; they are a <strong>trade-off between isolation strength and deployment cost</strong>. A local venv has zero dependencies and is fastest, but shares the kernel with the server and isolates the least; E2B and Modal ship code into a dedicated cloud container — strong isolation, yet they need network access and quota. So the same tool may run locally in development and be switched to Modal in production — exactly why "where to run" must be configurable.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">The type is defined in <span class="mono">schemas/enums.py::SandboxType</span> (<span class="mono">E2B / MODAL / LOCAL</span>); the selection logic lives in <span class="mono">sandbox_tool_executor.py</span>, and the global switch is <span class="mono">settings.py::ToolSettings.sandbox_type</span>. The key point: whichever you pick, the "generate script + trust boundary + frame check" machinery below is <strong>identical across all three sandboxes</strong> — the only difference is the outer container.</span></div>
+<p>A configuration aside: <span class="mono">LocalSandboxConfig</span> can also tune <span class="mono">sandbox_dir</span>, <span class="mono">use_venv</span>, <span class="mono">venv_name</span>, <span class="mono">pip_requirements</span> and more, deciding how the local sandbox is actually laid down. But these are all "how to run" knobs; they do not change the "whom to trust" boundary.</p>
+<h2>The generated sandbox script: wrap the tool and run it</h2>
+<p>The sandbox does not "directly call" the user's function. The server assembles a Python script on the fly, inlines everything it needs, and then lets the sandbox execute the whole thing. That script is assembled by <span class="mono">tool_sandbox/base.py::_render_sandbox_code</span>.</p>
+<p>This "assemble-the-script" approach has an upside: the server has <strong>full control</strong> over everything that happens inside the sandbox — what gets passed in, what gets called, how the result is packed are all hard-coded into the script, and the sandbox is merely an obedient executor.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Unpickle agent_state</h4><p><span class="mono">pickle.loads(...)</span> restores the <span class="mono">agent_state</span> the server passed in (the trusted direction).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Inline the arguments</h4><p>Each call argument is written as a literal via <span class="mono">repr()</span>, <strong>not</strong> pickle.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Inline the user source</h4><p>The tool's <span class="mono">source_code</span> is pasted in verbatim, defining the function body.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Call + pack</h4><p><span class="mono">_function_result = tool(...)</span>, then pack the result + <span class="mono">agent_state</span> into JSON.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Frame + write stdout</h4><p>Prefix it with <span class="mono">marker+length+MD5</span>, write to standard output, and wait for the server to read it.</p></div></div>
+</div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/base.py</span><span class="ln">_render_sandbox_code (simplified skeleton)</span></div>
+<pre><span class="cm"># server pickles agent_state into the script; the sandbox loads it (trusted direction)</span>
+agent_state = pickle.<span class="fn">loads</span>(<span class="nb">b"..."</span>)
+x = <span class="st">"&lt;inlined literal&gt;"</span>            <span class="cm"># args inlined via repr(), not pickle</span>
+<span class="cm"># &lt;user tool source inlined verbatim&gt;</span>
+_function_result = <span class="fn">my_tool</span>(x, agent_state=agent_state)
+payload = _letta_json.<span class="fn">dumps</span>({<span class="st">"results"</span>: _function_result,
+    <span class="st">"agent_state"</span>: agent_state.<span class="fn">model_dump</span>(mode=<span class="st">"json"</span>)}).<span class="fn">encode</span>()  <span class="cm"># JSON, not pickle</span>
+sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn">pack</span>(<span class="st">"&gt;I"</span>, len(payload)) + md5_hex + payload)
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Why inline the source <strong>verbatim</strong> instead of importing the user's module? Because that module simply does not exist inside the sandbox — the tool source lives only in the database. Inlined, the script is self-contained, and the sandbox needs only a clean interpreter to run it. The script also calls <span class="mono">coerce_dict_args_by_annotations(...)</span> to coerce each argument to the right type per its annotation, avoiding string/number mismatches.</span></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">agent_state</span> goes through <span class="mono">pickle.dumps</span> (server-built, sandbox <span class="mono">loads</span>); but <strong>the call arguments are inlined literals (<span class="mono">repr()</span>), not pickle</strong>. In the entire script, <span class="mono">agent_state</span> is the only thing that uses pickle — a distinction we will lean on repeatedly later.</span></div>
 <!--ENMORE-->
 """}
