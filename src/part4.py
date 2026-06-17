@@ -21,11 +21,11 @@ LESSON_13 = {
 
 <div class="card macro">
   <div class="tag">🌍 宏观理解</div>
-  <strong>一句话抓住本课：执行循环从"读存档、选引擎"开始。</strong><span class="mono">AgentState</span> 是 agent 的存档——装着 <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / llm_config</span> 等"重建一个持久化 agent 所需的全部信息"。<span class="mono">AgentLoop.load</span> 是一座工厂——它读存档里的 <span class="mono">agent_type</span> 当钥匙，挑出这次要跑的实现：<span class="mono">letta_v1_agent</span> 走第三代 <span class="mono">LettaAgentV3</span>，其余走第二代 <span class="mono">LettaAgentV2</span>。而 agent 本身经历了三代演进：同步的元老 <span class="mono">Agent</span>、异步的 <span class="mono">LettaAgentV2</span>、砍掉心跳的 <span class="mono">LettaAgentV3</span>。记住这三件事，第四部分就有了骨架——存档、工厂、三代，正好对应"是谁、用哪台、什么脾气"三个问题。
+  <strong>一句话抓住本课：执行循环从"读存档、选引擎"开始。</strong><span class="mono">AgentState</span> 是 agent 的存档——装着 <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / llm_config</span> 等"重建一个持久化 agent 所需的全部信息"。<span class="mono">AgentLoop.load</span> 是一座工厂——它读存档里的 <span class="mono">agent_type</span> 当钥匙，挑出这次要跑的实现：<span class="mono">letta_v1_agent</span>（及 <span class="mono">sleeptime_agent</span>）走第三代 <span class="mono">LettaAgentV3</span>，其余走第二代 <span class="mono">LettaAgentV2</span>。而 agent 本身经历了三代演进：同步的元老 <span class="mono">Agent</span>、异步的 <span class="mono">LettaAgentV2</span>、砍掉心跳的 <span class="mono">LettaAgentV3</span>。记住这三件事，第四部分就有了骨架——存档、工厂、三代，正好对应"是谁、用哪台、什么脾气"三个问题。
 </div>
 
 <h2>AgentState：一个 agent 的"存档"</h2>
-<p>先看存档本身。<span class="mono">AgentState</span>（<span class="mono">letta/schemas/agent.py</span>）的文档字符串只有一句话，却说尽了它的本质：<strong>"重建一个持久化 agent 所需的全部信息"</strong>。它不是某个跑在内存里的临时变量，而是一张能序列化、存进数据库、再读出来的<strong>快照</strong>。</p>
+<p>先看存档本身。<span class="mono">AgentState</span>（<span class="mono">letta/schemas/agent.py</span>）的文档字符串里有一句点睛之言，道尽了它的本质：<strong>"重建一个持久化 agent 所需的全部信息"</strong>。它不是某个跑在内存里的临时变量，而是一张能序列化、存进数据库、再读出来的<strong>快照</strong>。</p>
 
 <p>这正好接上第 6 课"有状态 vs 无状态"：LLM 本身无状态，Letta 把 agent 的状态<strong>外化</strong>成这张存档。换句话说，"一个 agent"在 Letta 里就等于"一行数据库记录 + 它的存档表示"。</p>
 
@@ -295,11 +295,11 @@ Where does the loop start? With two things: a "save file" called <strong>AgentSt
 
 <div class="card macro">
   <div class="tag">🌍 Big picture</div>
-  <strong>One line for this lesson: the execution loop starts by "reading the save, picking the engine."</strong> <span class="mono">AgentState</span> is the agent's save file — holding <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / llm_config</span> and more, "all the information needed to recreate a persisted agent." <span class="mono">AgentLoop.load</span> is a factory — it reads the <span class="mono">agent_type</span> on the save as a key and picks the implementation to run: <span class="mono">letta_v1_agent</span> goes to third-generation <span class="mono">LettaAgentV3</span>, everything else to second-generation <span class="mono">LettaAgentV2</span>. And the agent itself went through three generations: the synchronous elder <span class="mono">Agent</span>, the async <span class="mono">LettaAgentV2</span>, and the heartbeat-free <span class="mono">LettaAgentV3</span>. Remember these three things and Part 4 has a skeleton — save, factory, three generations, matching "who, which engine, what temperament."
+  <strong>One line for this lesson: the execution loop starts by "reading the save, picking the engine."</strong> <span class="mono">AgentState</span> is the agent's save file — holding <span class="mono">id / system / agent_type / blocks / message_ids / tools / tool_rules / llm_config</span> and more, "all the information needed to recreate a persisted agent." <span class="mono">AgentLoop.load</span> is a factory — it reads the <span class="mono">agent_type</span> on the save as a key and picks the implementation to run: <span class="mono">letta_v1_agent</span> (and <span class="mono">sleeptime_agent</span>) goes to third-generation <span class="mono">LettaAgentV3</span>, the rest to second-generation <span class="mono">LettaAgentV2</span>. And the agent itself went through three generations: the synchronous elder <span class="mono">Agent</span>, the async <span class="mono">LettaAgentV2</span>, and the heartbeat-free <span class="mono">LettaAgentV3</span>. Remember these three things and Part 4 has a skeleton — save, factory, three generations, matching "who, which engine, what temperament."
 </div>
 
 <h2>AgentState: an agent's "save file"</h2>
-<p>Start with the save itself. The docstring of <span class="mono">AgentState</span> (<span class="mono">letta/schemas/agent.py</span>) is a single sentence, yet it captures the essence: <strong>"all the information needed to recreate a persisted agent."</strong> It isn't a temporary variable living in memory — it's a <strong>snapshot</strong> that can be serialized, stored in the database, and read back out.</p>
+<p>Start with the save itself. The docstring of <span class="mono">AgentState</span> (<span class="mono">letta/schemas/agent.py</span>) has one line that captures its essence: <strong>"all the information needed to recreate a persisted agent."</strong> It isn't a temporary variable living in memory — it's a <strong>snapshot</strong> that can be serialized, stored in the database, and read back out.</p>
 
 <p>This connects straight to lesson 6's "stateful vs stateless": the LLM itself is stateless, so Letta <strong>externalizes</strong> the agent's state into this save file. Put differently, "an agent" in Letta equals "one database row + its save-file representation."</p>
 
