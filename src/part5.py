@@ -1008,5 +1008,51 @@ LESSON_19 = {"zh": r"""
 </pre></div>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">Look at that <span class="mono">.get(tool_type, SandboxToolExecutor)</span> line inside <span class="mono">get_executor</span>: <strong>any type not in the table falls through to the sandbox</strong>. <span class="mono">custom</span>, <span class="mono">letta_voice_sleeptime_core</span>, the multi-agent tools, and both deprecated externals all land here. So "a custom tool = runs in the sandbox" is the <strong>default</strong>, not a special case.</span></div>
 <p>This is the classic <strong>factory pattern</strong>: it gathers "<em>which implementation to actually use</em>" into one place, so the caller just asks for "an executor" without needing to know which class sits behind it or how it is built. Want to add a tool type later? Register one line in <span class="mono">_executor_map</span> — and not a single word of the loop or the entry has to change.</p>
+<h2>The real entry: ToolExecutionManager</h2>
+<p>The factory only "picks the person." The thing the agent loop actually calls is <span class="mono">ToolExecutionManager::execute_tool_async</span>: it uses the factory to get an executor, then <strong>times</strong> the call, <strong>truncates</strong> an over-long return, <strong>wraps</strong> exceptions into a result object, and hands it all back to the loop.</p>
+<p>Why cram all this drudgery into the entry? Because a tool is the most "uncontrollable" link in an agent — it might read a database, run code, or hit the network, with wildly varying latency and failure modes. Collecting timing, truncation, and exception-wrapping into this one entry layer means the loop needn't fuss over each tool separately; the observability of per-step latency and the stability of "never blow up, never throw" stay centralized and under control.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">the entry (simplified)</span></div><pre><span class="kw">async def</span> <span class="fn">execute_tool_async</span>(self, function_name, function_args, tool, ...):
+    executor = ToolExecutorFactory.<span class="fn">get_executor</span>(tool.tool_type, ...)
+    result = <span class="kw">await</span> executor.<span class="fn">execute</span>(function_name, function_args, tool, actor, ...)
+    <span class="kw">if</span> len(return_str) > tool.return_char_limit:   <span class="cm"># truncate if too long</span>
+        ...
+    <span class="kw">return</span> result   <span class="cm"># ToolExecutionResult(status, func_return, stdout, stderr, ...)</span>
+</pre></div>
+<div class="note tip"><span class="ni">🧭</span><span class="nx">Tell the two layers apart: the factory only answers "<strong>which executor</strong>," while <span class="mono">ToolExecutionManager</span> is the <strong>entry</strong> the loop truly calls — it does the timing, the truncation past <span class="mono">return_char_limit</span>, and the uniform wrapping of exceptions into <span class="mono">ToolExecutionResult(status="error")</span>.</span></div>
+<p>So what does that unified return value <span class="mono">ToolExecutionResult</span> look like? It carries <span class="mono">status</span> (success or failure), <span class="mono">func_return</span> (the tool's return value), <span class="mono">stdout / stderr</span> (whatever ran printed), plus fields like <span class="mono">sandbox_config_fingerprint</span>. Whether core ran it in-process or a sandbox ran it, the loop receives this same shell — which is exactly why the entry bothers to normalize everything into it.</p>
+<h2>Five executors, each minding its patch</h2>
+<p>Counting the ones named in the factory table plus the fallback, there are five executors in all. The table below lines up "label → executor → category → typical tools."</p>
+<table class="t">
+<tr><th>ToolType</th><th>Executor</th><th>Category</th><th>Typical tools</th></tr>
+<tr><td class="mono">letta_core</td><td class="mono">LettaCoreToolExecutor</td><td>in-process</td><td class="mono">send_message · conversation_search</td></tr>
+<tr><td class="mono">letta_memory_core</td><td class="mono">LettaCoreToolExecutor</td><td>in-process · memory</td><td class="mono">core_memory_append · core_memory_replace</td></tr>
+<tr><td class="mono">letta_builtin</td><td class="mono">LettaBuiltinToolExecutor</td><td>controlled built-in</td><td class="mono">run_code · web_search · fetch_webpage</td></tr>
+<tr><td class="mono">letta_files_core</td><td class="mono">LettaFileToolExecutor</td><td>files</td><td class="mono">open_files · grep_files</td></tr>
+<tr><td class="mono">external_mcp</td><td class="mono">ExternalMCPToolExecutor</td><td>external server</td><td class="mono">MCP tools</td></tr>
+<tr><td class="mono">custom (fallback)</td><td class="mono">SandboxToolExecutor</td><td>sandbox</td><td class="mono">your custom tools</td></tr>
+</table>
+<p>Let's spell out what each of these five executors does:</p>
+<ul>
+<li><span class="mono">LettaCoreToolExecutor</span>: it takes on all three patches — core, <strong>memory</strong>, and sleeptime — and runs every one of them <strong>in-process</strong>. The core-memory edits <span class="mono">core_memory_append / core_memory_replace</span> execute right here, no sandbox detour, lowest latency.</li>
+<li><span class="mono">LettaBuiltinToolExecutor</span>: runs the platform's built-in tools — <span class="mono">run_code</span> executes code, <span class="mono">web_search</span> searches the web, <span class="mono">fetch_webpage</span> grabs a page — a set of "controlled" utilities.</li>
+<li><span class="mono">LettaFileToolExecutor</span>: dedicated to file tools such as <span class="mono">open_files</span> and <span class="mono">grep_files</span>, serving "read a file into context" and "search within files."</li>
+<li><span class="mono">ExternalMCPToolExecutor</span>: the only "reach-outward" executor; it forwards the call to an external MCP server and runs not one line of business code locally.</li>
+<li><span class="mono">SandboxToolExecutor</span>: the <strong>fallback</strong> for custom tools and every unmapped type, throwing unfamiliar code into an isolated sandbox to run — how it runs and why it dares to is the subject of Lesson 20.</li>
+</ul>
+<p>Walk the dispatch with three examples. The model wants <span class="mono">core_memory_append</span> (type <span class="mono">letta_memory_core</span>): the factory hands it to <span class="mono">LettaCoreToolExecutor</span>, editing memory on the spot in-process. It wants <span class="mono">run_code</span> (<span class="mono">letta_builtin</span>): handed to <span class="mono">LettaBuiltinToolExecutor</span> for controlled execution. It wants your own <span class="mono">calculate_invoice</span> (unsorted, landing in <span class="mono">custom</span>): the factory can't find it in the table and falls back to <span class="mono">SandboxToolExecutor</span>, into the sandbox. One identical call, three completely different fates.</p>
+<p>They all inherit the base class <span class="mono">tool_executor_base.py::ToolExecutor</span>, with the uniform signature <span class="mono">async def execute(...) -&gt; ToolExecutionResult</span>. Note that the memory tool <span class="mono">core_memory_append</span> also belongs to <span class="mono">LettaCoreToolExecutor</span> and runs <strong>in-process</strong>, never in a sandbox.</p>
+<div class="note info"><span class="ni">🧩</span><span class="nx">The beauty of a uniform interface: the loop recognizes only one signature, <span class="mono">execute(...) -&gt; ToolExecutionResult</span>. Whether underneath it edits memory, runs code, or connects to an external server, it all "looks the same" to the loop — so it can call, time, record, and feed the result back into the conversation for any tool, all alike.</span></div>
+<p>In-process versus into-the-sandbox is, at heart, a "trust versus speed" trade-off. Trusted core tools (edit memory, send a message) run straight in the process — fastest and simplest; custom code of unknown origin must be isolated first, accepting slower and clunkier over letting it touch the server's memory and permissions. Letting the "type" express that trade-off is the cleverest part of this design.</p>
+
+<div class="cute">
+<div class="row"><span class="emoji">🏭</span><span class="lab">sort by ToolType</span><span class="arrow">→</span><span class="emoji">🧠</span><span class="bubble">core · in-process</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">the same factory</span><span class="arrow">→</span><span class="emoji">🔧</span><span class="bubble">builtin · built-in</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">different belts</span><span class="arrow">→</span><span class="emoji">📁</span><span class="bubble">files · files</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">each its own way</span><span class="arrow">→</span><span class="emoji">🔌</span><span class="bubble">mcp · external</span></div>
+<div class="row"><span class="emoji">🏭</span><span class="lab">the fallback lane</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">sandbox · sandbox</span></div>
+<div class="cap">The factory puts each tool on the right belt by ToolType: in-process, built-in, files, external, sandbox.</div>
+</div>
+
+<p>So "dispatch" can be closed in one sentence: <strong>a tool arrives wearing its type label, the factory sends it to the matching executor by that label, each executor runs its own runtime, and they all emit the same kind of result</strong>. Next we look at the most special belt of all — the one to the outside world, MCP.</p>
 <!--ENMORE-->
 """}
