@@ -1107,6 +1107,15 @@ HeartbeatParam     ::= "\"request_heartbeat\":" ( "true" | "false" )
 <li>This is the classic MemGPT-era path; modern local backends go through Lesson 21's OpenAI-compatible <span class="mono">OpenAIClient</span>.</li>
 </ul>
 </div>
-<!--ENMORE-->
+<h2>Part 6 Finale</h2>
+<p>With three lessons done, all of Part 6 is really one smooth line. Gather it into a single picture:</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 6 finale: three lessons, one line</b></div><div class="cells"><span class="cell">21 stand up the contract</span><span class="sep">·</span><span class="cell">22 isolate the quirks</span><span class="sep">·</span><span class="cell hl">23 local + GBNF</span></div></div>
+<p>Stitch the three together in one line: <strong>stand up the contract → cage the quirks → then wire on even a model with no tool API</strong>.</p>
+<p>One end clasps back to Lesson 21 — the reason everything targets the OpenAI shape is that it's already the industry's universal format; the other clasps to Lesson 15 — the grammar-forced <span class="mono">inner_thoughts</span> and heartbeat on the local path are the same mechanism as "inner monologue + should we take another step".</p>
+<p>Step back and the whole part really tells one thing at three levels: define a common language, cage the dialects into a translation layer, then fit even a speechless model with a translator. The dividend of abstraction spreads outward, layer by layer.</p>
+<p>Hold this line firmly, and for every newly integrated provider you'll naturally ask the same three questions: what its request looks like, how its response is collected into the OpenAI shape, and whether it has native tool capability. That is exactly the muscle memory Part 6 leaves you.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">One line to close all of Part 6: whether what's plugged in below is a cloud giant or a small local model with no tool API at all, in the eyes of the agent loop it's all just one same OpenAI-shaped response. That is the entire ambition of "provider abstraction".</span></div>
+<p>This ambition has its boundary too: it only handles "collecting every model into one shape". As for how those shapes get persisted once collected, and how a long-running service schedules them, that's the work the next part takes over.</p>
+<p>With the provider layer laid bare, the model end is accounted for. But for an agent to truly run, its state, memory, and messages must be <strong>persisted</strong>, and wrapped into a process that can serve the outside. The next part, Part 7, turns to the server and persistence — seeing how Letta lands all this into a database and a backend, letting an agent truly "live" across restart after restart.</p>
 """,
 }
