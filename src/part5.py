@@ -1193,5 +1193,39 @@ payload = _letta_json.<span class="fn">dumps</span>({<span class="st">"results"<
     <span class="st">"agent_state"</span>: agent_state.<span class="fn">model_dump</span>(mode=<span class="st">"json"</span>)}).<span class="fn">encode</span>()  <span class="cm"># JSON，不是 pickle</span>
 sys.stdout.buffer.<span class="fn">write</span>(MARKER + struct.<span class="fn">pack</span>(<span class="st">"&gt;I"</span>, len(payload)) + md5_hex + payload)
 </pre></div>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">agent_state</span> 走 <span class="mono">pickle.dumps</span>（服务端造、沙箱 <span class="mono">loads</span>）；但<strong>调用参数是内联字面量（<span class="mono">repr()</span>），不是 pickle</strong>。整段脚本里，只有 <span class="mono">agent_state</span> 这一项用到了 pickle——这个区分后面会反复用到。</span></div>
+
+<h2>信任边界：方向决定序列化</h2>
+<p>现在把两条通道并排放。<strong>同一份脚本，两个方向用了两种序列化</strong>——这不是随意，而是信任在说话。</p>
+<div class="cols">
+  <div class="col"><h4>⬇️ server → sandbox</h4><p>用 <span class="mono">pickle</span> 传 <span class="mono">agent_state</span>。<strong>受信</strong>：是服务端 pickle 自己造的对象，沙箱只负责 loads。权限往低信任侧流，没有"反序列化不可信输入"的问题。</p></div>
+  <div class="col"><h4>⬆️ sandbox → server</h4><p>只用 <span class="mono">JSON</span> + <span class="mono">marker+长度+MD5</span>。<strong>不可信</strong>：沙箱刚跑完任意用户代码，它的 stdout 绝不能 <span class="mono">pickle.loads</span>，只能当数据读。</p></div>
+</div>
+<p>为什么向下可以 pickle？因为被反序列化的对象是<strong>服务端自己造的</strong>，沙箱拿到的是数据、不是攻击面；就算沙箱想搞鬼，它也改不了"已经 pickle 进去的字节"。</p>
+<p>为什么向上必须 JSON？因为 <span class="mono">pickle.loads</span> 会在反序列化时<strong>执行任意代码</strong>。沙箱里跑的是陌生人的工具，它的输出天然可疑——用 <span class="mono">json.loads</span> 读，最坏也只是拿到一坨假数据，而不是被 RCE。</p>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">⬇️ pickle</span><span class="arrow">→</span><span class="emoji">📦</span><span class="bubble">自己人，放行</span></div>
+<div class="row"><span class="emoji">🔐</span><span class="lab">⬆️ JSON</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="bubble">外人，过安检 MD5</span></div>
+<div class="cap">信任＝方向：能 pickle.loads 你自己造的数据；绝不 pickle.loads 跨过不可信边界回来的数据。</div></div>
+
+<h2>回程帧：marker + 长度 + MD5</h2>
+<p>沙箱的 stdout 是一条嘈杂的河：用户代码可能 print 调试信息、可能抛异常栈、甚至可能故意打一个<strong>假结果</strong>。所以真正的结果不是"整段 stdout"，而是被一段帧<strong>圈起来</strong>的那一小块。</p>
+<table class="t">
+  <tr><th>字段</th><th>大小</th><th>作用</th></tr>
+  <tr><td class="mono">MARKER</td><td class="mono">16 字节</td><td>uuid5 生成的定位锚，在噪声里标出"真结果从这里开始"</td></tr>
+  <tr><td class="mono">LENGTH</td><td class="mono">4 字节 '&gt;I'</td><td>big-endian 无符号整数，告诉你 payload 有多长，好精确切片</td></tr>
+  <tr><td class="mono">MD5</td><td class="mono">32 字节 hex</td><td>payload 的校验和，抓篡改与截断</td></tr>
+  <tr><td class="mono">JSON_PAYLOAD</td><td class="mono">LENGTH 字节</td><td>真正的结果：工具返回值 + agent_state 的 JSON</td></tr>
+</table>
+<div class="cellgroup"><div class="cg-cap"><b>stdout 帧布局</b></div><div class="cells"><span class="cell hl">MARKER(16)</span><span class="sep">·</span><span class="cell">LENGTH(4)</span><span class="sep">·</span><span class="cell">MD5(32)</span><span class="sep">·</span><span class="cell">JSON_PAYLOAD</span></div></div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_sandbox/local_sandbox.py</span><span class="ln">parse_out_function_results_markers（简化）</span></div>
+<pre>pos = data.<span class="fn">find</span>(MARKER)                       <span class="cm"># 在嘈杂 stdout 里定位真结果</span>
+length = struct.<span class="fn">unpack</span>(<span class="st">"&gt;I"</span>, data[p:p+<span class="nb">4</span>])[<span class="nb">0</span>]
+payload = data[start : start+length]
+<span class="kw">if</span> hashlib.<span class="fn">md5</span>(payload).<span class="fn">hexdigest</span>() != checksum:
+    <span class="kw">raise</span> <span class="fn">Exception</span>(<span class="st">"Function ran, but output is corrupted."</span>)
+result = json.<span class="fn">loads</span>(payload)                     <span class="cm"># JSON，绝不 pickle.loads</span>
+agent_state = AgentState.<span class="fn">model_validate</span>(result[<span class="st">"agent_state"</span>])  <span class="cm"># pydantic 重水合</span>
+</pre></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">这套帧防的是什么？用户工具能往 stdout 打<strong>任何东西</strong>，包括一个伪造的结果或假 marker。marker 圈出真 payload，长度做精确切片，MD5 抓篡改/截断——三层叠起来，服务端才敢说"我读到的就是工具真正返回的那一份"。</span></div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
