@@ -408,12 +408,23 @@ LESSON_18 = {"zh": r"""
 </ul>
 </div>
 
+<p>为什么"绝不运行"是条不容商量的红线？因为 Letta 是<strong>多租户</strong>服务：同一个进程里可能同时跑着许多用户的工具。只要有一段上传代码在 import 时越界，受害的就不只是它自己的会话，而是整台服务器和上面所有人的数据。把执行权牢牢攥在自己手里，是这类平台的生存底线。</p>
+
 <h2>为什么不能直接 import</h2>
 <p>最直觉的做法是 <span class="mono">import</span> 用户模块、再 <span class="mono">inspect</span> 里面的函数。可这条路有致命问题：<span class="mono">import</span> 会执行模块的<strong>顶层代码</strong>。用户源码里只要在函数定义之外写一行 <span class="mono">os.system(...)</span>，导入的那一刻就在你的服务器上跑起来了——这是教科书级的<strong>远程代码执行（RCE）</strong>。</p>
 <div class="cols">
 <div class="col"><h4>❌ import + inspect</h4><p>把源码当模块加载，会<strong>执行顶层代码</strong>。等于让陌生人在你服务器上跑任意命令，安全边界直接失守。</p></div>
 <div class="col"><h4>✅ ast.parse</h4><p>把源码解析成<strong>语法树</strong>，<strong>纯静态、只读不跑</strong>。语法树就是结构化的"代码长相"，读它不会触发任何副作用。</p></div>
 </div>
+<p>把"顶层代码"说穿了：它指的是函数定义<strong>之外</strong>、模块一被加载就会执行的语句——<span class="mono">import</span> 第三方库、读环境变量、发一个网络请求，全都在加载那一刻发生。攻击者只要把恶意逻辑放在顶层（甚至藏进一个装饰器或默认参数表达式里），你的 <span class="mono">import</span> 就替他按下了执行键。</p>
+<p>而 <span class="mono">ast.parse</span> 走的是另一条世界线：它把源码当成<strong>文本</strong>来分析，产出一棵描述"代码长什么样"的语法树。树上记着"这里定义了一个函数、它叫什么、有哪些参数、注解是什么"，但<strong>没有任何一步会执行</strong>这些语句。读一棵树，再危险的代码也只是数据。</p>
+<table class="t">
+<tr><th>维度</th><th>import + inspect</th><th>ast.parse（Letta 选这条）</th></tr>
+<tr><td class="mono">是否执行代码</td><td>会，顶层语句立即运行</td><td>否，只构建语法树</td></tr>
+<tr><td class="mono">安全风险</td><td>任意代码执行（RCE）</td><td>无副作用，纯只读</td></tr>
+<tr><td class="mono">能拿到什么</td><td>真函数对象与真实签名</td><td>节点信息：函数名、参数、注解、docstring</td></tr>
+<tr><td class="mono">坏代码的下场</td><td>已经跑了，覆水难收</td><td>顶多语法错，抛 LettaToolCreateError</td></tr>
+</table>
 <div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">用户源码</span><span class="arrow">→</span><span class="emoji">🔍</span><span class="lab">AST 只读不跑</span><span class="arrow">→</span><span class="emoji">📜</span><span class="bubble">我读你，但绝不跑你</span></div><div class="cap">派生器只"阅读"代码的形状，把它翻译成一张 schema，自始至终不让这段代码运行一行。</div></div>
 
 <h2>派生流程：纯 AST + 复用 generate_schema</h2>
@@ -431,6 +442,14 @@ LESSON_18 = {"zh": r"""
 <div class="node"><div class="nt">JSON schema</div><div class="nd">模型能看懂的工具契约</div></div>
 </div>
 <p>这条流水线最妙的地方，是末端那个 <span class="mono">generate_schema</span> 跟第 17 课<strong>一字不差</strong>。原生工具走的是"函数对象 → generate_schema"，上传工具走的是"源码 → MockFunction → generate_schema"——两条路在最后一步<strong>汇合到同一个生成器</strong>，schema 的口径因此完全一致。</p>
+<p>别把"复用"看成偷懒，它其实是<strong>刻意的单一事实源</strong>：schema 的生成规则全代码库只有一处实现。无论工具是平台内置的、还是用户现写现传的，只要走到 <span class="mono">generate_schema</span>，类型映射、docstring 解析、保留参数过滤就完全一致，绝不会冒出"内置工具和上传工具 schema 口径不一样"的诡异 bug。</p>
+<p>把上面流程里的第三步 <span class="mono">_parse_function_from_source</span> 单独放大，它内部其实是四个干净利落的小动作：</p>
+<div class="vflow">
+<div class="step"><div class="num">1</div><div class="sc"><h4>ast.parse(src)</h4><p>把源码字符串解析成语法树；语法不合法当场抛 <span class="mono">LettaToolCreateError</span>。</p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>选出函数节点</h4><p>遍历 <span class="mono">tree.body</span>，取<strong>最后一个</strong> <span class="mono">FunctionDef</span> 当作工具本体。</p></div></div>
+<div class="step"><div class="num">3</div><div class="sc"><h4>重建 Signature</h4><p>逐个参数读注解、用 <span class="mono">ast.literal_eval</span> 取字面量默认值，拼出 <span class="mono">inspect.Signature</span>。</p></div></div>
+<div class="step"><div class="num">4</div><div class="sc"><h4>装进 MockFunction</h4><p>把函数名、docstring 与重建好的签名塞进假函数，交还给上层。</p></div></div>
+</div>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/functions.py</span><span class="ln">派生入口（简化）</span></div>
 <pre><span class="kw">def</span> <span class="fn">derive_openai_json_schema</span>(source_code: str, name=<span class="kw">None</span>):
     mock = <span class="fn">_parse_function_from_source</span>(source_code, name)  <span class="cm"># 纯 AST，绝不 exec</span>
@@ -510,5 +529,17 @@ LESSON_18 = {"zh": r"""
 <p><strong>为什么：</strong>接线落在 <span class="mono">tool_manager</span>（判断 custom 且缺 schema）→ <span class="mono">generate_schema_for_tool_creation</span>（按 <span class="mono">source_type</span> 分派 Python / TS）。它<strong>已不在</strong> pydantic 校验器里，所以一次创建只算一次；而 TS 因为必须显式给 schema，通常不会落到自动派生这一支。</p>
 <p><strong>源码：</strong><span class="mono">letta/services/tool_manager.py</span>、<span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>。</p>
 </div></details>
-<!--ZHMORE-->
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><strong>注册自定义工具时，schema 靠纯 AST 派生</strong>：从源码字符串生成 schema，<strong>绝不运行</strong>这段代码。</li>
+<li><strong><span class="mono">derive_openai_json_schema</span> = <span class="mono">_parse_function_from_source</span> + 复用 <span class="mono">generate_schema</span></strong>：和第 17 课汇合到同一个生成器。</li>
+<li><strong><span class="mono">MockFunction</span> 提供 <span class="mono">__name__ / __doc__ / __signature__</span></strong>：用三件套骗过 <span class="mono">inspect</span>，调用即抛错。</li>
+<li><strong>取最后一个 <span class="mono">FunctionDef</span>、未知类型造桩</strong>：未定义的 BaseModel 用 <span class="mono">type(name,(BaseModel,),{})</span> 顶上，不 import。</li>
+<li><strong>TS 工具必须显式给 <span class="mono">json_schema</span></strong>：自动派生主要服务 Python。</li>
+<li><strong>派生只在创建时做</strong>：接线在 <span class="mono">tool_manager</span> → <span class="mono">tool_schema_generator</span>，已不在 pydantic 校验器里。</li>
+</ul>
+</div>
+
+<p>至此，工具有了 schema、能被模型"看见"并发起调用。可当 agent <strong>真要执行</strong>一个工具时，它怎么知道"该用哪种方式跑它"——是直接在进程内调用、丢进沙箱隔离执行、还是连去一台外部服务器？这就是<strong>第 19 课"工具分发与执行"</strong>要回答的问题。</p>
+
 """, "en": r"""<p>stub</p>"""}
