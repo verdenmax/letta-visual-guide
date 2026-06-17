@@ -1705,7 +1705,7 @@ LESSON_16 = {
 </div>
 
 <h2>四、规则怎么左右"继续 / 停止"（接第 14 课）</h2>
-<p>同一个 solver，除了"算合法集"，还要喂给第 14 课的 <span class="mono">_decide_continuation</span> 做续步判断。这几桶不缩小工具集的规则，作用就体现在这里。</p>
+<p>同一个 solver，除了"算合法集"，还在循环里决定<strong>续 / 停</strong>：终止 / 孩子 / 继续 / 必调这几条在第 14 课的 <span class="mono">_decide_continuation</span> 里查；审批那条则在 <span class="mono">_handle_ai_response</span> 里直接拦下。这几桶不缩小工具集的规则，作用就体现在这里。</p>
 
 <table class="t">
   <tr><th>规则</th><th>solver 方法</th><th>在循环里的效果</th></tr>
@@ -1731,7 +1731,7 @@ LESSON_16 = {
 
 <div class="card warn">
   <div class="tag">⚠️ 常见误区</div>
-  <strong>四个别记错的点。</strong>其一，<strong>违规的工具不会被执行</strong>——它被 <span class="mono">_build_rule_violation_result</span> 换成一条<strong>合成错误</strong>喂回模型，<em>不是</em>"真跑了再报错"。其二，<span class="mono">get_allowed_tool_names</span> <strong>只对 child + parent 规则求交</strong>来缩工具集；<span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required</span> / <span class="mono">approval</span> <strong>不缩</strong>工具集，它们在循环里起作用。其三，枚举值是<strong>历史命名</strong>：<span class="mono">run_first</span> / <span class="mono">exit_loop</span> / <span class="mono">constrain_child_tools</span>…，<em>不是</em> <span class="mono">Init</span> / <span class="mono">Terminal</span> / <span class="mono">Child</span>。其四，Letta <strong>不做环 / 冲突检测</strong>——只有逐条 pydantic 校验（<span class="mono">ChildToolRule.child_arg_nodes</span> ⊆ children；<span class="mono">ConditionalToolRule</span> 至少一条映射）＋ <span class="mono">agent_manager_helper.py::check_supports_structured_output</span> 在配了 &gt;1 个 init 规则时报错。规则之间会不会打架，框架不替你兜，得靠配置者自己想清楚。这也提醒一句：工具规则是把"双刃剑"——用好了能精确编排，配拧了也没有保险丝替你拦下。
+  <strong>四个别记错的点。</strong>其一，<strong>违规的工具不会被执行</strong>——它被 <span class="mono">_build_rule_violation_result</span> 换成一条<strong>合成错误</strong>喂回模型，<em>不是</em>"真跑了再报错"。其二，<span class="mono">get_allowed_tool_names</span> <strong>只对 child + parent 规则求交</strong>来缩工具集；<span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required</span> / <span class="mono">approval</span> <strong>不缩</strong>工具集，它们在循环里起作用。其三，枚举值是<strong>历史命名</strong>：<span class="mono">run_first</span> / <span class="mono">exit_loop</span> / <span class="mono">constrain_child_tools</span>…，<em>不是</em> <span class="mono">Init</span> / <span class="mono">Terminal</span> / <span class="mono">Child</span>。其四，Letta <strong>不做环 / 冲突检测</strong>——只有逐条 pydantic 校验（<span class="mono">ChildToolRule.child_arg_nodes</span> ⊆ children；<span class="mono">ConditionalToolRule</span> 至少一条映射）＋ <span class="mono">agent_manager_helper.py::check_supports_structured_output</span> 对<strong>非结构化输出模型</strong>、在配了 &gt;1 个 init 规则时报错。规则之间会不会打架，框架不替你兜，得靠配置者自己想清楚。这也提醒一句：工具规则是把"双刃剑"——用好了能精确编排，配拧了也没有保险丝替你拦下。
 </div>
 
 <h2>再挖深一点</h2>
@@ -1981,7 +1981,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
 </div>
 
 <h2>How rules sway "continue / stop" (continuing from lesson 14)</h2>
-<p>The same solver, besides "computing the legal set," also feeds lesson 14's <span class="mono">_decide_continuation</span> for the continuation decision. The buckets of rules that don't shrink the tool set show their effect right here.</p>
+<p>The same solver, besides "computing the legal set," also drives the <strong>continue / stop</strong> decision: terminal / children / continue / required are consulted in lesson 14's <span class="mono">_decide_continuation</span>, while approval is caught directly in <span class="mono">_handle_ai_response</span>. The buckets of rules that don't shrink the tool set show their effect right here.</p>
 
 <table class="t">
   <tr><th>Rule</th><th>Solver method</th><th>Effect in the loop</th></tr>
@@ -2007,7 +2007,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
 
 <div class="card warn">
   <div class="tag">⚠️ Common pitfalls</div>
-  <strong>Four points not to misremember.</strong> First, <strong>a violating tool is not executed</strong> — <span class="mono">_build_rule_violation_result</span> swaps it for a <strong>synthesized error</strong> fed back to the model, <em>not</em> "actually run, then errored." Second, <span class="mono">get_allowed_tool_names</span> <strong>intersects only child + parent rules</strong> to shrink the tool set; <span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required</span> / <span class="mono">approval</span> <strong>don't shrink</strong> it — they act inside the loop. Third, the enum values are <strong>legacy-named</strong>: <span class="mono">run_first</span> / <span class="mono">exit_loop</span> / <span class="mono">constrain_child_tools</span>…, <em>not</em> <span class="mono">Init</span> / <span class="mono">Terminal</span> / <span class="mono">Child</span>. Fourth, Letta does <strong>no cycle / conflict detection</strong> — only per-rule pydantic validation (<span class="mono">ChildToolRule.child_arg_nodes</span> ⊆ children; <span class="mono">ConditionalToolRule</span> needs at least one mapping) plus <span class="mono">agent_manager_helper.py::check_supports_structured_output</span> erroring when more than one init rule is configured. Whether rules clash, the framework won't cover for you — the configurer must think it through. A reminder, too: tool rules are a <strong>double-edged sword</strong> — wielded well they orchestrate precisely, misconfigured there's no fuse to stop you.
+  <strong>Four points not to misremember.</strong> First, <strong>a violating tool is not executed</strong> — <span class="mono">_build_rule_violation_result</span> swaps it for a <strong>synthesized error</strong> fed back to the model, <em>not</em> "actually run, then errored." Second, <span class="mono">get_allowed_tool_names</span> <strong>intersects only child + parent rules</strong> to shrink the tool set; <span class="mono">terminal</span> / <span class="mono">continue</span> / <span class="mono">required</span> / <span class="mono">approval</span> <strong>don't shrink</strong> it — they act inside the loop. Third, the enum values are <strong>legacy-named</strong>: <span class="mono">run_first</span> / <span class="mono">exit_loop</span> / <span class="mono">constrain_child_tools</span>…, <em>not</em> <span class="mono">Init</span> / <span class="mono">Terminal</span> / <span class="mono">Child</span>. Fourth, Letta does <strong>no cycle / conflict detection</strong> — only per-rule pydantic validation (<span class="mono">ChildToolRule.child_arg_nodes</span> ⊆ children; <span class="mono">ConditionalToolRule</span> needs at least one mapping) plus <span class="mono">agent_manager_helper.py::check_supports_structured_output</span> erroring when more than one init rule is configured (for non-structured-output models). Whether rules clash, the framework won't cover for you — the configurer must think it through. A reminder, too: tool rules are a <strong>double-edged sword</strong> — wielded well they orchestrate precisely, misconfigured there's no fuse to stop you.
 </div>
 
 <h2>Digging a little deeper</h2>
