@@ -483,5 +483,32 @@ LESSON_18 = {"zh": r"""
 <li>schema 派生<strong>只在创建时</strong>做，<strong>已不在</strong> pydantic 校验器里：<span class="mono">Tool.refresh_source_code_and_json_schema</span> 对 custom 缺 schema 只<strong>告警</strong>、不再现算。</li>
 </ul>
 </div>
+<h2>TypeScript 工具</h2>
+<p>工具不只能用 Python 写。<span class="mono">letta/functions/typescript_parser.py::derive_typescript_json_schema</span> 负责 TS：它<strong>不走 AST</strong>，而是用<strong>正则</strong>扫描 <span class="mono">export function</span> 的签名，再从 <span class="mono">JSDoc</span> 注释里取参数描述；参数名后带 <span class="mono">?</span> 视为可选。</p>
+<p>类型映射更粗放：<span class="mono">union</span> 一律映射成 <span class="mono">string</span>，<span class="mono">any</span> 也落到 <span class="mono">string</span>。源类型由 <span class="mono">letta/schemas/enums.py::ToolSourceType</span> 枚举给出，有 <span class="mono">python / typescript / json</span> 三种。</p>
+<div class="note info"><span class="ni">👉</span><span class="nx">但有个硬约束：TS 工具在 API 创建时<strong>必须</strong>自带 <span class="mono">json_schema</span>（<span class="mono">ToolCreate.validate_typescript_requires_schema</span>，缺了就 <span class="mono">ValueError</span>）。所以"自动派生 schema"这条路<strong>主要服务 Python 工具</strong>；TS 的 schema 通常由调用方显式给出。</span></div>
+
+<h2>再挖深一点</h2>
+<p>把几个最容易卡住的"为什么"摊开来讲，每条都给示例、原因和源码出处。</p>
+<details class="accordion"><summary>① 为什么用 AST，而不直接 import？</summary><div class="acc-body">
+<p><strong>示例：</strong>用户源码在函数定义之外、顶层写了一行 <span class="mono">os.system("rm -rf /")</span>，只要你 <span class="mono">import</span> 它，这行就在你的服务器上跑了。</p>
+<p><strong>为什么：</strong><span class="mono">import</span> 会执行模块的<strong>顶层代码</strong>，等于把服务器交给陌生人，是标准的 RCE。<span class="mono">ast.parse</span> 则只把源码读成<strong>语法树</strong>——纯静态、零副作用，看一千遍也不会触发任何执行。安全的本质，是"只读不跑"。</p>
+<p><strong>源码：</strong><span class="mono">letta/functions/functions.py::_parse_function_from_source</span> 全程基于 <span class="mono">ast</span>，没有一处 <span class="mono">exec/import</span>。</p>
+</div></details>
+<details class="accordion"><summary>② MockFunction 凭什么骗过 inspect？</summary><div class="acc-body">
+<p><strong>示例：</strong><span class="mono">inspect.signature(mock)</span> 照样返回完整签名，哪怕 <span class="mono">mock</span> 从未被当作真函数定义过、调用它还会直接抛 <span class="mono">NotImplementedError</span>。</p>
+<p><strong>为什么：</strong><span class="mono">inspect</span> 读签名时只看对象的 <span class="mono">__signature__</span> 属性，读文档只看 <span class="mono">__doc__</span>——它<strong>根本不验证</strong>对象是不是"真函数"。只要这几个属性齐了，它就照常工作。这正是上传工具能原样复用 <span class="mono">generate_schema</span> 的关键。</p>
+<p><strong>源码：</strong><span class="mono">letta/functions/functions.py::MockFunction</span> 在 <span class="mono">__init__</span> 里手动设好这三个属性。</p>
+</div></details>
+<details class="accordion"><summary>③ 为什么取最后一个函数？未知类型怎么办？</summary><div class="acc-body">
+<p><strong>示例：</strong>源码里先写了几个辅助函数、最后才是工具本体，于是解析器取<strong>最后一个</strong> <span class="mono">FunctionDef</span>。</p>
+<p><strong>为什么：</strong>约定"工具是文件末尾那个函数"。若签名里引用了某个<strong>未定义</strong>的 Pydantic 模型，就用 <span class="mono">type(name, (BaseModel,), {...})</span> 当场造一个<strong>桩类</strong>顶上，绝不去 <span class="mono">import</span> 真实定义——既能让签名成形，又守住"不跑用户代码"的底线。</p>
+<p><strong>源码：</strong><span class="mono">_parse_function_from_source</span> 配合 <span class="mono">letta/functions/ast_parsers.py::resolve_type</span>（白名单解析）。</p>
+</div></details>
+<details class="accordion"><summary>④ 派生到底在何时、何地触发？</summary><div class="acc-body">
+<p><strong>示例：</strong>你创建一个 custom Python 工具却没给 <span class="mono">json_schema</span>，服务器就在<strong>创建流程</strong>里替你把 schema 派生出来。</p>
+<p><strong>为什么：</strong>接线落在 <span class="mono">tool_manager</span>（判断 custom 且缺 schema）→ <span class="mono">generate_schema_for_tool_creation</span>（按 <span class="mono">source_type</span> 分派 Python / TS）。它<strong>已不在</strong> pydantic 校验器里，所以一次创建只算一次；而 TS 因为必须显式给 schema，通常不会落到自动派生这一支。</p>
+<p><strong>源码：</strong><span class="mono">letta/services/tool_manager.py</span>、<span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>。</p>
+</div></details>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
