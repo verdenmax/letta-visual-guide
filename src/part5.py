@@ -1321,4 +1321,6 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <p>拉远看，这也是整份《Letta 可视化指南》在工具这块的全部野心：不堆砌 API，而是把"一个普通函数怎么变成模型能安全调用的能力"这条链，从头到尾讲透——定义它、派生它的接口、按类型分发它、再隔离地执行它。</p>
 <div class="note tip"><span class="ni">🧷</span><span class="nx">如果你只带走一张图，就带"信任＝方向"这张：它不仅解释了沙箱，也是一切"跨信任边界传数据"问题的通用解法——无论对面是沙箱、第三方服务，还是另一个不受控的进程。</span></div>
 <p>下一站是<strong>第六部分 · LLM Provider 抽象</strong>：工具讲完了，我们回到更上游的问题——Letta 怎么用一套统一接口，把 OpenAI、Anthropic 等不同厂商的模型，接进同一个 agent 循环。</p>
-""", "en": r"""<p>stub</p>"""}
+""", "en": r"""
+<!--ENMORE-->
+"""}
