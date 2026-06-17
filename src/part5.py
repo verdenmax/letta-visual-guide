@@ -748,12 +748,15 @@ LESSON_18 = {"zh": r"""
 LESSON_19 = {"zh": r"""
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">第 14 课讲 agent 的执行循环时，"执行工具"只用一行带过；第 17、18 课又让工具长出了 schema、能被模型"看见"并调用。可是当模型真吐出一个工具调用、系统<strong>要去跑它</strong>的那一步，我们一直没拆开看。</p>
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就把"执行"摊开：当 agent 真要跑一个工具时，它怎么知道<strong>该用哪种方式</strong>跑——进程内直接调？丢进沙箱隔离执行？还是开一条网络连接到外部服务器？答案藏在一个叫 <span class="mono">ToolType</span> 的标签和一个工厂里。</p>
+<div class="note info"><span class="ni">❓</span><span class="nx">带着一个具体问题读下去：当模型说"调用 <span class="mono">run_code</span>"时，到底是<strong>谁、在哪里、用什么方式</strong>真正把这段代码跑起来的？答案不是某一个函数，而是"类型标签 + 工厂 + 执行器"这一整套机制——这一课就是把它拆给你看。</span></div>
 
 <div class="card analogy"><div class="tag">🔌 生活类比</div>
 <p>把"执行工具"想成医院的<strong>分诊台</strong>。同样是来"看病"，前台并不自己治，而是按你的<strong>科室标签</strong>把你送到不同地方。</p>
 <p>内科的小毛病，直接进诊室当场看（对应 <span class="mono">core</span>，进程内直跑）；要动刀的，送进<strong>手术室</strong>隔离操作（对应 <span class="mono">sandbox</span>，在沙箱里跑陌生代码）；本院看不了的疑难，<strong>转外院会诊</strong>（对应 <span class="mono">MCP</span>，连外部服务器）。</p>
 <p>关键在于：分诊台自己<strong>不看病</strong>，它只做一件事——<strong>按类型把你送到对的地方</strong>。Letta 里这个分诊台，就是下面要讲的"工厂"。</p>
 </div>
+
+<p>这个类比里其实藏着这一课的全部要点：<strong>同样一句"执行工具"，落地时有好几种完全不同的跑法</strong>；决定走哪条路的，是工具身上的类型标签和那个"分诊"的工厂。把这两样搞懂，"执行"这一步就透明了。</p>
 
 <div class="card macro"><div class="tag">🌍 宏观理解</div>
 <p>每个 <span class="mono">Tool</span> 都带一个 <span class="mono">ToolType</span>（共 11 种），相当于贴在工具上的"科室标签"。</p>
@@ -762,12 +765,16 @@ LESSON_19 = {"zh": r"""
 <p>所以这一课只讲三件事：<strong>ToolType 是什么</strong>、<strong>工厂怎么按它选执行器</strong>、<strong>每个执行器到底干啥</strong>。</p>
 </div>
 
+<div class="note tip"><span class="ni">🗺️</span><span class="nx">读这一课可以盯住一条主线：<strong>标签（ToolType）→ 工厂（选执行器）→ 入口（ToolExecutionManager）→ 五个执行器（各种运行时）→ 统一结果（ToolExecutionResult）</strong>。下面就顺着这条线一节一节走。</span></div>
+
 <h2>ToolType：工具的"种类标签"</h2>
 <p>先认标签。<span class="mono">schemas/enums.py::ToolType</span> 一共 11 种，可以归成三类——<strong>内置</strong>（Letta 自带，进程内或受控执行）、<strong>自定义</strong>（你写的，默认进沙箱）、<strong>外部</strong>（连第三方）。</p>
 <div class="cellgroup"><div class="cg-cap"><b>内置 · Letta 自带（7 种）</b></div><div class="cells"><span class="cell hl">letta_core</span><span class="sep">·</span><span class="cell">letta_memory_core</span><span class="sep">·</span><span class="cell">letta_multi_agent_core</span><span class="sep">·</span><span class="cell">letta_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_voice_sleeptime_core</span><span class="sep">·</span><span class="cell">letta_builtin</span><span class="sep">·</span><span class="cell">letta_files_core</span></div></div>
 <div class="cellgroup"><div class="cg-cap"><b>自定义 · 默认值（1 种）</b></div><div class="cells"><span class="cell hl">custom</span></div></div>
 <div class="cellgroup"><div class="cg-cap"><b>外部 · 第三方（3 种）</b></div><div class="cells"><span class="cell">external_langchain（弃用）</span><span class="sep">·</span><span class="cell">external_composio（弃用）</span><span class="sep">·</span><span class="cell hl">external_mcp</span></div></div>
 <div class="note info"><span class="ni">🏷️</span><span class="nx"><span class="mono">custom</span> 是<strong>默认值</strong>：注册一个工具如果没被归到别的类，它就是 <span class="mono">custom</span>——而 <span class="mono">custom</span> 会兜底走沙箱。两个 <span class="mono">external_langchain / external_composio</span> 已弃用，真正活跃的外部类型只有 <span class="mono">external_mcp</span>。</span></div>
+<p>为什么要分这么多种？因为 Letta 的工具来源天差地别：有的是框架自带的核心能力（发消息、改记忆），有的是平台内置的实用工具（跑代码、搜网页），有的是你临时写的业务函数，还有的根本不在本地、得连出去。给每个工具贴上类型标签，后面的工厂才能照标签把它们派到正确的运行时。</p>
+<p>内置那 7 种又按用途细分：<span class="mono">letta_core</span> 管对话与控制流，<span class="mono">letta_memory_core</span> 改写记忆，<span class="mono">letta_sleeptime_core</span> 与 <span class="mono">letta_voice_sleeptime_core</span> 服务"睡眠时间"里的后台整理，<span class="mono">letta_multi_agent_core</span> 负责多 agent 协作，<span class="mono">letta_builtin</span> 跑代码、搜网，<span class="mono">letta_files_core</span> 管文件。</p>
 
 <h2>工厂：按类型选执行器</h2>
 <p>标签有了，谁来读标签、派活？是 <span class="mono">ToolExecutorFactory</span>。它内部存了一张 <span class="mono">_executor_map</span>，把 <span class="mono">ToolType</span> 映射到执行器类；<span class="mono">get_executor</span> 查表、实例化、返回一个执行器。</p>
@@ -784,6 +791,7 @@ LESSON_19 = {"zh": r"""
 </div>
 <div class="note tip"><span class="ni">🧠</span><span class="nx">循环只说"调这个工具"，<strong>怎么跑</strong>由 <span class="mono">ToolType</span> + 工厂决定：进程内直跑 / 沙箱 / 连 MCP server——同一个 <span class="mono">execute</span> 接口，藏起三种运行时。</span></div>
 <p>还要记住流程的<strong>终点</strong>：不管走哪条路，所有执行器都返回同一种 <span class="mono">ToolExecutionResult</span>。差异被藏在中间，出口却是统一的——这正是"多态"的形状。</p>
+<p>实现上，<span class="mono">_executor_map</span> 是一个 <span class="mono">ClassVar</span>——类级别的字典，所有实例共享。查表就是普通的 <span class="mono">dict.get(key, default)</span>：命中就拿映射好的执行器类，落空就拿第二个参数 <span class="mono">SandboxToolExecutor</span>。短短一行，既是"分发表"，又是"安全网"。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">工厂（简化）</span></div><pre><span class="kw">class</span> <span class="fn">ToolExecutorFactory</span>:
     _executor_map = {
         ToolType.LETTA_CORE: LettaCoreToolExecutor,
@@ -797,9 +805,11 @@ LESSON_19 = {"zh": r"""
         <span class="kw">return</span> cls_(...)
 </pre></div>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">看 <span class="mono">get_executor</span> 那行的 <span class="mono">.get(tool_type, SandboxToolExecutor)</span>：<strong>没在表里的类型，一律兜底走沙箱</strong>。<span class="mono">custom</span>、<span class="mono">letta_voice_sleeptime_core</span>、多 agent、两个弃用的 external 全落这里。所以"自定义工具＝在沙箱里跑"是<strong>默认</strong>，不是特例。</span></div>
+<p>这其实是经典的<strong>工厂模式</strong>：把"<em>到底用哪一种实现</em>"收拢到一处，调用方只管开口要"一个执行器"，不必知道背后是哪个类、怎么构造。日后想加一种工具类型，往 <span class="mono">_executor_map</span> 里登记一行即可，循环和入口的代码一个字都不用改。</p>
 
 <h2>真正的入口：ToolExecutionManager</h2>
 <p>工厂只负责"选人"。真正被 agent 循环调用的，是 <span class="mono">ToolExecutionManager::execute_tool_async</span>：它用工厂拿到执行器，<strong>计时</strong>、<strong>截断超长返回</strong>、把异常<strong>包成结果对象</strong>，再交回循环。</p>
+<p>为什么把这些杂活都塞进入口？因为工具是 agent 里最"不可控"的一环——可能读数据库、跑代码、连网络，耗时和失败方式千差万别。把计时、截断、异常包装统一收在入口这一层，循环就不必为每种工具单独操心；每步耗时的可观测性、不被撑爆不抛异常的稳定性，也都集中、可控。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/tool_execution_manager.py</span><span class="ln">入口（简化）</span></div><pre><span class="kw">async def</span> <span class="fn">execute_tool_async</span>(self, function_name, function_args, tool, ...):
     executor = ToolExecutorFactory.<span class="fn">get_executor</span>(tool.tool_type, ...)
     result = <span class="kw">await</span> executor.<span class="fn">execute</span>(function_name, function_args, tool, actor, ...)
@@ -808,6 +818,7 @@ LESSON_19 = {"zh": r"""
     <span class="kw">return</span> result   <span class="cm"># ToolExecutionResult(status, func_return, stdout, stderr, ...)</span>
 </pre></div>
 <div class="note tip"><span class="ni">🧭</span><span class="nx">分清两层：工厂只回答"<strong>用哪个执行器</strong>"，<span class="mono">ToolExecutionManager</span> 才是循环真正调的<strong>入口</strong>——它负责计时、超 <span class="mono">return_char_limit</span> 截断、把异常统一包成 <span class="mono">ToolExecutionResult(status="error")</span>。</span></div>
+<p>那个统一的返回值 <span class="mono">ToolExecutionResult</span> 长什么样？它带 <span class="mono">status</span>（成功或失败）、<span class="mono">func_return</span>（工具的返回值）、<span class="mono">stdout / stderr</span>（运行时打印的内容），还有 <span class="mono">sandbox_config_fingerprint</span> 等字段。无论 core 直跑还是沙箱里跑，循环拿到的都是这同一个壳——这也是入口愿意花力气把一切都归一成它的原因。</p>
 
 <h2>五个执行器，各管一摊</h2>
 <p>工厂表里点名的、加上兜底的，一共五个执行器。下面这张表把"标签 → 执行器 → 类别 → 典型工具"对上号。</p>
@@ -820,7 +831,18 @@ LESSON_19 = {"zh": r"""
 <tr><td class="mono">external_mcp</td><td class="mono">ExternalMCPToolExecutor</td><td>外部服务器</td><td class="mono">MCP 工具</td></tr>
 <tr><td class="mono">custom（兜底）</td><td class="mono">SandboxToolExecutor</td><td>沙箱</td><td class="mono">你写的自定义工具</td></tr>
 </table>
+<p>把这五个执行器各自的活儿摊开说：</p>
+<ul>
+<li><span class="mono">LettaCoreToolExecutor</span>：core、<strong>记忆</strong>、sleeptime 三摊工具全揽下，统统<strong>进程内直跑</strong>。改核心记忆的 <span class="mono">core_memory_append / core_memory_replace</span> 就在这里执行，不绕沙箱、延迟最低。</li>
+<li><span class="mono">LettaBuiltinToolExecutor</span>：跑平台内置工具——<span class="mono">run_code</span> 执行代码、<span class="mono">web_search</span> 搜网、<span class="mono">fetch_webpage</span> 抓网页，是一组"受控"的实用能力。</li>
+<li><span class="mono">LettaFileToolExecutor</span>：专管文件类工具，比如 <span class="mono">open_files</span>、<span class="mono">grep_files</span>，服务于把文件读进上下文、在文件里检索。</li>
+<li><span class="mono">ExternalMCPToolExecutor</span>：唯一"往外连"的执行器，把调用转发给外部 MCP 服务器，本地一行业务代码都不跑。</li>
+<li><span class="mono">SandboxToolExecutor</span>：自定义工具和所有未映射类型的<strong>兜底</strong>，把陌生代码丢进隔离沙箱里执行——它怎么跑、为什么敢跑，是第 20 课的主题。</li>
+</ul>
+<p>举三个例子把分发走一遍。模型要 <span class="mono">core_memory_append</span>（类型 <span class="mono">letta_memory_core</span>），工厂交给 <span class="mono">LettaCoreToolExecutor</span>，在进程内当场改记忆；要 <span class="mono">run_code</span>（<span class="mono">letta_builtin</span>），交给 <span class="mono">LettaBuiltinToolExecutor</span> 受控执行；要你自己写的 <span class="mono">calculate_invoice</span>（没归类、落在 <span class="mono">custom</span>），工厂在表里找不到、兜底交给 <span class="mono">SandboxToolExecutor</span> 丢进沙箱。同一行调用，三种完全不同的命运。</p>
 <p>它们都继承基类 <span class="mono">tool_executor_base.py::ToolExecutor</span>，统一签名 <span class="mono">async def execute(...) -&gt; ToolExecutionResult</span>。注意记忆工具 <span class="mono">core_memory_append</span> 也归 <span class="mono">LettaCoreToolExecutor</span>，在<strong>进程内直跑</strong>，并不进沙箱。</p>
+<div class="note info"><span class="ni">🧩</span><span class="nx">统一接口的妙处：循环只认 <span class="mono">execute(...) -&gt; ToolExecutionResult</span> 这一个签名。无论底层是改记忆、跑代码、还是连外部服务器，对循环来说都"长得一样"——于是它能对任何工具一视同仁地调用、计时、记录、再把结果接回对话。</span></div>
+<p>进程内直跑和丢进沙箱，本质是一道"信任与速度"的取舍。可信的核心工具（改记忆、发消息）直接在进程里跑，最快也最省事；来路不明的自定义代码则必须先隔离，宁可慢一点、麻烦一点，也不能让它碰到服务端的内存和权限。把这道取舍交给"类型"来表达，正是这套设计最聪明的地方。</p>
 
 <div class="cute">
 <div class="row"><span class="emoji">🏭</span><span class="lab">按 ToolType 分拣</span><span class="arrow">→</span><span class="emoji">🧠</span><span class="bubble">core · 进程内</span></div>
@@ -831,15 +853,19 @@ LESSON_19 = {"zh": r"""
 <div class="cap">工厂按 ToolType 把每个工具送上对的传送带：进程内、内置、文件、外部、沙箱</div>
 </div>
 
+<p>所以"分发"这件事可以一句话收口：<strong>工具带着类型标签进来，工厂照标签发往对应执行器，执行器各跑各的运行时，最后都吐出同一种结果</strong>。下面单看最特别的一条传送带——通往外部世界的 MCP。</p>
+
 <h2>MCP：连接外部工具服务器</h2>
 <p>前面四类都在 Letta 自己家里跑。<strong>MCP</strong>（Model Context Protocol）不一样：工具其实活在<strong>外部服务器</strong>上，Letta 只是个客户端，把调用<strong>转发</strong>过去、再把结果取回来。</p>
 <p>这类工具的 <span class="mono">tool_type</span> 是 <span class="mono">external_mcp</span>，还会被打上 <span class="mono">mcp:&lt;server&gt;</span> 标签（由 <span class="mono">ToolCreate.from_mcp</span> 设置）。执行时由 <span class="mono">ExternalMCPToolExecutor</span> 从标签里取出目标服务器名，交给 <span class="mono">MCPManager</span> 去连、去跑、再断开。</p>
+<div class="note tip"><span class="ni">🌐</span><span class="nx">MCP 是个<strong>开放协议</strong>：任何人都能写一个 MCP server，暴露一批工具（查库、发邮件、调内部 API…）。Letta 这边只要登记服务器、导入工具，agent 就能调用，而工具的实现细节对 Letta 完全透明。</span></div>
 <div class="vflow">
 <div class="step"><div class="num">1</div><div class="sc"><h4>MCP 工具</h4><p>带 <span class="mono">mcp:&lt;server&gt;</span> 标签，类型 <span class="mono">external_mcp</span></p></div></div>
 <div class="step"><div class="num">2</div><div class="sc"><h4>ExternalMCPToolExecutor</h4><p>从标签解析出目标服务器名</p></div></div>
 <div class="step"><div class="num">3</div><div class="sc"><h4>MCPManager.execute_mcp_server_tool</h4><p>统一入口，掌管整条连接生命周期</p></div></div>
 <div class="step"><div class="num">4</div><div class="sc"><h4>connect → execute → cleanup</h4><p>每次开新连接、跑完即断，不复用</p></div></div>
 </div>
+<p>把这条竖流连起来读：工具带着 <span class="mono">mcp:&lt;server&gt;</span> 标签进来，执行器从标签解析出服务器名，<span class="mono">MCPManager</span> 负责连上去、把调用发过去、收回结果、再断开。整个过程里 Letta 不执行任何工具逻辑，只做"中转"。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/mcp_tool_executor.py</span><span class="ln">MCP 执行（简化）</span></div><pre><span class="kw">async def</span> <span class="fn">execute</span>(self, function_name, function_args, tool, ...):
     server = <span class="fn">_tag_to_server</span>(tool.tags)        <span class="cm"># 从 "mcp:&lt;server&gt;" 标签取服务器名</span>
     resp, ok = <span class="kw">await</span> MCPManager().<span class="fn">execute_mcp_server_tool</span>(
@@ -847,20 +873,81 @@ LESSON_19 = {"zh": r"""
     <span class="kw">return</span> ToolExecutionResult(status=<span class="st">"success"</span> <span class="kw">if</span> ok <span class="kw">else</span> <span class="st">"error"</span>, func_return=resp)
 </pre></div>
 <div class="cellgroup"><div class="cg-cap"><b>三种 MCP 传输 · MCPServerType</b></div><div class="cells"><span class="cell hl">stdio</span><span class="sep">·</span><span class="cell">sse</span><span class="sep">·</span><span class="cell">streamable_http</span></div></div>
+<p>换个角度看，MCP 把"工具"和"运行工具的进程"彻底解耦：实现、依赖、密钥都留在工具自己的服务器里，Letta 只通过协议发起调用。第三方因此能把一整套能力打包成一个 MCP server，挂到任意 agent 上即插即用。</p>
+<p>代价是每次调用都得<strong>现连现断</strong>——<span class="mono">connect → execute → cleanup</span> 一条龙。好处是无状态、干净、互不影响；坏处是连接开销，所以 MCP 更适合"偶尔用一下的外部能力"，而非高频热路径。</p>
 <div class="note info"><span class="ni">🔌</span><span class="nx">两个反直觉点：MCP 执行<strong>不走沙箱</strong>（它连的是外部 server，不是在本地跑代码）；而且每次调用都<strong>开一条新连接</strong>（<span class="mono">connect → execute → cleanup</span>）。真正的传输客户端在 <span class="mono">letta/services/mcp/</span>，<strong>不是</strong> <span class="mono">functions/mcp_client/</span>——后者只放配置类型。</span></div>
+<p>一句话记住 MCP：<strong>工具在别人家，Letta 上门调用</strong>。它扩展了 agent 的能力边界，又把"运行第三方代码"的风险留在第三方那边——这和本地沙箱是两条不同的安全思路。</p>
+<p>换个比方：前面四类执行器像是"在自己家的不同房间干活"，MCP 则像"打电话叫外卖"——活儿在别人那儿干，你只负责下单和收货。这也解释了 MCP 为什么不走沙箱：沙箱是用来隔离"在你家里跑的陌生代码"的，而 MCP 的代码压根不在你家跑。</p>
 
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p><strong>"一次调用，背后是好几种运行时。"</strong> 从第 14 课循环的视角看，"调一个工具"永远是统一的一行代码。</p>
 <p>可底下却天差地别：进程内改核心记忆（<span class="mono">LettaCore</span>）、shell 出去在沙箱 venv 里跑陌生代码（<span class="mono">Sandbox</span>）、开一条网络连接到 MCP 服务器（<span class="mono">ExternalMCP</span>）。<span class="mono">ToolType</span> + 工厂，就是把这些差异藏起来的<strong>多态</strong>。</p>
 <p>还有个反直觉真相：工厂只<strong>显式列了 5 个</strong>，其余<strong>全部兜底走 <span class="mono">SandboxToolExecutor</span></strong>——"自定义＝沙箱"是默认，不是特例。</p>
 <p>而所有执行器，最后都返回同一个 <span class="mono">ToolExecutionResult</span>——正是第 16 课工具规则违规时用的那个类型。出口统一，差异内敛。</p>
+<p>放进整条工具链看更清楚：第 17、18 课让工具"有了 schema、能被看见"，这一课让工具"被正确地跑起来"。模型那端永远是统一的函数调用，系统这端却悄悄做了一次<strong>按类型的运行时选择</strong>——这正是好抽象的样子：上层简单，下层灵活。</p>
+<p>换句话说，<span class="mono">ToolType</span> 把"我是什么工具"写进数据，工厂把"什么工具用什么方式跑"写进逻辑——这是一种<strong>数据驱动的分发</strong>。想改变某类工具的跑法，不必动循环，只要改它的类型、或改 <span class="mono">_executor_map</span> 里的一行映射。</p>
 </div>
 
 <div class="card detail"><div class="tag">🔬 落到代码</div>
+<p>想自己翻源码的话，这一课牵涉的文件不多，按"分发链路"排一排：</p>
 <p>工厂与入口都在 <span class="mono">letta/services/tool_executor/tool_execution_manager.py</span>：<span class="mono">ToolExecutorFactory</span> 选执行器，<span class="mono">ToolExecutionManager</span> 是真入口。</p>
 <p>执行器基类 <span class="mono">tool_executor_base.py::ToolExecutor</span>；五个实现：<span class="mono">core_tool_executor.py::LettaCoreToolExecutor</span>、<span class="mono">builtin_tool_executor.py::LettaBuiltinToolExecutor</span>、<span class="mono">files_tool_executor.py::LettaFileToolExecutor</span>、<span class="mono">mcp_tool_executor.py::ExternalMCPToolExecutor</span>、<span class="mono">sandbox_tool_executor.py::SandboxToolExecutor</span>。</p>
 <p>类型定义在 <span class="mono">schemas/enums.py::ToolType</span>；MCP 配置在 <span class="mono">functions/mcp_client/types.py</span>，客户端与管理器在 <span class="mono">services/mcp/</span> 加 <span class="mono">services/mcp_manager.py::MCPManager</span>；<span class="mono">ToolExecutionResult</span> 在 <span class="mono">schemas/tool_execution_result.py</span>。</p>
 </div>
 
-<!--ZHMORE-->
+<p>这一课其实在反复讲同一个道理：好的系统会把"变化"关进一个小盒子。工具千变万化，但变化都被收进了"类型标签"和"工厂映射"这两处；除此之外，循环、入口、结果对象统统保持不变。于是新增一种工具、换一种运行时，影响面都很小——这就是把复杂度按位置切开的价值。</p>
+
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>这一课最容易踩的几个坑：</p>
+<ul>
+<li><strong>以为每种类型都有专属执行器</strong>——工厂 <span class="mono">_executor_map</span> 只列 5 个，其余兜底沙箱。</li>
+<li><strong>以为工厂就是入口</strong>——真正入口是 <span class="mono">ToolExecutionManager</span>，工厂只负责"选"。</li>
+<li><strong>以为 MCP 客户端在 <span class="mono">functions/mcp_client/</span></strong>——那里只有配置类型，客户端在 <span class="mono">services/mcp/</span>。</li>
+<li><strong>以为只有自定义工具走沙箱</strong>——<span class="mono">letta_voice_sleeptime_core</span> 和多 agent 工具也走沙箱。</li>
+<li><strong>彩蛋</strong>：<span class="mono">ExternalComposioToolExecutor</span> 其实没被接线（<span class="mono">external_composio</span> 弃用、兜底沙箱），是一段死代码。</li>
+</ul>
+</div>
+
+<p>还有一个常被忽略的好处：因为所有执行器都吐出同一种结果，错误处理也被统一了。工具抛异常也好、返回超长也好、规则违规也好，循环看到的永远是一个带状态的结果对象，而不是五花八门的异常。"出错"于是变成"正常流程的一个分支"，循环因此能稳稳地继续走下去。</p>
+
+<h2>再挖深一点</h2>
+<p>下面四个抽屉，留给想钻到底的人：标签从哪来、为什么默认沙箱是安全的、MCP 怎么集成、内置工具有哪些（外加一段"考古"）。</p>
+<p>这些都是"知道了更踏实，第一次读却可以跳过"的细节。只想记主线，记住"类型 → 工厂 → 执行器 → 统一结果"就够；想抠实现，就逐个展开下面的抽屉。</p>
+<details class="accordion"><summary>① 一个工具的 tool_type 是怎么定的？</summary><div class="acc-body">
+<p>schema 层默认就是 <span class="mono">CUSTOM</span>。注册<strong>基础工具</strong>时按名字归类：<span class="mono">tool_manager.py::upsert_base_tools</span> 里，<span class="mono">name in BASE_TOOLS → LETTA_CORE</span>、<span class="mono">BASE_MEMORY_TOOLS → LETTA_MEMORY_CORE</span>、<span class="mono">BUILTIN_TOOLS → LETTA_BUILTIN</span>、<span class="mono">FILES_TOOLS → LETTA_FILES_CORE</span> 等。</p>
+<p>MCP 工具则<strong>显式设</strong>：<span class="mono">create_mcp_tool_async</span> 直接给 <span class="mono">tool_type=EXTERNAL_MCP</span>。其余你自己写的，就留在默认 <span class="mono">CUSTOM</span>。</p>
+<div class="note tip"><span class="ni">🔖</span><span class="nx">一个工具<strong>叫什么名字</strong>，往往就决定了它<strong>怎么被执行</strong>：注册阶段定下的 <span class="mono">tool_type</span> 会一路跟着它，直到执行时被工厂读到。</span></div>
+</div></details>
+<details class="accordion"><summary>② 为什么"自定义默认沙箱"是合理的安全默认？</summary><div class="acc-body">
+<p>因为自定义工具是<strong>不可信代码</strong>——它可能来自任何人。把"没归类的一律丢沙箱"设成默认，意味着<strong>除非明确认定安全（进了 _executor_map），否则就隔离</strong>。这是"默认安全"（secure by default）的典型做法。</p>
+<p>反过来想：要是默认进程内直跑，任何一个忘了归类的工具都会拿到服务端的执行权限。兜底沙箱，正好把这个风险堵死。</p>
+<div class="note info"><span class="ni">🛡️</span><span class="nx">这也呼应第 18 课的态度：对待工具代码，<strong>默认不信任</strong>。第 18 课是"不运行就派生 schema"，这一课是"不确定就丢沙箱"——同一种安全直觉的两面。</span></div>
+</div></details>
+<details class="accordion"><summary>③ MCP 到底怎么集成？</summary><div class="acc-body">
+<p>三种传输：<span class="mono">stdio</span>（本地子进程）、<span class="mono">sse</span>、<span class="mono">streamable_http</span>（远程 HTTP），定义在 <span class="mono">functions/mcp_client/types.py::MCPServerType</span>，配套 <span class="mono">StdioServerConfig</span> 等配置类。</p>
+<p>执行特点：<strong>不走沙箱</strong>、每次<strong>开新连接</strong>（<span class="mono">connect → execute → cleanup</span>）。客户端实现在 <span class="mono">services/mcp/</span>，由工厂 <span class="mono">MCPManager::get_mcp_client</span> 按传输类型挑客户端。</p>
+<div class="note warn"><span class="ni">📁</span><span class="nx">容易记混：<span class="mono">functions/mcp_client/types.py</span> 里只有<strong>配置与类型</strong>，真正建连接、发请求的<strong>客户端实现</strong>在 <span class="mono">services/mcp/</span>。别被目录名 <span class="mono">mcp_client</span> 骗了。</span></div>
+</div></details>
+<details class="accordion"><summary>④ 内置工具有哪些？外加一段"考古"</summary><div class="acc-body">
+<p>内置工具在 <span class="mono">constants.py::BUILTIN_TOOLS</span>：<span class="mono">run_code</span>、<span class="mono">run_code_with_tools</span>、<span class="mono">web_search</span>、<span class="mono">fetch_webpage</span>，都由 <span class="mono">LettaBuiltinToolExecutor</span> 跑。</p>
+<p>考古发现：<span class="mono">ExternalComposioToolExecutor</span> 这个类<strong>存在</strong>，却<strong>没出现在 _executor_map 里</strong>。<span class="mono">external_composio</span> 已弃用、会兜底走沙箱——所以那个执行器是一段<strong>永远不会被选中</strong>的死代码。</p>
+<div class="note info"><span class="ni">🔍</span><span class="nx">考古的启示：<strong>一个类存在，不代表它被用上</strong>。判断代码活没活，要看它有没有被真正<strong>接线</strong>——这里就是看它在不在 <span class="mono">_executor_map</span> 里。</span></div>
+</div></details>
+
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><span class="mono">ToolType</span> 共 11 种，像标签一样贴在每个 <span class="mono">Tool</span> 上。</li>
+<li><span class="mono">ToolExecutorFactory</span> 按类型选执行器；<strong>未映射的一律兜底 <span class="mono">SandboxToolExecutor</span></strong>。</li>
+<li><span class="mono">ToolExecutionManager::execute_tool_async</span> 才是真入口（计时、截断、包结果）。</li>
+<li>运行时各异：<span class="mono">core</span> 进程内、<span class="mono">custom</span> 沙箱、<span class="mono">mcp</span> 连外部服务器。</li>
+<li>所有执行器统一返回 <span class="mono">ToolExecutionResult</span>。</li>
+</ul>
+</div>
+
+<div class="cellgroup"><div class="cg-cap"><b>第五部分串起来 · 工具的一生</b></div><div class="cells"><span class="cell">17 定义：函数+docstring→schema</span><span class="sep">·</span><span class="cell">18 派生：不跑就生成</span><span class="sep">·</span><span class="cell hl">19 分发：按类型执行</span><span class="sep">·</span><span class="cell">20 隔离：沙箱+信任边界</span></div></div>
+
+<p>回头看第五部分这条线：<strong>定义 → 派生 → 分发 → 隔离执行</strong>。第 17 课把函数变成 schema，第 18 课不运行就把 schema 派生出来，第 19 课按类型把工具分发给执行器，第 20 课讲最危险的那一类——自定义代码——到底怎么被隔离着跑。</p>
+
+<p>串起来看：模型选工具（第 17、18 课给了 schema）→ 循环调用（第 14 课）→ 工厂按 <span class="mono">ToolType</span> 分发 → 执行器各跑各的。而自定义工具默认被交给 <span class="mono">SandboxToolExecutor</span>，也就是丢进<strong>沙箱</strong>。可沙箱到底<strong>怎么跑、凭什么敢跑陌生人的代码</strong>？这就是第 20 课，也是第五部分的收尾。</p>
+<div class="note tip"><span class="ni">🧷</span><span class="nx">小结一句：这一课把"执行工具"从一行黑箱，拆成了"类型 → 工厂 → 入口 → 执行器 → 结果"五个清清楚楚的环节。下一课，我们钻进其中最危险的那个环节——沙箱。</span></div>
 """, "en": r"""<p>stub</p>"""}
