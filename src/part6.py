@@ -529,4 +529,6 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <p><strong>小结一下：</strong>云端 provider 的怪癖，就这样被一一关进子类的那两个方法里。可要是来一个<strong>连原生 function calling 都没有</strong>的本地模型呢？它又怎么被"教会"调工具？下一课，第 23 课，讲本地模型与 <span class="mono">GBNF</span> 受限解码——看 Letta 怎么用语法把"可解析"从概率变成保证。</p>
 <p>带着这一课的两条直觉往下走会更顺：<strong>差异关进子类、思考可以被构造</strong>。下一课你会看到，当模型连"调工具"都不会时，Letta 是怎么用一套语法把它从头教起的。</p>
 
-""", "en": r"""<p>stub</p>"""}
+""", "en": r"""
+<!--ENMORE-->
+"""}
