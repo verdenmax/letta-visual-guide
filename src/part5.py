@@ -47,5 +47,44 @@ LESSON_17 = {"zh": r"""
             required.append(p.name)
 </pre></div>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">这段循环藏着两道"质检关卡"：参数<strong>没有描述</strong>就 <span class="mono">raise ValueError</span>；参数<strong>缺类型注解</strong>则在 <span class="mono">type_to_json_schema_type</span> 里抛 <span class="mono">TypeError</span>。换句话说，docstring 写不全，工具根本建不出来。</span></div>
+<p>那这台机器最终"吐"出来的成品长什么样？下面就是 <span class="mono">send_message</span> 经 <span class="mono">generate_schema</span> 处理后得到的 JSON schema。对照前面的函数：函数名变成 <span class="mono">name</span>，docstring 第一句变成 <span class="mono">description</span>，参数 <span class="mono">message</span> 连同它的描述进了 <span class="mono">properties</span>，因为没有默认值又被列进 <span class="mono">required</span>。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">生成结果 · JSON schema</span><span class="ln">模型真正看到的东西</span></div>
+<pre>{
+  <span class="st">"name"</span>: <span class="st">"send_message"</span>,
+  <span class="st">"description"</span>: <span class="st">"Sends a message to the human user."</span>,
+  <span class="st">"parameters"</span>: {
+    <span class="st">"type"</span>: <span class="st">"object"</span>,
+    <span class="st">"properties"</span>: {
+      <span class="st">"message"</span>: {
+        <span class="st">"type"</span>: <span class="st">"string"</span>,
+        <span class="st">"description"</span>: <span class="st">"Message contents. All unicode (including emojis) are supported."</span>
+      }
+    },
+    <span class="st">"required"</span>: [<span class="st">"message"</span>]
+  }
+}
+</pre></div>
+<div class="note tip"><span class="ni">👉</span><span class="nx">把这份 JSON 和最前面那段 Python 对照着看：你会发现里面<strong>每一个字</strong>都来自函数签名或 docstring，没有一处是凭空多出来的。这就是"docstring 即说明书"的字面含义。</span></div>
+<h2>类型怎么映射</h2>
+<p>schema 里每个参数都得有个 <span class="mono">type</span>，这一步由 <span class="mono">type_to_json_schema_type</span> 完成：它把 Python 的类型注解<strong>手写</strong>地翻译成 JSON schema 类型。这张映射表就是工具能接受哪些参数类型的边界——表里没有的，要么被解包、要么直接报错。</p>
+<table class="t">
+<tr><th>Python 类型</th><th>JSON schema</th><th>备注</th></tr>
+<tr><td class="mono">str</td><td class="mono">string</td><td>最常见</td></tr>
+<tr><td class="mono">int</td><td class="mono">integer</td><td>整数</td></tr>
+<tr><td class="mono">bool</td><td class="mono">boolean</td><td>真/假</td></tr>
+<tr><td class="mono">float</td><td class="mono">number</td><td>浮点</td></tr>
+<tr><td class="mono">Optional[X]</td><td class="mono">X</td><td>解包成 X，并移出 required</td></tr>
+<tr><td class="mono">List[X]</td><td class="mono">array</td><td>带 items 类型</td></tr>
+<tr><td class="mono">Literal[...]</td><td class="mono">enum</td><td>枚举可选值</td></tr>
+<tr><td class="mono">BaseModel</td><td class="mono">object</td><td>调 model_json_schema()</td></tr>
+<tr><td class="mono">Dict[k,v]</td><td class="mono">✗</td><td>带参字典 → ValueError</td></tr>
+<tr><td class="mono">Union[...]</td><td class="mono">✗</td><td>一般 Union → NotImplementedError</td></tr>
+</table>
+<p>注意 <span class="mono">Optional[X]</span> 这一行很特别：它不只是映射类型，还会影响"该参数是否必填"。这就引出了 <span class="mono">required</span> 的判定逻辑——一个参数到底进不进 <span class="mono">required</span>，走的是下面这条小决策链。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>有默认值吗？</h4><p>若该参数在签名里写了默认值（<span class="mono">p.default</span> 不为空）→ <strong>可选</strong>，不进 required。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>是 Optional[X] 吗？</h4><p>没有默认值，但类型是 <span class="mono">Optional[X]</span>（即 <span class="mono">is_optional</span> 为真）→ <strong>可选</strong>，不进 required。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>否则</h4><p>既无默认值、又不是 Optional → <strong>进 required</strong>，模型调用时必须提供。</p></div></div>
+</div>
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
