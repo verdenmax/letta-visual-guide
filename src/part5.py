@@ -726,5 +726,20 @@ LESSON_18 = {"zh": r"""
 <p><strong>Source:</strong> <span class="mono">letta/services/tool_manager.py</span> and <span class="mono">letta/services/tool_schema_generator.py::generate_schema_for_tool_creation</span>.</p>
 <p><strong>Going further:</strong> placing derivation at creation rather than at every validation both spares repeated computation and makes the schema a contract "settled at the moment of creation and stable thereafter."</p>
 </div></details>
-<!--ENMORE-->
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><strong>When registering a custom tool, the schema is derived by pure AST</strong>: a schema is built from the source string, <strong>never running</strong> that code.</li>
+<li><strong><span class="mono">derive_openai_json_schema</span> = <span class="mono">_parse_function_from_source</span> + reusing <span class="mono">generate_schema</span></strong>: it converges on the same generator as Lesson 17.</li>
+<li><strong><span class="mono">MockFunction</span> provides <span class="mono">__name__ / __doc__ / __signature__</span></strong>: it fools <span class="mono">inspect</span> with the trio, and raises if called.</li>
+<li><strong>Take the last <span class="mono">FunctionDef</span>, stub unknown types</strong>: an undefined BaseModel is filled by <span class="mono">type(name,(BaseModel,),{})</span>, no import.</li>
+<li><strong>A TS tool must supply <span class="mono">json_schema</span> explicitly</strong>: auto-derivation mainly serves Python.</li>
+<li><strong>Derivation happens only at creation</strong>: wired in <span class="mono">tool_manager</span> → <span class="mono">tool_schema_generator</span>, no longer in a pydantic validator.</li>
+</ul>
+<p>Read these together: <strong>not running</strong> is the principle, <strong>AST parsing</strong> is the means, <strong>MockFunction</strong> is the adapter, and <strong>reusing generate_schema</strong> is the payoff. The four interlock, none dispensable — exactly what a "safe yet effortless" design should look like.</p>
+</div>
+
+<p>Looking back, this lesson really told just one story: <strong>restating "security" as "parsing."</strong> Once you refuse to run user code, "understanding it" turns from a runtime problem into a pure text-analysis problem — and text analysis is exactly the AST's forte. <span class="mono">MockFunction</span> then acts as a bridge, seamlessly reconnecting the analyzed parts to Lesson 17's mature generator.</p>
+
+<p>By now a tool has a schema, can be "seen" by the model, and can be invoked. But when an agent <strong>actually executes</strong> a tool, how does it know "which way to run it" — call it directly in-process, drop it into a sandbox for isolated execution, or reach out to an external server? That is the question <strong>Lesson 19, "tool dispatch and execution,"</strong> will answer. In other words, the schema solves "how the model understands a tool," while execution must solve "how the system runs a tool safely" — and that story is only half told.</p>
+
 """}
