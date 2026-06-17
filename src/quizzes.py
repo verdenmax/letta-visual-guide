@@ -1581,6 +1581,121 @@ QUIZZES = {
             },
         ],
     },
+    "19-tool-dispatch-and-mcp.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "模型吐出一个工具调用后，agent 循环真正调用的“执行入口”是谁？ToolExecutorFactory 在其中扮演什么角色？",
+                    "en": "After the model emits a tool call, which “execution entry” does the agent loop actually call? And what role does ToolExecutorFactory play?",
+                },
+                "opts": [
+                    {"zh": "真入口是 ToolExecutionManager.execute_tool_async：它用工厂拿到执行器，再负责计时、超长截断、把异常包成 ToolExecutionResult。工厂只“按 ToolType 选执行器”，本身不运行工具",
+                     "en": "The real entry is ToolExecutionManager.execute_tool_async: it uses the factory to obtain an executor, then handles timing, over-length truncation, and wrapping exceptions into a ToolExecutionResult. The factory only “picks an executor by ToolType” and does not run the tool itself"},
+                    {"zh": "工厂 ToolExecutorFactory.get_executor 既选执行器又直接运行工具，循环调它就够了",
+                     "en": "The factory ToolExecutorFactory.get_executor both picks the executor and runs the tool directly, so the loop just calls it"},
+                    {"zh": "循环直接调用具体执行器的 execute()，中间没有任何管理器层",
+                     "en": "The loop calls a concrete executor's execute() directly, with no intermediate manager layer"},
+                    {"zh": "模型自己通过网络把工具调用发给执行器，服务端只负责转发结果",
+                     "en": "The model itself sends the tool call to the executor over the network, and the server only relays the result"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "第 19 课的关键分层：ToolExecutorFactory（tool_execution_manager.py）只做“选人”——按 tool.tool_type 查 _executor_map、返回一个执行器实例；真正被循环调用的入口是同一文件的 ToolExecutionManager.execute_tool_async，它先用工厂取执行器，再统一计时、按 return_char_limit 截断、把异常包成 ToolExecutionResult。所以“工厂＝入口”是常见误区：工厂不运行工具，管理器才是入口。",
+                    "en": "Lesson 19's key layering: ToolExecutorFactory (tool_execution_manager.py) only “picks the person” — it looks up _executor_map by tool.tool_type and returns an executor instance; the entry the loop actually calls is ToolExecutionManager.execute_tool_async in the same file, which first gets the executor from the factory, then uniformly times the call, truncates by return_char_limit, and wraps exceptions into a ToolExecutionResult. So “factory = entry” is a common trap: the factory doesn't run the tool; the manager is the entry.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你注册了一个自己写的 Python 工具 calculate_invoice，没有把它归到任何内置类别。它默认会被哪个执行器执行？为什么？",
+                    "en": "You register a Python tool you wrote yourself, calculate_invoice, without sorting it into any built-in category. Which executor runs it by default, and why?",
+                },
+                "opts": [
+                    {"zh": "SandboxToolExecutor。它的类型默认是 custom，而 custom 不在工厂 _executor_map 里——get_executor 的 .get(tool_type, SandboxToolExecutor) 会兜底返回沙箱执行器",
+                     "en": "SandboxToolExecutor. Its type defaults to custom, and custom is not in the factory's _executor_map — get_executor's .get(tool_type, SandboxToolExecutor) falls back to the sandbox executor"},
+                    {"zh": "LettaCoreToolExecutor，因为所有没有特别归类的工具都按“核心工具”在进程内直跑",
+                     "en": "LettaCoreToolExecutor, since any tool not specially categorized runs in-process as a “core tool”"},
+                    {"zh": "LettaBuiltinToolExecutor，自定义函数被当作内置工具处理",
+                     "en": "LettaBuiltinToolExecutor, treating a custom function as a built-in tool"},
+                    {"zh": "创建会失败，因为工厂里没有 custom 对应的执行器，无法分发",
+                     "en": "Creation fails, because the factory has no executor mapped for custom, so it can't be dispatched"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "schema 层默认 tool_type=CUSTOM（custom 不会被 upsert_base_tools 按名字归类）。工厂 ToolExecutorFactory._executor_map 只显式列了 5 个（LETTA_CORE/LETTA_MEMORY_CORE→LettaCore、LETTA_BUILTIN→LettaBuiltin、LETTA_FILES_CORE→LettaFile、EXTERNAL_MCP→ExternalMCP），custom 不在其中；get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor) 兜底，所以自定义工具默认进沙箱。它不会失败——兜底正是为这种情况设计的。",
+                    "en": "At the schema layer tool_type defaults to CUSTOM (custom is not name-sorted by upsert_base_tools). The factory ToolExecutorFactory._executor_map lists only 5 explicitly (LETTA_CORE/LETTA_MEMORY_CORE→LettaCore, LETTA_BUILTIN→LettaBuiltin, LETTA_FILES_CORE→LettaFile, EXTERNAL_MCP→ExternalMCP), and custom is not among them; get_executor falls back via _executor_map.get(tool_type, SandboxToolExecutor), so a custom tool goes to the sandbox by default. It does not fail — the fallback exists precisely for this case.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个 external_mcp 类型的工具被调用时，它的代码是在 Letta 的本地沙箱里跑的吗？执行路径大致是怎样的？",
+                    "en": "When a tool of type external_mcp is called, does its code run inside Letta's local sandbox? Roughly what is the execution path?",
+                },
+                "opts": [
+                    {"zh": "不在沙箱。ExternalMCPToolExecutor 从 mcp:&lt;server&gt; 标签解析出服务器名，交给 MCPManager().execute_mcp_server_tool 连接外部 MCP server（connect → execute → cleanup），Letta 本地不跑任何工具代码",
+                     "en": "Not in the sandbox. ExternalMCPToolExecutor parses the server name from the mcp:&lt;server&gt; tag and hands it to MCPManager().execute_mcp_server_tool, which connects to the external MCP server (connect → execute → cleanup); Letta runs no tool code locally"},
+                    {"zh": "在沙箱里跑。所有“外部代码”都被当作不可信代码，统一丢进 SandboxToolExecutor 隔离执行",
+                     "en": "It runs in the sandbox. All “external code” is treated as untrusted and uniformly thrown into SandboxToolExecutor for isolated execution"},
+                    {"zh": "在 Letta 进程内直跑，和 core_memory_append 一样，以求最低延迟",
+                     "en": "It runs in-process inside Letta, just like core_memory_append, for the lowest latency"},
+                    {"zh": "Letta 把工具源码下载到本地，import 后在受限解释器里执行",
+                     "en": "Letta downloads the tool's source locally and executes it in a restricted interpreter after importing it"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "MCP 有两个反直觉点：①不走沙箱——ExternalMCPToolExecutor（mcp_tool_executor.py）连接的是外部 MCP server，本地不跑工具代码；②每次开新连接——MCPManager.execute_mcp_server_tool 走 connect → execute → cleanup，不复用连接。真正的传输客户端在 services/mcp/（stdio/sse/streamable_http），functions/mcp_client/ 只放配置类型。沙箱是用来隔离“在你机器上跑的陌生代码”的，而 MCP 的代码根本不在你机器上跑。",
+                    "en": "MCP has two counterintuitive points: (1) no sandbox — ExternalMCPToolExecutor (mcp_tool_executor.py) connects to an external MCP server and runs no tool code locally; (2) a fresh connection each time — MCPManager.execute_mcp_server_tool goes connect → execute → cleanup with no connection reuse. The real transport clients live in services/mcp/ (stdio/sse/streamable_http); functions/mcp_client/ holds only config types. The sandbox exists to isolate “unfamiliar code running on your machine,” but MCP's code never runs on your machine at all.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "agent 调用 core_memory_append 改写核心记忆时，是哪个执行器在执行它？在哪种运行时里跑？",
+                    "en": "When an agent calls core_memory_append to rewrite core memory, which executor runs it, and in what runtime?",
+                },
+                "opts": [
+                    {"zh": "LettaCoreToolExecutor，在 Letta 进程内直跑。core_memory_append 的类型是 letta_memory_core，工厂把 LETTA_MEMORY_CORE 也映射到 LettaCoreToolExecutor——记忆工具不进沙箱",
+                     "en": "LettaCoreToolExecutor, in-process inside Letta. core_memory_append has type letta_memory_core, and the factory maps LETTA_MEMORY_CORE to LettaCoreToolExecutor too — memory tools do not go to the sandbox"},
+                    {"zh": "SandboxToolExecutor，因为任何“写状态”的工具都必须先隔离，避免污染服务端内存",
+                     "en": "SandboxToolExecutor, because any “state-writing” tool must be isolated first to avoid polluting server memory"},
+                    {"zh": "有一个专门的 LettaMemoryToolExecutor 处理所有记忆工具",
+                     "en": "A dedicated LettaMemoryToolExecutor handles all memory tools"},
+                    {"zh": "LettaBuiltinToolExecutor，记忆改写被当作内置实用工具处理",
+                     "en": "LettaBuiltinToolExecutor, treating memory edits as a built-in utility"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "工厂 _executor_map 把 LETTA_CORE 和 LETTA_MEMORY_CORE（还有 LETTA_SLEEPTIME_CORE）都映射到同一个 LettaCoreToolExecutor（core_tool_executor.py），它把 core、记忆、sleeptime 三摊工具全在进程内直跑——所以 core_memory_append 在进程内执行、延迟最低，不绕沙箱。没有单独的“Memory”执行器；记忆工具也不会因为“写状态”被丢进沙箱。",
+                    "en": "The factory's _executor_map maps LETTA_CORE and LETTA_MEMORY_CORE (and LETTA_SLEEPTIME_CORE) all to the same LettaCoreToolExecutor (core_tool_executor.py), which runs core, memory, and sleeptime tools all in-process — so core_memory_append executes in-process at the lowest latency, with no sandbox detour. There is no separate “Memory” executor, and memory tools are not sandboxed for “writing state.”",
+                },
+            },
+            {
+                "q": {
+                    "zh": "ToolType 共有 11 种，但工厂的 _executor_map 里只显式列了 5 个条目。剩下那些类型（比如 letta_voice_sleeptime_core、letta_multi_agent_core、external_composio）会怎样被执行？",
+                    "en": "ToolType has 11 values, but the factory's _executor_map lists only 5 entries explicitly. How do the remaining types (e.g. letta_voice_sleeptime_core, letta_multi_agent_core, external_composio) get executed?",
+                },
+                "opts": [
+                    {"zh": "全部兜底走 SandboxToolExecutor——get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor)，凡是没在表里的类型一律落到沙箱。这是“默认安全”：除非明确认定安全，否则隔离",
+                     "en": "They all fall back to SandboxToolExecutor — get_executor uses _executor_map.get(tool_type, SandboxToolExecutor), so any type not in the table lands in the sandbox. This is “secure by default”: isolate unless explicitly judged safe"},
+                    {"zh": "工厂会抛 KeyError，这些类型的工具无法被执行",
+                     "en": "The factory raises KeyError, and tools of those types cannot be executed"},
+                    {"zh": "每种类型都有一个同名执行器，只是没写进 _executor_map，运行时按命名约定动态加载",
+                     "en": "Each type has a same-named executor that's simply omitted from _executor_map and loaded dynamically by naming convention at runtime"},
+                    {"zh": "它们回退到 LettaCoreToolExecutor，在进程内直跑",
+                     "en": "They fall back to LettaCoreToolExecutor and run in-process"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这正是本课最大的“陷阱”：_executor_map 只显式列 5 个（LETTA_CORE、LETTA_MEMORY_CORE、LETTA_BUILTIN、LETTA_FILES_CORE、EXTERNAL_MCP），其余 6 种类型（custom、letta_multi_agent_core、letta_voice_sleeptime_core、external_langchain、external_composio 等）都靠 get_executor 的 .get(tool_type, SandboxToolExecutor) 兜底走沙箱。彩蛋：ExternalComposioToolExecutor 这个类存在却没被接线（external_composio 弃用、兜底沙箱），是永远不会被选中的死代码。既不会 KeyError，也没有“按命名动态加载”。",
+                    "en": "This is the lesson's biggest trap: _executor_map lists only 5 explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP), and the other 6 types (custom, letta_multi_agent_core, letta_voice_sleeptime_core, external_langchain, external_composio, etc.) all fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“医院分诊台”这个比喻，把第 19 课的执行链路完整讲一遍，并想三件事：(1) ToolType + 工厂这套“按类型分发”的设计，和“在循环里写一长串 if/elif 判断该怎么跑”相比，好在哪？日后新增一种工具类型、或想把某类工具从沙箱挪到进程内，各要改哪里？(2) 自定义工具“默认兜底沙箱”是“默认安全”，可它也意味着一个忘了归类的内置工具会悄悄变慢（多绕一层沙箱）。这个“安全 vs 性能”的默认你怎么权衡？要不要在“落到兜底”时打一条告警日志？(3) MCP 不走沙箱、每次现连现断，把“运行第三方代码”的风险留在外部 server。对比“本地沙箱跑自定义代码”，这两种扩展能力的方式在信任边界、延迟、故障模式上各有什么不同？什么场景该选哪种？",
+                "en": "Use the “hospital triage desk” metaphor to tell lesson 19's execution chain as a whole, and think through three things: (1) Compared with “writing a long if/elif in the loop to decide how to run,” what's better about the ToolType + factory “dispatch by type” design? To add a new tool type later, or to move some class of tool from the sandbox to in-process, what would you change in each case? (2) “Custom defaults to the sandbox” is secure by default, but it also means a built-in tool someone forgot to categorize silently gets slower (one extra sandbox hop). How would you weigh this “safety vs performance” default — would you log a warning whenever execution “hits the fallback”? (3) MCP skips the sandbox and connects/disconnects per call, leaving the risk of “running third-party code” on the external server. Compared with “running custom code in a local sandbox,” how do these two ways of extending capability differ in trust boundary, latency, and failure modes — and when would you pick each?",
+            },
+        ],
+    },
 }
 
 

@@ -537,7 +537,80 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 
 <p>串起来看：模型选工具（第 17、18 课给了 schema）→ 循环调用（第 14 课）→ 工厂按 <span class="mono">ToolType</span> 分发 → 执行器各跑各的。而自定义工具默认被交给 <span class="mono">SandboxToolExecutor</span>，也就是丢进<strong>沙箱</strong>。可沙箱到底<strong>怎么跑、凭什么敢跑陌生人的代码</strong>？这就是第 20 课，也是第五部分的收尾。</p>
 <div class="note tip"><span class="ni">🧷</span><span class="nx">小结一句：这一课把"执行工具"从一行黑箱，拆成了"类型 → 工厂 → 入口 → 执行器 → 结果"五个清清楚楚的环节。下一课，我们钻进其中最危险的那个环节——沙箱。</span></div>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 模型吐出一个工具调用后，agent 循环真正调用的“执行入口”是谁？ToolExecutorFactory 在其中扮演什么角色？</div>
+  <ol class="opts">
+    <li>真入口是 ToolExecutionManager.execute_tool_async：它用工厂拿到执行器，再负责计时、超长截断、把异常包成 ToolExecutionResult。工厂只“按 ToolType 选执行器”，本身不运行工具</li>
+    <li>循环直接调用具体执行器的 execute()，中间没有任何管理器层</li>
+    <li>模型自己通过网络把工具调用发给执行器，服务端只负责转发结果</li>
+    <li>工厂 ToolExecutorFactory.get_executor 既选执行器又直接运行工具，循环调它就够了</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。第 19 课的关键分层：ToolExecutorFactory（tool_execution_manager.py）只做“选人”——按 tool.tool_type 查 _executor_map、返回一个执行器实例；真正被循环调用的入口是同一文件的 ToolExecutionManager.execute_tool_async，它先用工厂取执行器，再统一计时、按 return_char_limit 截断、把异常包成 ToolExecutionResult。所以“工厂＝入口”是常见误区：工厂不运行工具，管理器才是入口。</div></div></div>
+  </details>
 </div>
+<div class="quiz">
+  <div class="qn">2. 你注册了一个自己写的 Python 工具 calculate_invoice，没有把它归到任何内置类别。它默认会被哪个执行器执行？为什么？</div>
+  <ol class="opts">
+    <li>SandboxToolExecutor。它的类型默认是 custom，而 custom 不在工厂 _executor_map 里——get_executor 的 .get(tool_type, SandboxToolExecutor) 会兜底返回沙箱执行器</li>
+    <li>LettaBuiltinToolExecutor，自定义函数被当作内置工具处理</li>
+    <li>创建会失败，因为工厂里没有 custom 对应的执行器，无法分发</li>
+    <li>LettaCoreToolExecutor，因为所有没有特别归类的工具都按“核心工具”在进程内直跑</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。schema 层默认 tool_type=CUSTOM（custom 不会被 upsert_base_tools 按名字归类）。工厂 ToolExecutorFactory._executor_map 只显式列了 5 个（LETTA_CORE/LETTA_MEMORY_CORE→LettaCore、LETTA_BUILTIN→LettaBuiltin、LETTA_FILES_CORE→LettaFile、EXTERNAL_MCP→ExternalMCP），custom 不在其中；get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor) 兜底，所以自定义工具默认进沙箱。它不会失败——兜底正是为这种情况设计的。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 一个 external_mcp 类型的工具被调用时，它的代码是在 Letta 的本地沙箱里跑的吗？执行路径大致是怎样的？</div>
+  <ol class="opts">
+    <li>不在沙箱。ExternalMCPToolExecutor 从 mcp:&lt;server&gt; 标签解析出服务器名，交给 MCPManager().execute_mcp_server_tool 连接外部 MCP server（connect → execute → cleanup），Letta 本地不跑任何工具代码</li>
+    <li>在 Letta 进程内直跑，和 core_memory_append 一样，以求最低延迟</li>
+    <li>Letta 把工具源码下载到本地，import 后在受限解释器里执行</li>
+    <li>在沙箱里跑。所有“外部代码”都被当作不可信代码，统一丢进 SandboxToolExecutor 隔离执行</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。MCP 有两个反直觉点：①不走沙箱——ExternalMCPToolExecutor（mcp_tool_executor.py）连接的是外部 MCP server，本地不跑工具代码；②每次开新连接——MCPManager.execute_mcp_server_tool 走 connect → execute → cleanup，不复用连接。真正的传输客户端在 services/mcp/（stdio/sse/streamable_http），functions/mcp_client/ 只放配置类型。沙箱是用来隔离“在你机器上跑的陌生代码”的，而 MCP 的代码根本不在你机器上跑。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. agent 调用 core_memory_append 改写核心记忆时，是哪个执行器在执行它？在哪种运行时里跑？</div>
+  <ol class="opts">
+    <li>SandboxToolExecutor，因为任何“写状态”的工具都必须先隔离，避免污染服务端内存</li>
+    <li>LettaCoreToolExecutor，在 Letta 进程内直跑。core_memory_append 的类型是 letta_memory_core，工厂把 LETTA_MEMORY_CORE 也映射到 LettaCoreToolExecutor——记忆工具不进沙箱</li>
+    <li>有一个专门的 LettaMemoryToolExecutor 处理所有记忆工具</li>
+    <li>LettaBuiltinToolExecutor，记忆改写被当作内置实用工具处理</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。工厂 _executor_map 把 LETTA_CORE 和 LETTA_MEMORY_CORE（还有 LETTA_SLEEPTIME_CORE）都映射到同一个 LettaCoreToolExecutor（core_tool_executor.py），它把 core、记忆、sleeptime 三摊工具全在进程内直跑——所以 core_memory_append 在进程内执行、延迟最低，不绕沙箱。没有单独的“Memory”执行器；记忆工具也不会因为“写状态”被丢进沙箱。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. ToolType 共有 11 种，但工厂的 _executor_map 里只显式列了 5 个条目。剩下那些类型（比如 letta_voice_sleeptime_core、letta_multi_agent_core、external_composio）会怎样被执行？</div>
+  <ol class="opts">
+    <li>它们回退到 LettaCoreToolExecutor，在进程内直跑</li>
+    <li>工厂会抛 KeyError，这些类型的工具无法被执行</li>
+    <li>每种类型都有一个同名执行器，只是没写进 _executor_map，运行时按命名约定动态加载</li>
+    <li>全部兜底走 SandboxToolExecutor——get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor)，凡是没在表里的类型一律落到沙箱。这是“默认安全”：除非明确认定安全，否则隔离</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。这正是本课最大的“陷阱”：_executor_map 只显式列 5 个（LETTA_CORE、LETTA_MEMORY_CORE、LETTA_BUILTIN、LETTA_FILES_CORE、EXTERNAL_MCP），其余 6 种类型（custom、letta_multi_agent_core、letta_voice_sleeptime_core、external_langchain、external_composio 等）都靠 get_executor 的 .get(tool_type, SandboxToolExecutor) 兜底走沙箱。彩蛋：ExternalComposioToolExecutor 这个类存在却没被接线（external_composio 弃用、兜底沙箱），是永远不会被选中的死代码。既不会 KeyError，也没有“按命名动态加载”。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用“医院分诊台”这个比喻，把第 19 课的执行链路完整讲一遍，并想三件事：(1) ToolType + 工厂这套“按类型分发”的设计，和“在循环里写一长串 if/elif 判断该怎么跑”相比，好在哪？日后新增一种工具类型、或想把某类工具从沙箱挪到进程内，各要改哪里？(2) 自定义工具“默认兜底沙箱”是“默认安全”，可它也意味着一个忘了归类的内置工具会悄悄变慢（多绕一层沙箱）。这个“安全 vs 性能”的默认你怎么权衡？要不要在“落到兜底”时打一条告警日志？(3) MCP 不走沙箱、每次现连现断，把“运行第三方代码”的风险留在外部 server。对比“本地沙箱跑自定义代码”，这两种扩展能力的方式在信任边界、延迟、故障模式上各有什么不同？什么场景该选哪种？</li>
+  </ul>
+</div>
+</div></div>
   <div class="lang-en">
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">When Lesson 14 walked through the agent's execution loop, "running a tool" got barely a single line; Lessons 17 and 18 then grew tools a schema so the model could "see" and call them. But the moment the model actually emits a tool call and the system <strong>has to run it</strong> — that one step we never pried open.</p>
 <p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson lays "execution" out flat: when an agent really has to run a tool, how does it know <strong>which way</strong> to run it — call it in-process? throw it into an isolated sandbox? or open a network connection to an external server? The answer hides inside a label called <span class="mono">ToolType</span> and a factory.</p>
@@ -733,7 +806,80 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 
 <p>Strung together: the model picks a tool (Lessons 17 and 18 gave it a schema) → the loop calls it (Lesson 14) → the factory dispatches by <span class="mono">ToolType</span> → each executor runs its own way. And a custom tool is handed by default to <span class="mono">SandboxToolExecutor</span>, that is, thrown into the sandbox. But how exactly does the sandbox run, and on what grounds does it dare run a stranger's code? That is Lesson 20, the close of Part 5.</p>
 <div class="note tip"><span class="ni">🧷</span><span class="nx">In one line: this lesson took "running a tool" from a single black-box line and broke it into five crisp links — "type → factory → entry → executor → result." Next lesson we burrow into the most dangerous link of all — the sandbox.</span></div>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. After the model emits a tool call, which “execution entry” does the agent loop actually call? And what role does ToolExecutorFactory play?</div>
+  <ol class="opts">
+    <li>The real entry is ToolExecutionManager.execute_tool_async: it uses the factory to obtain an executor, then handles timing, over-length truncation, and wrapping exceptions into a ToolExecutionResult. The factory only “picks an executor by ToolType” and does not run the tool itself</li>
+    <li>The loop calls a concrete executor's execute() directly, with no intermediate manager layer</li>
+    <li>The model itself sends the tool call to the executor over the network, and the server only relays the result</li>
+    <li>The factory ToolExecutorFactory.get_executor both picks the executor and runs the tool directly, so the loop just calls it</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Lesson 19's key layering: ToolExecutorFactory (tool_execution_manager.py) only “picks the person” — it looks up _executor_map by tool.tool_type and returns an executor instance; the entry the loop actually calls is ToolExecutionManager.execute_tool_async in the same file, which first gets the executor from the factory, then uniformly times the call, truncates by return_char_limit, and wraps exceptions into a ToolExecutionResult. So “factory = entry” is a common trap: the factory doesn't run the tool; the manager is the entry.</div></div></div>
+  </details>
 </div>
+<div class="quiz">
+  <div class="qn">2. You register a Python tool you wrote yourself, calculate_invoice, without sorting it into any built-in category. Which executor runs it by default, and why?</div>
+  <ol class="opts">
+    <li>SandboxToolExecutor. Its type defaults to custom, and custom is not in the factory's _executor_map — get_executor's .get(tool_type, SandboxToolExecutor) falls back to the sandbox executor</li>
+    <li>LettaBuiltinToolExecutor, treating a custom function as a built-in tool</li>
+    <li>Creation fails, because the factory has no executor mapped for custom, so it can't be dispatched</li>
+    <li>LettaCoreToolExecutor, since any tool not specially categorized runs in-process as a “core tool”</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. At the schema layer tool_type defaults to CUSTOM (custom is not name-sorted by upsert_base_tools). The factory ToolExecutorFactory._executor_map lists only 5 explicitly (LETTA_CORE/LETTA_MEMORY_CORE→LettaCore, LETTA_BUILTIN→LettaBuiltin, LETTA_FILES_CORE→LettaFile, EXTERNAL_MCP→ExternalMCP), and custom is not among them; get_executor falls back via _executor_map.get(tool_type, SandboxToolExecutor), so a custom tool goes to the sandbox by default. It does not fail — the fallback exists precisely for this case.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. When a tool of type external_mcp is called, does its code run inside Letta's local sandbox? Roughly what is the execution path?</div>
+  <ol class="opts">
+    <li>Not in the sandbox. ExternalMCPToolExecutor parses the server name from the mcp:&lt;server&gt; tag and hands it to MCPManager().execute_mcp_server_tool, which connects to the external MCP server (connect → execute → cleanup); Letta runs no tool code locally</li>
+    <li>It runs in-process inside Letta, just like core_memory_append, for the lowest latency</li>
+    <li>Letta downloads the tool's source locally and executes it in a restricted interpreter after importing it</li>
+    <li>It runs in the sandbox. All “external code” is treated as untrusted and uniformly thrown into SandboxToolExecutor for isolated execution</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. MCP has two counterintuitive points: (1) no sandbox — ExternalMCPToolExecutor (mcp_tool_executor.py) connects to an external MCP server and runs no tool code locally; (2) a fresh connection each time — MCPManager.execute_mcp_server_tool goes connect → execute → cleanup with no connection reuse. The real transport clients live in services/mcp/ (stdio/sse/streamable_http); functions/mcp_client/ holds only config types. The sandbox exists to isolate “unfamiliar code running on your machine,” but MCP's code never runs on your machine at all.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. When an agent calls core_memory_append to rewrite core memory, which executor runs it, and in what runtime?</div>
+  <ol class="opts">
+    <li>SandboxToolExecutor, because any “state-writing” tool must be isolated first to avoid polluting server memory</li>
+    <li>LettaCoreToolExecutor, in-process inside Letta. core_memory_append has type letta_memory_core, and the factory maps LETTA_MEMORY_CORE to LettaCoreToolExecutor too — memory tools do not go to the sandbox</li>
+    <li>A dedicated LettaMemoryToolExecutor handles all memory tools</li>
+    <li>LettaBuiltinToolExecutor, treating memory edits as a built-in utility</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The factory's _executor_map maps LETTA_CORE and LETTA_MEMORY_CORE (and LETTA_SLEEPTIME_CORE) all to the same LettaCoreToolExecutor (core_tool_executor.py), which runs core, memory, and sleeptime tools all in-process — so core_memory_append executes in-process at the lowest latency, with no sandbox detour. There is no separate “Memory” executor, and memory tools are not sandboxed for “writing state.”</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. ToolType has 11 values, but the factory's _executor_map lists only 5 entries explicitly. How do the remaining types (e.g. letta_voice_sleeptime_core, letta_multi_agent_core, external_composio) get executed?</div>
+  <ol class="opts">
+    <li>They fall back to LettaCoreToolExecutor and run in-process</li>
+    <li>The factory raises KeyError, and tools of those types cannot be executed</li>
+    <li>Each type has a same-named executor that's simply omitted from _executor_map and loaded dynamically by naming convention at runtime</li>
+    <li>They all fall back to SandboxToolExecutor — get_executor uses _executor_map.get(tool_type, SandboxToolExecutor), so any type not in the table lands in the sandbox. This is “secure by default”: isolate unless explicitly judged safe</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. This is the lesson's biggest trap: _executor_map lists only 5 explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP), and the other 6 types (custom, letta_multi_agent_core, letta_voice_sleeptime_core, external_langchain, external_composio, etc.) all fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Use the “hospital triage desk” metaphor to tell lesson 19's execution chain as a whole, and think through three things: (1) Compared with “writing a long if/elif in the loop to decide how to run,” what's better about the ToolType + factory “dispatch by type” design? To add a new tool type later, or to move some class of tool from the sandbox to in-process, what would you change in each case? (2) “Custom defaults to the sandbox” is secure by default, but it also means a built-in tool someone forgot to categorize silently gets slower (one extra sandbox hop). How would you weigh this “safety vs performance” default — would you log a warning whenever execution “hits the fallback”? (3) MCP skips the sandbox and connects/disconnects per call, leaving the risk of “running third-party code” on the external server. Compared with “running custom code in a local sandbox,” how do these two ways of extending capability differ in trust boundary, latency, and failure modes — and when would you pick each?</li>
+  </ul>
+</div>
+</div></div>
   <div class="footnav"><a class="prev" href="18-schema-without-executing.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">不执行就生成 schema</span><span class="lang-en">Deriving the schema without executing</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
