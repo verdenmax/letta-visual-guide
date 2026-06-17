@@ -82,6 +82,8 @@ PAGES = [
      "第五部分 · 工具系统", "Part 5 · The tool system"),
     ("18-schema-without-executing.html", "不执行就生成 schema", "Deriving the schema without executing",
      "第五部分 · 工具系统", "Part 5 · The tool system"),
+    ("19-tool-dispatch-and-mcp.html", "工具分发与执行（含 MCP）", "Tool dispatch & execution (incl. MCP)",
+     "第五部分 · 工具系统", "Part 5 · The tool system"),
 ]
 
 
@@ -556,6 +558,8 @@ SUBTITLES = {
                                  "generate_schema; the docstring is the API contract; type mapping"),
     "18-schema-without-executing.html": ("derive_openai_json_schema · AST 静态解析 · TypeScript",
                                          "derive_openai_json_schema; static AST parsing; TypeScript"),
+    "19-tool-dispatch-and-mcp.html": ("ToolType · 工厂分发 · core/builtin/files/mcp/sandbox · MCP",
+                                      "ToolType; factory dispatch; core/builtin/files/mcp/sandbox; MCP"),
 }
 
 

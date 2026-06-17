@@ -743,3 +743,6 @@ LESSON_18 = {"zh": r"""
 <p>By now a tool has a schema, can be "seen" by the model, and can be invoked. But when an agent <strong>actually executes</strong> a tool, how does it know "which way to run it" — call it directly in-process, drop it into a sandbox for isolated execution, or reach out to an external server? That is the question <strong>Lesson 19, "tool dispatch and execution,"</strong> will answer. In other words, the schema solves "how the model understands a tool," while execution must solve "how the system runs a tool safely" — and that story is only half told.</p>
 
 """}
+
+
+LESSON_19 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}
