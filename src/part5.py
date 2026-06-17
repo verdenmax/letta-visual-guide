@@ -1077,5 +1077,34 @@ LESSON_19 = {"zh": r"""
 <div class="note info"><span class="ni">🔌</span><span class="nx">Two counterintuitive points: MCP execution <strong>does not go through the sandbox</strong> (it connects to an external server, it isn't running code locally); and every call <strong>opens a fresh connection</strong> (<span class="mono">connect → execute → cleanup</span>). The real transport clients live in <span class="mono">letta/services/mcp/</span>, <strong>not</strong> <span class="mono">functions/mcp_client/</span> — the latter only holds config types.</span></div>
 <p>Remember MCP in a sentence: <strong>the tool is at someone else's place; Letta calls on it</strong>. It extends the agent's reach while leaving the risk of "running third-party code" on the third party's side — a different security philosophy from the local sandbox.</p>
 <p>Put another way: the previous four executors are like "working in different rooms of your own house," whereas MCP is like "phoning for takeout" — the work happens at someone else's place, and you only place the order and receive the delivery. This also explains why MCP skips the sandbox: the sandbox exists to isolate "unfamiliar code running in your house," but MCP's code never runs in your house at all.</p>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p><strong>"One call, several runtimes behind it."</strong> From the vantage of Lesson 14's loop, "call a tool" is forever one uniform line of code.</p>
+<p>Yet underneath they differ wildly: edit core memory in-process (<span class="mono">LettaCore</span>), shell out to run unfamiliar code in a sandbox venv (<span class="mono">Sandbox</span>), open a network connection to an MCP server (<span class="mono">ExternalMCP</span>). <span class="mono">ToolType</span> + the factory is the <strong>polymorphism</strong> that hides those differences.</p>
+<p>And another counterintuitive truth: the factory <strong>lists only 5 explicitly</strong>, while everything else <strong>falls back to <span class="mono">SandboxToolExecutor</span></strong> — "custom = sandbox" is the default, not a special case.</p>
+<p>Every executor, finally, returns the same <span class="mono">ToolExecutionResult</span> — the very type used for a tool-rule violation back in Lesson 16. Uniform exit, differences kept inward.</p>
+<p>It is clearer set against the whole tool chain: Lessons 17 and 18 gave a tool "a schema, the ability to be seen," and this lesson gets a tool "correctly run." The model's end is always a uniform function call, yet the system's end quietly makes one <strong>runtime choice by type</strong> — that is exactly what a good abstraction looks like: simple on top, flexible underneath.</p>
+<p>Put differently, <span class="mono">ToolType</span> writes "what tool I am" into data, and the factory writes "which tool runs which way" into logic — a kind of <strong>data-driven dispatch</strong>. To change how some class of tool runs, you needn't touch the loop; you only change its type, or one line of mapping in <span class="mono">_executor_map</span>.</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p>If you want to read the source yourself, this lesson touches few files; line them up along the "dispatch chain":</p>
+<p>The factory and the entry both live in <span class="mono">letta/services/tool_executor/tool_execution_manager.py</span>: <span class="mono">ToolExecutorFactory</span> picks the executor, <span class="mono">ToolExecutionManager</span> is the real entry.</p>
+<p>The executor base class is <span class="mono">tool_executor_base.py::ToolExecutor</span>; the five implementations: <span class="mono">core_tool_executor.py::LettaCoreToolExecutor</span>, <span class="mono">builtin_tool_executor.py::LettaBuiltinToolExecutor</span>, <span class="mono">files_tool_executor.py::LettaFileToolExecutor</span>, <span class="mono">mcp_tool_executor.py::ExternalMCPToolExecutor</span>, <span class="mono">sandbox_tool_executor.py::SandboxToolExecutor</span>.</p>
+<p>The type is defined in <span class="mono">schemas/enums.py::ToolType</span>; MCP config in <span class="mono">functions/mcp_client/types.py</span>, with clients and manager in <span class="mono">services/mcp/</span> plus <span class="mono">services/mcp_manager.py::MCPManager</span>; <span class="mono">ToolExecutionResult</span> in <span class="mono">schemas/tool_execution_result.py</span>.</p>
+</div>
+<p>This lesson really keeps making the same point: a good system locks "change" inside a small box. Tools vary endlessly, but the variation is gathered into just two places — the "type label" and the "factory mapping"; beyond those, the loop, the entry, and the result object all stay unchanged. So adding a tool kind or swapping a runtime has a tiny blast radius — that is the value of cutting complexity by location.</p>
+
+<div class="card warn"><div class="tag">⚠️ Common misconceptions</div>
+<p>The traps easiest to fall into here:</p>
+<ul>
+<li><strong>Thinking every type has its own dedicated executor</strong> — the factory's <span class="mono">_executor_map</span> lists only 5; the rest fall back to the sandbox.</li>
+<li><strong>Thinking the factory is the entry</strong> — the real entry is <span class="mono">ToolExecutionManager</span>; the factory only "picks."</li>
+<li><strong>Thinking the MCP client is in <span class="mono">functions/mcp_client/</span></strong> — that holds only config types; the clients are in <span class="mono">services/mcp/</span>.</li>
+<li><strong>Thinking only custom tools go to the sandbox</strong> — <span class="mono">letta_voice_sleeptime_core</span> and the multi-agent tools go there too.</li>
+<li><strong>Easter egg</strong>: <span class="mono">ExternalComposioToolExecutor</span> is in fact never wired up (<span class="mono">external_composio</span> is deprecated and falls back to the sandbox) — it is dead code.</li>
+</ul>
+</div>
+
+<p>One more often-overlooked benefit: because every executor emits the same kind of result, error handling gets unified too. Whether a tool throws, returns something over-long, or violates a rule, what the loop sees is always one status-bearing result object, not a motley of exceptions. "Going wrong" thus becomes "a branch of the normal flow," and the loop can keep marching steadily on.</p>
 <!--ENMORE-->
 """}
