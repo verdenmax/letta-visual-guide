@@ -1151,4 +1151,20 @@ LESSON_19 = {"zh": r"""
 <div class="note tip"><span class="ni">🧷</span><span class="nx">In one line: this lesson took "running a tool" from a single black-box line and broke it into five crisp links — "type → factory → entry → executor → result." Next lesson we burrow into the most dangerous link of all — the sandbox.</span></div>
 """}
 
-LESSON_20 = {"zh": r"""<p>stub</p>""", "en": r"""<p>stub</p>"""}
+LESSON_20 = {"zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 19 课结尾留了个悬念：一个自定义工具——用户自己写的 Python 源码——默认会被交给 <span class="mono">SandboxToolExecutor</span>，也就是"扔进沙箱"。可沙箱凭什么敢跑一段陌生人的代码？跑完之后，又该怎么把结果安全地收回服务端？</p>
+
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这是第五部分的收尾，也是整套工具系统"安全观"的落点。我们要把一张<strong>信任边界图</strong>画清楚：哪段路可以"放心传"、哪段路"必须验真"，以及一次真实的安全修复（PR #3343）如何把这条边界焊死。</p>
+
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>把沙箱想成监狱的探视窗。你（服务端）要递东西<strong>进去</strong>——那是你自己的物品，可以直接递原物。因为风险方向是"往里走"：东西进了高墙，再危险也跑不到你这边。</p>
+<p>可对方（沙箱里跑的陌生代码）从里面递<strong>出来</strong>的任何包裹，你绝不能伸手直接接管。必须隔着玻璃、过安检、核对封条——因为你根本不知道里面是糖果还是刀片。</p>
+<p>这一课全部的安全感，就压在这条朴素规矩上：<strong>往里递可以是原物，往外收必须过安检</strong>。剩下的工程，只是把"原物"翻译成 <span class="mono">pickle</span>、把"安检"翻译成 <span class="mono">JSON</span> 加一层校验而已。</p>
+</div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>记住一句话就够了：<strong>自定义工具是不可信代码</strong>。它不在主进程里跑，而是被丢进一个沙箱——本地 venv、E2B 或 Modal，由 <span class="mono">SandboxType</span> 三选一。</p>
+<p>沙箱内外只有两条数据通道，方向相反、信任也相反。<strong>server→sandbox</strong> 走 <span class="mono">pickle</span>（受信：服务端把自己造的 <span class="mono">agent_state</span> 序列化进去）；<strong>sandbox→server</strong> 走 <span class="mono">JSON</span>（不可信：<strong>绝不 <span class="mono">pickle.loads</span></strong>），并加 <span class="mono">marker+长度+MD5</span> 帧来校验完整性。</p>
+<p>这张<strong>信任边界图</strong>就是本课的全部。而 PR #3343 正是一次把回程通道从 pickle 改成 JSON 的真实安全修复——它把这条边界从"差不多安全"变成"焊死"。</p>
+</div>
+<!--ZHMORE-->
+""", "en": r"""<p>stub</p>"""}
