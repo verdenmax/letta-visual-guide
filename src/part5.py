@@ -831,5 +831,36 @@ LESSON_19 = {"zh": r"""
 <div class="cap">工厂按 ToolType 把每个工具送上对的传送带：进程内、内置、文件、外部、沙箱</div>
 </div>
 
+<h2>MCP：连接外部工具服务器</h2>
+<p>前面四类都在 Letta 自己家里跑。<strong>MCP</strong>（Model Context Protocol）不一样：工具其实活在<strong>外部服务器</strong>上，Letta 只是个客户端，把调用<strong>转发</strong>过去、再把结果取回来。</p>
+<p>这类工具的 <span class="mono">tool_type</span> 是 <span class="mono">external_mcp</span>，还会被打上 <span class="mono">mcp:&lt;server&gt;</span> 标签（由 <span class="mono">ToolCreate.from_mcp</span> 设置）。执行时由 <span class="mono">ExternalMCPToolExecutor</span> 从标签里取出目标服务器名，交给 <span class="mono">MCPManager</span> 去连、去跑、再断开。</p>
+<div class="vflow">
+<div class="step"><div class="num">1</div><div class="sc"><h4>MCP 工具</h4><p>带 <span class="mono">mcp:&lt;server&gt;</span> 标签，类型 <span class="mono">external_mcp</span></p></div></div>
+<div class="step"><div class="num">2</div><div class="sc"><h4>ExternalMCPToolExecutor</h4><p>从标签解析出目标服务器名</p></div></div>
+<div class="step"><div class="num">3</div><div class="sc"><h4>MCPManager.execute_mcp_server_tool</h4><p>统一入口，掌管整条连接生命周期</p></div></div>
+<div class="step"><div class="num">4</div><div class="sc"><h4>connect → execute → cleanup</h4><p>每次开新连接、跑完即断，不复用</p></div></div>
+</div>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/mcp_tool_executor.py</span><span class="ln">MCP 执行（简化）</span></div><pre><span class="kw">async def</span> <span class="fn">execute</span>(self, function_name, function_args, tool, ...):
+    server = <span class="fn">_tag_to_server</span>(tool.tags)        <span class="cm"># 从 "mcp:&lt;server&gt;" 标签取服务器名</span>
+    resp, ok = <span class="kw">await</span> MCPManager().<span class="fn">execute_mcp_server_tool</span>(
+        server, tool_name=function_name, tool_args=function_args, ...)   <span class="cm"># 连外部 server</span>
+    <span class="kw">return</span> ToolExecutionResult(status=<span class="st">"success"</span> <span class="kw">if</span> ok <span class="kw">else</span> <span class="st">"error"</span>, func_return=resp)
+</pre></div>
+<div class="cellgroup"><div class="cg-cap"><b>三种 MCP 传输 · MCPServerType</b></div><div class="cells"><span class="cell hl">stdio</span><span class="sep">·</span><span class="cell">sse</span><span class="sep">·</span><span class="cell">streamable_http</span></div></div>
+<div class="note info"><span class="ni">🔌</span><span class="nx">两个反直觉点：MCP 执行<strong>不走沙箱</strong>（它连的是外部 server，不是在本地跑代码）；而且每次调用都<strong>开一条新连接</strong>（<span class="mono">connect → execute → cleanup</span>）。真正的传输客户端在 <span class="mono">letta/services/mcp/</span>，<strong>不是</strong> <span class="mono">functions/mcp_client/</span>——后者只放配置类型。</span></div>
+
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p><strong>"一次调用，背后是好几种运行时。"</strong> 从第 14 课循环的视角看，"调一个工具"永远是统一的一行代码。</p>
+<p>可底下却天差地别：进程内改核心记忆（<span class="mono">LettaCore</span>）、shell 出去在沙箱 venv 里跑陌生代码（<span class="mono">Sandbox</span>）、开一条网络连接到 MCP 服务器（<span class="mono">ExternalMCP</span>）。<span class="mono">ToolType</span> + 工厂，就是把这些差异藏起来的<strong>多态</strong>。</p>
+<p>还有个反直觉真相：工厂只<strong>显式列了 5 个</strong>，其余<strong>全部兜底走 <span class="mono">SandboxToolExecutor</span></strong>——"自定义＝沙箱"是默认，不是特例。</p>
+<p>而所有执行器，最后都返回同一个 <span class="mono">ToolExecutionResult</span>——正是第 16 课工具规则违规时用的那个类型。出口统一，差异内敛。</p>
+</div>
+
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p>工厂与入口都在 <span class="mono">letta/services/tool_executor/tool_execution_manager.py</span>：<span class="mono">ToolExecutorFactory</span> 选执行器，<span class="mono">ToolExecutionManager</span> 是真入口。</p>
+<p>执行器基类 <span class="mono">tool_executor_base.py::ToolExecutor</span>；五个实现：<span class="mono">core_tool_executor.py::LettaCoreToolExecutor</span>、<span class="mono">builtin_tool_executor.py::LettaBuiltinToolExecutor</span>、<span class="mono">files_tool_executor.py::LettaFileToolExecutor</span>、<span class="mono">mcp_tool_executor.py::ExternalMCPToolExecutor</span>、<span class="mono">sandbox_tool_executor.py::SandboxToolExecutor</span>。</p>
+<p>类型定义在 <span class="mono">schemas/enums.py::ToolType</span>；MCP 配置在 <span class="mono">functions/mcp_client/types.py</span>，客户端与管理器在 <span class="mono">services/mcp/</span> 加 <span class="mono">services/mcp_manager.py::MCPManager</span>；<span class="mono">ToolExecutionResult</span> 在 <span class="mono">schemas/tool_execution_result.py</span>。</p>
+</div>
+
 <!--ZHMORE-->
 """, "en": r"""<p>stub</p>"""}
