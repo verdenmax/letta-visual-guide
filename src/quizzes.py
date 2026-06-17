@@ -1351,6 +1351,121 @@ QUIZZES = {
             },
         ],
     },
+    "17-tool-as-function.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "模型在决定要不要调某个工具、以及怎么填参数时，它真正读到的是什么？",
+                    "en": "When the model decides whether to call a tool and how to fill its arguments, what does it actually read?",
+                },
+                "opts": [
+                    {"zh": "只有 generate_schema 从签名 + docstring 拼出的那份 JSON schema——name、description，以及每个参数的类型/描述。函数体从不展示给模型",
+                     "en": "Only the JSON schema that generate_schema built from the signature + docstring — name, description, and each parameter's type/description. The function body is never shown to the model"},
+                    {"zh": "函数的完整 Python 源码（含函数体），好让它推敲各种边界情况",
+                     "en": "The full Python source of the function, body included, so it can reason about edge cases"},
+                    {"zh": "主要是 docstring 的 Returns: 段，它告诉模型这次调用会返回什么",
+                     "en": "Mainly the docstring's Returns: section, which tells it what the call will hand back"},
+                    {"zh": "函数在几组样例输入上实际执行的一段运行轨迹",
+                     "en": "A live trace of the function executing on a few sample inputs"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "模型只读 schema。generate_schema（letta/functions/schema_generator.py）用 inspect.signature 取参数与注解、用 docstring_parser（Google 风）取描述文字，产出 name / description / parameters；函数体被抹掉，所以“完整源码”和“运行轨迹”它都看不到——这正是“你写代码、模型读 schema”的全部要义。而 Returns: 是给人看的：只有 docstring 第一句（成为 description）和 Args: 里逐参数那几行会进 schema，Returns: 不进。",
+                    "en": "The model reads only the schema. generate_schema (letta/functions/schema_generator.py) uses inspect.signature for params + annotations and docstring_parser (Google style) for the description text, emitting name / description / parameters; the body is wiped, so neither the full source nor a live trace is ever available — that is the whole point of “you write code, the model reads a schema.” And Returns: is for humans: only the first docstring line (which becomes the description) and the Args: per-parameter lines enter the schema, not Returns:.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你写了个工具，签名里有参数 x: int，但 docstring 的 Args: 段从没描述 x。创建这个工具时会发生什么？",
+                    "en": "You write a tool whose signature has a parameter x: int, but your docstring's Args: section never describes x. What happens when the tool is created?",
+                },
+                "opts": [
+                    {"zh": "generate_schema 在构建 schema 时 raise ValueError——不给 x 补上描述，工具就建不出来",
+                     "en": "generate_schema raises ValueError while building the schema — the tool can't be created until you add a description for x"},
+                    {"zh": "工具照常创建；x 只是拿到一个空描述，模型靠猜来填它",
+                     "en": "The tool is created fine; x just gets an empty description and the model fills it by guessing"},
+                    {"zh": "工具能创建，但 x 被悄悄从 schema 里丢掉，模型根本看不到它",
+                     "en": "The tool is created, but x is silently dropped from the schema so the model never sees it"},
+                    {"zh": "它只记一条警告，并给 x 套上 “No description available” 顶替",
+                     "en": "It only logs a warning and substitutes “No description available” for x"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "在 generate_schema 的逐参数循环里，缺描述是硬中止：它在 doc.params 里找该参数、取到 None，于是 raise ValueError（Parameter 'x' lacks a description...）。创建当场失败，错误一路抛给注册工具的调用方。它不会降级成警告、不会塞个空/默认描述、也不会悄悄丢弃——这些做法都会瓦解“docstring 是模型唯一的说明书”。一个易混点：“No description available” 这个回退只用于函数级总描述，从不用于某个参数。",
+                    "en": "In generate_schema's per-parameter loop a missing description is a hard stop: it scans doc.params for that arg, gets None, and raises ValueError (Parameter 'x' lacks a description...). Creation aborts and the error propagates to whoever is registering the tool. It is not downgraded to a warning, not given an empty/default description, and not silently dropped — any of those would defeat “the docstring is the model's only manual.” One subtlety: the “No description available” fallback applies only to the function-level description, never to a parameter.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个工具定义为 def foo(self, agent_state, x: int)。生成的 JSON schema 里会出现哪些参数？",
+                    "en": "A tool is defined as def foo(self, agent_state, x: int). Which parameters appear in the generated JSON schema?",
+                },
+                "opts": [
+                    {"zh": "只有 x。self 和 agent_state 属于 TOOL_RESERVED_KWARGS，generate_schema 直接跳过；它们从不进 schema，模型既看不到也不用填",
+                     "en": "Only x. self and agent_state are in TOOL_RESERVED_KWARGS, so generate_schema skips them; they never enter the schema and the model neither sees nor fills them"},
+                    {"zh": "三个都在——self、agent_state、x——因为 schema 完全照搬签名",
+                     "en": "All three — self, agent_state, and x — since the schema mirrors the signature exactly"},
+                    {"zh": "x 和 agent_state，但不含 self",
+                     "en": "x and agent_state, but not self"},
+                    {"zh": "只有 x，外加一个 request_heartbeat 参数——由 generate_schema 作为保留控制字段注入",
+                     "en": "Only x, plus a request_heartbeat parameter that generate_schema injects as a reserved control field"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "generate_schema 会跳过保留参数：循环开头，若 p.name 在 TOOL_RESERVED_KWARGS（[self, agent_state]）里就 continue，两者都不进 schema——schema 并非逐字照搬签名。而 request_heartbeat 不是由 generate_schema 加的，它在运行期另行附加（第 15 课），所以任何“让 generate_schema 注入它”的选项都是错的。最终只剩 x，也就是模型真正要填的那一个参数。",
+                    "en": "generate_schema skips reserved kwargs: at the top of the loop, if p.name is in TOOL_RESERVED_KWARGS ([self, agent_state]) it continues, so neither enters the schema — the signature is not mirrored verbatim. And request_heartbeat is NOT added by generate_schema; it is attached separately at runtime (Lesson 15), so any option that has generate_schema inject it is wrong. Net result: only x, the single parameter the model must actually supply.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你能把工具参数标注成 Dict[str, int] 并让它进入 schema 吗？",
+                    "en": "Can you annotate a tool parameter as Dict[str, int] and have it become part of the schema?",
+                },
+                "opts": [
+                    {"zh": "不行——type_to_json_schema_type 对带参的 Dict[k,v] 会 raise ValueError。要传结构化入参，请改用 Pydantic BaseModel，它会经 model_json_schema() 展开",
+                     "en": "No — type_to_json_schema_type raises ValueError on a parameterized Dict[k,v]. For structured input, define a Pydantic BaseModel instead; it is expanded via model_json_schema()"},
+                    {"zh": "可以——它能干净地映射成“字符串键、整数值”的 JSON object",
+                     "en": "Yes — it maps cleanly to a JSON object with string keys and integer values"},
+                    {"zh": "可以，但前提是你还得给它一个默认值 {}",
+                     "en": "Yes, but only if you also give it a default value of {}"},
+                    {"zh": "不行——它会 raise TypeError，和“缺类型注解”报的是同一个错",
+                     "en": "No — it raises TypeError, the very same error you get from a missing type annotation"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "带参的 Dict[str, int] 会被拒：type_to_json_schema_type 手写映射各类型，对带键值的 Dict 抛 ValueError（对一般 Union 抛 NotImplementedError）。JSON schema 无法无歧义地表达任意键值字典，所以 Letta 宁可报错也不猜。正解是 Pydantic BaseModel，其 model_json_schema() 会把字段/类型/必填嵌进工具 schema。注意错误类型：这是 ValueError，不是“缺注解”时的 TypeError——两道关、两种异常。",
+                    "en": "A parameterized Dict[str, int] is rejected: type_to_json_schema_type hand-maps types and raises ValueError for a keyed Dict (and NotImplementedError for a general Union). JSON schema can't express an arbitrary key/value dict unambiguously, so Letta errors rather than guesses. The fix is a Pydantic BaseModel, whose model_json_schema() nests fields/types/required into the tool schema. Mind the error kind: it is ValueError, not the TypeError raised for a missing annotation — different gates, different exceptions.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "你 docstring 的 Args: 段格式略不规范，validate_google_style_docstring 不太满意。工具还建得出来吗？",
+                    "en": "Your docstring's Args: block is formatted a little off-standard, so validate_google_style_docstring isn't satisfied. Does the tool still build?",
+                },
+                "opts": [
+                    {"zh": "通常能——validate_google_style_docstring 只是建议性的：它的 ValueError 被捕获后降级成 logger.warning。真正的关卡是逐参数检查“有没有描述、有没有类型注解”",
+                     "en": "Usually yes — validate_google_style_docstring is advisory: its ValueError is caught and downgraded to a logger.warning. The real gate is the per-parameter check for a description and a type annotation"},
+                    {"zh": "不能——任何 Google 风校验失败都会以 ValueError 中止 schema 生成",
+                     "en": "No — any Google-style validation failure aborts schema generation with a ValueError"},
+                    {"zh": "不能——它会 raise TypeError，不修好格式工具就被拒",
+                     "en": "No — it raises TypeError and the tool is rejected until the formatting is fixed"},
+                    {"zh": "能，而且那些不规范的参数会在建 schema 前被自动修正成 Google 风格",
+                     "en": "Yes, and the malformed parameters are auto-corrected to Google style before the schema is built"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "两道关，一软一硬。validate_google_style_docstring 是软的：它的 ValueError 被 try/except 包住、记成一条警告，所以单是格式不规范并不会拦住构建。硬关在 generate_schema 的循环里——参数缺描述抛 ValueError、缺类型注解抛 TypeError，这两个不会被吞。没有任何东西会自动修正你的 docstring。所以格式只是“提醒”，逐参数缺描述或缺注解才是真正拦住创建的“硬伤”。",
+                    "en": "Two gates, soft and hard. validate_google_style_docstring is soft: its ValueError is wrapped in try/except and logged as a warning, so off-standard formatting alone won't stop the build. The hard gate lives inside generate_schema's loop — a parameter with no description raises ValueError, a missing type annotation raises TypeError; those are not swallowed. Nothing auto-corrects your docstring. So formatting is a reminder; a missing per-parameter description or annotation is what actually blocks creation.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用“餐厅菜单”这个比喻，把第 17 课的故事完整讲一遍，并想三件事：(1) 为什么 Letta 把工具表示成“裸函数 + docstring”，而不是搞一个特殊基类或装饰器？“模型只读 schema、从不读函数体”换来了什么——又给 docstring 压上了什么新责任？(2) generate_schema 把“某个参数缺描述”做成创建期的硬 ValueError，却对“不规范的 Google 风 docstring”只给一条警告放行。为什么把“硬/软”这条线正好画在这里？(3) 类型表支持 str/int/bool/float/Optional/List/Literal/BaseModel，却拒绝带参 Dict 和一般 Union。如果一定要再支持一种“结构化”入参类型，你会扩这张表，还是把人引向 Pydantic 模型——你会怎么权衡？",
+                "en": "Use the “restaurant menu” metaphor to tell lesson 17's story as a whole, and think through three things: (1) Why does Letta represent a tool as a bare function + docstring instead of a special base class or decorator? What does “the model reads only the schema, never the body” buy you — and what new responsibility does it place on the docstring? (2) generate_schema turns a missing per-parameter description into a hard ValueError at creation time, yet lets an off-standard Google-style docstring through with only a warning. Why draw the “hard vs soft” line exactly there? (3) The type map supports str/int/bool/float/Optional/List/Literal/BaseModel but rejects parameterized Dict and general Union. If you had to support one more “structured” input type, would you extend the map or push people toward Pydantic models — and what would you trade off?",
+            },
+        ],
+    },
 }
 
 
