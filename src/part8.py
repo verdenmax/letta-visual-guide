@@ -1504,6 +1504,36 @@ LESSON_31 = {
 <p>正文到此为止——三十课正文 ＋ 这张术语表，就是这趟 Letta 源码之旅的全部地图。配套的全量 quizzes、双语 PDF、CI 与 README，都收在仓库的收尾里，随时回来翻查。</p>
 """,
     "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">The previous thirty lessons are done; this one <strong>teaches nothing new</strong> — it's a quick-reference index: every key term from across the guide, each squeezed into a single line, with a jump-link tacked on the end.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Using it is simple: spot a word that looks familiar but won't quite come back to you, read the one-line definition on the right; want to see <strong>where it actually came from</strong>, click the link to jump straight to the lesson that covers it best. Both languages are kept side by side so you can line them up with the original English terms in the source.</p>
+<div class="cute"><div class="row"><span class="emoji">📖</span><span class="lab">a half-remembered word</span><span class="arrow">→</span><span class="emoji">👇</span><span class="lab">glance at one line</span><span class="arrow">→</span><span class="emoji">🔗</span><span class="bubble">jump back to that lesson</span></div><div class="cap">📖 Like flipping open a quick-reference handbook: hit a 👇 term you can't quite place, glance at the one-line definition on the right, and if you want to dig deeper 🔗 click the jump-link back to the lesson that first covered it — the whole value of this page lives in those links.</div></div>
+
+<h2>① Macro: the map that came first</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">Letta</span> / <span class="mono">MemGPT</span></td><td>The open-source project that turns an agent with memory — one that can rewrite its own memory — into a service; its predecessor paper was MemGPT.</td><td><a href="01-what-is-letta.html">Lesson 01</a></td></tr>
+<tr><td><span class="mono">project map</span></td><td>The letta repo's directory skeleton: agents / services / orm / llm_api each own a slice — learn the layout before reading code.</td><td><a href="02-project-map.html">Lesson 02</a></td></tr>
+<tr><td><span class="mono">message lifecycle</span></td><td>One user message's full journey: hit the API, assemble context, call the LLM, run tools, persist to the DB.</td><td><a href="03-message-lifecycle.html">Lesson 03</a></td></tr>
+<tr><td><span class="mono">stateful / stateless</span></td><td>The agent has persistent state, but the service process is stateless: every turn is rebuilt from the DB, so it scales horizontally.</td><td><a href="06-stateful-vs-stateless.html">Lesson 06</a></td></tr>
+<tr><td><span class="mono">context window</span></td><td>The screenful of token budget fed to the LLM; the whole memory system is one long fight against its ceiling.</td><td><a href="05-context-window.html">Lesson 05</a></td></tr>
+<tr><td><span class="mono">LLM agent</span></td><td>A loop that thinks, calls a tool, reads the result, and thinks again — not just one-shot Q&A.</td><td><a href="04-agent-and-tools.html">Lesson 04</a></td></tr>
+<tr><td><span class="mono">tool calling</span></td><td>The LLM doesn't act itself; it emits which function to call with which arguments, and hands the work off to run externally.</td><td><a href="04-agent-and-tools.html">Lesson 04</a></td></tr>
+</table>
+
+<h2>② Memory system: the main thread of this guide</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">memory tiers</span></td><td>Memory split into three tiers — core / recall / archival — by whether it lives in the context window.</td><td><a href="07-memory-tiers.html">Lesson 07</a></td></tr>
+<tr><td><span class="mono">core memory</span></td><td>The always-in-context tier the agent can rewrite by hand, assembled from individual memory blocks.</td><td><a href="08-memory-blocks.html">Lesson 08</a></td></tr>
+<tr><td><span class="mono">recall memory</span></td><td>The database archive of the full conversation history, fetched back by message search when needed.</td><td><a href="11-recall-memory.html">Lesson 11</a></td></tr>
+<tr><td><span class="mono">archival memory</span></td><td>An unbounded long-term fact store, retrieved by meaning through vector semantic search.</td><td><a href="10-archival-memory.html">Lesson 10</a></td></tr>
+<tr><td><span class="mono">Block</span> / memory block</td><td>The smallest unit of core memory: an editable chunk of text with a label and a character limit.</td><td><a href="08-memory-blocks.html">Lesson 08</a></td></tr>
+<tr><td><span class="mono">self-editing memory</span></td><td>The agent edits its own core memory with the memory_* tools — memory is writable.</td><td><a href="09-self-editing-memory.html">Lesson 09</a></td></tr>
+<tr><td>context <span class="mono">compaction</span></td><td>When the context is nearly full, summarize or evict old messages to make room for new ones.</td><td><a href="12-context-compaction.html">Lesson 12</a></td></tr>
+<tr><td><span class="mono">Passage</span></td><td>One row in archival memory or a data source: a chunk of text paired with its embedding vector.</td><td><a href="10-archival-memory.html">Lesson 10</a></td></tr>
+<tr><td><span class="mono">vector search</span></td><td>Turn the query into a vector too, then find the nearest passages by distance.</td><td><a href="10-archival-memory.html">Lesson 10</a></td></tr>
+<tr><td><span class="mono">conversation history</span></td><td>The complete record of every message exchanged — exactly what recall memory is.</td><td><a href="11-recall-memory.html">Lesson 11</a></td></tr>
+</table>
 <!--ENMORE-->
 """,
 }
