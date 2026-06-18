@@ -565,7 +565,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>重建系统提示、压缩历史、再把整张存档写回数据库</li>
     <li>把整个 50 步循环一次跑完，再一次性返回所有消息</li>
     <li>只调一次 LLM，工具执行和落库都甩给外层 step() 去做</li>
-    <li>调一次 LLM、执行工具、把结果落库（拿有效工具 → 刷新消息 → 调模型 → _handle_ai_response → _checkpoint_messages → yield）</li>
+    <li>调一次 LLM、执行工具、把结果落库</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
@@ -864,7 +864,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
     <li>Rebuild the system prompt, compact history, then write the whole save back to the DB</li>
     <li>Run the whole 50-step loop in one go, then return all messages at once</li>
     <li>Only one LLM call; it hands tool execution and persistence off to the outer step()</li>
-    <li>One LLM call, tool execution, and persisting the result (get valid tools → refresh messages → call the model → _handle_ai_response → _checkpoint_messages → yield)</li>
+    <li>One LLM call, tool execution, and persisting the result</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>

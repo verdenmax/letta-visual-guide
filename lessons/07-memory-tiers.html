@@ -572,7 +572,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">2. 模型怎么知道“窗外还压着它看不见的内容”、又该去哪一层翻？</div>
   <ol class="opts">
-    <li>系统每轮把一段 &lt;memory_metadata&gt; 库存清单拼进 system，告诉它 recall/archival 各有多少、有哪些 tag</li>
+    <li>系统每轮把一段 &lt;memory_metadata&gt; 库存清单拼进 system</li>
     <li>模型随机猜测，再看工具报错来判断</li>
     <li>框架在每次回答前自动检索并把结果塞进提示，模型无需自己知道</li>
     <li>模型靠微调记住了所有历史，不需要任何提示</li>
@@ -842,7 +842,7 @@ The answer is three tiers: <strong>core / recall / archival</strong>. They reall
 <div class="quiz">
   <div class="qn">2. How does the model know "there's out-of-window content it can't see" and which tier to page?</div>
   <ol class="opts">
-    <li>Each turn the system stitches a &lt;memory_metadata&gt; inventory into the prompt, telling it how much recall/archival hold and which tags exist</li>
+    <li>Each turn the system stitches a &lt;memory_metadata&gt; inventory into the prompt</li>
     <li>The model guesses at random and infers from tool errors</li>
     <li>The framework auto-retrieves before every answer and stuffs results in, so the model needn't know itself</li>
     <li>The model memorized all history via fine-tuning and needs no hint</li>
