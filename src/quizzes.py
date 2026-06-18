@@ -2415,8 +2415,8 @@ QUIZZES = {
                     "en": "With an actor carrying your own org, you call read_async for a row that belongs to “another org.” What happens?",
                 },
                 "opts": [
-                    {"zh": "那行被 predicate 的 WHERE 排除在结果集外，scalar_one_or_none() 得 None → read_async 抛 NoResultFound（list_async 则返回 []）",
-                     "en": "The row is excluded from the result set by the predicate's WHERE; scalar_one_or_none() yields None → read_async raises NoResultFound (and list_async returns [])"},
+                    {"zh": "那行被 predicate 的 WHERE 排除→read_async 抛 NoResultFound，list_async 返回 []",
+                     "en": "The row is excluded by the predicate's WHERE → read_async raises NoResultFound, and list_async returns []"},
                     {"zh": "门禁识别出越权，直接抛一个 403 / 权限错误（PermissionError）",
                      "en": "The gate detects the violation and raises a 403 / permission error (PermissionError) outright"},
                     {"zh": "照常返回那一行——隔离只在写路生效，读路不拦",
@@ -2457,8 +2457,8 @@ QUIZZES = {
                     "en": "How do a row's audit fields (created_at / updated_at, _created_by_id / _last_updated_by_id) get filled in?",
                 },
                 "opts": [
-                    {"zh": "CRUD 方法里显式调 _set_created_and_updated_by_fields(actor_id) 盖“谁”，且只有传了 actor 才盖；时间列由 DB 侧 server_default / server_onupdate 生成",
-                     "en": "The CRUD methods explicitly call _set_created_and_updated_by_fields(actor_id) to stamp the “who,” and only when an actor is passed; the time columns come from DB-side server_default / server_onupdate"},
+                    {"zh": "CRUD 方法里显式调 _set_created_and_updated_by_fields(actor_id) 盖“谁”，且只有传了 actor 才盖",
+                     "en": "The CRUD methods explicitly call _set_created_and_updated_by_fields(actor_id) to stamp the “who,” only when an actor is passed"},
                     {"zh": "靠 SQLAlchemy 的事件监听（event listener）在 flush 时自动给每行填上",
                      "en": "SQLAlchemy event listeners fill them in automatically on flush"},
                     {"zh": "全部由数据库触发器（trigger）在 INSERT / UPDATE 时生成，应用层不参与",

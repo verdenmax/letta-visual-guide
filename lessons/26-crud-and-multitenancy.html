@@ -355,7 +355,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="step"><div class="num">3</div><div class="sc"><h4>解析 actor</h4><p><span class="mono">get_actor_or_default_async</span>：查到 → <span class="mono">User</span>（带 org）；<span class="mono">no_default_actor</span> 且无 id → 拒。</p></div></div>
   <div class="step"><div class="num">4</div><div class="sc"><h4>manager 串 actor</h4><p>路由把 <span class="mono">actor</span> 一路串进 manager 方法——"串 actor"是阻力最小的写法。</p></div></div>
   <div class="step"><div class="num">5</div><div class="sc"><h4>进泛型 CRUD</h4><p><span class="mono">&lt;crud&gt;_async(actor=...)</span>：落到 <span class="mono">SqlalchemyBase</span> 那套统一动词。</p></div></div>
-  <div class="step"><div class="num">6</div><div class="sc"><h4>焊隔离</h4><p><span class="mono">apply_access_predicate</span> 自动追加 <span class="mono">WHERE org==actor.org</span>（<span class="mono">+ is_deleted==False</span> 仅当 <span class="mono">check_is_deleted</span>）。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>焊隔离</h4><p><span class="mono">apply_access_predicate</span> 自动追加 <span class="mono">WHERE org==actor.org</span>；<span class="mono">read_async</span> 再单独按 <span class="mono">check_is_deleted</span> 补 <span class="mono">is_deleted==False</span>。</p></div></div>
   <div class="step"><div class="num">7</div><div class="sc"><h4>只剩你那一格</h4><p>SQL 落库，回来的只有<strong>这租户、未删</strong>的行；越权的行根本没进结果集。</p></div></div>
 </div>
 <p>七步里，真正"决定你看到谁"的是第 6 步那句自动追加的 <span class="mono">WHERE</span>；前五步都在做同一件事——把"你是谁"安全地送到门禁面前。</p>
@@ -535,7 +535,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <li><strong>secure by default</strong>：读路只要传了 <span class="mono">actor</span>，<span class="mono">apply_access_predicate</span> 自动追加 <span class="mono">WHERE org==actor.org</span>（USER 范围仅 jobs/runs）；越权＝查不到（<span class="mono">NoResultFound</span> / <span class="mono">[]</span>），非报错。</li>
 <li>一个抽象基类 <span class="mono">SqlalchemyBase</span> 给约 40 个模型一套泛型 async CRUD：<strong>读控访问、写盖审计、删分软硬</strong>；隔离只写一次，焊在最低层。</li>
 <li>软删默认<strong>可逆</strong>：<span class="mono">delete_async</span> 只翻 <span class="mono">is_deleted</span>；读侧过滤是 opt-in（<span class="mono">check_is_deleted</span> 默认 <span class="mono">False</span>），所以软删行默认仍被返回。</li>
-<li>审计四件套由 CRUD 在 <span class="mono">_set_created_and_updated_by_fields</span> 里显式盖，<strong>且只有传 actor 才盖</strong>；<span class="mono">is_deleted</span> 由 <span class="mono">delete_async</span> 翻；物理列带下划线（<span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>）。</li>
+<li>两个 <span class="mono">_*_by_id</span> 由 CRUD 在 <span class="mono">_set_created_and_updated_by_fields</span> 里显式盖、<strong>且只有传 actor 才盖</strong>；<span class="mono">created_at</span> / <span class="mono">updated_at</span> 走 DB 的 <span class="mono">server_default</span> / <span class="mono">onupdate</span>（不需 actor）；<span class="mono">is_deleted</span> 由 <span class="mono">delete_async</span> 翻。</li>
 <li>关键 gate：predicate <strong>gated on <span class="mono">if actor:</span></strong>，<span class="mono">actor=None</span> 只警告不拦；<span class="mono">access</span> 目前 no-op；服务器口令与租户隔离<strong>正交</strong>。</li>
 </ul>
 </div>
@@ -562,7 +562,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <ol class="opts">
     <li>照常返回那一行——隔离只在写路生效，读路不拦</li>
     <li>抛 ValueError，因为 actor 的 org 和那行的 org 不匹配</li>
-    <li>那行被 predicate 的 WHERE 排除在结果集外，scalar_one_or_none() 得 None → read_async 抛 NoResultFound（list_async 则返回 []）</li>
+    <li>那行被 predicate 的 WHERE 排除→read_async 抛 NoResultFound，list_async 返回 []</li>
     <li>门禁识别出越权，直接抛一个 403 / 权限错误（PermissionError）</li>
   </ol>
   <details class="accordion">
@@ -587,7 +587,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="qn">4. 每行的审计字段（created_at / updated_at、_created_by_id / _last_updated_by_id）是怎么被填上的？</div>
   <ol class="opts">
     <li>由基类构造函数统一填，不管有没有 actor 都会盖上“谁建 / 谁改”</li>
-    <li>CRUD 方法里显式调 _set_created_and_updated_by_fields(actor_id) 盖“谁”，且只有传了 actor 才盖；时间列由 DB 侧 server_default / server_onupdate 生成</li>
+    <li>CRUD 方法里显式调 _set_created_and_updated_by_fields(actor_id) 盖“谁”，且只有传了 actor 才盖</li>
     <li>靠 SQLAlchemy 的事件监听（event listener）在 flush 时自动给每行填上</li>
     <li>全部由数据库触发器（trigger）在 INSERT / UPDATE 时生成，应用层不参与</li>
   </ol>
@@ -639,7 +639,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="step"><div class="num">3</div><div class="sc"><h4>Resolve actor</h4><p><span class="mono">get_actor_or_default_async</span>: found → <span class="mono">User</span> (with org); <span class="mono">no_default_actor</span> and no id → rejected.</p></div></div>
   <div class="step"><div class="num">4</div><div class="sc"><h4>manager threads actor</h4><p>The router threads <span class="mono">actor</span> all the way into the manager method — "threading actor" is the path of least resistance.</p></div></div>
   <div class="step"><div class="num">5</div><div class="sc"><h4>Into generic CRUD</h4><p><span class="mono">&lt;crud&gt;_async(actor=...)</span>: lands on <span class="mono">SqlalchemyBase</span>'s uniform verbs.</p></div></div>
-  <div class="step"><div class="num">6</div><div class="sc"><h4>Weld isolation</h4><p><span class="mono">apply_access_predicate</span> auto-appends <span class="mono">WHERE org==actor.org</span> (<span class="mono">+ is_deleted==False</span> only when <span class="mono">check_is_deleted</span>).</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>Weld isolation</h4><p><span class="mono">apply_access_predicate</span> auto-appends <span class="mono">WHERE org==actor.org</span>; <span class="mono">read_async</span> separately adds <span class="mono">is_deleted==False</span> only when <span class="mono">check_is_deleted</span>.</p></div></div>
   <div class="step"><div class="num">7</div><div class="sc"><h4>Only your own cell remains</h4><p>SQL lands; what comes back is only <strong>this tenant's, undeleted</strong> rows; cross-tenant rows never enter the result set.</p></div></div>
 </div>
 <p>Of the seven steps, the one that truly <strong>decides who you see</strong> is step 6's auto-appended <span class="mono">WHERE</span>; the first five all do the same thing — safely deliver "who you are" to the gate.</p>
@@ -819,7 +819,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <li><strong>secure by default</strong>: on the read path, as long as you pass <span class="mono">actor</span>, <span class="mono">apply_access_predicate</span> auto-appends <span class="mono">WHERE org==actor.org</span> (the USER scope is jobs/runs only); a violation = not found (<span class="mono">NoResultFound</span> / <span class="mono">[]</span>), not an error.</li>
 <li>One abstract base class <span class="mono">SqlalchemyBase</span> gives ~40 models one set of generic async CRUD: <strong>reads control access, writes stamp audit, deletes split soft/hard</strong>; isolation is written once, welded into the lowest layer.</li>
 <li>Soft delete is <strong>reversible by default</strong>: <span class="mono">delete_async</span> only flips <span class="mono">is_deleted</span>; read-side filtering is opt-in (<span class="mono">check_is_deleted</span> defaults to <span class="mono">False</span>), so soft-deleted rows are still returned by default.</li>
-<li>The four audit fields are stamped explicitly by the CRUD's <span class="mono">_set_created_and_updated_by_fields</span>, and <strong>only when an actor is passed</strong>; <span class="mono">is_deleted</span> is flipped by <span class="mono">delete_async</span>; the physical columns carry an underscore (<span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>).</li>
+<li>The two <span class="mono">_*_by_id</span> fields are stamped by the CRUD's <span class="mono">_set_created_and_updated_by_fields</span>, <strong>only when an actor is passed</strong>; <span class="mono">created_at</span> / <span class="mono">updated_at</span> come from DB-side <span class="mono">server_default</span> / <span class="mono">server_onupdate</span> (no actor needed); <span class="mono">is_deleted</span> is flipped by <span class="mono">delete_async</span>.</li>
 <li>Key gate: the predicate is <strong>gated on <span class="mono">if actor:</span></strong>, <span class="mono">actor=None</span> only warns, doesn't block; <span class="mono">access</span> is a no-op for now; the server password is orthogonal to tenant isolation.</li>
 </ul>
 </div>
@@ -846,7 +846,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <ol class="opts">
     <li>It returns the row as usual — isolation only applies on the write path, reads aren't blocked</li>
     <li>It raises ValueError because the actor's org doesn't match the row's org</li>
-    <li>The row is excluded from the result set by the predicate's WHERE; scalar_one_or_none() yields None → read_async raises NoResultFound (and list_async returns [])</li>
+    <li>The row is excluded by the predicate's WHERE → read_async raises NoResultFound, and list_async returns []</li>
     <li>The gate detects the violation and raises a 403 / permission error (PermissionError) outright</li>
   </ol>
   <details class="accordion">
@@ -871,7 +871,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="qn">4. How do a row's audit fields (created_at / updated_at, _created_by_id / _last_updated_by_id) get filled in?</div>
   <ol class="opts">
     <li>The base class constructor fills them uniformly, stamping “who created / changed” whether or not there's an actor</li>
-    <li>The CRUD methods explicitly call _set_created_and_updated_by_fields(actor_id) to stamp the “who,” and only when an actor is passed; the time columns come from DB-side server_default / server_onupdate</li>
+    <li>The CRUD methods explicitly call _set_created_and_updated_by_fields(actor_id) to stamp the “who,” only when an actor is passed</li>
     <li>SQLAlchemy event listeners fill them in automatically on flush</li>
     <li>Database triggers generate them all on INSERT / UPDATE; the app layer isn't involved</li>
   </ol>
