@@ -90,9 +90,145 @@ cd src && python build.py && python check_links.py && python check_html.py
 
 ---
 
-<!--TASKS-->
+## Task 1: 新增第 24 课「三层架构」
+
+**Files:** `src/shell.py`(PAGES+SUBTITLES) · `src/part7.py`(**新建** + `LESSON_24`) · `src/registry.py`(import part7 + CONTENT) · (可选)`src/quizzes.py`
+
+**filename:** `24-three-layer-architecture.html`；标题/副标题见「接线」。
+
+**学习目标（Part-7 开篇）:** 讲清一条 HTTP 请求怎么穿过三层落到 DB。① **薄路由**：`Depends(get_letta_server)` 注入唯一全局 server、`Depends(get_headers)` 解析 `user_id`，处理函数体内 4 步（actor → 调 manager → 返回 schema）。② **`SyncServer` 是枢纽**：import 时建好的模块级全局，持有全部 `*_manager`；薄 CRUD **直调 manager**，只有跨-manager 编排才走 server 方法。③ **事务在 manager、不在请求**：一次请求＝多个独立 session；路由从不开 DB session。为 25（manager）、26（CRUD/隔离）、27（DB）铺路；回扣第 03 课（消息生命周期）、13/14（被 server 拉起的 agent 循环）。
+
+**亮点（`card spark`）:** `SyncServer` 是个**美丽的误名**——类 docstring 还写"single-threaded / blocking"，但 v0.16.8 里路由调到的几乎全是 `async def`，真正的并发模型是单事件循环上的协作式 async。更妙的是它**不是上帝门面而是服务定位器**：薄端点根本绕过它、`server.<manager>.<method>()` 直穿，`SyncServer` 自己的方法只在"一个动作要协调好几个 manager"时才出场（`create_agent_async` 解析 LLM/embedding 配置、变换 block、把写委托给 `agent_manager`）。于是"业务枢纽"＝**跨-manager 协调者**，不是"通往 DB 的唯一一道门"。再点一层：**FastAPI 的 `Depends` 就是分层接缝**——两个依赖把一个普通函数变成分层 handler，actor 在 header 依赖跑完后于函数体内解析，而非全局鉴权中间件。
+
+**必需卡片:** `lead`×2；`card macro`（三层 + 全局 server + 一次轨迹，一张总图）；`card analogy`（**三层楼的公司**：前台/路由只登记转交，中层/经理才有权动档案、且自己开关"事务"这道门，档案室/ORM 给谁看由门禁定）；`card detail`（落到 `app.py::server`/`create_application`/`lifespan`、`server.py::SyncServer`、`dependencies.py::get_letta_server`/`get_headers`、`routers/v1/agents.py::retrieve_agent`）；`card spark`（误名 async + 服务定位器非门面 + DI 即接缝）；`card key`；`card warn`（易错点：路由**不是**都经 `SyncServer` 方法，多数直调 manager；`SyncServer` 名同步实异步；actor 解析在函数体不是中间件；路由**从不**开 DB session；缺 `user_id` 在 OSS 模式默认落到 default user；server 在 **import** 时建、不在 factory；**无消息队列**）。**外加 ≥3 `.note`、≥1 `.cute`。**
+
+**必需图（≥4/语言）:**
+1. **分层调用图 `layers`/`flow`**：HTTP → 薄路由（`retrieve_agent`）→ `SyncServer`+Managers（`server.agent_manager...`）→ ORM（`select`+`apply_access_predicate`）→ DB（`async_session`）。
+2. **一次请求时序 `vflow`**：`get_letta_server`/`get_headers` → `get_actor_or_default_async`(session#1) → `get_agent_by_id_async`(session#2) → `to_pydantic_async` → `response_model` 序列化；旁注**两个独立事务**。
+3. **`SyncServer` 持有的 managers `cellgroup`**：`agent_manager · message_manager · block_manager · passage_manager · user_manager · tool_manager · provider_manager · …`。
+4. **`.cute` 萌图**：🏛️ 三层楼，🚪 门房（路由）只递条子，🧑‍💼 经理（manager）开"事务"门，🗄️ 档案室（ORM/DB）。
+5. **薄 vs 厚 `.note`**：薄路由 4 步 vs manager 里的业务/事务/隔离。
+
+**必需代码（2–3，`codefile`）:**
+- A) app 工厂 + 全局 server + DI（简化，源 `app.py`/`dependencies.py`）：模块级 `server = SyncServer(...)`、`lifespan` 里 `await server.init_async(...)`、`get_letta_server` 惰性 import 返回全局。
+- B) 薄路由 4 步（源 `agents.py::retrieve_agent`）：`Depends(get_letta_server)`+`Depends(get_headers)` → `get_actor_or_default_async` → `server.agent_manager.get_agent_by_id_async(actor=...)`。
+- C)（可选）`SyncServer.__init__` manager 接线节选（源 `server.py`）。
+
+**必需折叠（3–4）:** 为什么路由要薄（复用/测试/一致鉴权）；`SyncServer` 为何叫 Sync 却是 async（遗留命名）；一次请求为什么是多个事务（事务边界在 manager）；可选的服务器口令中间件（secure 模式，正交于租户）。
+
+**自测题种子:** 全局 server 在何时创建（import 时，`app.py::server`）；薄 CRUD 端点直调什么（`server.<manager>`，非全 SyncServer 方法）；actor 在哪解析（处理函数体 `get_actor_or_default_async`）；DB session 由谁开（manager，不是路由）。
+
+---
+
+## Task 2: 新增第 25 课「服务层 Managers」
+
+**Files:** `src/shell.py` · `src/part7.py`(`LESSON_25`) · `src/registry.py` · (可选)`src/quizzes.py`
+
+**filename:** `25-service-managers.html`。
+
+**学习目标:** 讲清 manager 这层的**统一形状**：`async with db_registry.async_session()` → actor 范围 CRUD → **session 内** `to_pydantic()` → 返回 pydantic。① `db_registry`＝自称"Dummy registry"的单例接缝，唯一开/提交/回滚事务处。② 三装饰器（`enforce_types` 同步校验类型 / `trace_method` OTel span / `raise_on_invalid_id`）给每个方法免费的 typing+tracing+id 校验。③ schema↔ORM：`to_pydantic`/`to_pydantic_async`（ORM→pydantic）、`model_dump(to_orm=True)`（pydantic→ORM）；**manager 绝不返回 ORM 行**。回扣第 24 课（server 接线 managers）、08/10/11（记忆 managers 同形）、铺垫 26/27。
+
+**亮点（`card spark`）:** 一行 `async with db_registry.async_session()` 同时定了**两件事**——事务从哪开始/提交，以及 actor/org 范围从哪注入（`apply_access_predicate`）。路由和 agent 循环永远看不到 session、也看不到 `WHERE organization_id`，所以隔离**结构上没法被忘**：它和"唯一能开 session 的地方"焊在一起。再看 `db_registry` 自嘲的 docstring "Dummy registry to maintain the existing interface"——上百处 `db_registry.async_session()` 调用点一字未改，底下实现被收成一个模块级 asyncpg 引擎：**接口是契约、引擎可替换**。第三层妙处是**"转换在 session 内"是性能模式**：`get_agent_by_id_async` 故意"先不解密就转 pydantic、放掉 DB 连接后再跑昂贵的 PBKDF2"——schema 边界顺手成了连接池优化。
+
+**必需卡片:** `lead`×2；`card macro`（manager 方法解剖：装饰器 → 开 session → 范围 CRUD → 转 pydantic → 返回，一张总图）；`card analogy`（**银行柜员**：你（路由）不能进金库，柜员（manager）开一笔"事务"、按你的身份只取你那一格、把原件复印成回执（pydantic）给你，绝不把原始账本递出柜台）；`card detail`（`db.py::DatabaseRegistry.async_session`、`utils.py::enforce_types`、`otel/tracing.py::trace_method`、`sqlalchemy_base.py::SqlalchemyBase.to_pydantic`）；`card spark`（一行定事务+租户 + Dummy registry 接缝 + session 内转换是性能模式）；`card key`；`card warn`（易错点：名 `*_async` 同步装饰器也存在；**别把 ORM 行漏出 session**（`expire_on_commit=False`+`expunge_all`→`DetachedInstanceError`）；一逻辑操作一 session；v0.16.8 **无同步 `session()`**；db.py 是 Postgres-only，方言透明不在这层；没有 `to_record()/to_orm()`）。**外加 ≥3 `.note`、≥1 `.cute`。**
+
+**必需图（≥4/语言）:**
+1. **manager 方法解剖 `vflow`**：`@enforce_types`→`@raise_on_invalid_id`→`@trace_method` → `async with async_session()` BEGIN → `select`+`apply_access_predicate` → `read/create_async` → `to_pydantic()` → exit commit/expunge/close → 返回 schema。
+2. **谁在调 managers `cellgroup`/`flow`**：REST 路由 / agent 循环 / 别的 manager / 序列化&批任务 → `SyncServer` 持有的单例 → `db_registry.async_session()` 单接缝。
+3. **schema↔ORM 双向 `cols`**：左 `to_pydantic`/`to_pydantic_async`（`__pydantic_model__.model_validate`）；右 `model_dump(to_orm=True)`（`metadata→metadata_`）。
+4. **`.cute` 萌图**：🏦 柜员开"事务"小门，📒 原始账本（ORM）留柜内，🧾 复印件（pydantic）递出去。
+5. **装饰器栈 `.note info`**：typing / tracing / id 校验"免费"。
+
+**必需代码（2–3，`codefile`）:**
+- A) canonical manager 方法（源 `organization_manager.py`）：`@enforce_types @trace_method async def get..._async` → `async with db_registry.async_session()` → `Model.read_async(...)` → `to_pydantic()`；附一个 `_create_..._async`：`Model(**p.model_dump(to_orm=True))` → `create_async`。
+- B) `DatabaseRegistry.async_session` 节选（源 `db.py`）：`@asynccontextmanager` yield session、clean→commit、except→rollback、finally expunge/close。
+- C) 装饰器定义+用法（源 `utils.py::enforce_types` + `otel/tracing.py::trace_method` + 一个真实方法栈）。
+
+**必需折叠（3–4）:** manager 这层为何存在（事务归属/租户/复用/横切）；`enforce_types` 怎么对 async 也成立（同步校验后返回协程）；`trace_method` 何时是 no-op（tracing 未初始化）+ span 命名；为什么必须在 session 内转 pydantic（`DetachedInstanceError`）；`db_registry` 的"Dummy registry"与 Postgres-only 现状（方言透明在 ORM 层，接第 27 课）。
+
+**自测题种子:** 事务边界在哪开（manager 的 `db_registry.async_session()`）；manager 返回什么（pydantic，不是 ORM 行）；`enforce_types`/`trace_method` 各在哪定义（`utils.py`/`otel/tracing.py`）；pydantic→ORM 怎么走（`model_dump(to_orm=True)`，没有 `to_orm()` 方法）。
+
+---
+
+## Task 3: 新增第 26 课「通用 CRUD 与多租户隔离」
+
+**Files:** `src/shell.py` · `src/part7.py`(`LESSON_26`) · `src/registry.py` · (可选)`src/quizzes.py`
+
+**filename:** `26-crud-and-multitenancy.html`。
+
+**学习目标:** 讲清"secure by default"。① `SqlalchemyBase` 给每个模型一套泛型 async CRUD（`read/list/size/create/update/delete/hard_delete/bulk_hard_delete`），读路径自动套 `apply_access_predicate`。② `apply_access_predicate` 把 `WHERE organization_id == actor.organization_id`（或 user 级）注进语句；跨租户=查不到（`NoResultFound`/`[]`），不是报错。③ 软删（`is_deleted=True`，**默认仍返回**，过滤 opt-in）vs 硬删；审计四件套在 CRUD 里显式盖。④ actor 从 `user_id` header 解析、串进每次 CRUD；服务器口令正交。回扣第 24（actor 入口）、25（manager 调 CRUD）、08/10/11（Block/Passage 同被隔离）。
+
+**亮点（`card spark`）:** 多租户隔离的**反转**：它不在 handler 里"记得加 WHERE"，而是焊在**最低层的查询构造器**里——~40 个模型共用一个 `SqlalchemyBase`，"按调用者 org 限定每次读"只写一次、自动套在 `read_async`/`list_async`/`size_async`/`bulk_hard_delete_async`。新功能作者写**零**租户 SQL，只要把 actor 串下去（而"路由→manager"的路径让串 actor 成为阻力最小的写法），跨租户泄漏在结构上就很难发生——**没有一处 per-endpoint 的 WHERE 可被遗忘**。更耐人寻味的设计选择：actor 缺失时 base **不硬失败**，而是打一条 `SECURITY: ...bypasses organization filtering` 警告照跑——因为 Letta 有合法的系统内部无 user 查询，于是它选了**中央强制 + 响亮异常日志**而非**脆弱的硬失败**。再叠两层同样长在这个 base 上的可恢复性：**软删让删除可逆**（`delete_async` 只翻 `is_deleted`），**审计四件套**（`created_at`/`updated_at`/`_created_by_id`/`_last_updated_by_id`，在 CRUD 里盖）让每行天生能回答"谁、何时"。于是多租户+可恢复+可审计，全是**一个抽象类**的属性。
+
+**必需卡片:** `lead`×2；`card macro`（secure by default：请求 → actor → 每条查询自动按 org/user 限定 → 软删感知，一张总图）；`card analogy`（**带门禁的共享档案库**：每次开柜，门禁自动只让你看你们部门（org）那一格；"删"只是贴张"作废"贴纸（软删）、原件还在；每次取放都自动盖"谁/何时"的章（审计））；`card detail`（`sqlalchemy_base.py::SqlalchemyBase`/`apply_access_predicate`/`AccessType`、`base.py::CommonSqlalchemyMetaMixins`、`user_manager.py::get_actor_or_default_async`）；`card spark`（隔离在查询构造器 + 警告而非硬失败 + 软删&审计=天生可恢复可追溯）；`card key`；`card warn`（易错点：predicate 在 base 但**gated on `if actor:`**，actor=None 只警告不拦；软删行**默认仍被返回**（`check_is_deleted` opt-in）；默认 org 级（同 org 共享），仅 jobs/runs user 级；`access`(read/write/admin) **目前 no-op**（`del access`）；缺 `user_id` 在非 `no_default_actor` 下落到共享 default 租户）。**外加 ≥3 `.note`、≥1 `.cute`。**
+
+**必需图（≥4/语言）:**
+1. **secure by default 流 `vflow`**：（可选口令中间件）→ `get_headers`(校验 `user-<uuid4>`) → `get_actor_or_default_async`(→User 带 org，或 no_default_actor→拒) → manager 串 actor → `<crud>_async(actor=...)` → `apply_access_predicate` → `WHERE org==actor.org`(+`is_deleted==False` 仅当 `check_is_deleted`) → 只这租户、未删的行。
+2. **CRUD 面 `table.t`**：方法 · 类型 · 访问控制? · 软删感知? （读+`bulk_hard_delete` 受控；`create/update/delete/hard_delete` 骑在 read 时已建立的边界上）。
+3. **软删 vs 硬删 `cols`**：`delete_async`(翻 `is_deleted`、行留库、读默认仍见) vs `hard_delete_async`(物理删) vs `bulk_hard_delete_async`(SQL 层套 predicate)。
+4. **`.cute` 萌图**：🔐 门禁自动盖在每次查询上，🏷️ "作废"贴纸（软删），🧾 "谁/何时"印章（审计）。
+5. **审计四件套 `cellgroup`**：`created_at · updated_at · _created_by_id · _last_updated_by_id`（+ `is_deleted`）。
+
+**必需代码（2–3，`codefile`）:**
+- A) `read_async`（+`_read_multiple_preprocess` 要点，源 `sqlalchemy_base.py`）：`select(cls).where(id==...)` → `if actor: apply_access_predicate` / `elif org-scoped: warn` → `if check_is_deleted: where(is_deleted==False)` → `scalar_one_or_none()` None→`NoResultFound`。
+- B) `apply_access_predicate`（源同上）：`del access` → ORGANIZATION→`where(organization_id==actor.organization_id)` / USER→`where(user_id==actor.id)`。
+- C) `get_actor_or_default_async`（源 `user_manager.py`）：`no_default_actor` 守卫 → `actor_id or DEFAULT_USER_ID` → 查不到则建默认。
+
+**必需折叠（3–4）:** `apply_access_predicate` 到底注了什么（org/user 行级 WHERE，违规=查不到非报错）；软删为什么"还在库里"+ 何时过滤（`check_is_deleted`）；审计字段怎么盖（CRUD 里显式 `_set_created_and_updated_by_fields`，非事件监听；物理列带下划线）；服务器口令 vs 租户隔离（正交两层）；`access`(read/write/admin) 为何现在是 no-op（占位将来行级权限）。
+
+**自测题种子:** 跨租户读会怎样（被 WHERE 排除→`NoResultFound`/`[]`，不报错）；软删后默认还查得到吗（会，除非 `check_is_deleted=True`）；隔离写在哪层（`SqlalchemyBase` 查询构造器，非各 handler）；actor 缺失时 base 怎么做（警告并无范围跑，不硬失败）；哪类资源是 user 私有（jobs/runs）。
+
+---
+
+## Task 4: 新增第 27 课「双数据库与向量存储」
+
+**Files:** `src/shell.py` · `src/part7.py`(`LESSON_27`) · `src/registry.py` · (可选)`src/quizzes.py`
+
+**filename:** `27-dual-db-and-vectors.html`。
+
+**学习目标（Part-7 收尾）:** 讲清"同一套 ORM 怎么在两套库上跑、向量怎么存与搜"。① 唯一开关 `settings.database_engine`（`@property`：配了 PG URI→Postgres，否则 SQLite）。② **没有单一 switch**：选择**分布式**地散在 `passage.py`（import 期定 `Vector(4096)` vs `CommonVector`）、向量搜索两分支、`sqlite_functions.py`（numpy UDF）、`custom_columns.py`、`alembic/env.py`。③ 向量两套：pgvector `<=>`(可索引) vs SQLite numpy UDF 暴力 `ORDER BY`；`MAX_EMBEDDING_DIM=4096` + 零填充使 cosine 不变。④ pydantic-in-DB：配置当 JSON 列、schema-on-read、免迁移。**诚实星号**：v0.16.8 `server/db.py` 只建 Postgres 引擎。回扣第 25/26（session/CRUD 骑在其上）、10/11（archival/recall=带 embedding 的 Passage）、21（LLMConfig/EmbeddingConfig 经 custom column 存）。
+
+**亮点（`card spark`）:** "同一套代码两套库"最反直觉的一点：**根本没有一个 `db.py` 里的聪明 switch**。接缝是**分布式且大多声明式**的——一个派生 `database_engine` property、一句**类体 `if` 把 embedding 列类型在 import 期烤进模型**（所以一个进程被**特化**到一种后端、运行时不能切库）、共享查询构造器里两行 `order_by` 分支、一个全局 `@event.listens_for(Engine,"connect")` 往任何 SQLite 连接注入 numpy `cosine_distance`、外加 alembic `env.py` 选 URI。pydantic-in-DB 是另一半魔术：`EmbeddingConfig`/`LLMConfig`/多态 `ToolRule[]` 都存成单列 JSON，于是关系 schema 两库一致、靠**反序列化器 schema-on-read** 演化而非迁移——**保真胜过范式化**。而安静的拱顶石是 `MAX_EMBEDDING_DIM=4096`：把每个 embedding 零填充到定长，一个 `Vector(4096)` 列就能装任意模型的输出，且因为等量零填充不改点积与 L2 范数，**cosine 排序与未填充数学等价**——这就是填充"免费"、常量被冻结（"否则要重置库"）的原因。最后一个诚实又好教的节拍：v0.16.8 引擎层其实已悄悄收敛到 Postgres——双引擎在 ORM/alembic 完全活着，但 `server/db.py` 只建 Postgres。
+
+**必需卡片:** `lead`×2；`card macro`（一套 ORM 两套引擎 + 向量两存两搜 + pydantic-in-DB，一张总图，并点明 db.py 现状）；`card analogy`（**一张设计图、两座工厂**：同一份蓝图（ORM 模型），按一个开关（`database_engine`）在装配线上换零件——向量列、距离算子、迁移路径都换；蓝图不变）；`card detail`（`settings.py::database_engine`/`DatabaseChoice`、`orm/passage.py::BasePassage`、`orm/custom_columns.py`、`orm/sqlite_functions.py::register_functions`、`constants.py::MAX_EMBEDDING_DIM`、`alembic/env.py`）；`card spark`（没有单一 switch/import 期特化 + pydantic-in-DB 保真 + 4096 零填充不变 + db.py 收敛 Postgres 的诚实星号）；`card key`；`card warn`（易错点：`db.py` **不**分 SQLite/Postgres（Postgres-only）；`database_engine` 是 `@property` 由"有没有 PG URI"决定、**无 `LETTA_DATABASE_ENGINE`**；SQLite 是 **numpy UDF 不是 sqlite-vec 原生**（`sqlite_vec.load()` 注释掉）；**无 `AgentPassage`**（只 `SourcePassage`/`ArchivalPassage`）；列类型 import 期定死、运行时不能切库；填充让向量**可存**不等于跨模型**可比**）。**外加 ≥3 `.note`、≥1 `.cute`。**
+
+**必需图（≥4/语言）:**
+1. **一套 ORM 两套引擎 `cols`/`flow`**：顶＝`orm/*` 一份模型；判定＝`settings.database_engine`；左 SQLite-dev（aiosqlite · `CommonVector` BINARY · `func.cosine_distance` numpy UDF · baseline `2c059cad97cc`）/右 Postgres-prod（asyncpg · `Vector(4096)` · `<=>` 可 ivfflat/hnsw · 增量链）；底栏列"什么被换"（驱动/列类型/距离算子/序列化/迁移/要填充?）；callout：v0.16.8 `server/db.py` 只建 Postgres。
+2. **pydantic-in-DB 往返 `vflow`**：`EmbeddingConfig`(pydantic) →`process_bind_param`(`model_dump(json)`)→ JSON 列 → `process_result_value`(`Model(**data)`)→ pydantic；旁注 `deserialize_llm_config` 兜底默认＝schema-on-read 免迁移。
+3. **向量两套搜 `table.t`**：Postgres `cls.embedding.cosine_distance()`→`<=>`、可 ANN 索引；SQLite `func.cosine_distance` numpy、全表暴力。
+4. **`.cute` 萌图**：📐 4096 维定长格子，1024/1536 维向量后面补 0 进格，气泡"补 0 不改 cosine"。
+5. **`MAX_EMBEDDING_DIM` 零填充不变 `cellgroup`/`.note info`**：点积 +0、L2 +0 → cosine 不变。
+
+**必需代码（2–3，`codefile`）:**
+- A) 引擎 + SQLite UDF 注册（源 `db.py` + `sqlite_functions.py::register_functions`）：`engine=create_async_engine(async_pg_uri,...)`（Postgres-only）+ `@event.listens_for(Engine,"connect")` 给 SQLite 连接注册 numpy `cosine_distance`（注明 `sqlite_vec.load()` 注释掉）。
+- B) pydantic-in-DB `TypeDecorator`（源 `custom_columns.py`）：`EmbeddingConfigColumn`(impl=JSON, bind/result) + `CommonVector`(impl=BINARY, `serialize_float32`/`frombuffer`)。
+- C) `BasePassage` embedding 列 + 两路搜索（源 `passage.py` + `sqlalchemy_base.py`）：import 期 `if POSTGRES: Vector(4096) else: CommonVector`；查询 `if POSTGRES: order_by(cosine_distance().asc())` else numpy UDF。
+
+**必需折叠（3–4）:** `database_engine` 到底怎么定（property，看有没有 PG URI；无 `LETTA_DATABASE_ENGINE`）；向量在两库怎么存/搜（pgvector `<=>`+索引 vs numpy UDF 暴力）+ 为什么零填充"免费"；pydantic-in-DB 的取舍（免迁移/保真 vs 不可索引子字段+序列化开销）；alembic 两后端（Postgres 增量链 + SQLite 单 baseline + 内联方言差）；**诚实星号**：为何 v0.16.8 `server/db.py` 只建 Postgres（引擎层收敛、双库故事在 ORM/alembic）。
+
+**Capstone 收尾:** 第七部分终章，用 `cellgroup` 回扣全 Part：**24 三层架构 · 25 服务层 Managers · 26 CRUD/隔离 · 27 双库/向量**，一句话串成"**分层立骨架 → manager 管事务与转换 → 一个 base 默认安全 → 一套 ORM 两套库装下记忆的向量**"。回指第 03（消息生命周期的持久化一端）、10/11（archival/recall 的向量就存在这）。最后过渡到第八部分（进阶专题 + 术语表）。
+
+**自测题种子:** `database_engine` 由什么决定（有没有配 PG URI 的 `@property`，非 `LETTA_DATABASE_ENGINE`）；`server/db.py` 在 v0.16.8 建哪种引擎（Postgres-only）；SQLite 的相似度靠什么（注册的 numpy `cosine_distance` UDF，非 sqlite-vec 原生）；`MAX_EMBEDDING_DIM` + 零填充为什么不改排序（点积/范数 +0，cosine 不变）；配置为什么能存一列还免迁移（pydantic-in-DB + schema-on-read 反序列化）。
+
+---
+
+## Task 5: 集成与合并（M7 收尾）
+
+**Files:** `docs/superpowers/plans/2026-06-15-letta-visual-guide-roadmap.md` · （验证）全站
+
+- [ ] 全量构建：`cd src && python build.py && python check_links.py && python check_html.py`，期望 `0 error / 0 warning`、链接全解析、index pill「共 27 课 · 7 个部分」。
+- [ ] 导航链抽查：`23→24→25→26→27`，每课 `prev/next` 各 1，27 课 `next=../index.html`。
+- [ ] roadmap 把 **M7** 标 `✅ 已完成并合并`（计划文档名填入）。
+- [ ] 合并：`git checkout master && git merge --no-ff feat/m7-server`；合并后再跑三件套确认绿。
+- [ ] `git branch -d feat/m7-server`；`git push origin master`。
+- [ ] 报告 M7 完成，**自动继续 M8**（进阶专题 + 术语表，28–31）——用户已要求一路做完全部 M。
 
 ---
 
 ## Self-Review（写完即查）
-<!--SELFREVIEW-->
+## Self-Review（写完即查）
+1. **Spec coverage**：spec 第七部分 24–27 ↔ Task 1–4 一一对应（三层架构 ✓、服务层 Managers ✓、CRUD/多租户 ✓、双库/向量 ✓）。✅
+2. **Placeholder scan**：无 TBD/TODO；每个 task 给 filename/学习目标/亮点/卡片/图/代码/折叠/自测题。✅
+3. **Type/name consistency**：全程用 `SyncServer`/`get_letta_server`/`get_headers`/`get_actor_or_default_async`/`db_registry.async_session`/`DatabaseRegistry`/`enforce_types`/`trace_method`/`SqlalchemyBase`/`apply_access_predicate`/`AccessType`/`CommonSqlalchemyMetaMixins`/`to_pydantic`/`model_dump(to_orm=True)`/`database_engine`/`DatabaseChoice`/`BasePassage`/`CommonVector`/`EmbeddingConfigColumn`/`MAX_EMBEDDING_DIM`/`sqlite_functions`，与"已核实锚点"一致。✅
+4. **outline 纠正已固化**：路由直调 manager（非全经 SyncServer）；`SyncServer` 无消息队列、import 期创建、async 实质；db.py **Postgres-only**（方言透明在 ORM 层 + alembic）；无 `to_record()/to_orm()` 方法；软删默认仍返回（`check_is_deleted` opt-in）；`access` 现为 no-op；`database_engine` 是 `@property`；无 `AgentPassage`；SQLite 用 numpy UDF 非 sqlite-vec 原生。✅
+5. **跨课一致**：24 立三层骨架 → 25 manager 兑现事务/转换 → 26 一个 base 默认安全 → 27 一套 ORM 两套库装向量；27 的 Passage 向量回扣 10/11，custom column 回扣 21；整 Part 收口"分层→事务→默认安全→双库向量"，过渡到第八部分。✅
