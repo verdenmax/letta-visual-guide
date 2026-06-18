@@ -436,7 +436,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <span class="kw">else</span>:
     embedding = <span class="fn">Column</span>(CommonVector)                      <span class="cm"># SQLite：BINARY blob</span>
 
-<span class="cm"># 查询构造器：运行时按同一个开关，分两路排序</span>
+<span class="cm"># orm/sqlalchemy_base.py 查询构造器：运行时按同一个开关，分两路排序</span>
 <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
     query = query.<span class="fn">order_by</span>(cls.embedding.<span class="fn">cosine_distance</span>(q_emb).<span class="fn">asc</span>())          <span class="cm"># 编译成 SQL &lt;=&gt;</span>
 <span class="kw">else</span>:
@@ -527,7 +527,6 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>数一数就五六处：一个派生的 <span class="mono">database_engine</span> property；一句<strong>类体 <span class="mono">if</span> 把 embedding 列类型在 import 期烤进模型</strong>（所以一个进程被特化到一种后端、运行时不能切库）；查询构造器里两行 <span class="mono">order_by</span> 分支；一个全局 <span class="mono">@event.listens_for</span> 往任何 SQLite 连接注入 numpy <span class="mono">cosine_distance</span>；外加 <span class="mono">alembic/env.py</span> 选 URI。</p>
 <p>pydantic-in-DB 是另一半魔术：配置当 JSON blob、schema-on-read 演化，<strong>保真胜过范式化</strong>。</p>
 <p>而安静的拱顶石是 <span class="mono">MAX_EMBEDDING_DIM=4096</span>：把每个 embedding 零填充到定长，一个 <span class="mono">Vector(4096)</span> 列就能装任意模型的输出；又因等量补 0 不改点积与 L2 范数，<strong>cosine 排序与未填充数学等价</strong>。</p>
-<p>最后一个诚实的星号（也是好教学点）：v0.16.8 引擎层其实已悄悄收敛到 Postgres——双引擎故事在 ORM / alembic 完全活着，但 <span class="mono">server/db.py</span> 只建 Postgres。</p>
 </div>
 <div class="card warn"><div class="tag">⚠️ 常见误区</div>
 <p><span class="mono">server/db.py</span> <strong>不</strong>按后端分叉：v0.16.8 它是 <strong>Postgres-only async</strong>，别在这找 SQLite 引擎或 sqlite-vec 加载。</p>
@@ -576,7 +575,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
     <li>由 SQLAlchemy 的方言层自动处理，应用代码完全不含分库逻辑</li>
     <li>每个 manager 在自己的方法里各写一段 if sqlite/else postgres 来切换</li>
     <li>集中在 server/db.py 一个 if database_engine 大开关里，按后端建不同引擎</li>
-    <li>分布在多处、大多声明式：passage.py 的 import 期列类型、查询构造器的分支、sqlite_functions.py 的 connect 事件、custom_columns.py、alembic/env.py</li>
+    <li>分布在多处、大多声明式：列类型、查询分支、连接事件、自定义列、alembic——不在某一个 switch 里</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
@@ -587,7 +586,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
   <div class="qn">3. 向量在 Postgres 与 SQLite 两套库里分别怎么存、怎么搜？</div>
   <ol class="opts">
     <li>SQLite 用 sqlite-vec 的原生 KNN 索引，Postgres 反而是全表暴力没有索引</li>
-    <li>Postgres：pgvector 的 Vector(4096) + 原生算子 &lt;=&gt;（可挂 ANN 索引）；SQLite：CommonVector(BINARY) + numpy cosine_distance UDF 全表 ORDER BY 暴力</li>
+    <li>Postgres：pgvector 的 Vector(4096) + 原生算子 &lt;=&gt;；SQLite：CommonVector(BINARY) + numpy cosine_distance UDF</li>
     <li>两套库都用 pgvector 的 Vector 列与原生 &lt;=&gt;，SQLite 靠 sqlite-vec 扩展提供同款算子</li>
     <li>两套库都把向量存成 JSON 文本，搜索时在 Python 里反序列化后算 cosine</li>
   </ol>
@@ -733,7 +732,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <span class="kw">else</span>:
     embedding = <span class="fn">Column</span>(CommonVector)                      <span class="cm"># SQLite: BINARY blob</span>
 
-<span class="cm"># query builder: at runtime, the same switch forks the sort two ways</span>
+<span class="cm"># orm/sqlalchemy_base.py query builder: at runtime, the same switch forks the sort two ways</span>
 <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
     query = query.<span class="fn">order_by</span>(cls.embedding.<span class="fn">cosine_distance</span>(q_emb).<span class="fn">asc</span>())          <span class="cm"># compiles to SQL &lt;=&gt;</span>
 <span class="kw">else</span>:
@@ -824,7 +823,6 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>Count them and it's five or six places: a derived <span class="mono">database_engine</span> property; a <strong>class-body <span class="mono">if</span> that bakes the embedding column type into the model at import time</strong> (so a process is specialized to one backend and can't switch at runtime); two <span class="mono">order_by</span> branch lines in the query builder; a global <span class="mono">@event.listens_for</span> injecting a numpy <span class="mono">cosine_distance</span> into any SQLite connection; plus <span class="mono">alembic/env.py</span> picking the URI.</p>
 <p>pydantic-in-DB is the other half of the magic: config as a JSON blob, schema-on-read evolution — <strong>fidelity over normalization</strong>.</p>
 <p>And the quiet keystone is <span class="mono">MAX_EMBEDDING_DIM=4096</span>: zero-pad every embedding to a fixed length and one <span class="mono">Vector(4096)</span> column holds any model's output; and because equal zero-padding doesn't change the dot product or the L2 norm, <strong>cosine ranking is mathematically equivalent to the unpadded vector</strong>.</p>
-<p>A final honest asterisk (also a good teaching point): in v0.16.8 the engine layer has actually quietly converged on Postgres — the dual-engine story is fully alive in the ORM / alembic, but <span class="mono">server/db.py</span> only builds Postgres.</p>
 </div>
 <div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
 <p><span class="mono">server/db.py</span> does <strong>not</strong> branch by backend: in v0.16.8 it's <strong>Postgres-only async</strong> — don't look here for a SQLite engine or sqlite-vec loading.</p>
@@ -833,7 +831,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>There's no <span class="mono">AgentPassage</span> ORM class: only <span class="mono">SourcePassage</span> and <span class="mono">ArchivalPassage</span>, both inheriting <span class="mono">BasePassage</span>.</p>
 <p>The column type is fixed <strong>at import time</strong>, so a process <strong>can't switch databases at runtime</strong>; and — padding lets different models' vectors <strong>be stored in one column</strong>, but that doesn't make them <strong>comparable across models</strong>.</p>
 </div>
-<h2>Callbacks and setup: one ORM, two databases, holding the whole memory</h2>
+<h2>Looking back, looking ahead: one ORM, two databases, holding the whole memory</h2>
 <p>Let's wrap up Part 7. These four lessons are really one line <strong>from skeleton to vector</strong>:</p>
 <div class="cellgroup"><div class="cg-cap"><b>Part 7's four lessons strung together: from skeleton to vector</b></div><div class="cells"><span class="cell">24 three layers</span><span class="sep">→</span><span class="cell">25 service-layer Managers</span><span class="sep">→</span><span class="cell">26 CRUD / isolation</span><span class="sep">→</span><span class="cell hl">27 dual DB / vectors</span></div></div>
 <p>Strung into one line: <strong>layers raise the skeleton (24) → managers handle transactions and conversion (25) → one base is secure by default (26) → one ORM on two databases holds memory's vectors (27)</strong>.</p>
@@ -873,7 +871,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
     <li>Handled automatically by SQLAlchemy's dialect layer; the application code contains no dual-DB logic at all</li>
     <li>Each manager writes its own if sqlite/else postgres block inside its methods to switch</li>
     <li>Concentrated in one big if database_engine switch inside server/db.py, building a different engine per backend</li>
-    <li>Distributed across several places, mostly declarative: passage.py's import-time column type, the query-builder branch, sqlite_functions.py's connect event, custom_columns.py, alembic/env.py</li>
+    <li>Distributed across several places, mostly declarative: column type, query branch, connect event, custom columns, alembic — not in any single switch</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
@@ -884,7 +882,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
   <div class="qn">3. How are vectors stored and searched in Postgres versus SQLite?</div>
   <ol class="opts">
     <li>SQLite uses sqlite-vec's native KNN index, while Postgres is the brute-force one with no index</li>
-    <li>Postgres: pgvector's Vector(4096) + the native operator &lt;=&gt; (ANN-index capable); SQLite: CommonVector(BINARY) + a numpy cosine_distance UDF brute-forcing ORDER BY over the whole table</li>
+    <li>Postgres: pgvector's Vector(4096) + the native operator &lt;=&gt;; SQLite: CommonVector(BINARY) + a numpy cosine_distance UDF</li>
     <li>Both databases use pgvector's Vector column and the native &lt;=&gt;, with SQLite getting the same operator from the sqlite-vec extension</li>
     <li>Both store vectors as JSON text and, at search time, deserialize in Python to compute cosine</li>
   </ol>

@@ -1324,7 +1324,7 @@ LESSON_26 = {
 <p><span class="mono">access</span> (read/write/admin) is <strong>a no-op for now</strong> (the opening <span class="mono">del access</span>): passing it changes nothing, it just reserves a seat for the future.</p>
 <p>With <span class="mono">no_default_actor</span> off, a request missing <span class="mono">user_id</span> lands in the <strong>shared default tenant</strong> — convenient in development, but in production always carry identity explicitly or enable the guard.</p>
 </div>
-<h2>Callbacks and setups: the compound interest of one base class</h2>
+<h2>Looking back, looking ahead: the compound interest of one base class</h2>
 <p>Let's wrap this lesson. Multi-tenancy, recoverability and auditability spread "for free" across the whole codebase because they all live on the same <span class="mono">SqlalchemyBase</span> — <strong>inherit once, compound three ways</strong>.</p>
 <p>Callback to Lesson 25: in the manager's uniform pipeline, steps 3 and 4 call exactly this generic CRUD. The manager opens the session and threads <span class="mono">actor</span>, the CRUD welds isolation and stamps audit — two layers, each to its own job.</p>
 <p>Callback to Lesson 24: <span class="mono">actor</span>'s source is the <span class="mono">user_id</span> header at the router entrance. Down the three floors, identity sinks all the way and only at this layer gets translated into one <span class="mono">WHERE</span>.</p>
@@ -1452,7 +1452,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <span class="kw">else</span>:
     embedding = <span class="fn">Column</span>(CommonVector)                      <span class="cm"># SQLite：BINARY blob</span>
 
-<span class="cm"># 查询构造器：运行时按同一个开关，分两路排序</span>
+<span class="cm"># orm/sqlalchemy_base.py 查询构造器：运行时按同一个开关，分两路排序</span>
 <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
     query = query.<span class="fn">order_by</span>(cls.embedding.<span class="fn">cosine_distance</span>(q_emb).<span class="fn">asc</span>())          <span class="cm"># 编译成 SQL &lt;=&gt;</span>
 <span class="kw">else</span>:
@@ -1543,7 +1543,6 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>数一数就五六处：一个派生的 <span class="mono">database_engine</span> property；一句<strong>类体 <span class="mono">if</span> 把 embedding 列类型在 import 期烤进模型</strong>（所以一个进程被特化到一种后端、运行时不能切库）；查询构造器里两行 <span class="mono">order_by</span> 分支；一个全局 <span class="mono">@event.listens_for</span> 往任何 SQLite 连接注入 numpy <span class="mono">cosine_distance</span>；外加 <span class="mono">alembic/env.py</span> 选 URI。</p>
 <p>pydantic-in-DB 是另一半魔术：配置当 JSON blob、schema-on-read 演化，<strong>保真胜过范式化</strong>。</p>
 <p>而安静的拱顶石是 <span class="mono">MAX_EMBEDDING_DIM=4096</span>：把每个 embedding 零填充到定长，一个 <span class="mono">Vector(4096)</span> 列就能装任意模型的输出；又因等量补 0 不改点积与 L2 范数，<strong>cosine 排序与未填充数学等价</strong>。</p>
-<p>最后一个诚实的星号（也是好教学点）：v0.16.8 引擎层其实已悄悄收敛到 Postgres——双引擎故事在 ORM / alembic 完全活着，但 <span class="mono">server/db.py</span> 只建 Postgres。</p>
 </div>
 <div class="card warn"><div class="tag">⚠️ 常见误区</div>
 <p><span class="mono">server/db.py</span> <strong>不</strong>按后端分叉：v0.16.8 它是 <strong>Postgres-only async</strong>，别在这找 SQLite 引擎或 sqlite-vec 加载。</p>
@@ -1676,7 +1675,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <span class="kw">else</span>:
     embedding = <span class="fn">Column</span>(CommonVector)                      <span class="cm"># SQLite: BINARY blob</span>
 
-<span class="cm"># query builder: at runtime, the same switch forks the sort two ways</span>
+<span class="cm"># orm/sqlalchemy_base.py query builder: at runtime, the same switch forks the sort two ways</span>
 <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
     query = query.<span class="fn">order_by</span>(cls.embedding.<span class="fn">cosine_distance</span>(q_emb).<span class="fn">asc</span>())          <span class="cm"># compiles to SQL &lt;=&gt;</span>
 <span class="kw">else</span>:
@@ -1767,7 +1766,6 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>Count them and it's five or six places: a derived <span class="mono">database_engine</span> property; a <strong>class-body <span class="mono">if</span> that bakes the embedding column type into the model at import time</strong> (so a process is specialized to one backend and can't switch at runtime); two <span class="mono">order_by</span> branch lines in the query builder; a global <span class="mono">@event.listens_for</span> injecting a numpy <span class="mono">cosine_distance</span> into any SQLite connection; plus <span class="mono">alembic/env.py</span> picking the URI.</p>
 <p>pydantic-in-DB is the other half of the magic: config as a JSON blob, schema-on-read evolution — <strong>fidelity over normalization</strong>.</p>
 <p>And the quiet keystone is <span class="mono">MAX_EMBEDDING_DIM=4096</span>: zero-pad every embedding to a fixed length and one <span class="mono">Vector(4096)</span> column holds any model's output; and because equal zero-padding doesn't change the dot product or the L2 norm, <strong>cosine ranking is mathematically equivalent to the unpadded vector</strong>.</p>
-<p>A final honest asterisk (also a good teaching point): in v0.16.8 the engine layer has actually quietly converged on Postgres — the dual-engine story is fully alive in the ORM / alembic, but <span class="mono">server/db.py</span> only builds Postgres.</p>
 </div>
 <div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
 <p><span class="mono">server/db.py</span> does <strong>not</strong> branch by backend: in v0.16.8 it's <strong>Postgres-only async</strong> — don't look here for a SQLite engine or sqlite-vec loading.</p>
@@ -1776,7 +1774,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>There's no <span class="mono">AgentPassage</span> ORM class: only <span class="mono">SourcePassage</span> and <span class="mono">ArchivalPassage</span>, both inheriting <span class="mono">BasePassage</span>.</p>
 <p>The column type is fixed <strong>at import time</strong>, so a process <strong>can't switch databases at runtime</strong>; and — padding lets different models' vectors <strong>be stored in one column</strong>, but that doesn't make them <strong>comparable across models</strong>.</p>
 </div>
-<h2>Callbacks and setup: one ORM, two databases, holding the whole memory</h2>
+<h2>Looking back, looking ahead: one ORM, two databases, holding the whole memory</h2>
 <p>Let's wrap up Part 7. These four lessons are really one line <strong>from skeleton to vector</strong>:</p>
 <div class="cellgroup"><div class="cg-cap"><b>Part 7's four lessons strung together: from skeleton to vector</b></div><div class="cells"><span class="cell">24 three layers</span><span class="sep">→</span><span class="cell">25 service-layer Managers</span><span class="sep">→</span><span class="cell">26 CRUD / isolation</span><span class="sep">→</span><span class="cell hl">27 dual DB / vectors</span></div></div>
 <p>Strung into one line: <strong>layers raise the skeleton (24) → managers handle transactions and conversion (25) → one base is secure by default (26) → one ORM on two databases holds memory's vectors (27)</strong>.</p>

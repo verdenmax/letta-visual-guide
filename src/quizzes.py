@@ -2530,8 +2530,8 @@ QUIZZES = {
                     "en": "For “one ORM running on two databases,” where in the code does the dual-DB seam mainly live?",
                 },
                 "opts": [
-                    {"zh": "分布在多处、大多声明式：passage.py 的 import 期列类型、查询构造器的分支、sqlite_functions.py 的 connect 事件、custom_columns.py、alembic/env.py",
-                     "en": "Distributed across several places, mostly declarative: passage.py's import-time column type, the query-builder branch, sqlite_functions.py's connect event, custom_columns.py, alembic/env.py"},
+                    {"zh": "分布在多处、大多声明式：列类型、查询分支、连接事件、自定义列、alembic——不在某一个 switch 里",
+                     "en": "Distributed across several places, mostly declarative: column type, query branch, connect event, custom columns, alembic — not in any single switch"},
                     {"zh": "集中在 server/db.py 一个 if database_engine 大开关里，按后端建不同引擎",
                      "en": "Concentrated in one big if database_engine switch inside server/db.py, building a different engine per backend"},
                     {"zh": "由 SQLAlchemy 的方言层自动处理，应用代码完全不含分库逻辑",
@@ -2551,8 +2551,8 @@ QUIZZES = {
                     "en": "How are vectors stored and searched in Postgres versus SQLite?",
                 },
                 "opts": [
-                    {"zh": "Postgres：pgvector 的 Vector(4096) + 原生算子 &lt;=&gt;（可挂 ANN 索引）；SQLite：CommonVector(BINARY) + numpy cosine_distance UDF 全表 ORDER BY 暴力",
-                     "en": "Postgres: pgvector's Vector(4096) + the native operator &lt;=&gt; (ANN-index capable); SQLite: CommonVector(BINARY) + a numpy cosine_distance UDF brute-forcing ORDER BY over the whole table"},
+                    {"zh": "Postgres：pgvector 的 Vector(4096) + 原生算子 &lt;=&gt;；SQLite：CommonVector(BINARY) + numpy cosine_distance UDF",
+                     "en": "Postgres: pgvector's Vector(4096) + the native operator &lt;=&gt;; SQLite: CommonVector(BINARY) + a numpy cosine_distance UDF"},
                     {"zh": "两套库都用 pgvector 的 Vector 列与原生 &lt;=&gt;，SQLite 靠 sqlite-vec 扩展提供同款算子",
                      "en": "Both databases use pgvector's Vector column and the native &lt;=&gt;, with SQLite getting the same operator from the sqlite-vec extension"},
                     {"zh": "两套库都把向量存成 JSON 文本，搜索时在 Python 里反序列化后算 cosine",
