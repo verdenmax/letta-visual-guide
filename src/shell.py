@@ -590,8 +590,8 @@ SUBTITLES = {
                                  "db_registry.async_session transactions; schema↔ORM; enforce_types/trace_method"),
     "26-crud-and-multitenancy.html": ("SqlalchemyBase 泛型 CRUD · apply_access_predicate 行级隔离 · 软删除 · 审计字段",
                                       "SqlalchemyBase generic CRUD; row-level access predicate; soft delete; audit fields"),
-    "27-dual-db-and-vectors.html": ("database_engine 选 SQLite/Postgres · pgvector / sqlite-vec · pydantic-in-DB · alembic",
-                                    "database_engine: SQLite/Postgres; pgvector / sqlite-vec; pydantic-in-DB; alembic"),
+    "27-dual-db-and-vectors.html": ("database_engine 选 SQLite/Postgres · pgvector / numpy 距离 · pydantic-in-DB · alembic",
+                                    "database_engine: SQLite/Postgres; pgvector / numpy distance; pydantic-in-DB; alembic"),
 }
 
 
