@@ -100,6 +100,8 @@ PAGES = [
      "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
     ("27-dual-db-and-vectors.html", "双数据库与向量存储", "Dual database & vector storage",
      "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
+    ("28-multi-agent-sleeptime.html", "多智能体与 sleeptime", "Multi-agent & sleeptime",
+     "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
 ]
 
 
@@ -592,6 +594,8 @@ SUBTITLES = {
                                       "SqlalchemyBase generic CRUD; row-level access predicate; soft delete; audit fields"),
     "27-dual-db-and-vectors.html": ("database_engine 选 SQLite/Postgres · pgvector / numpy 距离 · pydantic-in-DB · alembic",
                                     "database_engine: SQLite/Postgres; pgvector / numpy distance; pydantic-in-DB; alembic"),
+    "28-multi-agent-sleeptime.html": ("groups · send_message_to_agent_* · sleeptime 后台改记忆 · 共享块",
+                                      "groups; send_message_to_agent_*; sleeptime background memory edits; shared blocks"),
 }
 
 
