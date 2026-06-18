@@ -473,6 +473,8 @@ LESSON_29 = {
 <p>摄取：一份文件经<strong>解析 → 切块 → 嵌入</strong>的管线，被打散成一排 <span class="mono">SourcePassage</span> 行，从此可被语义搜索。</p>
 <p>检索：源用 <span class="mono">semantic_search_files</span>、归档用 <span class="mono">archival_memory_search</span>——<strong>两个不同工具，同一套 pgvector cosine</strong>。</p>
 </div>
+<p>为什么值得专门讲这件事？因为很多人以为 RAG 是"另一个系统"，于是去找配置、找引擎、找索引服务。看懂"它就是归档记忆换了来源"，你会省下大量找错地方的时间。</p>
+<p>还有个实际好处：理解了同底座，你就知道<strong>调优 RAG 和调优记忆是同一件事</strong>——换嵌入模型、调 chunk 尺寸、改距离度量，对源和归档<strong>同时生效</strong>，因为它们共用那根列。</p>
 <p>把这条主线记牢：本课从头到尾都在反复印证"<strong>底座一样，来源不同</strong>"这八个字。下面先认底座，再走摄取，最后看检索。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">底注：两类 passage <strong>共用</strong>第 27 课那根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列、同一套 4096 padding、同一个 <span class="mono">cosine_distance</span> 排序。差别<strong>不在</strong>向量机器，只在<strong>来源</strong>与<strong>外键</strong>。</span></div>
 <h2>同一个 BasePassage，两个兄弟子类</h2>
@@ -482,6 +484,11 @@ LESSON_29 = {
 <p><strong>① <span class="mono">SourcePassage(BasePassage, FileMixin, SourceMixin)</span></strong>：表 <span class="mono">source_passages</span>，带 <span class="mono">source_id</span>(必填) ＋ <span class="mono">file_id</span>(可选) ＋ <span class="mono">file_name</span>。它属于"某个源里的某个文件"。</p>
 <p><strong>② <span class="mono">ArchivalPassage(BasePassage, ArchiveMixin)</span></strong>：表 <span class="mono">archival_passages</span>，带 <span class="mono">archive_id</span>，还多挂一张 <span class="mono">passage_tags</span> 标签 junction。它属于"某个 archive"。</p>
 <p>那些外键从哪来？全在 <span class="mono">orm/mixins.py</span> 的三个 mixin 里：<span class="mono">FileMixin</span>(给 file_id/file_name)、<span class="mono">SourceMixin</span>(给 source_id)、<span class="mono">ArchiveMixin</span>(给 archive_id)。子类只是<strong>拼装 mixin</strong>，就拿到各自的归属外键。</p>
+<p>为什么底座要做成 <span class="mono">__abstract__</span>？因为那根 4096 维向量列、<span class="mono">cosine_distance</span> 算法、padding 约定<strong>只想写一遍</strong>。两个子类继承同一份定义，就<strong>天然不可能</strong>出现"源和归档用了不同向量空间"这种灾难。</p>
+<p>为什么 <span class="mono">SourcePassage</span> 要 <span class="mono">source_id</span> ＋ <span class="mono">file_id</span> 两个外键？因为一个源能装<strong>多个文件</strong>：<span class="mono">source_id</span> 标"属于哪个源"，<span class="mono">file_id</span> 标"来自源里哪个文件"，<span class="mono">file_name</span> 方便回显出处。</p>
+<p>而 <span class="mono">ArchivalPassage</span> 多挂的那张 <span class="mono">passage_tags</span> junction，是归档<strong>独有</strong>的：它让 agent 给记忆片段打标签，检索时按标签过滤（回扣第 11 课）。源 passage <strong>没有</strong>这层标签。</p>
+<p>记住这个分层：<strong>mixin 决定"归属"，base 决定"能力"</strong>。能力（向量、检索）共享，归属（源 / archive、文件）分家——这正是"同底座、不同来源"在 ORM 层的精确投影。</p>
+<p>反过来想更清楚：要新增第三类 passage（比如某种"工具产出的缓存"），你只需写个新 mixin ＋ 新表，继承 <span class="mono">BasePassage</span> 就<strong>白拿</strong>整套向量检索。底座的复用性，就体现在这种"加一类几乎零成本"上。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py</span><span class="ln">一个抽象基类，两个兄弟子类（简化）</span></div>
 <pre><span class="kw">class</span> <span class="fn">BasePassage</span>(Base):
     __abstract__ = <span class="kw">True</span>                       <span class="cm"># 不建表，只定义"一条 passage 长什么样"</span>
@@ -553,7 +560,12 @@ LESSON_29 = {
 </pre></div>
 <p>逐段读这条管线。<strong>前三步是"存原文"</strong>：<span class="mono">create_file</span> 把文件登记成一行 <span class="mono">FileMetadata</span>（状态 <span class="mono">PARSING</span>）；<span class="mono">extract_text</span> 经 OCR/markdown 抽出纯文本；<span class="mono">upsert_file_content</span> 把全文存进 <span class="mono">file_contents</span> 表。</p>
 <p><strong>第四步是岔路</strong>：<span class="mono">insert_file_into_context_windows</span> 把文件"打开"进 agent 上下文（建 <span class="mono">FileAgent</span>）——这条支线留到最后一节专讲。</p>
+<p>这条岔路本身就很妙：<strong>摄取一次，双重产出</strong>——同一趟管线既把文件切块嵌入（建 RAG），又顺手把它"打开"进上下文（建 FileAgent）。上传一个文件，两种形态<strong>一并就位</strong>。</p>
 <p><strong>后三步才是"建 RAG"</strong>：<span class="mono">chunk_text</span> 按 <span class="mono">EmbeddingConfig</span> 切块，<span class="mono">generate_embedded_passages</span> 每 200 条一批算嵌入，<span class="mono">create_many_source_passages_async</span> 落进 <span class="mono">source_passages</span>。</p>
+<p>那行 <span class="mono">status=PARSING</span> 不是摆设。<span class="mono">FileMetadata</span> 带 <span class="mono">processing_status</span> 状态字段，配 <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span> 两个计数——状态从 <span class="mono">PARSING</span> 起步，两个计数记录嵌入进度，全嵌完才算就绪。前端"处理中…"进度条就读它。</p>
+<p>为什么把全文单独存进 <span class="mono">file_contents</span>，而不只留 chunk？因为两种形态各有所需：<strong>chunk 供语义召回</strong>（模糊找相关段），<strong>全文供逐字打开</strong>（<span class="mono">open_files</span> 要原原本本的文本）。拆开存，两条路互不干扰。</p>
+<p>嵌入为什么按 <strong>200 条一批</strong>？因为嵌入要调外部模型 API，逐条发太慢太贵；攒成批一次发，吞吐高、往返少。这是工程上常见的"批处理摊薄开销"。</p>
+<p>顺带说一句容错：全文存在 <span class="mono">file_contents</span> 是<strong>独立于</strong> chunk 的一份底稿。将来想换嵌入模型、重切重嵌，原文还在，不必让用户重传——<span class="mono">total_chunks</span> 归零、重跑后半段即可。</p>
 <details class="accordion"><summary>摄取有两条路：现代 file_processor 与 legacy connectors</summary><div class="acc-body">
 <p><strong>现代（主线）</strong>：<span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>——带 OCR/markdown 解析、<span class="mono">LlamaIndexChunker</span> 切块、<span class="mono">generate_embedded_passages</span> 批量嵌入，末了 <span class="mono">create_many_source_passages_async</span>。本课讲的就是它。</p>
 <p><strong>legacy（旧路）</strong>：<span class="mono">data_sources/connectors.py::load_data</span>——用 <span class="mono">DirectoryConnector</span> ＋ llama_index 的 <span class="mono">TokenTextSplitter</span>，调的是<strong>已弃用</strong>的 <span class="mono">create_many_passages_async</span>。</p>
@@ -581,7 +593,11 @@ LESSON_29 = {
 <p>三步看懂这条查询。<strong>① 嵌入 + pad</strong>：把查询文本用<strong>同一套 <span class="mono">EmbeddingConfig</span></strong> 嵌成向量，再 <span class="mono">np.pad</span> 到 4096，好和库里 padding 过的向量对齐。</p>
 <p><strong>② join 限定范围</strong>：<span class="mono">select(SourcePassage)</span> join <span class="mono">SourcesAgents</span> on <span class="mono">source_id</span>、where <span class="mono">agent_id</span>——只搜"<strong>这个 agent 挂载的源</strong>"里的 passage，不越界。</p>
 <p><strong>③ 排序</strong>：Postgres 用 <span class="mono">embedding.cosine_distance(q).asc()</span>（pgvector），SQLite 落回 numpy 算距离；文本兜底则用 <span class="mono">func.lower(text).contains</span>。</p>
+<p>这里方向别记反：<span class="mono">cosine_distance</span> 是<strong>距离</strong>，<strong>越小越近</strong>，所以用 <span class="mono">.asc()</span> 升序取前几条——和"相似度越大越好"正好反着来（回扣第 27 课）。</p>
 <p>对照归档那条 <span class="mono">build_agent_passage_query</span>：同样的嵌入 + pad + cosine，只是 join 的是 <span class="mono">ArchivesAgents</span>(on <span class="mono">archive_id</span>)，还能按标签过滤。<strong>同一套机器，换个接头。</strong></p>
+<p>那条 <span class="mono">func.lower(text).contains</span> 文本兜底，是给"没嵌入 / 纯关键词"场景留的后路：拿不到向量时，至少能按子串、大小写不敏感地命中，不至于两手空空。</p>
+<p>还有一处分支：<span class="mono">np.pad</span> 到 4096 <strong>只在 pgvector 路径</strong>做；若走外部向量库 Turbopuffer（TPUF），padding 被<strong>跳过</strong>——维度交给它自己管。pad 是 pgvector"定长列"的迁就，不是通用步骤。</p>
+<p>别小看那个 <span class="mono">join SourcesAgents</span>：它就是<strong>多租户的护栏</strong>（回扣第 26 课）。没有它，向量搜索会扫到别的 agent、别的组织的源；有了它，每个 agent 只能搜<strong>自己挂载</strong>的那几个源。</p>
 <div class="note info"><span class="ni">🔧</span><span class="nx">小心"函数声明"与"真实现"分家：<span class="mono">function_sets/files.py</span>、<span class="mono">function_sets/base.py</span> 里的 <span class="mono">semantic_search_files</span> / <span class="mono">archival_memory_search</span> 只是 <span class="mono">raise NotImplementedError</span> 的 <strong>schema 占位</strong>；真正干活的在 <span class="mono">tool_executor/files_tool_executor.py</span> 与 <span class="mono">core_tool_executor.py</span>。</span></div>
 <p>把源检索这条链画直，五个节点一目了然：</p>
 <div class="flow">
@@ -611,7 +627,78 @@ LESSON_29 = {
 <p><span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span>——源向量搜索：嵌入查询 ＋ pad ＋ join <span class="mono">SourcesAgents</span> ＋ <span class="mono">cosine_distance</span>。</p>
 <p><span class="mono">orm/files_agents.py::FileAgent</span>——文件的另一形态：上下文里的只读 <span class="mono">FileBlock</span>（下一节）。</p>
 </div>
-<!--ZHMORE-->
+<h2>文件的两种形态：可搜索的 passage vs 上下文里"打开的文件"</h2>
+<p>回到摄取管线第五步那条岔路。一份挂载的文件，在 Letta 里会<strong>同时活成两种形态</strong>——这是本课第二个值得记住的点。</p>
+<p><strong>形态 A：可搜索的 RAG chunk</strong>，就是前面讲的 <span class="mono">SourcePassage</span>——切块、嵌入、按 cosine 召回。</p>
+<p><strong>形态 B：上下文里"打开的文件"</strong>，是另一套机制：<span class="mono">orm/files_agents.py::FileAgent</span>。它是 <span class="mono">files_agents</span> junction 上的一行，带 <span class="mono">is_open</span> / <span class="mono">visible_content</span>。</p>
+<div class="cellgroup"><div class="cg-cap"><b>一个文件，两种形态：元数据 <span class="mono">FileMetadata</span>(表 files) ＋ 全文 <span class="mono">FileContent</span>(表 file_contents)</b></div><div class="cells"><span class="cell hl">SourcePassage</span><span class="lab">embedded · 语义搜</span><span class="sep">‖</span><span class="cell q">FileAgent / FileBlock</span><span class="lab">visible_content · 上下文只读原文</span></div></div>
+<p>关键一句：<span class="mono">FileAgent.to_pydantic_block(...)</span> 会把它<strong>渲染成一个 <span class="mono">FileBlock(read_only=True)</span></strong>——"打开一个文件" ＝ 在上下文里塞进一块<strong>只读的记忆 block</strong>，内容是原文（或片段）。</p>
+<p>操作这层的是 <span class="mono">open_files</span> / <span class="mono">grep_files</span> 工具：把文件开进上下文、在已开文件里按行抓取。注意有个上限——<strong>默认最多 5 个</strong>同时打开的文件。</p>
+<p><span class="mono">grep_files</span> 和 <span class="mono">semantic_search_files</span> 是<strong>两种找法</strong>：前者在<strong>已打开的文件</strong>里按关键词逐行精确抓，后者在<strong>全部 chunk</strong> 里按语义模糊召回。要"原文逐字"用 grep，要"意思相近"用 semantic。</p>
+<p>为什么 <span class="mono">FileBlock</span> 是 <span class="mono">read_only=True</span>？因为它是<strong>外部文档的镜像</strong>，不该被 agent 改写——你不希望 LLM"顺手"把你上传的合同改了。只读，正是把"源文档"和"agent 自己的记忆块"分开的护栏。</p>
+<p>那"最多开 5 个"的上限又为何？因为打开的文件是<strong>实打实塞进上下文</strong>的只读块，要占 token。限量是替你守住上下文预算，免得一口气开十几个文件把窗口撑爆。</p>
+<p>所以同一份文件，<span class="mono">SourcePassage</span> 与 <span class="mono">FileBlock</span> 是<strong>互补</strong>而非重复：先用 <span class="mono">semantic_search_files</span> 模糊定位到相关文件，再 <span class="mono">open_files</span> 把它逐字调进上下文细读。一个负责"找到"，一个负责"看清"。</p>
+<p>把"一个文件 → 两种形态"画直，左边落库、右边进上下文：</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">一个挂载文件</div><div class="nd">FileMetadata + FileContent</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">形态 A · 切块嵌入</div><div class="nd">SourcePassage（语义可搜）</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node q"><div class="nt">形态 B · open_files</div><div class="nd">FileAgent → FileBlock</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">上下文只读原文</div><div class="nd">visible_content（read_only=True）</div></div>
+</div>
+<details class="accordion"><summary>"打开的文件"为什么是另一套机制，而不是 passage？</summary><div class="acc-body">
+<p><span class="mono">FileAgent</span>（<span class="mono">orm/files_agents.py</span>）是 <span class="mono">files_agents</span> junction 的一行，记"哪个 agent 开着哪个文件"，带 <span class="mono">is_open</span> / <span class="mono">visible_content</span>。它<strong>不进向量库</strong>，靠 <span class="mono">to_pydantic_block</span> 渲染成上下文里的 <span class="mono">FileBlock(read_only=True)</span>。</p>
+<p>所以"打开文件" ＝ 把原文（片段）作为<strong>只读记忆块</strong>塞进上下文窗口，让 LLM 直接逐字读到——这是<strong>精确</strong>的；而 <span class="mono">SourcePassage</span> 是<strong>模糊、语义</strong>的近邻召回。两者解决不同问题。</p>
+<p>元数据存 <span class="mono">orm/file.py::FileMetadata</span>（表 <span class="mono">files</span>，带 <span class="mono">processing_status</span> / <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span>），全文存 <span class="mono">FileContent</span>（表 <span class="mono">file_contents</span>）。<span class="mono">open_files</span> 读全文，<span class="mono">semantic_search_files</span> 搜 chunk。</p>
+</div></details>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">别把两种形态搞混：<strong>"上下文里打开的文件"（<span class="mono">FileBlock</span>，只读原文）</strong>不是<strong>"可语义搜索的 passage"（<span class="mono">SourcePassage</span>）</strong>。前者逐字、占上下文、默认最多 5 个；后者按意思召回、不占上下文。同一份文件，两条路。</span></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>Letta <strong>不另造"RAG 引擎"</strong>——它直接复用归档记忆那套向量机器，只把表、外键、junction、工具名各换一个。</p>
+<p><span class="mono">SourcePassage</span>（你喂给 agent 的文档）和 <span class="mono">ArchivalPassage</span>（agent 自己写的记忆）是同一个 <span class="mono">BasePassage</span> 的两个兄弟，骑同一根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列、同一套 4096 padding、同一个 <span class="mono">cosine_distance</span>（第 27 课）。</p>
+<p>于是"RAG"和"长期记忆"在物理层根本是<strong>一回事</strong>——唯一的真差别是来源：一个你给的，一个它写的。</p>
+<p>次亮点：一份挂载的文件会<strong>同时</strong>活成两种形态——可语义搜索的 <span class="mono">SourcePassage</span> chunk，与上下文窗口里那块只读的 <span class="mono">FileBlock</span>(原文)。一份文件，两种"被记住"的方式。</p>
+</div>
+<h2>源是 org 级资产：挂载 ≠ 复制</h2>
+<p>还有一处容易踩错：<strong>源不是某个 agent 私有的</strong>。<span class="mono">services/source_manager.py::SourceManager.create_source</span> 建出的 <span class="mono">Source</span> 是 <strong>org 级</strong>，可被同组织的<strong>多个 agent 共享</strong>。</p>
+<p>怎么共享？<span class="mono">orm/sources_agents.py::SourcesAgents</span> 是一张<strong>复合主键的 M2M 表</strong>——一个源能连多个 agent，一个 agent 也能挂多个源。</p>
+<p>复合主键 <span class="mono">(agent_id, source_id)</span> 保证同一对"agent — 源"<strong>只连一次</strong>，不会重复挂载；这和第 28 课 <span class="mono">blocks_agents</span> 那张共享块表是<strong>同一种套路</strong>——用 junction 表表达"谁能用什么"。</p>
+<p>最关键的一点：<span class="mono">agent_manager.py::AgentManager.attach_source_async</span> "挂载一个源"时，<strong>只写一行 <span class="mono">sources_agents</span> junction</strong>——<strong>不复制 passage、不重新嵌入</strong>。passage 还是那一批，挂载只是"连一条线"。</p>
+<p>这点呼应第 26 课的多租户：源在 org 这层登记一次，多个 agent 经 junction 复用同一批向量。检索时 <span class="mono">build_source_passage_query</span> 正是 join 这张 <span class="mono">SourcesAgents</span>，才知道"这个 agent 能搜哪些源"。</p>
+<p>把账算清：一个 50 页的手册，挂给 10 个 agent，<strong>只嵌入一次</strong>、只存一份 passage；10 个 agent 经 10 行 <span class="mono">sources_agents</span> 共用它。若挂载真去"复制+重嵌"，那就是 10 倍的存储与嵌入开销——Letta 用一张 junction 表把这笔账省了。</p>
+<p>这也是为什么源叫"org 级资产"：它和 agent 是<strong>多对多</strong>的松耦合，建一次、共享给多人；删 agent 不连累源，删源也只清掉 junction 连线——和第 26 课"组织拥有资源、成员按需挂载"的思路一脉相承。</p>
+<p>一句话给源定性：它是<strong>组织的共享知识库</strong>，不是 agent 的私人笔记。私人笔记是归档（<span class="mono">archival_passages</span>），共享知识库是源（<span class="mono">source_passages</span>）——又一次落回"同底座、不同来源"。</p>
+<details class="accordion"><summary>读源码时的术语漂移：<span class="mono">Source</span> 正改名 <span class="mono">Folder</span></summary><div class="acc-body">
+<p>v0.16.8 里你会同时看到 <span class="mono">Source</span> 和 <span class="mono">Folder</span> 两个词。<span class="mono">schemas/source.py::Source</span> 的 docstring 已标 <strong>"Deprecated: Use Folder"</strong>，<span class="mono">PassageBase.source_id</span> 也打了 <span class="mono">deprecated</span> 标记。</p>
+<p>但 <strong>ORM 表与类仍是 <span class="mono">source_*</span></strong>：表名 <span class="mono">source_passages</span> / <span class="mono">sources_agents</span>、外键 <span class="mono">source_id</span>、类 <span class="mono">SourcePassage</span> / <span class="mono">SourceManager</span> 一律没改。</p>
+<p>结论：读到 <span class="mono">Folder</span> 知道它就是 <span class="mono">Source</span> 的新名；写 v0.16.8 代码仍照 <span class="mono">source_</span> 来。本课通篇用 <span class="mono">Source</span>，与源码一致。</p>
+</div></details>
+<h2>回扣与小结：RAG 就是"换了来源的归档记忆"</h2>
+<p>收个尾。本课没引入任何新的向量技术，它通篇都在复用你<strong>早就学过</strong>的零件。</p>
+<p>回扣第 27 课：两类 passage 骑的<strong>就是那根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列</strong>——同一套 4096 padding、同一个 <span class="mono">cosine_distance</span>。RAG 没有"自己的"向量存储。</p>
+<p>回扣第 10、11 课：归档记忆那套 <span class="mono">archival_memory_insert</span> / <span class="mono">search</span> 是<strong>另一个来源</strong>的同款机器；本课的源只是把"谁来写"从 agent 换成了你。</p>
+<p>回扣第 21 课：切块尺寸、查询嵌入都听 <span class="mono">EmbeddingConfig</span> 的——摄取和召回<strong>同一套配置</strong>，向量才在同一个空间里可比。</p>
+<p>一句话串起来：<strong>RAG ＝ 归档记忆的向量机器 ＋ 外部来源的 passage ＋ 一张 <span class="mono">sources_agents</span> 共享表</strong>。底座没变，变的只是"东西从哪来"。</p>
+<p>再补一刀对称之美：归档是 agent <strong>写给未来的自己</strong>，源是你<strong>写给 agent</strong> 的资料——方向相反，却共用同一套"嵌入 → 存 → cosine 召回"的肌肉。读 Letta 久了，你会反复遇到这种"一套机制、多处复用"。</p>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>源与归档<strong>不混</strong>：不同表 / 外键 / 工具，检索互不返回，写入点<strong>互斥</strong>（给错 source_id/archive_id 直接报错）。</p>
+<p>源是 <strong>org 级、可共享</strong>，不是 per-agent；"挂载源"只写 <span class="mono">sources_agents</span> junction，<strong>不复制、不重嵌</strong> passage。</p>
+<p>嵌入模型与维度<strong>必须一致</strong>：摄取和召回用同一套 <span class="mono">EmbeddingConfig</span>；pad 到 4096 会<strong>静默掩盖</strong>维度不匹配，埋下"搜不准"的坑。</p>
+<p><span class="mono">pad</span> 到 <span class="mono">MAX_EMBEDDING_DIM</span> 仅 <strong>pgvector 路径</strong>做（TPUF 跳过）。</p>
+<p><span class="mono">Source</span> 正改名 <span class="mono">Folder</span>，但 v0.16.8 的 ORM 表 / 类仍是 <span class="mono">source_*</span>；"上下文里开的文件"（<span class="mono">FileBlock</span>，只读）<strong>≠</strong>"可搜索的 passage"（<span class="mono">SourcePassage</span>）。</p>
+</div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>RAG 与归档记忆<strong>同底座、不同来源</strong>：<span class="mono">SourcePassage</span>（你上传的文档）与 <span class="mono">ArchivalPassage</span>（agent 自己写的记忆）是同一 <span class="mono">BasePassage</span> 子类，共用第 27 课那根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列 ＋ 4096 padding ＋ <span class="mono">cosine_distance</span>。</li>
+<li>摄取管线 <span class="mono">FileProcessor.process</span>：<span class="mono">create_file</span>(PARSING) → <span class="mono">extract_text</span>(OCR) → <span class="mono">upsert_file_content</span>(全文) → <span class="mono">insert_file_into_context_windows</span> → <span class="mono">chunk_text</span>(按 EmbeddingConfig) → <span class="mono">generate_embedded_passages</span>(batch 200) → <span class="mono">create_many_source_passages_async</span>(pad 4096)。</li>
+<li>检索是<strong>同一套向量搜索、换表换工具</strong>：<span class="mono">build_source_passage_query</span> join <span class="mono">SourcesAgents</span>、工具 <span class="mono">semantic_search_files</span>；归档则 join <span class="mono">ArchivesAgents</span>、工具 <span class="mono">archival_memory_search</span>。</li>
+<li>一份文件有<strong>两种形态</strong>：可语义搜的 <span class="mono">SourcePassage</span> chunk，与上下文里只读的 <span class="mono">FileAgent</span> / <span class="mono">FileBlock</span>(原文，默认最多开 5 个)。</li>
+<li>源是 <strong>org 级可共享</strong>资产，<span class="mono">attach_source_async</span> 只写 junction 不复制；<span class="mono">Source</span> 正改名 <span class="mono">Folder</span>，但 v0.16.8 ORM 仍 <span class="mono">source_*</span>。</li>
+</ul>
+</div>
+<p>把这条肌肉记忆带走：看到"RAG / 数据源"，先别找新引擎——先问<strong>"它和归档记忆是不是同一根向量列"</strong>。答案是肯定的，于是一切都顺理成章。</p>
+<p>第八部分的进阶专题继续往下走。下一课我们换个视角，看 Letta 怎么把这些执行步骤变得<strong>可观测、可追踪</strong>。</p>
 """,
     "en": r"""<p>stub</p>""",
 }
