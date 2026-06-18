@@ -369,6 +369,79 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>Lock in this dividing line first: <strong>routers never open a DB session</strong>; sessions are all opened and closed in the manager. It's exactly the key to the next section, "why multiple transactions".</p>
 <p>One easily overlooked point to add: thin doesn't mean "doing nothing". The router still owns HTTP semantics — status codes, the response model, mapping errors to 4xx; it just pushes the <strong>business</strong> part down to the lower layer.</p>
 <div class="cute"><div class="row"><span class="emoji">🚪</span><span class="lab">Doorman · router</span><span class="arrow">→</span><span class="emoji">🧑‍💼</span><span class="lab">Manager · manager</span><span class="arrow">→</span><span class="emoji">🗄️</span><span class="bubble">Archive · ORM/DB</span></div><div class="cap">🏛️ Three floors: the doorman (router) just passes the slip, the manager (manager) opens a "transaction" door to touch data, and who may read the archive (ORM/DB) is decided by the gate (access control)</div></div>
+<h2>Follow one GET request all the way down</h2>
+<p>Four steps alone isn't satisfying enough. Let's actually take a <span class="mono">GET /v1/agents/{id}</span> request by the hand, from the door all the way to the DB, then back the same way.</p>
+<p>A small trick for reading the sequence diagram: treat each "transaction" marker as one complete "open the door — take the item — close the door". You'll count <strong>two</strong> such open/close cycles, and they don't share the same door.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>DI assembly</h4><p><span class="mono">get_letta_server</span> hands over that global server, and <span class="mono">get_headers</span> parses the <span class="mono">user_id</span> header into <span class="mono">actor_id</span> (no DB yet at this point).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Resolve actor · transaction ①</h4><p><span class="mono">get_actor_or_default_async</span> opens session #1 to look up the user; when <span class="mono">user_id</span> is missing, OSS mode falls back to the default user.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Look up agent · transaction ②</h4><p><span class="mono">get_agent_by_id_async(actor=actor)</span> opens session #2: <span class="mono">select(AgentModel)</span> + <span class="mono">apply_access_predicate(...ORGANIZATION)</span> + <span class="mono">where(id==...)</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Fetch one or 404</h4><p><span class="mono">scalar_one_or_none()</span> gets the row; if None, raise 404. Otherwise <span class="mono">to_pydantic_async()</span> converts it into a schema.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Serialize the response</h4><p>After commit / close, FastAPI serializes the object into JSON per <span class="mono">response_model=AgentState</span> and returns it.</p></div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Notice steps 2 and 3: they are <strong>two independent transactions</strong>, each opening its own session and committing/closing on its own. One request = <strong>multiple independent transactions</strong>, with <strong>no</strong> request-level unit of work (UoW). The reason is that transaction boundaries are drawn inside manager methods — the drawer below has the details.</span></div>
+<p>Line this trajectory up with the four steps earlier and you'll find: those thin four steps in the router actually pull in <strong>two trips to the DB, two access-control checks, and one serialization</strong>.</p>
+<p>This is the essence of "thin": the complexity didn't vanish, it was just <strong>pushed down to the two lower layers</strong>. The router looks featherlight because the heavy lifting is caught firmly in the manager and the ORM.</p>
+<p>The key to access control hides here too: the <span class="mono">apply_access_predicate</span> in step 3 isn't added by the router but <strong>welded in automatically</strong> by the ORM while building the SQL, so organization-level isolation can't be bypassed.</p>
+<p>Look at the upward leg again: <span class="mono">to_pydantic_async()</span> <strong>detaches the ORM row from the session</strong> and turns it into a pure pydantic object, so even after the session is closed, the data in the router's hands is still complete and usable.</p>
+<p>This step is crucial: it cuts apart the "database row" and the "outward schema", sealing the DB session's lifetime inside the manager so it never leaks to the router layer.</p>
+<p>For exactly this reason, the router layer never gets an object that's "still attached to the database" — all it ever sees is a settled schema that's safe to serialize.</p>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p><span class="mono">SyncServer</span> is a beautiful misnomer. The class docstring still reads "Simple single-threaded / blocking server process", yet in v0.16.8 the methods routers call are almost all <span class="mono">async def</span> — the real concurrency model is <strong>cooperative async</strong> on a single event loop.</p>
+<p>Better still: it isn't a "god facade" but a <strong>service locator</strong>. Thin CRUD endpoints bypass it outright, going <span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> straight through.</p>
+<p>SyncServer's own methods appear only when "one action must coordinate several managers" — for example <span class="mono">create_agent_async</span> resolves the LLM/embedding config, transforms blocks, then delegates the write to <span class="mono">agent_manager</span>.</p>
+<p>So "business hub" = <strong>cross-manager coordinator</strong>, not "the one door to the DB". This reframing is exactly the key to reading this layer of code.</p>
+<p>One more note on the layering's seam: FastAPI's <span class="mono">Depends</span> is that seam — two dependencies turn an ordinary function into a layered handler, and the actor is resolved <strong>inside the body</strong> after the header dependency runs, rather than by a global auth middleware.</p>
+</div>
+<p>Keep this "misnomer" in mind and the names won't lead you astray when you read the server layer later: don't take <span class="mono">Sync</span> at face value, and don't assume server does everything itself. The name is history; the code is reality.</p>
+<h2>Digging a little deeper</h2>
+<p>The main thread is complete here. The four drawers below collect the details you're likely to ask about — open them as your interest dictates; leaving them closed won't hurt your grasp of the main thread.</p>
+<details class="accordion"><summary>Why make routers this thin?</summary><div class="acc-body">
+<p>Pulling business logic out of the router buys at least three benefits.</p>
+<p><strong>Reuse</strong>: the same <span class="mono">agent_manager.get_agent_by_id_async</span> can be called by REST endpoints, internal code, and background tasks alike, with no need to write one copy each.</p>
+<p><strong>Testability</strong>: testing business logic needs no HTTP — just write unit tests against the manager; the router layer is thin enough to barely need testing.</p>
+<p><strong>Consistent authorization</strong>: access control is welded into the ORM layer (<span class="mono">apply_access_predicate</span>), so no matter who calls the manager, organization-level isolation still holds — rather than each endpoint writing it again and each missing a spot.</p>
+<p>Think of it in reverse: if you stuffed business into the router, the same logic would be copied into REST, background tasks, and tests, sooner or later drifting into three inconsistent versions — thin routers cut off that drift at the source.</p>
+</div></details>
+<details class="accordion"><summary>Why is SyncServer called "Sync" yet almost all async?</summary><div class="acc-body">
+<p>Pure <strong>historical naming</strong>. There really was an early vision of "synchronous, single-threaded, blocking", and the class docstring was written back then.</p>
+<p>But the reality in v0.16.8 is: the methods routers call are almost all <span class="mono">async def</span>, with concurrency from cooperative async on a single event loop, not multithreading or blocking.</p>
+<p>The name hasn't changed because it's long been a stable symbol at countless call sites; the payoff of renaming is far outweighed by the risk of a repo-wide change. When reading the code, just treat "Sync" as a <strong>historical label</strong>.</p>
+</div></details>
+<details class="accordion"><summary>Why is one request multiple transactions, not one?</summary><div class="acc-body">
+<p>Because <strong>transaction boundaries are drawn inside manager methods</strong>, not at the request level.</p>
+<p>Each manager method (such as looking up the user or the agent) opens its own session with <span class="mono">async with db_registry.async_session()</span> and commits/closes once done.</p>
+<p>So the single <span class="mono">retrieve_agent</span> request spans <strong>two independent transactions</strong>: look up the user first, then the agent; it does not wrap the whole request in one big transaction as a "request-level UoW".</p>
+<p>The cost is that the two reads aren't the same snapshot; the benefit is clear boundaries, self-consistent managers, and easier reuse and testing. Lesson 27 will fully explain where the session comes from.</p>
+<p>By the way: precisely because there's no request-level big transaction, a failure in one step won't automatically roll back a write already committed in a prior step — this hands the responsibility for "compensation / idempotency" clearly back to the orchestrator (SyncServer or the caller).</p>
+</div></details>
+<details class="accordion"><summary>What is that optional server-password middleware?</summary><div class="acc-body">
+<p>It's an <strong>orthogonal</strong>, server-wide gate, enabled only in secure mode.</p>
+<p><span class="mono">middleware/check_password.py::CheckPasswordMiddleware</span> checks <span class="mono">X-BARE-PASSWORD: password &lt;pw&gt;</span> or <span class="mono">Authorization: Bearer &lt;pw&gt;</span>; health probes pass, otherwise 401.</p>
+<p>It's mounted only when <span class="mono">LETTA_SERVER_SECURE=true</span> or <span class="mono">--secure</span>, uses a <strong>single shared secret</strong>, and is entirely unrelated to tenant/actor — don't confuse it with the <span class="mono">user_id</span>/actor multi-tenant identity from earlier.</p>
+<p>Tell the two apart in one line: the password middleware governs "<strong>whether the whole server lets you in</strong>", while actor/user_id governs "<strong>whose data you can see once inside</strong>". One is the front-gate access, the other the room number within; neither replaces the other.</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>Routers do <strong>not</strong> all go through <span class="mono">SyncServer</span> methods — most are direct <span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> calls; only cross-manager orchestration goes through SyncServer.</p>
+<p><span class="mono">SyncServer</span> is named "sync" but is really "async": the docstring is a legacy remnant, and the real path is almost all <span class="mono">async</span>.</p>
+<p>The actor is resolved <strong>inside the handler body</strong> (step ①), not a global auth middleware; the router layer <strong>never</strong> opens a DB session.</p>
+<p>When <span class="mono">user_id</span> is missing, OSS mode falls back to the <strong>default user</strong>, rather than erroring out.</p>
+<p>That global server is built at <strong>import time</strong> (<span class="mono">app.py::server</span>), <strong>not</strong> in the <span class="mono">create_application</span> factory; there's <strong>no message queue</strong> between the layers.</p>
+</div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>One request crosses three floors: <strong>thin routers → SyncServer + Managers → ORM → DB</strong>.</li>
+<li>A <strong>single global <span class="mono">SyncServer</span></strong> in the process: built at import time, <span class="mono">init_async</span> in <span class="mono">lifespan</span>; routers get the same one via <span class="mono">Depends(get_letta_server)</span>.</li>
+<li>The thin router's four steps: resolve actor → handle params → call manager/server → return schema; <strong>the DB session is opened only in the manager</strong>.</li>
+<li>Most are <strong>direct manager calls</strong>; only cross-manager orchestration goes through SyncServer methods (about 131 : 16 in agents.py).</li>
+<li>One request = <strong>multiple independent transactions</strong>; access control is welded into every query by the ORM's <span class="mono">apply_access_predicate</span>.</li>
+</ul>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">To wrap up in one line: <strong>routers only receive, managers do the work, the ORM guards the gate, the DB persists — all strung together by one global server</strong>. This three-layer division of labor is the foundation on which every detail of Lessons 25–27 stands.</span></div>
+<p>You've actually seen this "thin pattern" before: the message lifecycle of <span class="mono">agents.py::send_message</span> in Lesson 03 follows the very same "routers only receive, managers do the work".</p>
+<p>And the agent loop the server brings up (<span class="mono">AgentLoop.load(...)</span> then <span class="mono">.step(...)</span> from Lessons 13 and 14) is also invoked from this layer — the server is precisely its entry point.</p>
+<p>The next three lessons take apart the second and third floors one by one: Lesson 25 on how managers actually write business logic, Lesson 26 on the ORM's CRUD and multi-tenant isolation, Lesson 27 on the origins of the DB session and <span class="mono">async_session</span>. Three floors, descending one at a time.</p>
+<p>After these three lessons, you'll be able to explain every step of a request, from HTTP all the way to disk, crystal clear.</p>
 <!--ENMORE-->
 """,
 }
