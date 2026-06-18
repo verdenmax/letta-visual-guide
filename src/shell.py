@@ -92,6 +92,8 @@ PAGES = [
      "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
     ("23-local-models-gbnf.html", "本地模型与 GBNF 受限解码", "Local models & GBNF constrained decoding",
      "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
+    ("24-three-layer-architecture.html", "三层架构", "The three-layer architecture",
+     "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
 ]
 
 
@@ -576,6 +578,8 @@ SUBTITLES = {
                                 "OpenAIClient reuse; Anthropic cache/thinking/batch; inner thoughts as a tool arg"),
     "23-local-models-gbnf.html": ("chat_completion_proxy · GBNF 约束 JSON · wrapper · 经典老路径",
                                   "chat_completion_proxy; GBNF-constrained JSON; wrappers; the classic legacy path"),
+    "24-three-layer-architecture.html": ("薄路由 → SyncServer/Manager → ORM → DB · 一个全局 server",
+                                         "thin routers → SyncServer/Managers → ORM → DB; one global server"),
 }
 
 
