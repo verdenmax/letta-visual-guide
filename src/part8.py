@@ -242,6 +242,58 @@ LESSON_28 = {
 <p>第八部分就此开张。下一课我们继续往"进阶专题"里走，把这套"旧零件、新组合"的思路用到更多地方。</p>
 """,
     "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Part 7 walked a single request all the way down into the database — three floors, a unified counter, a welded-shut tenant gate; the agent finally stands firm on the server side. Part 8 asks a different question: when there is <strong>more than one agent</strong> at the table, how do they cooperate? Who schedules them? And how does memory flow across agents?</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson starts by putting a counterintuitive fact on the table: in v0.16.8 only two multi-agent mechanisms are <strong>actually live</strong> — one agent directly calling another's message API (<span class="mono">send_message_to_agent_*</span>), and a background sleeptime agent that wakes every few turns to rewrite memory. The classic “group managers” are mostly sleeping scaffolding.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>One sentence to grasp this lesson: <strong>v0.16.8's multi-agent isn't “one scheduler orchestrating a flock of agents,” but “agents calling each other's API plus sharing one row of memory.”</strong></p>
+<p>Live path one: tools like <span class="mono">send_message_to_agent_and_wait_for_reply</span> let agent A <strong>re-enter the server</strong> over REST, run agent B's own full loop, and fetch B's reply back.</p>
+<p>Live path two: <strong>sleeptime</strong> — after the foreground agent finishes a turn, a background sleeptime agent is woken up, dedicated to <strong>tidying memory</strong>.</p>
+<p>Their only coordination primitive is humble to the point of being just <strong>one shared <span class="mono">Block</span> row</strong>: A writes, and B reads it the next time it rebuilds its system prompt.</p>
+<p>As for the classic group managers (<span class="mono">round_robin / supervisor / dynamic</span>)? Only schema and class skeletons remain; their executor is <strong>never called</strong>.</p>
+</div>
+<p>Let's lay the “two live paths plus one shared memory row” out as two columns first, to get a skeleton in mind before unpacking each one.</p>
+<div class="cols">
+  <div class="col"><h4>🛠️ Path one · agent calls agent directly</h4>
+  <p>A calls <span class="mono">send_message_to_agent_and_wait_for_reply</span> → builds a client in the sandbox → <span class="mono">messages.create(B)</span> re-enters over REST → runs <strong>B's own loop</strong> → the reply flows back to A.</p>
+  <p>No “group manager” is involved — it's an <strong>ordinary outbound API call</strong>, except the callee happens to be an agent too.</p>
+  </div>
+  <div class="col"><h4>😴 Path two · sleeptime edits memory in the background</h4>
+  <p>The foreground agent finishes → the turn counter hits → a background sleeptime agent is <strong>non-blockingly</strong> woken → it rewrites the <strong>shared Block</strong> with memory tools.</p>
+  <p>The foreground <strong>doesn't wait</strong> for it; on the next turn, rebuilding the system prompt, it naturally reads the tidied memory.</p>
+  </div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Footnote: the classic group managers (<span class="mono">round_robin / supervisor / dynamic</span>) stop at the <strong>schema level</strong> — enums, ORM, and class skeletons all exist, but they're <strong>not wired up</strong> and can't run over a live API. This lesson recognizes only those two live paths.</span></div>
+<p>Before we dive in, let's calibrate expectations: if you came for “multi-agent scheduling like an orchestration framework,” v0.16.8 may surprise you — it gives not an orchestration layer but <strong>two lower-level primitives</strong>. Understand these two, and you can build orchestration on top of them yourself.</p>
+<h2>First, count them: how many multi-agent mechanisms are actually live in v0.16.8</h2>
+<p>Many people start by hunting for a “group-chat scheduler” — assuming some object queues turns and lets A, B, and C speak in rotation. In v0.16.8 that object is <strong>mostly asleep</strong>.</p>
+<p>The group manager's executor entry, <span class="mono">groups/helpers.py::load_multi_agent</span>, is <strong>never called</strong> anywhere on the live path; the <span class="mono">/v1/groups</span> routes are entirely <span class="mono">deprecated=True</span> with <strong>no send-message endpoint</strong>; even <span class="mono">SupervisorMultiAgent.step</span> is <strong>commented out entirely</strong>.</p>
+<p>So let's lay out the six <span class="mono">ManagerType</span> enum values — their “intended behavior” beside their “real v0.16.8 status” — side by side. Only one row is green.</p>
+<table class="t">
+<tr><th>ManagerType enum</th><th>Intended routing behavior</th><th>Real status in v0.16.8</th></tr>
+<tr><td class="mono">round_robin</td><td>Members speak in rotation</td><td>Dormant: enum/ORM exist, executor unwired</td></tr>
+<tr><td class="mono">supervisor</td><td>A supervisor dispatches messages to subordinates</td><td>Skeleton: <span class="mono">SupervisorMultiAgent.step</span> commented out</td></tr>
+<tr><td class="mono">dynamic</td><td>An LLM dynamically picks the next speaker</td><td>Dormant: unwired</td></tr>
+<tr><td class="mono">sleeptime</td><td>Foreground finishes, a background agent edits memory</td><td><strong>ACTIVE ✅</strong>: this lesson's star</td></tr>
+<tr><td class="mono">voice_sleeptime</td><td>A sleeptime variant for voice scenarios</td><td>Voice-only (a separate tool set)</td></tr>
+<tr><td class="mono">swarm</td><td>OpenAI-swarm-style handoff</td><td>Not implemented</td></tr>
+</table>
+<p>Remember this table's through-line: <strong>the only group behavior that actually runs over a live API is the <span class="mono">sleeptime</span> row</strong>. The rest are historical leftovers or half-finished; don't let their mere presence fool you when reading the code.</p>
+<p>Why keep these sleeping enums? Because they're <strong>fossils of design intent</strong>: round_robin/supervisor-style orchestration was once envisioned and the schema was even laid down, but the focus shifted to “single agent plus sleeptime memory,” so the execution layer was never wired. Read them to see the direction, but don't treat them as usable features.</p>
+<p>And “agent directly calls agent” (path one)? It's <strong>not in this table at all</strong> — it's not a group manager but a set of <strong>tools</strong>, covered in the next section.</p>
+<p>So keep two layers in mind: <strong>group / ManagerType</strong> is “a config object for a flock of agents,” of which only the sleeptime kind is truly in use; while the <strong>send_message tools</strong> are “a hammer in an agent's hand” — anyone can pick one up to knock on another agent, with no relation to group at all.</p>
+<div class="card analogy"><div class="tag">📝 Real-world analogy</div>
+<p>Picture the team as a <strong>small shop</strong>, with a <strong>shared message board</strong> (the shared <span class="mono">Block</span>) hanging behind the counter.</p>
+<p>The day-shift clerk (the foreground agent) serves customers all day, jotting a few scrawled notes on the board as they go.</p>
+<p>Before closing, the night-shift tidier (the sleeptime agent) is woken to <strong>tidy the day's notes into the same board</strong> — erasing duplicates, filling in the key points.</p>
+<p>When the day shift returns the next morning, it sees the <strong>tidied version</strong> and has no idea anyone came by overnight.</p>
+<p>Clerks can also <strong>pass notes directly</strong> (<span class="mono">send_message_to_agent</span>): write a question to the next counter and wait for them to write back — that's path one.</p>
+</div>
+<details class="accordion"><summary>Why are the classic group managers “sleeping scaffolding”?</summary><div class="acc-body">
+<p>Three hard pieces of evidence. First: the executor <span class="mono">groups/helpers.py::load_multi_agent</span> is <strong>never called</strong> on the live path — it can build the matching multi-agent object by <span class="mono">manager_type</span>, but nobody news it up.</p>
+<p>Second: the <span class="mono">/v1/groups</span> routes are all marked <span class="mono">deprecated=True</span>, and there's simply <strong>no “send a message to a group” endpoint</strong> — you can CRUD a group row but can't make it run.</p>
+<p>Third: the body of <span class="mono">SupervisorMultiAgent.step</span> is <strong>commented out entirely</strong>; calling it does nothing.</p>
+<p>Conclusion: in v0.16.8, <span class="mono">round_robin / supervisor / dynamic</span> are merely <strong>schema plus enum plus class skeleton</strong> — seats saved for the future, not features usable today.</p>
+</div></details>
 <!--ENMORE-->
 """,
 }
