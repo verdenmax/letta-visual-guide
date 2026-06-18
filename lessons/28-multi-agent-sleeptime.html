@@ -417,6 +417,50 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>三者共用同一机制（建 client → <span class="mono">messages.create</span> → 跑对方 loop），区别只在<strong>等不等回复</strong>、<strong>一个还是一批</strong>。</p>
 </div></details>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">别把这条路径和 sleeptime 搞混：<span class="mono">..._and_wait_for_reply</span> 是<strong>同步阻塞</strong>——A 会卡住等 B 跑完。后面 sleeptime 恰恰相反，是<strong>非阻塞</strong>后台任务。两种"多 agent"在阻塞语义上完全相反。</span></div>
+<h2>第二条活路：sleeptime（后台 agent 悄悄改记忆）</h2>
+<p>sleeptime 才是 v0.16.8 唯一<strong>真正活着</strong>的"群"行为。接线点在 <span class="mono">agents/agent_loop.py::AgentLoop.load</span>：当 agent 是 <span class="mono">letta_v1_agent / sleeptime_agent</span>、开了 <span class="mono">enable_sleeptime</span>、且挂在一个 group 上，就交给 <span class="mono">SleeptimeMultiAgentV4</span>。</p>
+<p>最关键的一点先说破：<span class="mono">groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4</span> <strong>直接继承 <span class="mono">LettaAgentV3</span></strong>——它<strong>就是第 13、14 课那个普通 loop 的子类</strong>，不是什么特殊子系统。</p>
+<p>它的 <span class="mono">step</span> 干两件事：先 <span class="mono">await super().step(...)</span> 把<strong>前台主 agent</strong> 正常跑一轮、存下 <span class="mono">response_messages</span>；再调 <span class="mono">run_sleeptime_agents()</span> 看看要不要叫醒后台。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/groups/sleeptime_multi_agent_v4.py</span><span class="ln">SleeptimeMultiAgentV4：前台先跑，再非阻塞拉起后台（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">SleeptimeMultiAgentV4</span>(LettaAgentV3):       <span class="cm"># 注意：它就是普通 loop 的子类</span>
+    <span class="kw">async def</span> <span class="fn">step</span>(self, input_messages, ...):
+        <span class="cm"># 1) 前台主 agent 照常跑一轮，存下这轮产出的消息</span>
+        response_messages = <span class="kw">await</span> <span class="fn">super</span>().<span class="fn">step</span>(input_messages, ...)
+        <span class="cm"># 2) 看看要不要叫醒后台 sleeptime agents</span>
+        <span class="kw">await</span> self.<span class="fn">run_sleeptime_agents</span>(response_messages)
+        <span class="kw">return</span> response_messages
+
+    <span class="kw">async def</span> <span class="fn">run_sleeptime_agents</span>(self, response_messages):
+        count = <span class="kw">await</span> group_manager.<span class="fn">bump_turns_counter_async</span>(self.group.id)  <span class="cm"># (c+1) % frequency</span>
+        <span class="kw">if</span> count % self.group.sleeptime_agent_frequency != 0:
+            <span class="kw">return</span>                                   <span class="cm"># 没到点，跳过</span>
+        <span class="kw">for</span> agent_id <span class="kw">in</span> self.group.agent_ids:     <span class="cm"># 后台编辑者们</span>
+            <span class="kw">await</span> self.<span class="fn">_issue_background_task</span>(agent_id, response_messages)  <span class="cm"># 非阻塞 safe_create_task</span>
+</pre></div>
+<p>逐句读：<span class="mono">bump_turns_counter_async</span> 把计数器推进 <span class="mono">(c+1) % frequency</span>；只有<strong>整除（<span class="mono">% frequency == 0</span>）</strong>才命中。</p>
+<p>命中后，对 <span class="mono">group.agent_ids</span> 里的<strong>每个后台 sleeptime agent</strong> 做 <span class="mono">_issue_background_task</span>：建一个 <span class="mono">Run</span>，再 <span class="mono">safe_create_task(_participant_agent_step)</span>——一个<strong>非阻塞的 asyncio 后台任务</strong>。前台<strong>不等</strong>它。</p>
+<p>那后台任务做什么？<span class="mono">_participant_agent_step</span> 把 <span class="mono">prior + response_messages</span> 拼成 transcript，包进一段 <span class="mono">&lt;system-reminder&gt;</span>——"你是后台 sleeptime agent，职责是记忆管理，用记忆工具更新相关 block"，再以<strong>完整的 <span class="mono">LettaAgentV3</span></strong> 跑 <span class="mono">step</span>。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>User → 前台 step</h4><p>用户消息进来，<span class="mono">SleeptimeMultiAgentV4.step</span> 先 <span class="mono">await super().step()</span> 跑前台主 agent。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>bump_turns_counter</h4><p>计数器推进 <span class="mono">(c+1) % frequency</span>；问一句：<span class="mono">% frequency == 0</span> 吗？</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>命中 → 非阻塞拉起</h4><p>到点则对每个后台 agent <span class="mono">safe_create_task(_participant_agent_step)</span>；前台<strong>不等</strong>，直接返回。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>sleeptime step → memory_rethink</h4><p>后台 agent 以完整 <span class="mono">LettaAgentV3</span> 跑 <span class="mono">step</span>，用 <span class="mono">memory_rethink</span> 改写记忆。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>写共享 Block（version++）</h4><p>新内容落到那一行 <span class="mono">Block</span>，乐观锁 <span class="mono">version</span> 自增。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>下回合前台读到</h4><p>前台下一回合重建 system prompt 时，自然读到被整理过的新值。</p></div></div>
+</div>
+<details class="accordion"><summary>sleeptime 多久触发一次？为什么"第一回合就触发"？</summary><div class="acc-body">
+<p>频率由 <span class="mono">group.sleeptime_agent_frequency</span> 决定，默认 <strong>5</strong>（见 <span class="mono">server.py::create_sleeptime_agent_async</span>）。</p>
+<p>命中条件是 <span class="mono">bump_turns_counter</span> 推进后 <span class="mono">% frequency == 0</span>。</p>
+<p>玄机在初值：<span class="mono">GroupManager.create_group_async</span> 给 sleeptime 把 <span class="mono">turns_counter</span> 设成 <strong><span class="mono">-1</span></strong>。第一回合 <span class="mono">(-1+1)=0</span>，<span class="mono">0 % 5 == 0</span> → <strong>首回合就命中</strong>。</p>
+<p>于是新建的 sleeptime agent 不必干等 5 回合，第一轮对话后台就开始整理记忆了。</p>
+</div></details>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">记住这条因果链：<strong>sleeptime ＝ 同一个 <span class="mono">LettaAgentV3</span> loop ＋ 一行共享记忆 ＋ 一个回合计数器</strong>。没有"特殊的记忆整理子系统"——只是把普通 agent 丢进一段 transcript、给它记忆工具、告诉它"你的活儿是整理记忆"。</span></div>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">functions/function_sets/multi_agent.py</span>——三个 <span class="mono">send_message_to_agent_*</span> 工具，<span class="mono">LETTA_MULTI_AGENT_CORE</span>，沙箱执行。</p>
+<p><span class="mono">groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4</span>——继承 <span class="mono">LettaAgentV3</span>；<span class="mono">step</span> 先 <span class="mono">super().step()</span> 再 <span class="mono">run_sleeptime_agents</span>。</p>
+<p><span class="mono">orm/blocks_agents.py::BlocksAgents</span>——复合主键 <span class="mono">(agent_id, block_id, block_label)</span>，让一行 Block 挂到多个 agent。</p>
+<p><span class="mono">services/tool_executor/core_tool_executor.py::CoreToolExecutor.memory_rethink</span>——sleeptime 改记忆的落点。</p>
+</div>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
