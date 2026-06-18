@@ -545,14 +545,14 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">1. 在 Letta 里，一个 agent 物理上到底是什么？</div>
   <ol class="opts">
-    <li>数据库里一条可序列化的 AgentState 记录（记忆 / message_ids / system / tools / 配置）</li>
+    <li>数据库里一条可序列化的 AgentState 记录</li>
     <li>一条长期保持的网络连接（session）</li>
     <li>一份微调过的模型权重</li>
     <li>一个必须一直开着的常驻进程，在内存里记着对话</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
-    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。创建 agent 就是往库里写一行；读出来是一个 AgentState，装着重建它所需的全部状态。没有活对象、没有常驻进程——状态被完整外化成数据，运行时每个请求由 AgentLoop.load 现搭、跑完即弃。</div></div></div>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。创建 agent 就是往库里写一行；读出来是一个 AgentState，装着重建它所需的全部状态（记忆 / message_ids / system / tools / 配置）。没有活对象、没有常驻进程——状态被完整外化成数据，运行时每个请求由 AgentLoop.load 现搭、跑完即弃。</div></div></div>
   </details>
 </div>
 <div class="quiz">
@@ -560,7 +560,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <ol class="opts">
     <li>前缀是创建时间戳，用来排序</li>
     <li>前缀是自增主键，越小越早创建</li>
-    <li>前缀即实体类型：自证类型、好调试，配上 uuid4 不撞车且与机器无关（可移植）</li>
+    <li>前缀即实体类型：自证类型、便于排错</li>
     <li>前缀是分片所在的服务器编号</li>
   </ol>
   <details class="accordion">
@@ -801,14 +801,14 @@ We've leaned on two words for several lessons — "stateful" and "stateless" —
 <div class="quiz">
   <div class="qn">1. In Letta, what is an agent physically?</div>
   <ol class="opts">
-    <li>One serializable AgentState record in the database (memory / message_ids / system / tools / configs)</li>
+    <li>One serializable AgentState record in the database</li>
     <li>A long-lived network connection (session)</li>
     <li>A set of fine-tuned model weights</li>
     <li>A resident process that must stay running, holding the conversation in memory</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
-    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Creating an agent writes a row; read it back and you get an AgentState holding all state needed to rebuild it. There's no live object or resident process — state is fully externalized as data, and the runtime is rebuilt per request by AgentLoop.load and discarded.</div></div></div>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Creating an agent writes a row; read it back and you get an AgentState holding all state needed to rebuild it (memory / message_ids / system / tools / configs). There's no live object or resident process — state is fully externalized as data, and the runtime is rebuilt per request by AgentLoop.load and discarded.</div></div></div>
   </details>
 </div>
 <div class="quiz">
@@ -816,7 +816,7 @@ We've leaned on two words for several lessons — "stateful" and "stateless" —
   <ol class="opts">
     <li>The prefix is the creation timestamp, used for sorting</li>
     <li>The prefix is an auto-increment key; smaller means created earlier</li>
-    <li>The prefix is the entity type: self-describing, easy to debug, plus a uuid4 means no collisions and machine-independence (portable)</li>
+    <li>The prefix is the entity type: self-describing and easy to debug</li>
     <li>The prefix is the shard's server number</li>
   </ol>
   <details class="accordion">

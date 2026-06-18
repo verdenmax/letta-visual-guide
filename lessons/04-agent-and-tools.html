@@ -553,7 +553,7 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
   <ol class="opts">
     <li>为了减少 token 计费</li>
     <li>为了让工具执行得更快</li>
-    <li>用 schema 的最大公约数，跨所有支持 function calling 的 provider 统一强制“先推理后行动”，还能用 required + 排第一强制顺序</li>
+    <li>用工具 schema 跨所有 provider 统一强制“先推理后行动”</li>
     <li>因为模型权重里没有空间存放思考</li>
   </ol>
   <details class="accordion">
@@ -564,7 +564,7 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
 <div class="quiz">
   <div class="qn">3. ReAct 循环的正确顺序是哪一个？</div>
   <ol class="opts">
-    <li>想（推理）→ 做（产出 tool_call）→ 看（观察工具结果）→ 再想……直到不再调工具</li>
+    <li>想 → 做 → 看 → 再想，直到不再调工具</li>
     <li>做 → 想 → 看 → 训练</li>
     <li>看 → 回话 → 想 → 做</li>
     <li>一次性想完所有步骤，再一起执行</li>
@@ -802,7 +802,7 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
   <ol class="opts">
     <li>To reduce token billing</li>
     <li>To make tool execution run faster</li>
-    <li>Using the schema's greatest common denominator to force 'reason before act' uniformly across all function-calling providers, and enforce order via required + first position</li>
+    <li>Using the tool schema to force 'reason before act' uniformly across providers</li>
     <li>Because the model weights have no room to store thinking</li>
   </ol>
   <details class="accordion">
@@ -813,7 +813,7 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
 <div class="quiz">
   <div class="qn">3. Which is the correct order of the ReAct loop?</div>
   <ol class="opts">
-    <li>Think (reason) → Act (emit tool_call) → Observe (see the tool result) → think again... until no tool is called</li>
+    <li>Think → Act → Observe → think again, until no tool is called</li>
     <li>Act → Think → Observe → Train</li>
     <li>Observe → Reply → Think → Act</li>
     <li>Think through all steps at once, then execute them together</li>

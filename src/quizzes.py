@@ -86,8 +86,8 @@ QUIZZES = {
                     "en": "Mechanically, what does 'self-editing memory' mean?",
                 },
                 "opts": [
-                    {"zh": "agent 改写自己的系统提示（核心记忆被重新编译进第 0 条 system 消息）",
-                     "en": "The agent rewrites its own system prompt (core memory is recompiled into message #0)"},
+                    {"zh": "agent 改写自己的系统提示",
+                     "en": "The agent rewrites its own system prompt"},
                     {"zh": "重新训练（微调）底层模型",
                      "en": "Re-training (fine-tuning) the underlying model"},
                     {"zh": "把整段对话写进一个日志文件",
@@ -284,8 +284,8 @@ QUIZZES = {
                     "en": "Why does Letta make the 'inner monologue' an argument (thinking) inside every tool schema?",
                 },
                 "opts": [
-                    {"zh": "用 schema 的最大公约数，跨所有支持 function calling 的 provider 统一强制“先推理后行动”，还能用 required + 排第一强制顺序",
-                     "en": "Using the schema's greatest common denominator to force 'reason before act' uniformly across all function-calling providers, and enforce order via required + first position"},
+                    {"zh": "用工具 schema 跨所有 provider 统一强制“先推理后行动”",
+                     "en": "Using the tool schema to force 'reason before act' uniformly across providers"},
                     {"zh": "为了让工具执行得更快",
                      "en": "To make tool execution run faster"},
                     {"zh": "因为模型权重里没有空间存放思考",
@@ -305,8 +305,8 @@ QUIZZES = {
                     "en": "Which is the correct order of the ReAct loop?",
                 },
                 "opts": [
-                    {"zh": "想（推理）→ 做（产出 tool_call）→ 看（观察工具结果）→ 再想……直到不再调工具",
-                     "en": "Think (reason) → Act (emit tool_call) → Observe (see the tool result) → think again... until no tool is called"},
+                    {"zh": "想 → 做 → 看 → 再想，直到不再调工具",
+                     "en": "Think → Act → Observe → think again, until no tool is called"},
                     {"zh": "做 → 想 → 看 → 训练",
                      "en": "Act → Think → Observe → Train"},
                     {"zh": "看 → 回话 → 想 → 做",
@@ -357,8 +357,8 @@ QUIZZES = {
                     "en": "Why does Letta insist on 'stable prefix + changing tail,' not refreshing the system prompt during normal steps?",
                 },
                 "opts": [
-                    {"zh": "前缀逐 token 不变才能命中 prefix cache、跳过昂贵的 prefill，省时省钱",
-                     "en": "A token-for-token stable prefix hits the prefix cache and skips the costly prefill, saving time and money"},
+                    {"zh": "前缀不变才能命中 prefix cache、跳过昂贵的 prefill",
+                     "en": "A stable prefix hits the prefix cache and skips the costly prefill"},
                     {"zh": "因为系统提示不允许被修改",
                      "en": "Because the system prompt is not allowed to be modified"},
                     {"zh": "因为模型读不懂太长的系统提示",
@@ -378,8 +378,8 @@ QUIZZES = {
                     "en": "'Just switch to a 1M-context model and you won't need memory management' — what's wrong with this?",
                 },
                 "opts": [
-                    {"zh": "长上下文只是放宽约束而非取消它：成本随 token 涨、prefill 延迟涨、还有 lost-in-the-middle",
-                     "en": "Long context only loosens, not removes, the constraint: cost rises with tokens, prefill latency rises, plus lost-in-the-middle"},
+                    {"zh": "长上下文只是放宽约束，而非取消它",
+                     "en": "Long context only loosens the constraint, it doesn't remove it"},
                     {"zh": "1M 上下文的模型根本不存在",
                      "en": "1M-context models don't exist at all"},
                     {"zh": "长上下文模型不能调用工具",
@@ -409,8 +409,8 @@ QUIZZES = {
                     "en": "In Letta, what is an agent physically?",
                 },
                 "opts": [
-                    {"zh": "数据库里一条可序列化的 AgentState 记录（记忆 / message_ids / system / tools / 配置）",
-                     "en": "One serializable AgentState record in the database (memory / message_ids / system / tools / configs)"},
+                    {"zh": "数据库里一条可序列化的 AgentState 记录",
+                     "en": "One serializable AgentState record in the database"},
                     {"zh": "一个必须一直开着的常驻进程，在内存里记着对话",
                      "en": "A resident process that must stay running, holding the conversation in memory"},
                     {"zh": "一份微调过的模型权重",
@@ -420,8 +420,8 @@ QUIZZES = {
                 ],
                 "answer": 0,
                 "why": {
-                    "zh": "创建 agent 就是往库里写一行；读出来是一个 AgentState，装着重建它所需的全部状态。没有活对象、没有常驻进程——状态被完整外化成数据，运行时每个请求由 AgentLoop.load 现搭、跑完即弃。",
-                    "en": "Creating an agent writes a row; read it back and you get an AgentState holding all state needed to rebuild it. There's no live object or resident process — state is fully externalized as data, and the runtime is rebuilt per request by AgentLoop.load and discarded.",
+                    "zh": "创建 agent 就是往库里写一行；读出来是一个 AgentState，装着重建它所需的全部状态（记忆 / message_ids / system / tools / 配置）。没有活对象、没有常驻进程——状态被完整外化成数据，运行时每个请求由 AgentLoop.load 现搭、跑完即弃。",
+                    "en": "Creating an agent writes a row; read it back and you get an AgentState holding all state needed to rebuild it (memory / message_ids / system / tools / configs). There's no live object or resident process — state is fully externalized as data, and the runtime is rebuilt per request by AgentLoop.load and discarded.",
                 },
             },
             {
@@ -430,8 +430,8 @@ QUIZZES = {
                     "en": "In a prefixed id like agent-1a2b… / block-9f8e…, what does the prefix encode and why is it useful?",
                 },
                 "opts": [
-                    {"zh": "前缀即实体类型：自证类型、好调试，配上 uuid4 不撞车且与机器无关（可移植）",
-                     "en": "The prefix is the entity type: self-describing, easy to debug, plus a uuid4 means no collisions and machine-independence (portable)"},
+                    {"zh": "前缀即实体类型：自证类型、便于排错",
+                     "en": "The prefix is the entity type: self-describing and easy to debug"},
                     {"zh": "前缀是创建时间戳，用来排序",
                      "en": "The prefix is the creation timestamp, used for sorting"},
                     {"zh": "前缀是分片所在的服务器编号",
