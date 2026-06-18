@@ -424,6 +424,26 @@ LESSON_28 = {
 <p>So what's “shared” is that row's current value, and the visibility boundary is “the next prompt rebuild,” not “an immediate push.”</p>
 </div></details>
 <p>This “share one row” coordination has the benefit of <strong>zero extra machinery</strong>: no message bus, no lock service — just reusing the Block plus optimistic lock you already learned. The cost is <strong>weak real-time</strong>: a peer's update takes effect only at “the next prompt rebuild,” unfit for scenarios needing millisecond-level sync.</p>
+<h2>A most counterintuitive wiring: who is the “manager”?</h2>
+<p>Two fields in a sleeptime group are the easiest to read backwards. <span class="mono">manager_agent_id</span> sounds like “the coordinator” but is actually the <strong>foreground primary agent</strong>; <span class="mono">group.agent_ids</span> sounds like “ordinary members” but is actually the <strong>background editors</strong> (those sleeptime agents).</p>
+<p>In other words: the “protagonist” running the user conversation is recorded as <span class="mono">manager</span>, while the background agents doing the dirty “tidy memory” work lie in <span class="mono">agent_ids</span>. The naming runs opposite to intuition; watch it closely when reading <span class="mono">orm/group.py::Group</span>.</p>
+<p>The <span class="mono">Group</span> row also carries <span class="mono">manager_type / manager_agent_id / sleeptime_agent_frequency / turns_counter / agent_ids</span>, and links to <span class="mono">agents</span> via the M2M table <span class="mono">groups_agents</span> — one table recording “who's the protagonist, who's the night shift, and how often to wake them.”</p>
+<p>Why record it this way? Because sleeptime's “subject” is always the foreground conversation: it's the one that, on finishing, trips the counter, and whose <span class="mono">step</span> wakes the background in passing. The background editors are just its “errand-runners,” so recording the foreground as <span class="mono">manager</span> and stuffing the background into <span class="mono">agent_ids</span> is, from the implementation's view, self-consistent.</p>
+<div class="cute"><div class="row"><span class="emoji">😴</span><span class="lab">Primary agent sleeps</span><span class="arrow">→</span><span class="emoji">🧠</span><span class="lab">Memory block quietly rewritten</span><span class="arrow">→</span><span class="emoji">✨</span><span class="bubble">Better memory on waking</span></div><div class="cap">😴 While the foreground primary agent “sleeps,” the sleeptime agent erases the 🧠 shared memory block and rewrites it into a tidier version; ✨ the primary agent wakes next turn to find the memory already tidied — never knowing anyone came by overnight</div></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>Sleeptime = implementing “memory tidying” as a <strong>recursive reuse of the agent abstraction</strong>. That background “memory tidier” isn't a special subsystem — it's <strong>just another <span class="mono">LettaAgentV3</span></strong> (<span class="mono">SleeptimeMultiAgentV4</span> simply subclasses the ordinary loop).</p>
+<p>It's dropped into a transcript, given the <span class="mono">sleeptime_memory_persona</span>, handed a set of memory tools, then told “your job is to tidy memory” — that's all.</p>
+<p>The coordination primitive between two agents is humble to the point of being just a <strong>shared mutable <span class="mono">Block</span> row</strong>: A writes, and B reads it the next time it rebuilds its system prompt.</p>
+<p>So the whole feature = (the same loop) plus (one shared memory row) plus (one turn counter). Three building blocks, no fourth.</p>
+<p>The most counterintuitive corollary: v0.16.8 has <strong>no dedicated “multi-agent runtime” at all</strong> — the <span class="mono">round_robin / supervisor</span> set is sleeping scaffolding, and real multi-agent behavior all <strong>emerges</strong> from “one agent calling another's API” and “two agents pointing at the same block.”</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>Standard sleeptime's memory tool is <span class="mono">memory_rethink</span>, <strong>not</strong> <span class="mono">rethink_memory</span> (legacy) or <span class="mono">finish_rethinking_memory</span> (voice-only).</p>
+<p>Opposite blocking semantics: <span class="mono">..._and_wait_for_reply</span> is <strong>synchronous and blocking</strong>; the sleeptime background task is <strong>non-blocking</strong>. Don't apply one's intuition to the other.</p>
+<p>Fields read backwards easily: sleeptime's <span class="mono">manager_agent_id</span> = the <strong>foreground primary agent</strong>, and <span class="mono">group.agent_ids</span> = the <strong>background editors</strong>.</p>
+<p>A “shared block” shares the <strong>same Block row</strong>, not a copy each — edit one place and the other agent sees it on its next prompt rebuild.</p>
+<p><span class="mono">round_robin / supervisor / dynamic</span> cannot run over a live API in v0.16.8; don't read the schema and assume they're usable.</p>
+</div>
 <!--ENMORE-->
 """,
 }
