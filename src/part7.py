@@ -924,6 +924,32 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 
 LESSON_26 = {
     "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">上一课我们站在二楼柜台前，看清了每个 manager 方法那副"开门取数、门内换装"的统一形状。其中第 3 步那句 <span class="mono">apply_access_predicate</span> 把租户隔离"焊进每条 SQL"，当时只被一笔带过。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课推开三楼档案室的门，看清那道门禁到底怎么运作：约 40 个模型共用一个 <span class="mono">SqlalchemyBase</span>，一套泛型 async CRUD，把"只看你那一格"焊在最低层。<strong>secure by default</strong>——不是"记得加"，而是想漏都难。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>每条查询，默认就只看得到"你这租户、还没删"的行</strong>。</p>
+<p>读路（<span class="mono">read / list / size</span>）只要传了 <span class="mono">actor</span>，门禁自动追加一句 <span class="mono">WHERE organization_id == actor.org</span>。</p>
+<p>写路（<span class="mono">create / update</span>）顺手盖上审计字段：谁建的、谁最后改的、何时。</p>
+<p>"删"默认是<strong>软删</strong>：<span class="mono">delete_async</span> 只把 <span class="mono">is_deleted</span> 翻成 <span class="mono">True</span>，行还躺在库里。</p>
+<p>这套东西全长在一个抽象基类 <span class="mono">SqlalchemyBase</span> 上，约 40 个模型继承即得，无需各写一遍。</p>
+</div>
+<p>这不是某个模型的个性，而是<strong>所有模型的公共底座</strong>。下面先把"secure by default"画成一张总流程，再逐段拆开。</p>
+<p>也先点破一处反直觉：<span class="mono">actor</span> 缺席时，这道门禁<strong>不硬失败</strong>，而是打一条响亮的 <span class="mono">SECURITY</span> 警告、无范围地照跑——为什么这么设计，本课后半专门讲。</p>
+<p>再把镜头摆正：第 24 课看"整栋三层楼"，第 25 课看"二楼柜台"，这一课只盯<strong>三楼那道门禁</strong>——一条查询从拼装到落库，每一步加了什么过滤。</p>
+<h2>一条查询的安检流水线（secure by default）</h2>
+<p>把"默认安全"摊开成一条流水线，你会看到：身份在<strong>最外层</strong>被认出来，隔离在<strong>最里层</strong>被焊进 SQL，中间几棒只负责把 <span class="mono">actor</span> 老实串下去。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>口令中间件（可选）</h4><p><span class="mono">CheckPasswordMiddleware</span>：整服务器级的一道闸，<span class="mono">--secure</span> 模式才挂；与租户正交。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>get_headers · 认身份</h4><p>从 <span class="mono">user_id</span> header 取值，校验形如 <span class="mono">user-&lt;uuid4&gt;</span>；只校验格式，<strong>不碰 DB</strong>。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>解析 actor</h4><p><span class="mono">get_actor_or_default_async</span>：查到 → <span class="mono">User</span>（带 org）；<span class="mono">no_default_actor</span> 且无 id → 拒。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>manager 串 actor</h4><p>路由把 <span class="mono">actor</span> 一路串进 manager 方法——"串 actor"是阻力最小的写法。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>进泛型 CRUD</h4><p><span class="mono">&lt;crud&gt;_async(actor=...)</span>：落到 <span class="mono">SqlalchemyBase</span> 那套统一动词。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>焊隔离</h4><p><span class="mono">apply_access_predicate</span> 自动追加 <span class="mono">WHERE org==actor.org</span>（<span class="mono">+ is_deleted==False</span> 仅当 <span class="mono">check_is_deleted</span>）。</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>只剩你那一格</h4><p>SQL 落库，回来的只有<strong>这租户、未删</strong>的行；越权的行根本没进结果集。</p></div></div>
+</div>
+<p>七步里，真正"决定你看到谁"的是第 6 步那句自动追加的 <span class="mono">WHERE</span>；前五步都在做同一件事——把"你是谁"安全地送到门禁面前。</p>
+<p>注意第 1 步打了括号：服务器口令是整服务器级的闸，<strong>与租户隔离正交</strong>——口令管"能不能进这台服务器"，<span class="mono">actor</span> 管"进来后看得到哪一格"。这层正交后面单讲。</p>
+<p>也盯住第 6 步括号里那半句：<span class="mono">is_deleted==False</span> 只有在 <span class="mono">check_is_deleted</span> 为真时才追加——换句话说，<strong>软删行默认仍会被读回来</strong>。这条最反直觉，软删那节细说。</p>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
