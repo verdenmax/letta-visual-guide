@@ -1285,6 +1285,45 @@ LESSON_26 = {
 <p>The physical columns are named <span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span> (with the underscore) to decouple from the outward attributes: the attribute setter asserts the incoming id starts with <span class="mono">"user"</span>, blocking garbage.</p>
 <p><span class="mono">created_by_id</span> never changes once first set, <span class="mono">last_updated_by_id</span> refreshes on every write — one records "who birthed it," the other "who last touched it."</p>
 </div></details>
+<h2>Where actor comes from: the entrance to secure by default</h2>
+<p>The whole premise of isolation is that <span class="mono">actor</span>. Where does it come from? The answer is surprisingly plain: an <strong>HTTP header</strong>.</p>
+<p><span class="mono">rest_api/dependencies.py::get_headers</span> uses <span class="mono">Header(None, alias="user_id")</span> to read the <span class="mono">user_id</span> header and validate it looks like <span class="mono">user-&lt;uuid4&gt;</span> — <strong>format only, never touches the DB</strong>.</p>
+<p>What actually turns that id into a <span class="mono">User</span> is <span class="mono">get_actor_or_default_async</span>:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/user_manager.py</span><span class="ln">get_actor_or_default_async: resolve the id in the header into an actor (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">get_actor_or_default_async</span>(self, actor_id=<span class="kw">None</span>):
+    <span class="kw">if</span> settings.no_default_actor <span class="kw">and</span> actor_id <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)               <span class="cm"># secure mode: must carry identity explicitly</span>
+    actor_id = actor_id <span class="kw">or</span> DEFAULT_USER_ID     <span class="cm"># otherwise fall back to the default user</span>
+    <span class="kw">try</span>:
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">get_user_by_id_async</span>(actor_id)   <span class="cm"># PydanticUser (with org)</span>
+    <span class="kw">except</span> NoResultFound:
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">create_default_user_async</span>()    <span class="cm"># first boot: lazily create the default user/org</span>
+</pre></div>
+<p>Three steps: the <span class="mono">no_default_actor</span> guard blocks "naked" requests; otherwise an empty id falls back to <span class="mono">DEFAULT_USER_ID</span>; finally it looks up that user, and on a miss lazily creates a default user (with <span class="mono">DEFAULT_ORG_ID</span>).</p>
+<p>It returns a <span class="mono">PydanticUser</span> carrying <span class="mono">organization_id</span> — precisely the field <span class="mono">apply_access_predicate</span> uses to scope by org. The identity chain closes here: <strong>header → actor → org → every query's WHERE</strong>.</p>
+<p>Note that <span class="mono">get_headers</span> "never touching the DB" is deliberate: it does only a cheap format check and leaves "does this user actually exist" to the query that truly uses it. <strong>Auth and data-fetch are decoupled</strong>, keeping the entrance extremely light.</p>
+<p>This also draws the boundary of secure by default: identity validation only guarantees "the format is right," while the real isolation happens in that low-level <span class="mono">where</span>. Two checkpoints, one light and one heavy, neither dispensable.</p>
+<p>Watch this fallback: with <span class="mono">no_default_actor</span> off, a request missing <span class="mono">user_id</span> lands in the <strong>shared default tenant</strong>. Handy in development, but be careful in production — don't let multiple real tenants share the default org.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">The "default" in secure by default actually carries two meanings: <strong>default isolation</strong> (the predicate on every query) and the <strong>default actor</strong> when identity is missing. The former is always on; the latter can be switched off with <span class="mono">no_default_actor</span> to force every request to carry identity explicitly.</span></div>
+<details class="accordion"><summary>Server password vs tenant isolation — are these the same thing?</summary><div class="acc-body">
+<p>No, <strong>completely orthogonal</strong>. The server password is handled by <span class="mono">middleware/check_password.py::CheckPasswordMiddleware</span>, mounted only when <span class="mono">LETTA_SERVER_SECURE=true</span> (or <span class="mono">--secure</span>).</p>
+<p>It recognizes a <strong>single shared secret</strong>: <span class="mono">X-BARE-PASSWORD: password &lt;pw&gt;</span> or <span class="mono">Authorization: Bearer &lt;pw&gt;</span> — right passes, wrong gets <span class="mono">401</span>, with health probes exempt.</p>
+<p>Key: this gate is <strong>tenant-agnostic</strong> — it governs only "can you enter this server"; once in, which org you are and which cell you see is entirely decided by <span class="mono">actor</span>.</p>
+<p>So the two layers stack: the password is the <strong>front-door gate</strong> (whole-server-level), actor isolation is the <strong>cell partition inside the cabinet</strong> (tenant-level). One keeps outsiders out of the building, the other keeps departments in the same building apart.</p>
+</div></details>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>The inversion of multi-tenant isolation: it doesn't "remember to add a <span class="mono">WHERE</span>" in each handler but is <strong>welded into the lowest-level query builder</strong>. Around 40 models share one <span class="mono">SqlalchemyBase</span>, so "scope every read by the caller's org" is written once and auto-applied to <span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">size_async</span> / <span class="mono">bulk_hard_delete_async</span>.</p>
+<p>So a new-feature author writes <strong>zero tenant SQL</strong> — just thread <span class="mono">actor</span> through ("router → manager" makes threading actor the path of least resistance), and cross-tenant leakage becomes structurally hard: there's no per-endpoint <span class="mono">WHERE</span> anywhere to forget.</p>
+<p>A more intriguing trade-off: when actor is missing the base <strong>does not hard-fail</strong> but logs a <span class="mono">SECURITY: ...bypasses organization filtering</span> warning and runs on — because Letta has legitimate, system-internal queries with no user. So it chose <strong>central enforcement + a loud log</strong> over brittle hard failure.</p>
+<p>Stack on two more layers of recoverability that live on this same base: soft delete makes deletion reversible (<span class="mono">delete_async</span> only flips <span class="mono">is_deleted</span>), and the four audit fields let every row natively answer "who, when." So <strong>multi-tenant + recoverable + auditable</strong> are all properties of one abstract class.</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>Though the predicate lives in the base, it's <strong>gated on <span class="mono">if actor:</span></strong>: when <span class="mono">actor=None</span> it only logs a <span class="mono">SECURITY</span> warning and <strong>doesn't block</strong>, running on unscoped. Don't assume "welded into the bottom layer" always blocks.</p>
+<p><strong>Soft-deleted rows are still returned by default</strong>: <span class="mono">check_is_deleted</span> defaults to <span class="mono">False</span>, it's opt-in. Assuming <span class="mono">delete_async</span> makes a row unfindable is the most common trap.</p>
+<p>The default is <strong>org-level</strong> (users in the same org share rows); only <span class="mono">jobs / runs</span> use <strong>user-level</strong> privacy. Don't treat Block/Agent as per-user private.</p>
+<p><span class="mono">access</span> (read/write/admin) is <strong>a no-op for now</strong> (the opening <span class="mono">del access</span>): passing it changes nothing, it just reserves a seat for the future.</p>
+<p>With <span class="mono">no_default_actor</span> off, a request missing <span class="mono">user_id</span> lands in the <strong>shared default tenant</strong> — convenient in development, but in production always carry identity explicitly or enable the guard.</p>
+</div>
 <!--ENMORE-->
 """,
 }
