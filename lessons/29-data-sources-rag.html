@@ -524,7 +524,6 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">别把两种形态搞混：<strong>"上下文里打开的文件"（<span class="mono">FileBlock</span>，只读原文）</strong>不是<strong>"可语义搜索的 passage"（<span class="mono">SourcePassage</span>）</strong>。前者逐字、占上下文、默认最多 5 个；后者按意思召回、不占上下文。同一份文件，两条路。</span></div>
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p>Letta <strong>不另造"RAG 引擎"</strong>——它直接复用归档记忆那套向量机器，只把表、外键、junction、工具名各换一个。</p>
-<p><span class="mono">SourcePassage</span>（你喂给 agent 的文档）和 <span class="mono">ArchivalPassage</span>（agent 自己写的记忆）是同一个 <span class="mono">BasePassage</span> 的两个兄弟，骑同一根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列、同一套 4096 padding、同一个 <span class="mono">cosine_distance</span>（第 27 课）。</p>
 <p>于是"RAG"和"长期记忆"在物理层根本是<strong>一回事</strong>——唯一的真差别是来源：一个你给的，一个它写的。</p>
 <p>次亮点：一份挂载的文件会<strong>同时</strong>活成两种形态——可语义搜索的 <span class="mono">SourcePassage</span> chunk，与上下文窗口里那块只读的 <span class="mono">FileBlock</span>(原文)。一份文件，两种"被记住"的方式。</p>
 </div>
@@ -586,7 +585,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="qn">2. 既然底座相同，SourcePassage 与 ArchivalPassage 真正的差别在哪？</div>
   <ol class="opts">
     <li>向量维度不同：源是 1536 维、归档 pad 到 4096 维</li>
-    <li>只在来源：表/外键/工具不同（source_passages vs archival_passages），向量搜索完全相同</li>
+    <li>只在来源：表/外键/工具不同，向量搜索完全相同</li>
     <li>用不同的距离度量：源用 cosine、归档用 L2 欧氏距离</li>
     <li>只是命名不同，表、外键、工具其实完全一样</li>
   </ol>
@@ -613,7 +612,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <ol class="opts">
     <li>走 legacy connectors.load_data ＋ TokenTextSplitter ＋ create_many_passages_async</li>
     <li>先嵌入整份文件 → 再切块 → 最后 OCR 抽文本写库</li>
-    <li>extract_text(OCR) → 切块(LlamaIndexChunker，尺寸来自 EmbeddingConfig) → 批量嵌入 → create_many_source_passages_async(pgvector 上 pad 4096)</li>
+    <li>extract_text(OCR) → 切块(LlamaIndexChunker) → 批量嵌入 → create_many_source_passages_async</li>
     <li>切块 → 写入 source_passages → 检索时才按需嵌入（懒嵌入）</li>
   </ol>
   <details class="accordion">
@@ -731,14 +730,14 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <span class="kw">await</span> self.agent_manager.<span class="fn">insert_file_into_context_windows</span>(source_id, file, ...)
     <span class="cm"># 4) chunk -&gt; embed (chunk_size comes from EmbeddingConfig)</span>
     chunks = self.chunker.<span class="fn">chunk_text</span>(text)
-    passages = <span class="kw">await</span> self.embedder.<span class="fn">generate_embedded_passages</span>(chunks)  <span class="cm"># 批大小取自 embedding_config.batch_size</span>
+    passages = <span class="kw">await</span> self.embedder.<span class="fn">generate_embedded_passages</span>(chunks)  <span class="cm"># batch size from embedding_config.batch_size</span>
     <span class="cm"># 5) bulk-write into source_passages (each padded to 4096)</span>
     <span class="kw">await</span> self.passage_manager.<span class="fn">create_many_source_passages_async</span>(passages, source_id=source_id)
 </pre></div>
 <p>Read the pipeline segment by segment. <strong>The first three steps "store the original"</strong>: <span class="mono">create_file</span> registers the file as one <span class="mono">FileMetadata</span> row (status <span class="mono">PARSING</span>); <span class="mono">extract_text</span> pulls plain text via OCR/markdown; <span class="mono">upsert_file_content</span> stores the full text into the <span class="mono">file_contents</span> table.</p>
 <p><strong>The fourth step is a fork</strong>: <span class="mono">insert_file_into_context_windows</span> "opens" the file into the agent's context (creating a <span class="mono">FileAgent</span>) — that branch is saved for the final section.</p>
 <p>The fork itself is rather elegant: <strong>ingest once, produce twice</strong> — the same pass both chunks-and-embeds the file (building RAG) and "opens" it into context (building a <span class="mono">FileAgent</span>). Upload one file and both forms are ready at once.</p>
-<p><strong>The last three steps are where RAG is built</strong>: <span class="mono">chunk_text</span> chunks by <span class="mono">EmbeddingConfig</span>, <span class="mono">generate_embedded_passages</span> embeds in batches sized by <span class="mono">EmbeddingConfig</span>, and <span class="mono">create_many_source_passages_async</span> lands them into <span class="mono">source_passages</span>.</p>
+<p><strong>The last three steps are where RAG is built</strong>: <span class="mono">chunk_text</span> chunks by <span class="mono">EmbeddingConfig</span>, <span class="mono">generate_embedded_passages</span> embeds in batches sized by <span class="mono">EmbeddingConfig.batch_size</span>, and <span class="mono">create_many_source_passages_async</span> lands them into <span class="mono">source_passages</span>.</p>
 <p>That <span class="mono">status=PARSING</span> line is no decoration. <span class="mono">FileMetadata</span> carries a <span class="mono">processing_status</span> field plus two counters, <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span> — status starts at <span class="mono">PARSING</span>, the counters track embedding progress, and only when every chunk is embedded is it ready. The frontend's "processing…" progress bar reads exactly this.</p>
 <p>Why store the full text separately in <span class="mono">file_contents</span> rather than keep only chunks? Because the two forms have different needs: <strong>chunks serve semantic recall</strong> (fuzzy-find relevant passages), <strong>full text serves verbatim opening</strong> (<span class="mono">open_files</span> wants the text exactly as is). Stored apart, the two paths don't interfere.</p>
 <p>Why embed in <strong>batches</strong> (size from <span class="mono">EmbeddingConfig.batch_size</span>)? Because embedding calls an external model API; sending one at a time is too slow and too costly. Batch them and send once: higher throughput, fewer round trips. This is the familiar engineering move of "batching to amortize overhead."</p>
@@ -833,7 +832,6 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't conflate the two forms: <strong>"a file opened in context" (<span class="mono">FileBlock</span>, read-only original)</strong> is not <strong>"a semantically searchable passage" (<span class="mono">SourcePassage</span>)</strong>. The former is verbatim, occupies context, and is capped at 5 by default; the latter is recalled by meaning and costs no context. One file, two paths.</span></div>
 <div class="card spark"><div class="tag">💡 Design highlight</div>
 <p>Letta <strong>builds no separate "RAG engine"</strong> — it directly reuses archival memory's vector machinery, swapping only the table, the foreign key, the junction, and the tool name.</p>
-<p><span class="mono">SourcePassage</span> (the documents you feed the agent) and <span class="mono">ArchivalPassage</span> (the memory the agent writes itself) are two siblings of the same <span class="mono">BasePassage</span>, riding the same <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column, the same 4096 padding, the same <span class="mono">cosine_distance</span> (Lesson 27).</p>
 <p>So "RAG" and "long-term memory" are, at the physical layer, the very same thing — the only real difference is the source: one you give, one it writes.</p>
 <p>A secondary highlight: an attached file lives as <strong>two forms at once</strong> — the semantically searchable <span class="mono">SourcePassage</span> chunk, and that read-only <span class="mono">FileBlock</span> (the original) in the context window. One file, two ways of "being remembered."</p>
 </div>
@@ -895,7 +893,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="qn">2. Given the shared foundation, where do SourcePassage and ArchivalPassage actually differ?</div>
   <ol class="opts">
     <li>Different vector dimensions: source is 1536-dim, archival padded to 4096</li>
-    <li>Only in provenance: different table/FK/tool (source_passages vs archival_passages); the vector search is identical</li>
+    <li>Only in provenance: different table/FK/tool; the vector search is identical</li>
     <li>Different distance metrics: source uses cosine, archival uses L2 Euclidean</li>
     <li>Only the names differ; table, FK, and tool are actually identical</li>
   </ol>
@@ -922,7 +920,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <ol class="opts">
     <li>Go through legacy connectors.load_data + TokenTextSplitter + create_many_passages_async</li>
     <li>Embed the whole file first → then chunk → finally OCR the text into the DB</li>
-    <li>extract_text (OCR) → chunk (LlamaIndexChunker, size from EmbeddingConfig) → batch-embed → create_many_source_passages_async (pad 4096 on pgvector)</li>
+    <li>extract_text (OCR) → chunk (LlamaIndexChunker) → batch-embed → create_many_source_passages_async</li>
     <li>Chunk → write to source_passages → embed lazily at retrieval time</li>
   </ol>
   <details class="accordion">

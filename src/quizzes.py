@@ -2760,8 +2760,8 @@ QUIZZES = {
                     "en": "Given the shared foundation, where do SourcePassage and ArchivalPassage actually differ?",
                 },
                 "opts": [
-                    {"zh": "只在来源：表/外键/工具不同（source_passages vs archival_passages），向量搜索完全相同",
-                     "en": "Only in provenance: different table/FK/tool (source_passages vs archival_passages); the vector search is identical"},
+                    {"zh": "只在来源：表/外键/工具不同，向量搜索完全相同",
+                     "en": "Only in provenance: different table/FK/tool; the vector search is identical"},
                     {"zh": "用不同的距离度量：源用 cosine、归档用 L2 欧氏距离",
                      "en": "Different distance metrics: source uses cosine, archival uses L2 Euclidean"},
                     {"zh": "向量维度不同：源是 1536 维、归档 pad 到 4096 维",
@@ -2802,8 +2802,8 @@ QUIZZES = {
                     "en": "In the modern ingestion pipeline FileProcessor.process, what is the correct step order that turns a file into searchable passages?",
                 },
                 "opts": [
-                    {"zh": "extract_text(OCR) → 切块(LlamaIndexChunker，尺寸来自 EmbeddingConfig) → 批量嵌入 → create_many_source_passages_async(pgvector 上 pad 4096)",
-                     "en": "extract_text (OCR) → chunk (LlamaIndexChunker, size from EmbeddingConfig) → batch-embed → create_many_source_passages_async (pad 4096 on pgvector)"},
+                    {"zh": "extract_text(OCR) → 切块(LlamaIndexChunker) → 批量嵌入 → create_many_source_passages_async",
+                     "en": "extract_text (OCR) → chunk (LlamaIndexChunker) → batch-embed → create_many_source_passages_async"},
                     {"zh": "先嵌入整份文件 → 再切块 → 最后 OCR 抽文本写库",
                      "en": "Embed the whole file first → then chunk → finally OCR the text into the DB"},
                     {"zh": "切块 → 写入 source_passages → 检索时才按需嵌入（懒嵌入）",
