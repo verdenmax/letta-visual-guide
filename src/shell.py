@@ -102,6 +102,8 @@ PAGES = [
      "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
     ("28-multi-agent-sleeptime.html", "多智能体与 sleeptime", "Multi-agent & sleeptime",
      "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
+    ("29-data-sources-rag.html", "数据源与 RAG", "Data sources & RAG",
+     "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
 ]
 
 
@@ -596,6 +598,8 @@ SUBTITLES = {
                                     "database_engine: SQLite/Postgres; pgvector / numpy distance; pydantic-in-DB; alembic"),
     "28-multi-agent-sleeptime.html": ("groups · send_message_to_agent_* · sleeptime 后台改记忆 · 共享块",
                                       "groups; send_message_to_agent_*; sleeptime background memory edits; shared blocks"),
+    "29-data-sources-rag.html": ("files → source passages · 摄取+嵌入 · 与归档记忆的区别",
+                                 "files → source passages; ingestion + embeddings; vs archival memory"),
 }
 
 

@@ -462,3 +462,10 @@ LESSON_28 = {
 <p>Part 8 is now open. In the next lesson we continue into the "advanced topics," applying this "old parts, new combinations" mindset to more places.</p>
 """,
 }
+
+LESSON_29 = {
+    "zh": r"""
+<!--ZHMORE-->
+""",
+    "en": r"""<p>stub</p>""",
+}
