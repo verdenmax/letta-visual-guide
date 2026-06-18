@@ -1064,6 +1064,43 @@ LESSON_26 = {
 <p>物理列叫 <span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>（带下划线），是为了和对外属性解耦：属性 setter 会断言传入 id 以 <span class="mono">"user"</span> 开头，挡住乱填。</p>
 <p><span class="mono">created_by_id</span> 首次设定后不再变，<span class="mono">last_updated_by_id</span> 每次写刷新——一个记"谁生的"，一个记"谁最后碰的"。</p>
 </div></details>
+<h2>actor 从哪来：secure by default 的入口</h2>
+<p>隔离的全部前提，是那个 <span class="mono">actor</span>。它从哪来？答案朴素得意外：一个 <strong>HTTP header</strong>。</p>
+<p><span class="mono">rest_api/dependencies.py::get_headers</span> 用 <span class="mono">Header(None, alias="user_id")</span> 取 <span class="mono">user_id</span> 头，校验它形如 <span class="mono">user-&lt;uuid4&gt;</span>——<strong>只校格式，不碰 DB</strong>。</p>
+<p>真正把这个 id 换成 <span class="mono">User</span> 的，是 <span class="mono">get_actor_or_default_async</span>：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/user_manager.py</span><span class="ln">get_actor_or_default_async：把 header 里的 id 解析成 actor（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">get_actor_or_default_async</span>(self, actor_id=<span class="kw">None</span>):
+    <span class="kw">if</span> settings.no_default_actor <span class="kw">and</span> actor_id <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)               <span class="cm"># 安全模式：必须显式带身份</span>
+    actor_id = actor_id <span class="kw">or</span> DEFAULT_USER_ID     <span class="cm"># 否则回退到默认 user</span>
+    <span class="kw">try</span>:
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">get_user_by_id_async</span>(actor_id)   <span class="cm"># PydanticUser（带 org）</span>
+    <span class="kw">except</span> NoResultFound:
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">create_default_user_async</span>()    <span class="cm"># 首次启动：懒建默认 user/org</span>
+</pre></div>
+<p>三步：<span class="mono">no_default_actor</span> 守卫挡住"裸奔"请求；否则把空 id 回退成 <span class="mono">DEFAULT_USER_ID</span>；最后查这个 user，查不到就懒建一个默认 user（带 <span class="mono">DEFAULT_ORG_ID</span>）。</p>
+<p>返回的是 <span class="mono">PydanticUser</span>，身上带着 <span class="mono">organization_id</span>——正是 <span class="mono">apply_access_predicate</span> 用来限定 org 的那个字段。身份链到这里闭合：<strong>header → actor → org → 每条查询的 WHERE</strong>。</p>
+<p>留意这个回退：不开 <span class="mono">no_default_actor</span> 时，缺 <span class="mono">user_id</span> 的请求会落到<strong>共享的 default 租户</strong>。开发顺手，但生产要当心——别让多个真实租户共用了默认 org。</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">secure by default 的 "default" 其实有两层意思：<strong>默认隔离</strong>（每查必套 predicate），和<strong>缺身份时的默认 actor</strong>。前者永远在；后者可被 <span class="mono">no_default_actor</span> 关掉，以强制每个请求都显式带身份。</span></div>
+<details class="accordion"><summary>服务器口令 vs 租户隔离——这俩是一回事吗？</summary><div class="acc-body">
+<p>不是，<strong>完全正交</strong>。服务器口令由 <span class="mono">middleware/check_password.py::CheckPasswordMiddleware</span> 处理，仅在 <span class="mono">LETTA_SERVER_SECURE=true</span>（或 <span class="mono">--secure</span>）时才挂载。</p>
+<p>它认的是<strong>单一共享密钥</strong>：<span class="mono">X-BARE-PASSWORD: password &lt;pw&gt;</span> 或 <span class="mono">Authorization: Bearer &lt;pw&gt;</span>，对就放行、错就 <span class="mono">401</span>，健康探针豁免。</p>
+<p>关键：这道闸<strong>与租户无关</strong>——它只管"能不能进这台服务器"；进来之后你是哪个 org、看得到哪一格，全由 <span class="mono">actor</span> 决定。</p>
+<p>所以两层叠着用：口令是<strong>大门门禁</strong>（整服务器级），actor 隔离是<strong>柜内分格</strong>（租户级）。一个把外人挡在楼外，一个把同楼的部门彼此隔开。</p>
+</div></details>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>多租户隔离的反转：它不在 handler 里"记得加 <span class="mono">WHERE</span>"，而是<strong>焊在最低层的查询构造器里</strong>。约 40 个模型共用一个 <span class="mono">SqlalchemyBase</span>，"按调用者 org 限定每次读"只写一次，自动套在 <span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">size_async</span> / <span class="mono">bulk_hard_delete_async</span> 上。</p>
+<p>于是新功能作者写<strong>零租户 SQL</strong>——只要把 <span class="mono">actor</span> 串下去（"路由 → manager"让串 actor 成了阻力最小的写法），跨租户泄漏在结构上就很难发生：没有任何一处 per-endpoint 的 <span class="mono">WHERE</span> 可被遗忘。</p>
+<p>更耐人寻味的取舍：actor 缺失时 base <strong>不硬失败</strong>，而是打一条 <span class="mono">SECURITY: ...bypasses organization filtering</span> 警告照跑——因为 Letta 有合法的、系统内部无 user 的查询。于是它选了<strong>中央强制 + 响亮日志</strong>，而非脆弱的硬失败。</p>
+<p>再叠两层同长在这个 base 上的可恢复性：软删让删除可逆（<span class="mono">delete_async</span> 只翻 <span class="mono">is_deleted</span>），审计四件套让每行天生能回答"谁、何时"。于是<strong>多租户 + 可恢复 + 可审计，全是一个抽象类的属性</strong>。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>predicate 虽在 base，却 <strong>gated on <span class="mono">if actor:</span></strong>：<span class="mono">actor=None</span> 时只记 <span class="mono">SECURITY</span> 警告、<strong>不拦</strong>，无范围照跑。别以为"焊在底层"就一定拦得住。</p>
+<p><strong>软删行默认仍被返回</strong>：<span class="mono">check_is_deleted</span> 默认 <span class="mono">False</span>，是 opt-in。以为 <span class="mono">delete_async</span> 后就查不到，是最常见的坑。</p>
+<p>默认是 <strong>org 级</strong>（同 org 的用户共享行）；只有 <span class="mono">jobs / runs</span> 才用 <strong>user 级</strong>私有。别把 Block/Agent 当成用户私有的。</p>
+<p><span class="mono">access</span>（read/write/admin）<strong>目前是 no-op</strong>（开头 <span class="mono">del access</span>）：传它不改变任何结果，只是给将来留座。</p>
+<p>不开 <span class="mono">no_default_actor</span> 时，缺 <span class="mono">user_id</span> 的请求会落到<strong>共享 default 租户</strong>——开发方便，生产务必显式带身份或开守卫。</p>
+</div>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
