@@ -442,6 +442,5 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>And the agent loop the server brings up (<span class="mono">AgentLoop.load(...)</span> then <span class="mono">.step(...)</span> from Lessons 13 and 14) is also invoked from this layer — the server is precisely its entry point.</p>
 <p>The next three lessons take apart the second and third floors one by one: Lesson 25 on how managers actually write business logic, Lesson 26 on the ORM's CRUD and multi-tenant isolation, Lesson 27 on the origins of the DB session and <span class="mono">async_session</span>. Three floors, descending one at a time.</p>
 <p>After these three lessons, you'll be able to explain every step of a request, from HTTP all the way to disk, crystal clear.</p>
-<!--ENMORE-->
 """,
 }

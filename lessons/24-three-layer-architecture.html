@@ -548,7 +548,222 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>接下来三课会把第二、三层逐一拆开：第 25 课讲 manager 到底怎么写业务，第 26 课讲 ORM 的 CRUD 与多租户隔离，第 27 课讲 DB session 与 <span class="mono">async_session</span> 的来历。三层楼，一层层往下走。</p>
 <p>走完这三课，你就能把一条请求从 HTTP 一路到磁盘的每一步，都说得清清楚楚。</p>
 </div>
-  <div class="lang-en"><p>stub</p></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">For six parts we've been soaking in the agent's "brain": how memory is layered, how the loop turns, how tools get called, how every provider converges onto one shape. But where does this brain actually run? Who takes an HTTP request in, carries it all the way to the database, and brings the result back?</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">The answer is the <strong>server</strong>. This lesson formally opens Part 7: we follow one request through three floors — the <strong>thin routers</strong> only register and hand off, <strong>SyncServer and its Managers</strong> are the business hub, and the <strong>ORM</strong> guards access control as the work lands in the <strong>DB</strong>. Holding all of this up is the <strong>single global <span class="mono">SyncServer</span></strong> in the process.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Grab this lesson in one line: <strong>an HTTP request must cross three floors before it lands in the database</strong>.</p>
+<p>The first floor is the <strong>thin routers</strong>: a REST endpoint writes almost no business logic — it parses identity and parameters, then hands off.</p>
+<p>The second floor is <span class="mono">SyncServer</span> and the crowd of <strong>Managers</strong> under it: business orchestration and the database session both land here.</p>
+<p>The third floor is the <strong>ORM</strong> (<span class="mono">sqlalchemy_base.py::SqlalchemyBase</span>): it handles CRUD and, along the way, welds access control (multi-tenant isolation) into every SQL statement.</p>
+<p>It finally lands in the <strong>DB</strong> (<span class="mono">db.py::db_registry.async_session</span>). And what holds the whole building up is the <strong>single global <span class="mono">SyncServer</span></strong> in the process.</p>
+</div>
+<p>These three floors aren't an arbitrary taxonomy — they're a request's real path downward. Let's draw that line first; every later section takes apart one stretch of it.</p>
+<p>As you read, picture yourself as that request: you're first checked in at the front desk, then handed to a manager, who opens a transaction door to the archive room to fetch your file, and finally passes the result back to you along the same path.</p>
+<h2>Three floors: a request's path down</h2>
+<p>Standing the building upright is the clearest view: HTTP comes in the front door, falls floor by floor, finally reads and writes in the database, then carries the result back the same way.</p>
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">Floor 1</span><span class="name">Thin routers · REST routers</span></div>
+    <div class="ld">Such as <span class="mono">routers/v1/agents.py::retrieve_agent</span>. Almost no business logic: resolve the actor, handle light parameters, then hand off.</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">Floor 2</span><span class="name">SyncServer + Managers</span></div>
+    <div class="ld">The business hub and the DB session both live here. Thin endpoints often <strong>bypass</strong> SyncServer and go straight to <span class="mono">server.agent_manager.…</span>; only orchestration across several managers calls SyncServer's own methods.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">Floor 3</span><span class="name">ORM · SqlalchemyBase</span></div>
+    <div class="ld"><span class="mono">sqlalchemy_base.py::SqlalchemyBase</span> provides CRUD and welds access control like <span class="mono">apply_access_predicate</span> into every query.</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">Landing</span><span class="name">DB · async_session</span></div>
+    <div class="ld">The real reads and writes happen in a session opened by <span class="mono">db.py::db_registry.async_session</span> — one request often opens several.</div></div>
+</div>
+<p>Note the fine print on Floor 2: thin endpoints mostly <strong>call the manager directly</strong> and don't go through SyncServer's methods. This is counterintuitive; later we'll let the numbers speak.</p>
+<p>Also remember one boundary: the DB session is opened and closed only on Floor 2 (inside the manager); <strong>Floor-1 routers never touch the database</strong>. This boundary foreshadows the later "multiple transactions" section.</p>
+<p>Don't forget the request also <strong>returns the same way</strong>: the row fetched from the DB is lifted floor by floor — turned into an object by the ORM, handed back to the router by the manager, and finally serialized by the router into a JSON response. Calls go down, returns come up; only the round trip counts as finished.</p>
+<p>While we're here, get oriented: lower in the diagram means closer to data and more "stateful"; higher means closer to the protocol and more "stateless". The tidiness of the three-layer architecture comes exactly from this up/down division of labor.</p>
+<p>In other words, this diagram is both a "call stack" and a "trust boundary": each floor down can do more and carries more responsibility, so access control must sit at the very bottom, not the top.</p>
+<div class="card analogy"><div class="tag">🏢 An everyday analogy</div>
+<p>Picture the whole server as a <strong>three-story company</strong>, and you (the HTTP request) walk in the front door to get one thing done.</p>
+<p>The <strong>first-floor front desk</strong> (thin routers) only does check-in: confirm who you are, collect the forms, then say "this belongs to the second floor" and pass the slip up. The desk never digs through the archives itself.</p>
+<p>Only the <strong>second-floor manager</strong> (Manager) has the right to touch data. Crucially — for each file touched, the manager personally opens a door called a "<strong>transaction</strong>" and closes it once done.</p>
+<p>The <strong>third-floor archive room</strong> (ORM / DB) keeps all the records, but who may see which one is decided by the gate (access control); even the manager can't overstep.</p>
+<p>There's also a boss (<span class="mono">SyncServer</span>) presiding: he doesn't handle every little thing himself, stepping in only when "one task needs several managers to coordinate"; otherwise everyone goes straight to the relevant manager.</p>
+<p>One point in this analogy deserves precision: the boss isn't a "must-approve-everything" bottleneck. For everyday small tasks people go straight to the manager; only the big "spans several departments" tasks need the boss to coordinate.</p>
+</div>
+<h2>One process, one global SyncServer</h2>
+<p>The whole building stands only because of that one global <span class="mono">SyncServer</span> in the foundation. Where does it come from? The answer is a bit surprising.</p>
+<p>It's a <strong>module-level global</strong> in <span class="mono">app.py::server</span>, built the moment the module is <strong>imported</strong>.</p>
+<p>Interestingly, the factory <span class="mono">app.py::create_application</span> does contain a <span class="mono">SyncServer(...)</span> line, but it's <strong>commented out</strong> — the server is not built inside the factory.</p>
+<p>So startup is cut into two clean phases: <strong>synchronous wiring at import time</strong> (building the server and all its managers), then <strong>asynchronous initialization at startup</strong>.</p>
+<p>The second phase is what <span class="mono">app.py::lifespan</span> does: only async bootstrapping — <span class="mono">await server.init_async(...)</span> creates the default org/user and upserts the base tools into the DB.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/app.py</span><span class="ln">global server + two-phase startup (simplified)</span></div>
+<pre><span class="cm"># module-level global: a SyncServer is built when this module is imported</span>
+server = <span class="fn">SyncServer</span>(default_interface_factory=<span class="kw">lambda</span>: <span class="fn">interface</span>())
+
+<span class="kw">def</span> <span class="fn">create_application</span>() -&gt; FastAPI:
+    app = <span class="fn">FastAPI</span>(..., lifespan=lifespan)
+    <span class="cm"># server = SyncServer(...)   # commented out in the source: server isn't built in the factory</span>
+    <span class="kw">return</span> app
+
+<span class="nb">@asynccontextmanager</span>
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">lifespan</span>(app: FastAPI):
+    <span class="cm"># startup only does async bootstrap: create default org/user, upsert base tools</span>
+    <span class="kw">await</span> server.<span class="fn">init_async</span>(init_with_default_org_and_user=<span class="kw">True</span>)
+    <span class="kw">yield</span>
+
+<span class="cm"># ---- letta/server/rest_api/dependencies.py ----</span>
+<span class="kw">def</span> <span class="fn">get_letta_server</span>() -&gt; SyncServer:
+    <span class="kw">from</span> letta.server.rest_api.app <span class="kw">import</span> server   <span class="cm"># lazy-import that module global</span>
+    <span class="kw">return</span> server                                  <span class="cm"># not in app.state; every router gets the same one</span>
+</pre></div>
+<p>How do routers get this same server? Dependency injection. <span class="mono">dependencies.py::get_letta_server</span> lazy-imports that module global and returns it directly, <strong>not</strong> stuffing it into <span class="mono">app.state</span>.</p>
+<p>One contrast is easy to confuse here: <span class="mono">create_application</span> builds the FastAPI <strong>application</strong> object, while <span class="mono">server</span> is that global <strong>business</strong> object — one handles routes and middleware, the other handles managers and data; the two are kept well apart.</p>
+<p>Each router asks for one via <span class="mono">Depends(get_letta_server)</span>, and they all get <strong>the same instance</strong>. This is how "one process, one global server" is realized in code.</p>
+<p>Why insist on building it at import time? Because then any module can <span class="mono">from app import server</span> to get the same instance — no passing it through layer after layer, and no reliance on FastAPI's <span class="mono">app.state</span>.</p>
+<p>So what does <span class="mono">init_async</span> add? It does the "bootstrapping that needs <span class="mono">await</span> after the object exists": writing the default org and user, upserting a batch of base tools into the DB — all work that must hit the DB and therefore be async.</p>
+<p>Separating the two phases buys something real: construction (synchronous, pure memory) and bootstrapping (asynchronous, hits the DB) each stay in their lane, the startup order is crystal clear, and tests can construct without bootstrapping.</p>
+<p>One more detail: <span class="mono">init_async</span> is basically <strong>re-entrant</strong> — it creates the default org/user only if absent, and base tools go through upsert rather than insert, so running it again on restart won't mess up the data.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Remember this two-phase shape: <strong>synchronous wiring at import + async init at startup</strong>. The former is pure object construction, touching neither network nor DB; the latter (<span class="mono">init_async</span>) does the <span class="mono">await</span>-requiring bootstrap, fitting FastAPI's <span class="mono">lifespan</span> hook exactly.</span></div>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">server/rest_api/app.py::server</span> — module-level global; the <span class="mono">SyncServer(...)</span> line in <span class="mono">create_application</span> is commented out.</p>
+<p><span class="mono">app.py::lifespan</span> — only does <span class="mono">await server.init_async(init_with_default_org_and_user=...)</span>.</p>
+<p><span class="mono">dependencies.py::get_letta_server</span> — lazy-imports and returns the global; <span class="mono">get_headers</span> parses the <span class="mono">user_id</span> header into <span class="mono">HeaderParams.actor_id</span>.</p>
+<p><span class="mono">server.py::SyncServer</span> holds all the managers; <span class="mono">routers/v1/agents.py::retrieve_agent</span> is a typical thin endpoint.</p>
+</div>
+<p>So which managers actually hang under the server? <span class="mono">server.py::SyncServer.__init__</span> holds them <strong>all as attributes</strong>, wiring them up in one go.</p>
+<div class="cellgroup"><div class="cg-cap"><b>Managers held under SyncServer (excerpt)</b></div><div class="cells"><span class="cell hl">agent_manager</span><span class="sep">·</span><span class="cell">message_manager</span><span class="sep">·</span><span class="cell">block_manager</span><span class="sep">·</span><span class="cell">passage_manager</span><span class="sep">·</span><span class="cell">user_manager</span><span class="sep">·</span><span class="cell">tool_manager</span><span class="sep">·</span><span class="cell">provider_manager</span><span class="sep">·</span><span class="cell">source_manager</span><span class="sep">·</span><span class="cell">step_manager</span><span class="sep">·</span><span class="cell">job_manager</span></div></div>
+<p>Besides these managers, it also holds <span class="mono">self.config</span> (a <span class="mono">LettaConfig</span>) and <span class="mono">self._enabled_providers</span>. Here's an excerpt of the wiring:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/server.py</span><span class="ln">SyncServer.__init__ manager wiring (excerpt)</span></div>
+<pre><span class="kw">class</span> <span class="fn">SyncServer</span>(Server):
+    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process.&quot;&quot;&quot;</span>   <span class="cm"># a misnomer: see the "highlight" below</span>
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, ...):
+        self.config = LettaConfig.<span class="fn">load</span>()
+        self.organization_manager = <span class="fn">OrganizationManager</span>()
+        self.user_manager = <span class="fn">UserManager</span>()
+        self.tool_manager = <span class="fn">ToolManager</span>()
+        self.block_manager = <span class="fn">BlockManager</span>()        <span class="cm"># or GitEnabledBlockManager</span>
+        self.message_manager = <span class="fn">MessageManager</span>()
+        self.passage_manager = <span class="fn">PassageManager</span>()
+        self.agent_manager = <span class="fn">AgentManager</span>(block_manager=self.block_manager)  <span class="cm"># manager-to-manager composition</span>
+        self.provider_manager = <span class="fn">ProviderManager</span>()
+        <span class="cm"># … step / job / run / archive / source, all present</span>
+        self._enabled_providers = [...]
+</pre></div>
+<p>Notice the <span class="mono">agent_manager</span> line: it's <span class="mono">AgentManager(block_manager=self.block_manager)</span> — managers also <strong>compose with each other</strong>, not isolated islands each minding its own business.</p>
+<p>This composition isn't decoration: an agent must read and write memory blocks, so <span class="mono">agent_manager</span> keeps a hold of <span class="mono">block_manager</span> and borrows it directly when needed, instead of taking a long detour back through the server.</p>
+<p>Hanging all managers on one server has a hidden benefit too: they naturally share the same DB access and configuration, so none of them connects to its own database or runs its own initialization.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">There's <strong>no message queue</strong> here: SyncServer holds all managers directly as <strong>plain attributes</strong>; between the layers there's no broker, no queue. A call is just one ordinary Python method call after another, passing through synchronously.</span></div>
+<p>With these attributes in place, we can clear up the most common misconception: routers do <strong>not</strong> route all CRUD through SyncServer's methods.</p>
+<p>The vast majority of the time, it calls the manager <strong>directly</strong> through the server object; only orchestration that must coordinate several managers calls SyncServer's own methods.</p>
+<table class="t">
+<tr><th>Call style</th><th>Example</th><th>When to use</th><th>Count in agents.py</th></tr>
+<tr><td>Direct manager call</td><td class="mono">server.agent_manager.get_agent_by_id_async(...)</td><td>CRUD on a single manager</td><td>~131 times</td></tr>
+<tr><td>SyncServer method</td><td class="mono">server.create_agent_async(...)</td><td>Orchestration across several managers</td><td>~16 times</td></tr>
+</table>
+<p>What do those 16 "orchestration" calls actually do? Take <span class="mono">server.py::SyncServer.create_agent_async</span>: it resolves the LLM / embedding config, transforms blocks, then delegates the real write to <span class="mono">agent_manager</span> — one action that pulls in several managers.</p>
+<p>So <span class="mono">SyncServer</span> is less "the one door to the DB" and more a <strong>service locator</strong> plus <strong>cross-manager coordinator</strong>: for locating, everyone bypasses it and grabs the manager directly; only for coordinating does it step onto the field itself.</p>
+<p>This also explains why <span class="mono">SyncServer</span> has few methods yet they're "heavy": each is a cross-manager orchestration facade, and anything a single manager can finish on its own never reaches it.</p>
+<h2>Thin routers: four steps, then hand off</h2>
+<p>Back to the first floor. Just how "thin" are the thin routers? Thin enough that a GET endpoint is usually four steps, then hands off.</p>
+<div class="cellgroup"><div class="cg-cap"><b>The four steps of a thin router</b></div><div class="cells"><span class="cell hl">① Resolve actor</span><span class="sep">·</span><span class="cell">② Light parameter handling</span><span class="sep">·</span><span class="cell">③ Call manager / server</span><span class="sep">·</span><span class="cell">④ Return pydantic schema</span></div></div>
+<p>Step ① resolves the actor: <span class="mono">await server.user_manager.get_actor_or_default_async(...)</span>, turning the identity in the request header into an actor object.</p>
+<p>Step ② is light parameter handling — paging, filtering, and the like; for many endpoints this step is nearly empty.</p>
+<p>Step ③ calls a manager or server method, handing off the real work; step ④ returns a pydantic schema, which FastAPI serializes according to <span class="mono">response_model</span>.</p>
+<p>Step ④ is worth a second look: the router <span class="mono">return</span>s a pydantic object directly, <strong>hand-writing no JSON</strong>; serialization is left to FastAPI, done automatically per <span class="mono">response_model=AgentState</span>.</p>
+<p>The four-step skeleton isn't unique to <span class="mono">retrieve_agent</span>: list, create, delete endpoints are almost the same skeleton — only steps ② and ③ swap in their own parameters and manager calls.</p>
+<p>That's why understanding one endpoint often means understanding a whole group: get retrieve straight, and list / create / update mostly follow the same template.</p>
+<p>Lay out <span class="mono">routers/v1/agents.py::retrieve_agent</span> and the four steps are obvious at a glance:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">retrieve_agent: a thin router's four steps (simplified)</span></div>
+<pre><span class="nb">@router.get</span>(<span class="st">"/{agent_id}"</span>, response_model=AgentState)   <span class="cm"># ④ FastAPI serializes per response_model</span>
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">retrieve_agent</span>(
+    agent_id: str,
+    server: SyncServer = <span class="fn">Depends</span>(get_letta_server),   <span class="cm"># DI: get that global server</span>
+    headers: HeaderParams = <span class="fn">Depends</span>(get_headers),     <span class="cm"># parse user_id header -&gt; actor_id</span>
+):
+    <span class="cm"># ① resolve actor (session #1: look up user)</span>
+    actor = <span class="kw">await</span> server.user_manager.<span class="fn">get_actor_or_default_async</span>(actor_id=headers.actor_id)
+    <span class="cm"># ② (this endpoint has almost no params) ③ call the manager directly (session #2: with access control)</span>
+    <span class="kw">return</span> <span class="kw">await</span> server.agent_manager.<span class="fn">get_agent_by_id_async</span>(agent_id=agent_id, actor=actor)
+    <span class="cm"># ④ the returned pydantic object is serialized by FastAPI per response_model=AgentState</span>
+</pre></div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">The actor is resolved <strong>inside the handler body</strong> (step ①), not in some global auth middleware. <span class="mono">dependencies.py::get_headers</span> only parses/validates the <span class="mono">user_id</span> header into <span class="mono">HeaderParams.actor_id</span> (checking the <span class="mono">user-&lt;uuid4&gt;</span> format, <strong>touching no DB</strong>); the actual user lookup happens only when the body <span class="mono">await</span>s <span class="mono">get_actor_or_default_async</span>.</span></div>
+<p>Why make routers this thin? Because "thin" and "thick" each have their own job, and seeing them side by side is clearest.</p>
+<div class="cols">
+  <div class="col"><h4>🪶 Thin router (Floor 1)</h4><p>Only four steps: resolve the actor, handle params, call the manager, return a schema. <strong>No business logic, no DB session.</strong> Switch endpoints and the skeleton is almost copied over.</p></div>
+  <div class="col"><h4>🧱 Thick manager (Floor 2)</h4><p>Business logic, transaction boundaries, multi-tenant isolation are all here. <strong>The DB session is opened and closed in the manager</strong>, and access control is welded into every query.</p></div>
+</div>
+<p>Lock in this dividing line first: <strong>routers never open a DB session</strong>; sessions are all opened and closed in the manager. It's exactly the key to the next section, "why multiple transactions".</p>
+<p>One easily overlooked point to add: thin doesn't mean "doing nothing". The router still owns HTTP semantics — status codes, the response model, mapping errors to 4xx; it just pushes the <strong>business</strong> part down to the lower layer.</p>
+<div class="cute"><div class="row"><span class="emoji">🚪</span><span class="lab">Doorman · router</span><span class="arrow">→</span><span class="emoji">🧑‍💼</span><span class="lab">Manager · manager</span><span class="arrow">→</span><span class="emoji">🗄️</span><span class="bubble">Archive · ORM/DB</span></div><div class="cap">🏛️ Three floors: the doorman (router) just passes the slip, the manager (manager) opens a "transaction" door to touch data, and who may read the archive (ORM/DB) is decided by the gate (access control)</div></div>
+<h2>Follow one GET request all the way down</h2>
+<p>Four steps alone isn't satisfying enough. Let's actually take a <span class="mono">GET /v1/agents/{id}</span> request by the hand, from the door all the way to the DB, then back the same way.</p>
+<p>A small trick for reading the sequence diagram: treat each "transaction" marker as one complete "open the door — take the item — close the door". You'll count <strong>two</strong> such open/close cycles, and they don't share the same door.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>DI assembly</h4><p><span class="mono">get_letta_server</span> hands over that global server, and <span class="mono">get_headers</span> parses the <span class="mono">user_id</span> header into <span class="mono">actor_id</span> (no DB yet at this point).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Resolve actor · transaction ①</h4><p><span class="mono">get_actor_or_default_async</span> opens session #1 to look up the user; when <span class="mono">user_id</span> is missing, OSS mode falls back to the default user.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Look up agent · transaction ②</h4><p><span class="mono">get_agent_by_id_async(actor=actor)</span> opens session #2: <span class="mono">select(AgentModel)</span> + <span class="mono">apply_access_predicate(...ORGANIZATION)</span> + <span class="mono">where(id==...)</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Fetch one or 404</h4><p><span class="mono">scalar_one_or_none()</span> gets the row; if None, raise 404. Otherwise <span class="mono">to_pydantic_async()</span> converts it into a schema.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Serialize the response</h4><p>After commit / close, FastAPI serializes the object into JSON per <span class="mono">response_model=AgentState</span> and returns it.</p></div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Notice steps 2 and 3: they are <strong>two independent transactions</strong>, each opening its own session and committing/closing on its own. One request = <strong>multiple independent transactions</strong>, with <strong>no</strong> request-level unit of work (UoW). The reason is that transaction boundaries are drawn inside manager methods — the drawer below has the details.</span></div>
+<p>Line this trajectory up with the four steps earlier and you'll find: those thin four steps in the router actually pull in <strong>two trips to the DB, two access-control checks, and one serialization</strong>.</p>
+<p>This is the essence of "thin": the complexity didn't vanish, it was just <strong>pushed down to the two lower layers</strong>. The router looks featherlight because the heavy lifting is caught firmly in the manager and the ORM.</p>
+<p>The key to access control hides here too: the <span class="mono">apply_access_predicate</span> in step 3 isn't added by the router but <strong>welded in automatically</strong> by the ORM while building the SQL, so organization-level isolation can't be bypassed.</p>
+<p>Look at the upward leg again: <span class="mono">to_pydantic_async()</span> <strong>detaches the ORM row from the session</strong> and turns it into a pure pydantic object, so even after the session is closed, the data in the router's hands is still complete and usable.</p>
+<p>This step is crucial: it cuts apart the "database row" and the "outward schema", sealing the DB session's lifetime inside the manager so it never leaks to the router layer.</p>
+<p>For exactly this reason, the router layer never gets an object that's "still attached to the database" — all it ever sees is a settled schema that's safe to serialize.</p>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p><span class="mono">SyncServer</span> is a beautiful misnomer. The class docstring still reads "Simple single-threaded / blocking server process", yet in v0.16.8 the methods routers call are almost all <span class="mono">async def</span> — the real concurrency model is <strong>cooperative async</strong> on a single event loop.</p>
+<p>Better still: it isn't a "god facade" but a <strong>service locator</strong>. Thin CRUD endpoints bypass it outright, going <span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> straight through.</p>
+<p>SyncServer's own methods appear only when "one action must coordinate several managers" — for example <span class="mono">create_agent_async</span> resolves the LLM/embedding config, transforms blocks, then delegates the write to <span class="mono">agent_manager</span>.</p>
+<p>So "business hub" = <strong>cross-manager coordinator</strong>, not "the one door to the DB". This reframing is exactly the key to reading this layer of code.</p>
+<p>One more note on the layering's seam: FastAPI's <span class="mono">Depends</span> is that seam — two dependencies turn an ordinary function into a layered handler, and the actor is resolved <strong>inside the body</strong> after the header dependency runs, rather than by a global auth middleware.</p>
+</div>
+<p>Keep this "misnomer" in mind and the names won't lead you astray when you read the server layer later: don't take <span class="mono">Sync</span> at face value, and don't assume server does everything itself. The name is history; the code is reality.</p>
+<h2>Digging a little deeper</h2>
+<p>The main thread is complete here. The four drawers below collect the details you're likely to ask about — open them as your interest dictates; leaving them closed won't hurt your grasp of the main thread.</p>
+<details class="accordion"><summary>Why make routers this thin?</summary><div class="acc-body">
+<p>Pulling business logic out of the router buys at least three benefits.</p>
+<p><strong>Reuse</strong>: the same <span class="mono">agent_manager.get_agent_by_id_async</span> can be called by REST endpoints, internal code, and background tasks alike, with no need to write one copy each.</p>
+<p><strong>Testability</strong>: testing business logic needs no HTTP — just write unit tests against the manager; the router layer is thin enough to barely need testing.</p>
+<p><strong>Consistent authorization</strong>: access control is welded into the ORM layer (<span class="mono">apply_access_predicate</span>), so no matter who calls the manager, organization-level isolation still holds — rather than each endpoint writing it again and each missing a spot.</p>
+<p>Think of it in reverse: if you stuffed business into the router, the same logic would be copied into REST, background tasks, and tests, sooner or later drifting into three inconsistent versions — thin routers cut off that drift at the source.</p>
+</div></details>
+<details class="accordion"><summary>Why is SyncServer called "Sync" yet almost all async?</summary><div class="acc-body">
+<p>Pure <strong>historical naming</strong>. There really was an early vision of "synchronous, single-threaded, blocking", and the class docstring was written back then.</p>
+<p>But the reality in v0.16.8 is: the methods routers call are almost all <span class="mono">async def</span>, with concurrency from cooperative async on a single event loop, not multithreading or blocking.</p>
+<p>The name hasn't changed because it's long been a stable symbol at countless call sites; the payoff of renaming is far outweighed by the risk of a repo-wide change. When reading the code, just treat "Sync" as a <strong>historical label</strong>.</p>
+</div></details>
+<details class="accordion"><summary>Why is one request multiple transactions, not one?</summary><div class="acc-body">
+<p>Because <strong>transaction boundaries are drawn inside manager methods</strong>, not at the request level.</p>
+<p>Each manager method (such as looking up the user or the agent) opens its own session with <span class="mono">async with db_registry.async_session()</span> and commits/closes once done.</p>
+<p>So the single <span class="mono">retrieve_agent</span> request spans <strong>two independent transactions</strong>: look up the user first, then the agent; it does not wrap the whole request in one big transaction as a "request-level UoW".</p>
+<p>The cost is that the two reads aren't the same snapshot; the benefit is clear boundaries, self-consistent managers, and easier reuse and testing. Lesson 27 will fully explain where the session comes from.</p>
+<p>By the way: precisely because there's no request-level big transaction, a failure in one step won't automatically roll back a write already committed in a prior step — this hands the responsibility for "compensation / idempotency" clearly back to the orchestrator (SyncServer or the caller).</p>
+</div></details>
+<details class="accordion"><summary>What is that optional server-password middleware?</summary><div class="acc-body">
+<p>It's an <strong>orthogonal</strong>, server-wide gate, enabled only in secure mode.</p>
+<p><span class="mono">middleware/check_password.py::CheckPasswordMiddleware</span> checks <span class="mono">X-BARE-PASSWORD: password &lt;pw&gt;</span> or <span class="mono">Authorization: Bearer &lt;pw&gt;</span>; health probes pass, otherwise 401.</p>
+<p>It's mounted only when <span class="mono">LETTA_SERVER_SECURE=true</span> or <span class="mono">--secure</span>, uses a <strong>single shared secret</strong>, and is entirely unrelated to tenant/actor — don't confuse it with the <span class="mono">user_id</span>/actor multi-tenant identity from earlier.</p>
+<p>Tell the two apart in one line: the password middleware governs "<strong>whether the whole server lets you in</strong>", while actor/user_id governs "<strong>whose data you can see once inside</strong>". One is the front-gate access, the other the room number within; neither replaces the other.</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>Routers do <strong>not</strong> all go through <span class="mono">SyncServer</span> methods — most are direct <span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> calls; only cross-manager orchestration goes through SyncServer.</p>
+<p><span class="mono">SyncServer</span> is named "sync" but is really "async": the docstring is a legacy remnant, and the real path is almost all <span class="mono">async</span>.</p>
+<p>The actor is resolved <strong>inside the handler body</strong> (step ①), not a global auth middleware; the router layer <strong>never</strong> opens a DB session.</p>
+<p>When <span class="mono">user_id</span> is missing, OSS mode falls back to the <strong>default user</strong>, rather than erroring out.</p>
+<p>That global server is built at <strong>import time</strong> (<span class="mono">app.py::server</span>), <strong>not</strong> in the <span class="mono">create_application</span> factory; there's <strong>no message queue</strong> between the layers.</p>
+</div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>One request crosses three floors: <strong>thin routers → SyncServer + Managers → ORM → DB</strong>.</li>
+<li>A <strong>single global <span class="mono">SyncServer</span></strong> in the process: built at import time, <span class="mono">init_async</span> in <span class="mono">lifespan</span>; routers get the same one via <span class="mono">Depends(get_letta_server)</span>.</li>
+<li>The thin router's four steps: resolve actor → handle params → call manager/server → return schema; <strong>the DB session is opened only in the manager</strong>.</li>
+<li>Most are <strong>direct manager calls</strong>; only cross-manager orchestration goes through SyncServer methods (about 131 : 16 in agents.py).</li>
+<li>One request = <strong>multiple independent transactions</strong>; access control is welded into every query by the ORM's <span class="mono">apply_access_predicate</span>.</li>
+</ul>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">To wrap up in one line: <strong>routers only receive, managers do the work, the ORM guards the gate, the DB persists — all strung together by one global server</strong>. This three-layer division of labor is the foundation on which every detail of Lessons 25–27 stands.</span></div>
+<p>You've actually seen this "thin pattern" before: the message lifecycle of <span class="mono">agents.py::send_message</span> in Lesson 03 follows the very same "routers only receive, managers do the work".</p>
+<p>And the agent loop the server brings up (<span class="mono">AgentLoop.load(...)</span> then <span class="mono">.step(...)</span> from Lessons 13 and 14) is also invoked from this layer — the server is precisely its entry point.</p>
+<p>The next three lessons take apart the second and third floors one by one: Lesson 25 on how managers actually write business logic, Lesson 26 on the ORM's CRUD and multi-tenant isolation, Lesson 27 on the origins of the DB session and <span class="mono">async_session</span>. Three floors, descending one at a time.</p>
+<p>After these three lessons, you'll be able to explain every step of a request, from HTTP all the way to disk, crystal clear.</p>
+</div>
   <div class="footnav"><a class="prev" href="23-local-models-gbnf.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">本地模型与 GBNF 受限解码</span><span class="lang-en">Local models &amp; GBNF constrained decoding</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
