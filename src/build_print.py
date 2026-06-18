@@ -14,6 +14,7 @@ Usage:
     cd src && python build_print.py
 """
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -59,6 +60,10 @@ def _lesson_section(page, lang):
     num = fname.split("-", 1)[0]
     title = title_zh if lang == "zh" else title_en
     body = CONTENT[fname][lang] + quizzes.render(fname, lang)
+    # In the concatenated single-file edition, cross-lesson links like
+    # href="08-memory-blocks.html" (e.g. the glossary index) become intra-document
+    # jumps to the section anchors below.
+    body = re.sub(r'href="(\d{2})-[a-z0-9-]+\.html"', r'href="#L\1"', body)
     return (
         f'<section class="print-lesson" id="L{num}">'
         f'<h2 class="pl-title"><span class="pl-num">{num}</span> &nbsp;{shell.esc(title)}</h2>'
@@ -100,6 +105,9 @@ def print_page(lang):
     return f"""<!DOCTYPE html>
 <html lang="{'zh-Hans' if lang == 'zh' else 'en'}" data-lang="{lang}">
 <head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{shell.esc(title)}</title>
 {head}
 <style>{shell.CSS}{PRINT_CSS}</style>
 </head><body>
