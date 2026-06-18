@@ -984,7 +984,7 @@ LESSON_26 = {
 <div class="card detail"><div class="tag">🔬 落到代码</div>
 <p><span class="mono">orm/sqlalchemy_base.py::SqlalchemyBase</span>——抽象基类，<span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">create_async</span> / <span class="mono">delete_async</span> / <span class="mono">apply_access_predicate</span> 都在这。</p>
 <p><span class="mono">SqlalchemyBase.apply_access_predicate</span> + <span class="mono">AccessType(str, Enum){ORGANIZATION, USER}</span>——行级过滤的注入点与两种范围。</p>
-<p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span>——审计五件套；<span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> 提供 <span class="mono">organization_id / user_id</span> 列。</p>
+<p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span>——审计四件套 + 软删标记 <span class="mono">is_deleted</span>；<span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> 提供 <span class="mono">organization_id / user_id</span> 列。</p>
 <p><span class="mono">services/user_manager.py::UserManager.get_actor_or_default_async</span>——把 header 里的 id 解析成 <span class="mono">PydanticUser</span>（带 org）。</p>
 </div>
 <h2>apply_access_predicate：把隔离焊进每次读</h2>
@@ -1062,7 +1062,7 @@ LESSON_26 = {
 </div></details>
 <h2>审计字段：每行天生能回答"谁、何时"</h2>
 <p>同一个基类还顺手给每行几个"出生证明"字段（外加我们已熟的 <span class="mono">is_deleted</span>），让任何一行都能回答<strong>"谁建的、谁最后动的、何时"</strong>。</p>
-<div class="cellgroup"><div class="cg-cap"><b>审计五件套（<span class="mono">base.py::CommonSqlalchemyMetaMixins</span>）</b></div><div class="cells"><span class="cell hl">created_at</span><span class="sep">·</span><span class="cell">updated_at</span><span class="sep">·</span><span class="cell">_created_by_id</span><span class="sep">·</span><span class="cell">_last_updated_by_id</span><span class="sep">·</span><span class="cell">is_deleted</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>审计四件套 + <span class="mono">is_deleted</span>（<span class="mono">base.py::CommonSqlalchemyMetaMixins</span>）</b></div><div class="cells"><span class="cell hl">created_at</span><span class="sep">·</span><span class="cell">updated_at</span><span class="sep">·</span><span class="cell">_created_by_id</span><span class="sep">·</span><span class="cell">_last_updated_by_id</span><span class="sep">·</span><span class="cell">is_deleted</span></div></div>
 <p><span class="mono">created_at</span> / <span class="mono">updated_at</span> 由 <strong>DB 侧默认值</strong>盖：<span class="mono">created_at</span> 用 <span class="mono">server_default=func.now()</span>，<span class="mono">updated_at</span> 再加 <span class="mono">server_onupdate</span>，每次写自动刷新。</p>
 <p>两个 <span class="mono">*_by_id</span> 才是"谁"：注意<strong>物理列名带下划线</strong>——<span class="mono">_created_by_id</span>、<span class="mono">_last_updated_by_id</span>；对外属性去掉下划线，setter 还断言 id 前缀＝<span class="mono">"user"</span>。</p>
 <p><span class="mono">created_by_id</span> 只在<strong>首次写</strong>时设、此后不变；<span class="mono">last_updated_by_id</span> 每次写都更新。于是一行的"出身"与"最近经手人"分得清清楚楚。</p>
@@ -1084,9 +1084,9 @@ LESSON_26 = {
         <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)               <span class="cm"># 安全模式：必须显式带身份</span>
     actor_id = actor_id <span class="kw">or</span> DEFAULT_USER_ID     <span class="cm"># 否则回退到默认 user</span>
     <span class="kw">try</span>:
-        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">get_user_by_id_async</span>(actor_id)   <span class="cm"># PydanticUser（带 org）</span>
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">get_actor_by_id_async</span>(actor_id)   <span class="cm"># PydanticUser（带 org）</span>
     <span class="kw">except</span> NoResultFound:
-        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">create_default_user_async</span>()    <span class="cm"># 首次启动：懒建默认 user/org</span>
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">create_default_actor_async</span>()    <span class="cm"># 首次启动：懒建默认 user/org</span>
 </pre></div>
 <p>三步：<span class="mono">no_default_actor</span> 守卫挡住"裸奔"请求；否则把空 id 回退成 <span class="mono">DEFAULT_USER_ID</span>；最后查这个 user，查不到就懒建一个默认 user（带 <span class="mono">DEFAULT_ORG_ID</span>）。</p>
 <p>返回的是 <span class="mono">PydanticUser</span>，身上带着 <span class="mono">organization_id</span>——正是 <span class="mono">apply_access_predicate</span> 用来限定 org 的那个字段。身份链到这里闭合：<strong>header → actor → org → 每条查询的 WHERE</strong>。</p>
@@ -1126,7 +1126,7 @@ LESSON_26 = {
 <li><strong>secure by default</strong>：读路只要传了 <span class="mono">actor</span>，<span class="mono">apply_access_predicate</span> 自动追加 <span class="mono">WHERE org==actor.org</span>（USER 范围仅 jobs/runs）；越权＝查不到（<span class="mono">NoResultFound</span> / <span class="mono">[]</span>），非报错。</li>
 <li>一个抽象基类 <span class="mono">SqlalchemyBase</span> 给约 40 个模型一套泛型 async CRUD：<strong>读控访问、写盖审计、删分软硬</strong>；隔离只写一次，焊在最低层。</li>
 <li>软删默认<strong>可逆</strong>：<span class="mono">delete_async</span> 只翻 <span class="mono">is_deleted</span>；读侧过滤是 opt-in（<span class="mono">check_is_deleted</span> 默认 <span class="mono">False</span>），所以软删行默认仍被返回。</li>
-<li>审计五件套由 CRUD 显式 <span class="mono">_set_created_and_updated_by_fields</span> 盖，<strong>且只有传 actor 才盖</strong>；物理列带下划线（<span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>）。</li>
+<li>审计四件套由 CRUD 在 <span class="mono">_set_created_and_updated_by_fields</span> 里显式盖，<strong>且只有传 actor 才盖</strong>；<span class="mono">is_deleted</span> 由 <span class="mono">delete_async</span> 翻；物理列带下划线（<span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>）。</li>
 <li>关键 gate：predicate <strong>gated on <span class="mono">if actor:</span></strong>，<span class="mono">actor=None</span> 只警告不拦；<span class="mono">access</span> 目前 no-op；服务器口令与租户隔离<strong>正交</strong>。</li>
 </ul>
 </div>
@@ -1181,8 +1181,8 @@ LESSON_26 = {
 <tr><td class="mono">list_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
 <tr><td class="mono">read_multiple_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
 <tr><td class="mono">size_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
-<tr><td class="mono">create_async</td><td>Write</td><td>Rides the boundary the read set</td><td>Stamps audit fields</td></tr>
-<tr><td class="mono">update_async</td><td>Write</td><td>Rides the boundary the read set</td><td>Stamps audit fields</td></tr>
+<tr><td class="mono">create_async</td><td>Write</td><td>Rides the boundary the read established</td><td>Stamps audit fields</td></tr>
+<tr><td class="mono">update_async</td><td>Write</td><td>Rides the boundary the read established</td><td>Stamps audit fields</td></tr>
 <tr><td class="mono">delete_async</td><td>Soft delete</td><td>Stamps audit if <span class="mono">actor</span></td><td>Flips <span class="mono">is_deleted=True</span></td></tr>
 <tr><td class="mono">hard_delete_async</td><td>Physical delete</td><td><span class="mono">actor</span> for logging only</td><td>Whole row vanishes</td></tr>
 <tr><td class="mono">bulk_hard_delete_async</td><td>Bulk physical delete</td><td><strong>predicate applied in SQL</strong></td><td>Whole row vanishes</td></tr>
@@ -1195,7 +1195,7 @@ LESSON_26 = {
 <div class="card detail"><div class="tag">🔬 Down to the code</div>
 <p><span class="mono">orm/sqlalchemy_base.py::SqlalchemyBase</span> — the abstract base class; <span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">create_async</span> / <span class="mono">delete_async</span> / <span class="mono">apply_access_predicate</span> all live here.</p>
 <p><span class="mono">SqlalchemyBase.apply_access_predicate</span> + <span class="mono">AccessType(str, Enum){ORGANIZATION, USER}</span> — the injection point for row-level filtering and its two scopes.</p>
-<p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span> — the five audit fields; <span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> provide the <span class="mono">organization_id / user_id</span> columns.</p>
+<p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span> — the four audit fields + the <span class="mono">is_deleted</span> soft-delete flag; <span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> provide the <span class="mono">organization_id / user_id</span> columns.</p>
 <p><span class="mono">services/user_manager.py::UserManager.get_actor_or_default_async</span> — resolves the id in the header into a <span class="mono">PydanticUser</span> (with org).</p>
 </div>
 <h2>apply_access_predicate: welding isolation into every read</h2>
@@ -1273,7 +1273,7 @@ LESSON_26 = {
 </div></details>
 <h2>Audit fields: every row is born able to answer "who, when"</h2>
 <p>The same base class also hands every row a few "birth certificate" fields (plus the <span class="mono">is_deleted</span> we already know), so any row can answer <strong>"who created it, who last touched it, and when."</strong></p>
-<div class="cellgroup"><div class="cg-cap"><b>The five audit fields (<span class="mono">base.py::CommonSqlalchemyMetaMixins</span>)</b></div><div class="cells"><span class="cell hl">created_at</span><span class="sep">·</span><span class="cell">updated_at</span><span class="sep">·</span><span class="cell">_created_by_id</span><span class="sep">·</span><span class="cell">_last_updated_by_id</span><span class="sep">·</span><span class="cell">is_deleted</span></div></div>
+<div class="cellgroup"><div class="cg-cap"><b>The four audit fields + <span class="mono">is_deleted</span> (<span class="mono">base.py::CommonSqlalchemyMetaMixins</span>)</b></div><div class="cells"><span class="cell hl">created_at</span><span class="sep">·</span><span class="cell">updated_at</span><span class="sep">·</span><span class="cell">_created_by_id</span><span class="sep">·</span><span class="cell">_last_updated_by_id</span><span class="sep">·</span><span class="cell">is_deleted</span></div></div>
 <p><span class="mono">created_at</span> / <span class="mono">updated_at</span> are stamped by <strong>DB-side defaults</strong>: <span class="mono">created_at</span> uses <span class="mono">server_default=func.now()</span>, and <span class="mono">updated_at</span> adds <span class="mono">server_onupdate</span>, refreshing automatically on every write.</p>
 <p>The two <span class="mono">*_by_id</span> columns are the "who": note the <strong>physical column names carry an underscore</strong> — <span class="mono">_created_by_id</span>, <span class="mono">_last_updated_by_id</span>; the outward attributes drop the underscore, and the setter even asserts the id prefix = <span class="mono">"user"</span>.</p>
 <p><span class="mono">created_by_id</span> is set only on the <strong>first write</strong> and never changes after; <span class="mono">last_updated_by_id</span> updates on every write. So a row's "origin" and "most recent handler" are kept cleanly apart.</p>
@@ -1295,9 +1295,9 @@ LESSON_26 = {
         <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)               <span class="cm"># secure mode: must carry identity explicitly</span>
     actor_id = actor_id <span class="kw">or</span> DEFAULT_USER_ID     <span class="cm"># otherwise fall back to the default user</span>
     <span class="kw">try</span>:
-        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">get_user_by_id_async</span>(actor_id)   <span class="cm"># PydanticUser (with org)</span>
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">get_actor_by_id_async</span>(actor_id)   <span class="cm"># PydanticUser (with org)</span>
     <span class="kw">except</span> NoResultFound:
-        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">create_default_user_async</span>()    <span class="cm"># first boot: lazily create the default user/org</span>
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">create_default_actor_async</span>()    <span class="cm"># first boot: lazily create the default user/org</span>
 </pre></div>
 <p>Three steps: the <span class="mono">no_default_actor</span> guard blocks "naked" requests; otherwise an empty id falls back to <span class="mono">DEFAULT_USER_ID</span>; finally it looks up that user, and on a miss lazily creates a default user (with <span class="mono">DEFAULT_ORG_ID</span>).</p>
 <p>It returns a <span class="mono">PydanticUser</span> carrying <span class="mono">organization_id</span> — precisely the field <span class="mono">apply_access_predicate</span> uses to scope by org. The identity chain closes here: <strong>header → actor → org → every query's WHERE</strong>.</p>
@@ -1337,7 +1337,7 @@ LESSON_26 = {
 <li><strong>secure by default</strong>: on the read path, as long as you pass <span class="mono">actor</span>, <span class="mono">apply_access_predicate</span> auto-appends <span class="mono">WHERE org==actor.org</span> (the USER scope is jobs/runs only); a violation = not found (<span class="mono">NoResultFound</span> / <span class="mono">[]</span>), not an error.</li>
 <li>One abstract base class <span class="mono">SqlalchemyBase</span> gives ~40 models one set of generic async CRUD: <strong>reads control access, writes stamp audit, deletes split soft/hard</strong>; isolation is written once, welded into the lowest layer.</li>
 <li>Soft delete is <strong>reversible by default</strong>: <span class="mono">delete_async</span> only flips <span class="mono">is_deleted</span>; read-side filtering is opt-in (<span class="mono">check_is_deleted</span> defaults to <span class="mono">False</span>), so soft-deleted rows are still returned by default.</li>
-<li>The five audit fields are stamped explicitly by the CRUD's <span class="mono">_set_created_and_updated_by_fields</span>, and <strong>only when an actor is passed</strong>; the physical columns carry an underscore (<span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>).</li>
+<li>The four audit fields are stamped explicitly by the CRUD's <span class="mono">_set_created_and_updated_by_fields</span>, and <strong>only when an actor is passed</strong>; <span class="mono">is_deleted</span> is flipped by <span class="mono">delete_async</span>; the physical columns carry an underscore (<span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>).</li>
 <li>Key gate: the predicate is <strong>gated on <span class="mono">if actor:</span></strong>, <span class="mono">actor=None</span> only warns, doesn't block; <span class="mono">access</span> is a no-op for now; the server password is orthogonal to tenant isolation.</li>
 </ul>
 </div>
