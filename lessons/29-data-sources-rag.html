@@ -568,7 +568,242 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>把这条肌肉记忆带走：看到"RAG / 数据源"，先别找新引擎——先问<strong>"它和归档记忆是不是同一根向量列"</strong>。答案是肯定的，于是一切都顺理成章。</p>
 <p>第八部分的进阶专题继续往下走。下一课我们换个视角，看 Letta 怎么把这些执行步骤变得<strong>可观测、可追踪</strong>。</p>
 </div>
-  <div class="lang-en"><p>stub</p></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 27 cracked open the <span class="mono">Vector(4096)</span> column behind vector storage — how the memory an agent writes for itself lands in the database, and how it is recalled by <span class="mono">cosine_distance</span>. This lesson asks the natural next question: the documents <strong>you upload from outside</strong>, how do they burrow into that same vector machinery and become semantically searchable? The answer is three letters: RAG.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Let's put a counterintuitive fact on the table first: Letta <strong>did not build a separate "RAG engine."</strong> It reuses Lesson 27's archival-memory vector machinery <strong>verbatim</strong>, swapping only the table, the foreign key, and the tool name. "RAG" and "long-term memory" are, at the physical layer, the very same thing.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>One sentence to grasp this lesson: <strong>RAG and archival memory are "same foundation, different source"</strong> — the same vector column, the same recall; the only real difference is "who wrote it in."</p>
+<p>The foundation: <span class="mono">SourcePassage</span> (the documents you upload) and <span class="mono">ArchivalPassage</span> (the memory the agent writes for itself) are <strong>two sibling subclasses of the same <span class="mono">BasePassage</span></strong>, riding the same <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column.</p>
+<p>Ingestion: a file goes through a <strong>parse → chunk → embed</strong> pipeline and is scattered into a row of <span class="mono">SourcePassage</span> records, searchable from then on.</p>
+<p>Retrieval: sources use <span class="mono">semantic_search_files</span>, archival uses <span class="mono">archival_memory_search</span> — <strong>two different tools, the same pgvector cosine</strong>.</p>
+</div>
+<p>Why single this out for a whole lesson? Because many people assume RAG is "another system" and go hunting for a config, an engine, an index service. Once you see that "it is just archival memory with a different source," you save a lot of time looking in the wrong place.</p>
+<p>There's a practical payoff too: once you grasp the shared foundation, you know <strong>tuning RAG and tuning memory are one and the same job</strong> — swap the embedding model, adjust the chunk size, change the distance metric, and it takes effect for <strong>both</strong> source and archival at once, because they share that one column.</p>
+<p>Hold onto this through-line: from start to finish, this lesson keeps re-proving four words — "<strong>same foundation, different source</strong>." First we meet the foundation, then walk the ingestion, and finally look at retrieval.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Footnote: the two kinds of passage <strong>share</strong> Lesson 27's <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column, the same 4096 padding, and the same <span class="mono">cosine_distance</span> ordering. The difference is <strong>not</strong> in the vector machinery, only in the <strong>source</strong> and the <strong>foreign key</strong>.</span></div>
+<h2>One BasePassage, two sibling subclasses</h2>
+<p>Meet the foundation first. <span class="mono">orm/passage.py::BasePassage</span> is an <span class="mono">__abstract__</span> base class — it <strong>builds no table of its own</strong>, it only dictates "what a passage looks like": primary key, text, metadata, and most crucially that one <strong>embedding vector column</strong>.</p>
+<p>That column is precisely Lesson 27's protagonist: on Postgres it is <span class="mono">embedding = Vector(MAX_EMBEDDING_DIM)</span> (pgvector), on SQLite it is <span class="mono">CommonVector</span>. <strong>Same column, same 4096 padding, same <span class="mono">cosine_distance</span></strong> — the two subclasses <strong>inherit it verbatim</strong>, not a line changed.</p>
+<p>The two subclasses part ways on one thing only — <strong>"whom they attach to"</strong>:</p>
+<p><strong>① <span class="mono">SourcePassage(BasePassage, FileMixin, SourceMixin)</span></strong>: table <span class="mono">source_passages</span>, carrying <span class="mono">source_id</span> (required) + <span class="mono">file_id</span> (optional) + <span class="mono">file_name</span>. It belongs to "a particular file inside a particular source."</p>
+<p><strong>② <span class="mono">ArchivalPassage(BasePassage, ArchiveMixin)</span></strong>: table <span class="mono">archival_passages</span>, carrying <span class="mono">archive_id</span>, plus one extra <span class="mono">passage_tags</span> tag junction. It belongs to "a particular archive."</p>
+<p>Where do those foreign keys come from? All from three mixins in <span class="mono">orm/mixins.py</span>: <span class="mono">FileMixin</span> (gives file_id/file_name), <span class="mono">SourceMixin</span> (gives source_id), <span class="mono">ArchiveMixin</span> (gives archive_id). A subclass merely <strong>assembles mixins</strong> to obtain its own ownership foreign keys.</p>
+<p>Why make the foundation <span class="mono">__abstract__</span>? Because that 4096-dim vector column, the <span class="mono">cosine_distance</span> algorithm, and the padding convention are <strong>meant to be written once</strong>. With both subclasses inheriting one definition, the disaster of "source and archival living in different vector spaces" becomes <strong>structurally impossible</strong>.</p>
+<p>Why does <span class="mono">SourcePassage</span> need both <span class="mono">source_id</span> and <span class="mono">file_id</span>? Because one source can hold <strong>many files</strong>: <span class="mono">source_id</span> marks "which source it belongs to," <span class="mono">file_id</span> marks "which file inside the source it came from," and <span class="mono">file_name</span> makes the provenance easy to echo back.</p>
+<p>The extra <span class="mono">passage_tags</span> junction on <span class="mono">ArchivalPassage</span> is <strong>archival-only</strong>: it lets the agent tag memory fragments and filter by tag at retrieval time (a callback to Lesson 11). Source passages have <strong>no</strong> such tag layer.</p>
+<p>Remember this split: <strong>the mixin decides "ownership," the base decides "capability."</strong> Capability (vector, retrieval) is shared, ownership (source / archive, file) is separated — exactly the ORM-layer projection of "same foundation, different source."</p>
+<p>Flip it around for clarity: to add a third kind of passage (say some "tool-produced cache"), you only write a new mixin + new table; inheriting <span class="mono">BasePassage</span> hands you the whole vector-retrieval stack <strong>for free</strong>. The foundation's reusability shows up exactly in this "adding a kind costs almost nothing."</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py</span><span class="ln">one abstract base, two sibling subclasses (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">BasePassage</span>(Base):
+    __abstract__ = <span class="kw">True</span>                       <span class="cm"># no table; only defines "what a passage looks like"</span>
+    text: Mapped[str]
+    <span class="cm"># Lesson 27's column: Postgres uses pgvector, SQLite uses CommonVector</span>
+    <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+        embedding = <span class="fn">mapped_column</span>(<span class="fn">Vector</span>(MAX_EMBEDDING_DIM))   <span class="cm"># fixed 4096 dims</span>
+    <span class="kw">else</span>:
+        embedding = <span class="fn">mapped_column</span>(CommonVector)
+
+<span class="kw">class</span> <span class="fn">SourcePassage</span>(BasePassage, FileMixin, SourceMixin):   <span class="cm"># documents you upload</span>
+    __tablename__ = <span class="st">&quot;source_passages&quot;</span>      <span class="cm"># source_id(req) + file_id(opt) + file_name</span>
+
+<span class="kw">class</span> <span class="fn">ArchivalPassage</span>(BasePassage, ArchiveMixin):            <span class="cm"># memory the agent writes itself</span>
+    __tablename__ = <span class="st">&quot;archival_passages&quot;</span>    <span class="cm"># archive_id; plus passage_tags tags</span>
+</pre></div>
+<p>Lay "two subclasses, one foundation" out as two side-by-side columns and the difference is obvious — apart from source and foreign key, everything else is shared:</p>
+<div class="cols">
+  <div class="col"><h4>🧠 ArchivalPassage · agent-written</h4>
+  <p>Table <span class="mono">archival_passages</span> · FK <span class="mono">archive_id</span> · tool <span class="mono">archival_memory_search</span> · join <span class="mono">ArchivesAgents</span> · carries <span class="mono">passage_tags</span>.</p>
+  <p>Source: the agent writes it via <span class="mono">archival_memory_insert</span> (Lessons 10, 11).</p>
+  </div>
+  <div class="col"><h4>📄 SourcePassage · you-uploaded</h4>
+  <p>Table <span class="mono">source_passages</span> · FK <span class="mono">source_id</span>+<span class="mono">file_id</span> · tool <span class="mono">semantic_search_files</span> · join <span class="mono">SourcesAgents</span>.</p>
+  <p>Source: an uploaded file, built by the ingestion pipeline's parse+embed (next section).</p>
+  </div>
+</div>
+<div class="cellgroup"><div class="cg-cap"><b>Both subclasses share: <span class="mono">BasePassage</span>'s one vector column (Lesson 27)</b></div><div class="cells"><span class="cell">archival_passages</span><span class="sep">·</span><span class="cell">source_passages</span><span class="sep">→</span><span class="cell hl">BasePassage.embedding = Vector(MAX_EMBEDDING_DIM)</span><span class="sep">·</span><span class="cell hl">cosine_distance</span></div></div>
+<details class="accordion"><summary>Are source and archival really "kept entirely apart"?</summary><div class="acc-body">
+<p><strong>Mutually exclusive writes (DB-layer guard)</strong>: <span class="mono">PassageManager.create_source_passage_async</span> <strong>requires</strong> <span class="mono">source_id</span> and <strong>forbids</strong> <span class="mono">archive_id</span>; <span class="mono">create_agent_passage_async</span> is the reverse. Pass the wrong one and it errors out immediately.</p>
+<p><strong>Retrieval never crosses over</strong>: sources go through <span class="mono">build_source_passage_query</span> (scanning <span class="mono">source_passages</span>), archival through <span class="mono">build_agent_passage_query</span> (scanning <span class="mono">archival_passages</span>). Each query <strong>scans its own table</strong> and never mixes the other's rows into the result.</p>
+<p>So "same foundation" means the <strong>physical column and algorithm</strong> are identical, not that "the data is commingled." The two kinds of passage are <strong>separate</strong> at all four levels: table, foreign key, tool, and query.</p>
+</div></details>
+<div class="card analogy"><div class="tag">📝 Real-world analogy</div>
+<p>Picture the vector store as a <strong>library</strong> holding <strong>two kinds of books</strong>.</p>
+<p>One kind is <strong>books you donate</strong> (<span class="mono">SourcePassage</span> / RAG): documents brought in from outside, which the librarian tears into pages, numbers, and shelves.</p>
+<p>The other is <strong>the librarian's own handwritten reading notes</strong> (<span class="mono">ArchivalPassage</span> / archival): jottings the agent makes as it works.</p>
+<p>Both kinds go into <strong>the same "search by meaning" index</strong> (that one vector column) — at query time both are ranked by "closeness of meaning."</p>
+<p>They just sit on <strong>two different shelves</strong> (two tables), and borrowing means filling out <strong>different request slips</strong> (two tools): use <span class="mono">semantic_search_files</span> for donated books, <span class="mono">archival_memory_search</span> to flip through the notes.</p>
+</div>
+<h2>The ingestion pipeline: how a file becomes a row of searchable passages</h2>
+<p>With the foundation met, let's see "how a file gets in." The modern ingestion entry point is <span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>, which works a raw file step by step into a row of <span class="mono">SourcePassage</span> records.</p>
+<p>The whole pipeline breaks into eight steps, from upload all the way to landing in the database. Look at the panorama first, then we'll explain segment by segment:</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Upload → into some source</h4><p>The file is uploaded and assigned to an already-created <span class="mono">Source</span> (org-scoped; detailed next section).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>create_file (PARSING)</h4><p><span class="mono">FileManager.create_file</span> registers one <span class="mono">FileMetadata</span> row, status set to <span class="mono">PARSING</span>.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>extract_text (OCR)</h4><p><span class="mono">FileParser.extract_text</span> pulls the full text: PDFs/images go through OCR, documents convert to markdown.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>upsert_file_content (full text)</h4><p>The full text lands in the <span class="mono">file_contents</span> table — the original kept on file, independent of chunking.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>insert_file_into_context_windows</h4><p>It "opens" the file into a <span class="mono">FileAgent</span> (read-only original in context; covered in the final section).</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>chunk_text (by EmbeddingConfig)</h4><p><span class="mono">LlamaIndexChunker.chunk_text</span> chunks the text; <span class="mono">chunk_size</span> comes from <span class="mono">EmbeddingConfig</span> (Lesson 21).</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>generate_embedded_passages (batch 200)</h4><p>The <span class="mono">Embedder</span> computes embedding vectors in batches of 200.</p></div></div>
+  <div class="step"><div class="num">8</div><div class="sc"><h4>create_many_source_passages_async</h4><p>Bulk-writes into <span class="mono">source_passages</span>, each padded to 4096 → a row of <span class="mono">SourcePassage</span> records.</p></div></div>
+</div>
+<p>Put those eight steps into code, drop the error handling and the state machine, and the skeleton is this straight:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/file_processor/file_processor.py</span><span class="ln">FileProcessor.process: store text → chunk → embed → land (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">process</span>(self, source_id, content, ...):
+    <span class="cm"># 1) register the file row, status set to PARSING</span>
+    file = <span class="kw">await</span> self.file_manager.<span class="fn">create_file</span>(..., status=FileProcessingStatus.PARSING)
+    <span class="cm"># 2) pull full text (OCR / markdown), store into file_contents</span>
+    text = <span class="kw">await</span> self.file_parser.<span class="fn">extract_text</span>(content)
+    <span class="kw">await</span> self.file_manager.<span class="fn">upsert_file_content</span>(file.id, text)
+    <span class="cm"># 3) "open" the file into context (FileAgent, see final section)</span>
+    <span class="kw">await</span> self.agent_manager.<span class="fn">insert_file_into_context_windows</span>(source_id, file, ...)
+    <span class="cm"># 4) chunk -&gt; embed (chunk_size comes from EmbeddingConfig)</span>
+    chunks = self.chunker.<span class="fn">chunk_text</span>(text)
+    passages = <span class="kw">await</span> self.embedder.<span class="fn">generate_embedded_passages</span>(chunks, batch_size=<span class="nb">200</span>)
+    <span class="cm"># 5) bulk-write into source_passages (each padded to 4096)</span>
+    <span class="kw">await</span> self.passage_manager.<span class="fn">create_many_source_passages_async</span>(passages, source_id=source_id)
+</pre></div>
+<p>Read the pipeline segment by segment. <strong>The first three steps "store the original"</strong>: <span class="mono">create_file</span> registers the file as one <span class="mono">FileMetadata</span> row (status <span class="mono">PARSING</span>); <span class="mono">extract_text</span> pulls plain text via OCR/markdown; <span class="mono">upsert_file_content</span> stores the full text into the <span class="mono">file_contents</span> table.</p>
+<p><strong>The fourth step is a fork</strong>: <span class="mono">insert_file_into_context_windows</span> "opens" the file into the agent's context (creating a <span class="mono">FileAgent</span>) — that branch is saved for the final section.</p>
+<p>The fork itself is rather elegant: <strong>ingest once, produce twice</strong> — the same pass both chunks-and-embeds the file (building RAG) and "opens" it into context (building a <span class="mono">FileAgent</span>). Upload one file and both forms are ready at once.</p>
+<p><strong>The last three steps are where RAG is built</strong>: <span class="mono">chunk_text</span> chunks by <span class="mono">EmbeddingConfig</span>, <span class="mono">generate_embedded_passages</span> embeds 200 at a time, and <span class="mono">create_many_source_passages_async</span> lands them into <span class="mono">source_passages</span>.</p>
+<p>That <span class="mono">status=PARSING</span> line is no decoration. <span class="mono">FileMetadata</span> carries a <span class="mono">processing_status</span> field plus two counters, <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span> — status starts at <span class="mono">PARSING</span>, the counters track embedding progress, and only when every chunk is embedded is it ready. The frontend's "processing…" progress bar reads exactly this.</p>
+<p>Why store the full text separately in <span class="mono">file_contents</span> rather than keep only chunks? Because the two forms have different needs: <strong>chunks serve semantic recall</strong> (fuzzy-find relevant passages), <strong>full text serves verbatim opening</strong> (<span class="mono">open_files</span> wants the text exactly as is). Stored apart, the two paths don't interfere.</p>
+<p>Why embed in <strong>batches of 200</strong>? Because embedding calls an external model API; sending one at a time is too slow and too costly. Batch them and send once: higher throughput, fewer round trips. This is the familiar engineering move of "batching to amortize overhead."</p>
+<p>A word on resilience: the full text in <span class="mono">file_contents</span> is a master copy <strong>independent</strong> of the chunks. Want to swap the embedding model later and re-chunk/re-embed? The original is still there, no need to make the user re-upload — zero out <span class="mono">total_chunks</span> and re-run the back half.</p>
+<details class="accordion"><summary>Ingestion has two paths: the modern file_processor and the legacy connectors</summary><div class="acc-body">
+<p><strong>Modern (the mainline)</strong>: <span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span> — with OCR/markdown parsing, <span class="mono">LlamaIndexChunker</span> chunking, <span class="mono">generate_embedded_passages</span> batch embedding, and finally <span class="mono">create_many_source_passages_async</span>. This is what the lesson covers.</p>
+<p><strong>Legacy (the old path)</strong>: <span class="mono">data_sources/connectors.py::load_data</span> — using <span class="mono">DirectoryConnector</span> plus llama_index's <span class="mono">TokenTextSplitter</span>, calling the <strong>deprecated</strong> <span class="mono">create_many_passages_async</span>.</p>
+<p>For v0.16.8, lock onto the <span class="mono">file_processor</span> path; if you run into <span class="mono">connectors.load_data</span>, just recognize it as the old path and don't model new code on it.</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">The <span class="mono">chunk_size</span> isn't picked arbitrarily; it comes from the agent's <span class="mono">EmbeddingConfig</span> (Lesson 21) — <strong>chunks are cut as large as the embedding model's window</strong>. Ingestion and recall must use the <strong>same embedding config</strong>, or the vectors on the two sides simply aren't in the same space.</span></div>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">one document</span><span class="arrow">→</span><span class="emoji">📚</span><span class="lab">cut into cards</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="bubble">stamp each with a vector</span></div><div class="cap">📄 one uploaded document is split into 📚 a stack of little cards (chunks), each stamped with a 🔢 vector (embedding), then lined up on that 4096-dim shelf — and from then on you can grab the closest few "by meaning" in one go</div></div>
+<h2>Retrieval: the same vector search, just a different tool and table</h2>
+<p>Passages are built — how do you query them? The key is still "same foundation, different source": <strong>retrieval also uses the same vector search</strong>, only the query builder and the tool name each get swapped.</p>
+<p>The source retrieval builder is <span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span>, and it is <strong>nearly identical in shape</strong> to archival's <span class="mono">build_agent_passage_query</span> — the only difference is which junction it joins and which table it scans.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/agent_manager_helper.py</span><span class="ln">build_source_passage_query: embed query → join → cosine sort (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">build_source_passage_query</span>(agent_id, query_text, embed_config, ...):
+    <span class="cm"># 1) embed the query text, pad to 4096 (same config as on write)</span>
+    q = <span class="fn">embed_query</span>(query_text, embed_config)
+    q = np.<span class="fn">pad</span>(q, (<span class="nb">0</span>, MAX_EMBEDDING_DIM - <span class="fn">len</span>(q)))
+    <span class="cm"># 2) take only passages from "sources this agent attached": join SourcesAgents</span>
+    query = (
+        <span class="fn">select</span>(SourcePassage)
+        .<span class="fn">join</span>(SourcesAgents, SourcesAgents.source_id == SourcePassage.source_id)
+        .<span class="fn">where</span>(SourcesAgents.agent_id == agent_id)
+    )
+    <span class="cm"># 3) ascending by cosine distance (Postgres pgvector; SQLite uses numpy)</span>
+    <span class="kw">return</span> query.<span class="fn">order_by</span>(SourcePassage.embedding.<span class="fn">cosine_distance</span>(q).<span class="fn">asc</span>())
+</pre></div>
+<p>Three steps to understand this query. <strong>① Embed + pad</strong>: embed the query text with the <strong>same <span class="mono">EmbeddingConfig</span></strong>, then <span class="mono">np.pad</span> to 4096 so it aligns with the padded vectors in the store.</p>
+<p><strong>② Join scopes the range</strong>: <span class="mono">select(SourcePassage)</span> join <span class="mono">SourcesAgents</span> on <span class="mono">source_id</span>, where <span class="mono">agent_id</span> — searching only passages in "the sources this agent has attached," never out of bounds.</p>
+<p><strong>③ Sort</strong>: Postgres uses <span class="mono">embedding.cosine_distance(q).asc()</span> (pgvector), SQLite falls back to numpy for the distance; the text fallback uses <span class="mono">func.lower(text).contains</span>.</p>
+<p>Don't get the direction backwards: <span class="mono">cosine_distance</span> is a <strong>distance</strong>, <strong>smaller is closer</strong>, so use <span class="mono">.asc()</span> to take the top few — the exact opposite of "bigger similarity is better" (a callback to Lesson 27).</p>
+<p>Compare archival's <span class="mono">build_agent_passage_query</span>: the same embed + pad + cosine, only it joins <span class="mono">ArchivesAgents</span> (on <span class="mono">archive_id</span>) and can also filter by tag. <strong>Same machine, different connector.</strong></p>
+<p>That <span class="mono">func.lower(text).contains</span> text fallback is a back road for the "no embedding / pure keyword" case: when no vector is available, you can at least match by substring, case-insensitively, instead of coming up empty-handed.</p>
+<p>One more branch: the <span class="mono">np.pad</span> to 4096 happens <strong>only on the pgvector path</strong>; if you go through the external vector store Turbopuffer (TPUF), padding is <strong>skipped</strong> — it manages dimensions itself. Padding is a concession to pgvector's "fixed-length column," not a universal step.</p>
+<p>Don't underestimate that <span class="mono">join SourcesAgents</span>: it is the <strong>multi-tenant guardrail</strong> (a callback to Lesson 26). Without it, the vector search would reach other agents' and other orgs' sources; with it, each agent can only search the handful of sources <strong>it has attached</strong>.</p>
+<div class="note info"><span class="ni">🔧</span><span class="nx">Watch out for the split between "function declaration" and "real implementation": the <span class="mono">semantic_search_files</span> / <span class="mono">archival_memory_search</span> in <span class="mono">function_sets/files.py</span> and <span class="mono">function_sets/base.py</span> are just <span class="mono">raise NotImplementedError</span> <strong>schema stubs</strong>; the real work lives in <span class="mono">tool_executor/files_tool_executor.py</span> and <span class="mono">core_tool_executor.py</span>.</span></div>
+<p>Straighten the source-retrieval chain into a line and the five nodes are clear at a glance:</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">query text</div><div class="nd">find passages about X</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">embed + pad</div><div class="nd">embed(q) → np.pad 4096</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">select(SourcePassage)</div><div class="nd">join SourcesAgents · source_id</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">cosine_distance.asc()</div><div class="nd">ranked by closeness</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">top-k passages</div><div class="nd">fed back to the tool caller</div></div>
+</div>
+<p>Finally, a table lays "source vs archival" side by side across six dimensions, handy to look back at any time:</p>
+<table class="t">
+<tr><th>Dimension</th><th>SourcePassage (source / RAG)</th><th>ArchivalPassage (archival)</th></tr>
+<tr><td>Table</td><td class="mono">source_passages</td><td class="mono">archival_passages</td></tr>
+<tr><td>Source FK</td><td class="mono">source_id (req) + file_id (opt)</td><td class="mono">archive_id</td></tr>
+<tr><td>Who writes it</td><td>you upload docs; built by ingestion</td><td>the agent calls archival_memory_insert</td></tr>
+<tr><td>Query builder</td><td class="mono">build_source_passage_query</td><td class="mono">build_agent_passage_query</td></tr>
+<tr><td>Retrieval tool</td><td class="mono">semantic_search_files</td><td class="mono">archival_memory_search</td></tr>
+<tr><td>Tags</td><td>none</td><td class="mono">passage_tags junction</td></tr>
+</table>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">orm/passage.py::SourcePassage / ArchivalPassage</span> — two subclasses of the same <span class="mono">BasePassage</span>, split across tables <span class="mono">source_passages / archival_passages</span>.</p>
+<p><span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span> — the modern ingestion pipeline: parse → chunk → embed → <span class="mono">create_many_source_passages_async</span>.</p>
+<p><span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span> — source vector search: embed query + pad + join <span class="mono">SourcesAgents</span> + <span class="mono">cosine_distance</span>.</p>
+<p><span class="mono">orm/files_agents.py::FileAgent</span> — the file's other form: a read-only <span class="mono">FileBlock</span> in context (next section).</p>
+</div>
+<h2>A file's two forms: a searchable passage vs an "opened file" in context</h2>
+<p>Back to that fork at step five of the ingestion pipeline. An attached file lives in Letta as <strong>two forms at once</strong> — this is the lesson's second point worth remembering.</p>
+<p><strong>Form A: the searchable RAG chunk</strong>, the <span class="mono">SourcePassage</span> we just covered — chunked, embedded, recalled by cosine.</p>
+<p><strong>Form B: the "opened file" in context</strong>, a different mechanism: <span class="mono">orm/files_agents.py::FileAgent</span>. It is one row on the <span class="mono">files_agents</span> junction, carrying <span class="mono">is_open</span> / <span class="mono">visible_content</span>.</p>
+<div class="cellgroup"><div class="cg-cap"><b>One file, two forms: metadata <span class="mono">FileMetadata</span> (table files) + full text <span class="mono">FileContent</span> (table file_contents)</b></div><div class="cells"><span class="cell hl">SourcePassage</span><span class="lab">embedded · semantic search</span><span class="sep">‖</span><span class="cell q">FileAgent / FileBlock</span><span class="lab">visible_content · read-only original in context</span></div></div>
+<p>The key line: <span class="mono">FileAgent.to_pydantic_block(...)</span> renders it into a <strong><span class="mono">FileBlock(read_only=True)</span></strong> — "opening a file" = stuffing a <strong>read-only memory block</strong> into context, whose content is the original text (or a fragment).</p>
+<p>The tools that operate this layer are <span class="mono">open_files</span> / <span class="mono">grep_files</span>: open a file into context, and grab lines within already-open files. Note the cap — <strong>at most 5 files open</strong> at once by default.</p>
+<p><span class="mono">grep_files</span> and <span class="mono">semantic_search_files</span> are <strong>two ways of finding</strong>: the former grabs lines exactly by keyword <strong>within already-open files</strong>, the latter fuzzily recalls across <strong>all chunks</strong> by meaning. Want "verbatim text," use grep; want "close in meaning," use semantic.</p>
+<p>Why is <span class="mono">FileBlock</span> <span class="mono">read_only=True</span>? Because it is a <strong>mirror of an external document</strong> and shouldn't be rewritten by the agent — you don't want the LLM "casually" editing the contract you uploaded. Read-only is exactly the guardrail separating "source document" from "the agent's own memory block."</p>
+<p>And why the "at most 5 open" cap? Because an opened file is a read-only block <strong>actually stuffed into context</strong>, costing tokens. The limit guards your context budget for you, so you don't blow the window by opening a dozen files at once.</p>
+<p>So for the same file, <span class="mono">SourcePassage</span> and <span class="mono">FileBlock</span> are <strong>complementary, not redundant</strong>: first use <span class="mono">semantic_search_files</span> to fuzzily locate the relevant file, then <span class="mono">open_files</span> to pull it verbatim into context for a close read. One handles "finding," the other "seeing clearly."</p>
+<p>Straighten "one file → two forms": database on the left, context on the right:</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">an attached file</div><div class="nd">FileMetadata + FileContent</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Form A · chunk+embed</div><div class="nd">SourcePassage (semantically searchable)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node q"><div class="nt">Form B · open_files</div><div class="nd">FileAgent → FileBlock</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">read-only original in context</div><div class="nd">visible_content (read_only=True)</div></div>
+</div>
+<details class="accordion"><summary>Why is an "opened file" a different mechanism, not a passage?</summary><div class="acc-body">
+<p><span class="mono">FileAgent</span> (<span class="mono">orm/files_agents.py</span>) is one row on the <span class="mono">files_agents</span> junction, recording "which agent has which file open," with <span class="mono">is_open</span> / <span class="mono">visible_content</span>. It <strong>does not enter the vector store</strong>; it renders via <span class="mono">to_pydantic_block</span> into a <span class="mono">FileBlock(read_only=True)</span> in context.</p>
+<p>So "opening a file" = stuffing the original text (a fragment) into the context window as a read-only memory block, so the LLM reads it verbatim — this is <strong>exact</strong>; whereas <span class="mono">SourcePassage</span> is <strong>fuzzy, semantic</strong> nearest-neighbor recall. The two solve different problems.</p>
+<p>Metadata lives in <span class="mono">orm/file.py::FileMetadata</span> (table <span class="mono">files</span>, with <span class="mono">processing_status</span> / <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span>), full text in <span class="mono">FileContent</span> (table <span class="mono">file_contents</span>). <span class="mono">open_files</span> reads the full text, <span class="mono">semantic_search_files</span> searches chunks.</p>
+</div></details>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't conflate the two forms: <strong>"a file opened in context" (<span class="mono">FileBlock</span>, read-only original)</strong> is not <strong>"a semantically searchable passage" (<span class="mono">SourcePassage</span>)</strong>. The former is verbatim, occupies context, and is capped at 5 by default; the latter is recalled by meaning and costs no context. One file, two paths.</span></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>Letta <strong>builds no separate "RAG engine"</strong> — it directly reuses archival memory's vector machinery, swapping only the table, the foreign key, the junction, and the tool name.</p>
+<p><span class="mono">SourcePassage</span> (the documents you feed the agent) and <span class="mono">ArchivalPassage</span> (the memory the agent writes itself) are two siblings of the same <span class="mono">BasePassage</span>, riding the same <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column, the same 4096 padding, the same <span class="mono">cosine_distance</span> (Lesson 27).</p>
+<p>So "RAG" and "long-term memory" are, at the physical layer, the very same thing — the only real difference is the source: one you give, one it writes.</p>
+<p>A secondary highlight: an attached file lives as <strong>two forms at once</strong> — the semantically searchable <span class="mono">SourcePassage</span> chunk, and that read-only <span class="mono">FileBlock</span> (the original) in the context window. One file, two ways of "being remembered."</p>
+</div>
+<h2>A source is an org-scoped asset: attaching ≠ copying</h2>
+<p>Another easy misstep: a source is <strong>not private to any one agent</strong>. The <span class="mono">Source</span> built by <span class="mono">services/source_manager.py::SourceManager.create_source</span> is <strong>org-scoped</strong> and can be <strong>shared across multiple agents</strong> in the same org.</p>
+<p>How is it shared? <span class="mono">orm/sources_agents.py::SourcesAgents</span> is a <strong>composite-PK M2M table</strong> — one source can link to many agents, and one agent can attach many sources.</p>
+<p>The composite PK <span class="mono">(agent_id, source_id)</span> guarantees the same "agent — source" pair <strong>links only once</strong>, never double-attached; this is the <strong>same pattern</strong> as Lesson 28's shared-block table <span class="mono">blocks_agents</span> — using a junction table to express "who can use what."</p>
+<p>The crucial point: when <span class="mono">agent_manager.py::AgentManager.attach_source_async</span> "attaches a source," it <strong>writes only one <span class="mono">sources_agents</span> junction row</strong> — <strong>no passage copy, no re-embedding</strong>. The passages are still the same batch; attaching just "draws a line."</p>
+<p>This echoes Lesson 26's multi-tenancy: a source is registered once at the org level, and multiple agents reuse the same batch of vectors through the junction. At retrieval, <span class="mono">build_source_passage_query</span> joins exactly this <span class="mono">SourcesAgents</span> to know "which sources this agent may search."</p>
+<p>Do the math: a 50-page manual attached to 10 agents is <strong>embedded once, stored once</strong> as one set of passages; 10 agents share it via 10 <span class="mono">sources_agents</span> rows. If attaching truly did "copy + re-embed," that would be 10× the storage and embedding cost — Letta saves that bill with a single junction table.</p>
+<p>This is also why a source is an "org-scoped asset": it is loosely coupled to agents in a many-to-many way, built once and shared with many; deleting an agent doesn't drag the source down, and deleting a source only clears the junction lines — of a piece with Lesson 26's "the org owns resources, members attach as needed."</p>
+<p>To characterize a source in one line: it is the <strong>org's shared knowledge base</strong>, not an agent's private notebook. The private notebook is archival (<span class="mono">archival_passages</span>), the shared knowledge base is the source (<span class="mono">source_passages</span>) — landing once more on "same foundation, different source."</p>
+<details class="accordion"><summary>Terminology drift when reading the source: Source is being renamed Folder</summary><div class="acc-body">
+<p>In v0.16.8 you'll see both words, <span class="mono">Source</span> and <span class="mono">Folder</span>. The docstring of <span class="mono">schemas/source.py::Source</span> already reads <strong>"Deprecated: Use Folder"</strong>, and <span class="mono">PassageBase.source_id</span> is also marked <span class="mono">deprecated</span>.</p>
+<p>But the <strong>ORM tables and classes are still <span class="mono">source_*</span></strong>: table names <span class="mono">source_passages</span> / <span class="mono">sources_agents</span>, the foreign key <span class="mono">source_id</span>, and the classes <span class="mono">SourcePassage</span> / <span class="mono">SourceManager</span> are all unchanged.</p>
+<p>Conclusion: when you read <span class="mono">Folder</span>, know it's the new name for <span class="mono">Source</span>; for v0.16.8 code still go by <span class="mono">source_</span>. This lesson uses <span class="mono">Source</span> throughout, consistent with the source code.</p>
+</div></details>
+<h2>Callbacks and recap: RAG is just "archival memory with a different source"</h2>
+<p>Let's wrap up. This lesson introduced no new vector technology; throughout, it reused parts <strong>you already learned</strong>.</p>
+<p>Callback to Lesson 27: the two kinds of passage ride <strong>that very <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column</strong> — the same 4096 padding, the same <span class="mono">cosine_distance</span>. RAG has no vector storage "of its own."</p>
+<p>Callback to Lessons 10, 11: archival memory's <span class="mono">archival_memory_insert</span> / search is the same machine fed by <strong>another source</strong>; this lesson's source merely swaps "who writes" from the agent to you.</p>
+<p>Callback to Lesson 21: chunk size and query embedding both obey <span class="mono">EmbeddingConfig</span> — ingestion and recall share one config, and only then are vectors comparable in the same space.</p>
+<p>One line to tie it together: <strong>RAG = archival memory's vector machine + passages from an external source + one <span class="mono">sources_agents</span> sharing table</strong>. The foundation didn't change; all that changed is "where the stuff comes from."</p>
+<p>One more note on symmetry: archival is the agent <strong>writing to its future self</strong>, a source is you <strong>writing material for the agent</strong> — opposite directions, yet sharing the same "embed → store → cosine recall" muscle. Read Letta long enough and you'll keep meeting this "one mechanism, reused in many places."</p>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>Source and archival don't mix: different tables / foreign keys / tools, retrieval never crosses over, and the write points are <strong>mutually exclusive</strong> (pass the wrong source_id/archive_id and it errors out).</p>
+<p>A source is <strong>org-scoped and shareable</strong>, not per-agent; "attaching a source" only writes a <span class="mono">sources_agents</span> junction row and does <strong>not copy or re-embed</strong> passages.</p>
+<p>The embedding model and dimension <strong>must match</strong>: ingestion and recall use the same <span class="mono">EmbeddingConfig</span>; padding to 4096 will <strong>silently mask</strong> a dimension mismatch, burying a "bad search results" trap.</p>
+<p>Padding to <span class="mono">MAX_EMBEDDING_DIM</span> happens only on the pgvector path (TPUF skips it).</p>
+<p><span class="mono">Source</span> is being renamed <span class="mono">Folder</span>, but v0.16.8's ORM tables / classes are still <span class="mono">source_*</span>; "a file opened in context" (<span class="mono">FileBlock</span>, read-only) <strong>≠</strong> "a searchable passage" (<span class="mono">SourcePassage</span>).</p>
+</div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>RAG and archival memory are <strong>same foundation, different source</strong>: <span class="mono">SourcePassage</span> (the documents you upload) and <span class="mono">ArchivalPassage</span> (the memory the agent writes itself) are subclasses of the same <span class="mono">BasePassage</span>, sharing Lesson 27's <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column + 4096 padding + <span class="mono">cosine_distance</span>.</li>
+<li>Ingestion pipeline <span class="mono">FileProcessor.process</span>: <span class="mono">create_file</span>(PARSING) → <span class="mono">extract_text</span>(OCR) → <span class="mono">upsert_file_content</span>(full text) → <span class="mono">insert_file_into_context_windows</span> → <span class="mono">chunk_text</span>(by EmbeddingConfig) → <span class="mono">generate_embedded_passages</span>(batch 200) → <span class="mono">create_many_source_passages_async</span>(pad 4096).</li>
+<li>Retrieval is <strong>the same vector search with a different table and tool</strong>: <span class="mono">build_source_passage_query</span> joins <span class="mono">SourcesAgents</span>, tool <span class="mono">semantic_search_files</span>; archival joins <span class="mono">ArchivesAgents</span>, tool <span class="mono">archival_memory_search</span>.</li>
+<li>A file has <strong>two forms</strong>: the semantically searchable <span class="mono">SourcePassage</span> chunk, and the read-only <span class="mono">FileAgent</span> / <span class="mono">FileBlock</span> (the original) in context (at most 5 open by default).</li>
+<li>A source is an <strong>org-scoped, shareable</strong> asset; <span class="mono">attach_source_async</span> only writes the junction, no copy; <span class="mono">Source</span> is being renamed <span class="mono">Folder</span>, but v0.16.8's ORM is still <span class="mono">source_*</span>.</li>
+</ul>
+</div>
+<p>Take this muscle memory with you: when you see "RAG / data sources," don't go hunting for a new engine first — first ask "is it the same vector column as archival memory?" The answer is yes, and everything falls into place.</p>
+<p>Part 8's advanced topics roll on. Next lesson we switch perspective and see how Letta makes these execution steps <strong>observable and traceable</strong>.</p>
+</div>
   <div class="footnav"><a class="prev" href="28-multi-agent-sleeptime.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">多智能体与 sleeptime</span><span class="lang-en">Multi-agent &amp; sleeptime</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
