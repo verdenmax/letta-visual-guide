@@ -205,9 +205,9 @@ cd src && python build.py && python check_links.py && python check_html.py
 
 **Files:** `docs/superpowers/plans/2026-06-15-letta-visual-guide-roadmap.md` · （验证）全站
 
-- [ ] 全量构建：`cd src && python build.py && python check_links.py && python check_html.py`，期望 `0 error / 0 warning`、链接全解析、index pill「共 31 课 · 8 个部分」。
-- [ ] 导航链抽查：`27→28→29→30→31`，每课 `prev/next` 各 1，31 课 `next=../index.html`。术语表跳链全部解析。
-- [ ] roadmap 把 **M8** 标 `✅ 已完成并合并`（计划文档名填入）。
+- [x] 全量构建：`cd src && python build.py && python check_links.py && python check_html.py`，期望 `0 error / 0 warning`、链接全解析、index pill「共 31 课 · 8 个部分」。✅ 0/0，244 链接全解析。
+- [x] 导航链抽查：`27→28→29→30→31`，每课 `prev/next` 各 1，31 课 `next=../index.html`。术语表跳链全部解析。✅ 已核对。
+- [x] roadmap 把 **M8** 标 `✅ 已完成并合并`（计划文档名填入）。✅
 - [ ] 合并：`git checkout master && git merge --no-ff feat/m8-advanced`；合并后再跑三件套确认绿。
 - [ ] `git branch -d feat/m8-advanced`；`git push origin master`。
 - [ ] 报告 M8 完成，**自动继续 M9**（配套收尾：quizzes 补全 / 双语 PDF / CI / README / LICENSE）——用户已要求一路做完全部 M。
