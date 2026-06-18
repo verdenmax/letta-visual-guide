@@ -465,6 +465,63 @@ LESSON_28 = {
 
 LESSON_29 = {
     "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 27 课我们拆开了向量存储那根 <span class="mono">Vector(4096)</span> 列——agent 自己写的记忆怎么落库、又怎么按 <span class="mono">cosine_distance</span> 召回。这一课接着问一个很自然的问题：你<strong>从外部上传的文档</strong>，是怎么钻进同一套向量机器里、变得可被语义搜索的？答案两个字：RAG。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">先把一个反直觉的事实摆上台面：Letta <strong>没有另造一台"RAG 引擎"</strong>。它把第 27 课那套归档记忆的向量机器<strong>原样复用</strong>了一遍，只换了张表、换个外键、换个工具名。"RAG"和"长期记忆"，在物理层根本是同一回事。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>RAG 与归档记忆"同底座、不同来源"</strong>——同一根向量列、同一套召回，唯一的真差别是"谁写进去的"。</p>
+<p>底座：<span class="mono">SourcePassage</span>（你上传的文档）和 <span class="mono">ArchivalPassage</span>（agent 自己写的记忆）是<strong>同一个 <span class="mono">BasePassage</span></strong> 的两个兄弟子类，骑同一根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列。</p>
+<p>摄取：一份文件经<strong>解析 → 切块 → 嵌入</strong>的管线，被打散成一排 <span class="mono">SourcePassage</span> 行，从此可被语义搜索。</p>
+<p>检索：源用 <span class="mono">semantic_search_files</span>、归档用 <span class="mono">archival_memory_search</span>——<strong>两个不同工具，同一套 pgvector cosine</strong>。</p>
+</div>
+<p>把这条主线记牢：本课从头到尾都在反复印证"<strong>底座一样，来源不同</strong>"这八个字。下面先认底座，再走摄取，最后看检索。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">底注：两类 passage <strong>共用</strong>第 27 课那根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列、同一套 4096 padding、同一个 <span class="mono">cosine_distance</span> 排序。差别<strong>不在</strong>向量机器，只在<strong>来源</strong>与<strong>外键</strong>。</span></div>
+<h2>同一个 BasePassage，两个兄弟子类</h2>
+<p>先认底座。<span class="mono">orm/passage.py::BasePassage</span> 是个 <span class="mono">__abstract__</span> 抽象基类——它<strong>自己不建表</strong>，只规定"一条 passage 长什么样"：主键、文本、元数据，以及最关键的那根<strong>嵌入向量列</strong>。</p>
+<p>那根列正是第 27 课的主角：Postgres 上是 <span class="mono">embedding = Vector(MAX_EMBEDDING_DIM)</span>（pgvector），SQLite 上是 <span class="mono">CommonVector</span>。<strong>同列、同 4096 填充、同 <span class="mono">cosine_distance</span></strong>——两个子类<strong>原样继承</strong>，一行没改。</p>
+<p>两个子类只在<strong>"挂到谁身上"</strong>这件事上分道扬镳：</p>
+<p><strong>① <span class="mono">SourcePassage(BasePassage, FileMixin, SourceMixin)</span></strong>：表 <span class="mono">source_passages</span>，带 <span class="mono">source_id</span>(必填) ＋ <span class="mono">file_id</span>(可选) ＋ <span class="mono">file_name</span>。它属于"某个源里的某个文件"。</p>
+<p><strong>② <span class="mono">ArchivalPassage(BasePassage, ArchiveMixin)</span></strong>：表 <span class="mono">archival_passages</span>，带 <span class="mono">archive_id</span>，还多挂一张 <span class="mono">passage_tags</span> 标签 junction。它属于"某个 archive"。</p>
+<p>那些外键从哪来？全在 <span class="mono">orm/mixins.py</span> 的三个 mixin 里：<span class="mono">FileMixin</span>(给 file_id/file_name)、<span class="mono">SourceMixin</span>(给 source_id)、<span class="mono">ArchiveMixin</span>(给 archive_id)。子类只是<strong>拼装 mixin</strong>，就拿到各自的归属外键。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py</span><span class="ln">一个抽象基类，两个兄弟子类（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">BasePassage</span>(Base):
+    __abstract__ = <span class="kw">True</span>                       <span class="cm"># 不建表，只定义"一条 passage 长什么样"</span>
+    text: Mapped[str]
+    <span class="cm"># 第 27 课那根列：Postgres 用 pgvector，SQLite 用 CommonVector</span>
+    <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+        embedding = <span class="fn">mapped_column</span>(<span class="fn">Vector</span>(MAX_EMBEDDING_DIM))   <span class="cm"># 固定 4096 维</span>
+    <span class="kw">else</span>:
+        embedding = <span class="fn">mapped_column</span>(CommonVector)
+
+<span class="kw">class</span> <span class="fn">SourcePassage</span>(BasePassage, FileMixin, SourceMixin):   <span class="cm"># 你上传的文档</span>
+    __tablename__ = <span class="st">&quot;source_passages&quot;</span>      <span class="cm"># source_id(必) + file_id(选) + file_name</span>
+
+<span class="kw">class</span> <span class="fn">ArchivalPassage</span>(BasePassage, ArchiveMixin):            <span class="cm"># agent 自己写的记忆</span>
+    __tablename__ = <span class="st">&quot;archival_passages&quot;</span>    <span class="cm"># archive_id；另挂 passage_tags 标签</span>
+</pre></div>
+<p>把"两个子类、同一底座"摆成左右两栏看，差别一目了然——除了来源与外键，其余全共用：</p>
+<div class="cols">
+  <div class="col"><h4>🧠 ArchivalPassage · agent 写的</h4>
+  <p>表 <span class="mono">archival_passages</span> · 外键 <span class="mono">archive_id</span> · 工具 <span class="mono">archival_memory_search</span> · join <span class="mono">ArchivesAgents</span> · 带 <span class="mono">passage_tags</span>。</p>
+  <p>来源：agent 调 <span class="mono">archival_memory_insert</span> 自己写下（第 10、11 课）。</p>
+  </div>
+  <div class="col"><h4>📄 SourcePassage · 你上传的</h4>
+  <p>表 <span class="mono">source_passages</span> · 外键 <span class="mono">source_id</span>＋<span class="mono">file_id</span> · 工具 <span class="mono">semantic_search_files</span> · join <span class="mono">SourcesAgents</span>。</p>
+  <p>来源：上传文件，经摄取管线解析+嵌入而成（下一节）。</p>
+  </div>
+</div>
+<div class="cellgroup"><div class="cg-cap"><b>两子类共用：<span class="mono">BasePassage</span> 的同一根向量列（第 27 课）</b></div><div class="cells"><span class="cell">archival_passages</span><span class="sep">·</span><span class="cell">source_passages</span><span class="sep">→</span><span class="cell hl">BasePassage.embedding = Vector(MAX_EMBEDDING_DIM)</span><span class="sep">·</span><span class="cell hl">cosine_distance</span></div></div>
+<details class="accordion"><summary>source 与 archival 真就"井水不犯河水"？</summary><div class="acc-body">
+<p><strong>写入互斥（库层守卫）</strong>：<span class="mono">PassageManager.create_source_passage_async</span> 要求<strong>必须有</strong> <span class="mono">source_id</span>、<strong>不能有</strong> <span class="mono">archive_id</span>；<span class="mono">create_agent_passage_async</span> 反之。给错一个就直接报错。</p>
+<p><strong>检索互不返回</strong>：源走 <span class="mono">build_source_passage_query</span>（扫 <span class="mono">source_passages</span>），归档走 <span class="mono">build_agent_passage_query</span>（扫 <span class="mono">archival_passages</span>）。两条查询<strong>各扫各的表</strong>，永不把对方的行混进结果。</p>
+<p>所以"同底座"指的是<strong>物理列与算法</strong>一样，不是"数据混在一起"。两类 passage 在表、外键、工具、查询四个层面都<strong>分开</strong>。</p>
+</div></details>
+<div class="card analogy"><div class="tag">📝 生活类比</div>
+<p>把向量库想成一座<strong>图书馆</strong>，馆里有<strong>两种藏书</strong>。</p>
+<p>一种是<strong>你捐进来的书</strong>（<span class="mono">SourcePassage</span> ／ RAG）：从外面带进来的文档，馆员拆页、编号、上架。</p>
+<p>另一种是<strong>馆员自己手写的读书笔记</strong>（<span class="mono">ArchivalPassage</span> ／ 归档）：agent 工作中随手记下的心得。</p>
+<p>两种书都进<strong>同一套"按语义检索"的索引</strong>（那根向量列）——查的时候都按"意思相近"排序。</p>
+<p>只是它们分放<strong>两个书架</strong>（两张表），借阅要填<strong>不同的检索单</strong>（两个工具）：找捐书用 <span class="mono">semantic_search_files</span>，翻笔记用 <span class="mono">archival_memory_search</span>。</p>
+</div>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
