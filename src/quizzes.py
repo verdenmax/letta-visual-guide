@@ -2616,6 +2616,351 @@ QUIZZES = {
             },
         ],
     },
+    "28-multi-agent-sleeptime.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，真正能经 live API 跑起来的多智能体机制是哪些？",
+                    "en": "In letta v0.16.8, which multi-agent mechanisms can actually run over a live API?",
+                },
+                "opts": [
+                    {"zh": "只有两条：sleeptime 后台改记忆，以及 send_message_to_agent_* 工具（agent 直接调 agent）",
+                     "en": "Only two: sleeptime editing memory in the background, and the send_message_to_agent_* tools (agent calls agent directly)"},
+                    {"zh": "round_robin / supervisor / dynamic 三种群管理器都能用，由 ManagerType 路由",
+                     "en": "All three group managers — round_robin / supervisor / dynamic — work, routed by ManagerType"},
+                    {"zh": "有一个中央调度器按 ManagerType 编排所有成员轮流发言",
+                     "en": "A central scheduler orchestrates all members to speak in turn by ManagerType"},
+                    {"zh": "只有 send_message_to_agent_* 一条；sleeptime 只是 schema、没接线",
+                     "en": "Only send_message_to_agent_*; sleeptime is merely schema and isn't wired"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "v0.16.8 只有两条活路：① sleeptime（agents/agent_loop.py::AgentLoop.load → groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4）；② functions/function_sets/multi_agent.py 里的 send_message_to_agent_* 工具。经典群管理器 round_robin / supervisor / dynamic 只剩 schema＋枚举＋类骨架：执行器 groups/helpers.py::load_multi_agent 在 live 路径从未被调用，/v1/groups 路由整段 deprecated=True 且没有发消息端点，连 SupervisorMultiAgent.step 方法体都被整段注释掉。所以“三种群管理器都能用”和“有中央调度器”都错；而 sleeptime 恰恰是唯一真正活着的“群”行为，说它“只是 schema”也错。",
+                    "en": "v0.16.8 has exactly two live paths: (1) sleeptime (agents/agent_loop.py::AgentLoop.load → groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4); (2) the send_message_to_agent_* tools in functions/function_sets/multi_agent.py. The classic group managers round_robin / supervisor / dynamic are only schema + enum + class skeleton: the executor groups/helpers.py::load_multi_agent is never called on the live path, the /v1/groups routes are entirely deprecated=True with no send-message endpoint, and even SupervisorMultiAgent.step has its whole body commented out. So both “all three group managers work” and “there's a central scheduler” are wrong; and sleeptime is in fact the only truly live “group” behavior, so calling it “merely schema” is wrong too.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "标准 sleeptime agent 用来改记忆的那组工具，正确的名字是哪一组？",
+                    "en": "What is the correct set of names for the tools a standard sleeptime agent uses to edit memory?",
+                },
+                "opts": [
+                    {"zh": "memory_replace / memory_insert / memory_rethink / memory_finish_edits",
+                     "en": "memory_replace / memory_insert / memory_rethink / memory_finish_edits"},
+                    {"zh": "rethink_memory / finish_rethinking_memory（自编辑记忆那套旧名）",
+                     "en": "rethink_memory / finish_rethinking_memory (the old self-editing-memory names)"},
+                    {"zh": "core_memory_append / core_memory_replace（前台主 agent 的核心记忆工具）",
+                     "en": "core_memory_append / core_memory_replace (the foreground primary agent's core-memory tools)"},
+                    {"zh": "send_message_to_agent_and_wait_for_reply 等多智能体工具",
+                     "en": "Multi-agent tools like send_message_to_agent_and_wait_for_reply"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "标准 sleeptime 配的是 constants.py::BASE_SLEEPTIME_TOOLS ＝ memory_replace / memory_insert / memory_rethink / memory_finish_edits，实现都在 services/tool_executor/core_tool_executor.py::CoreToolExecutor。关键纠正：是 memory_rethink，不是 rethink_memory——后者是 legacy 自编辑记忆的旧名；finish_rethinking_memory 则是 voice_sleeptime 专用，和标准 sleeptime 的 memory_finish_edits 不是一回事。core_memory_append / replace 是前台普通 core memory 工具、不是 sleeptime 那套；send_message_* 是路径一的工具、跟改记忆无关。看 v0.16.8 认准 BASE_SLEEPTIME_TOOLS 那四个即可。",
+                    "en": "Standard sleeptime is equipped with constants.py::BASE_SLEEPTIME_TOOLS = memory_replace / memory_insert / memory_rethink / memory_finish_edits, all implemented in services/tool_executor/core_tool_executor.py::CoreToolExecutor. Key correction: it's memory_rethink, not rethink_memory — the latter is the legacy self-editing-memory name; finish_rethinking_memory is voice_sleeptime-only and not the same as standard sleeptime's memory_finish_edits. core_memory_append / replace are the foreground's ordinary core-memory tools, not the sleeptime set; send_message_* are the path-one tools, unrelated to editing memory. For v0.16.8, just lock onto those four in BASE_SLEEPTIME_TOOLS.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "sleeptime 里前台与后台两个 agent，到底“共享”的是什么？",
+                    "en": "What exactly do the foreground and background agents in sleeptime “share”?",
+                },
+                "opts": [
+                    {"zh": "同一行 Block——一行共享可变的记录，不是副本",
+                     "en": "The same Block row — one shared mutable record, not a copy"},
+                    {"zh": "各自一份 Block 副本，后台改完再同步/合并回前台",
+                     "en": "A separate copy of the Block each, which the background syncs/merges back after editing"},
+                    {"zh": "一个内存里的消息队列，后台把更新 push 给前台",
+                     "en": "An in-memory message queue through which the background pushes updates to the foreground"},
+                    {"zh": "一个共享的 Python 对象，靠锁服务协调并发读写",
+                     "en": "A shared Python object coordinated by a lock service for concurrent reads/writes"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "协调基元朴素到只是数据库里同一条记录：orm/blocks_agents.py::BlocksAgents（复合主键 (agent_id, block_id, block_label)）让一行 Block 经多对多挂到多个 agent（Block.agents ↔ Agent.core_memory，secondary=“blocks_agents”）。server.py::create_sleeptime_agent_async 建后台 agent 时传 block_ids=[b.id for b in main_agent.memory.blocks]——同一批 Block 行、不是副本。sleeptime 用 memory_rethink → update_memory_if_changed_async 只改那一行的值（Block.version 乐观锁防并发覆盖），前台在“下一回合重建 system prompt”时重新编译这行才读到新值。所以没有副本合并、没有消息队列、没有锁服务，也不是共享 Python 对象——就是一行共享可变的 Block，可见性边界是“下次重建 prompt”。",
+                    "en": "The coordination primitive is plain to the point of being just one DB record: orm/blocks_agents.py::BlocksAgents (composite PK (agent_id, block_id, block_label)) attaches one Block row to many agents via the M2M (Block.agents ↔ Agent.core_memory, secondary=“blocks_agents”). server.py::create_sleeptime_agent_async builds the background agent passing block_ids=[b.id for b in main_agent.memory.blocks] — the same Block rows, not copies. Sleeptime's memory_rethink → update_memory_if_changed_async changes only that row's value (Block.version is an optimistic lock against concurrent overwrite), and the foreground reads the new value only when it recompiles the row on its next system-prompt rebuild. So there's no copy-merge, no message queue, no lock service, and no shared Python object — just one shared mutable Block row, with visibility bounded by “the next prompt rebuild.”",
+                },
+            },
+            {
+                "q": {
+                    "zh": "sleeptime 的 group 里，manager_agent_id 指向的是哪个 agent？",
+                    "en": "In a sleeptime group, which agent does manager_agent_id point to?",
+                },
+                "opts": [
+                    {"zh": "前台主 agent（跑用户对话的那个）",
+                     "en": "The foreground primary agent (the one running the user conversation)"},
+                    {"zh": "后台 sleeptime agent（专职整理记忆的那个）",
+                     "en": "The background sleeptime agent (the one dedicated to tidying memory)"},
+                    {"zh": "一个独立的协调器 agent，专门排队调度成员发言",
+                     "en": "A separate coordinator agent that queues and schedules members' turns"},
+                    {"zh": "group 里第一个被创建的 agent，与前台/后台角色无关",
+                     "en": "Whichever agent was created first in the group, regardless of foreground/background role"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这是 v0.16.8 最反直觉的一处命名。读 orm/group.py::Group：manager_agent_id 其实是前台主 agent（跑用户对话、step 跑完顺手触发计数器的那个），而 group.agent_ids 才是后台记忆编辑者（那些 sleeptime agents）。原因是 sleeptime 的“主语”始终是前台那次对话：是它的 SleeptimeMultiAgentV4.step 先 super().step() 跑完前台，再 run_sleeptime_agents 去“使唤”后台。所以把前台记成 manager、后台塞进 agent_ids，从实现视角自洽，但与“manager＝协调者”的直觉正好相反。没有独立协调器 agent；角色也不是按创建顺序定的。",
+                    "en": "This is v0.16.8's most counterintuitive piece of naming. Read orm/group.py::Group: manager_agent_id is actually the foreground primary agent (the one running the user conversation, whose finished step trips the counter), while group.agent_ids holds the background memory editors (those sleeptime agents). The reason: sleeptime's “subject” is always the foreground conversation — its SleeptimeMultiAgentV4.step first does super().step() for the foreground, then run_sleeptime_agents to “dispatch” the background. So recording the foreground as manager and stuffing the background into agent_ids is self-consistent from the implementation's view, but exactly opposite to the “manager = coordinator” intuition. There's no separate coordinator agent, and roles aren't assigned by creation order.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "调用 send_message_to_agent_and_wait_for_reply 时，调用方 agent 会发生什么？",
+                    "en": "When send_message_to_agent_and_wait_for_reply is called, what happens to the caller agent?",
+                },
+                "opts": [
+                    {"zh": "同步阻塞——卡住等被叫 agent 整轮跑完、把回复回灌后才继续",
+                     "en": "It blocks synchronously — stalling until the callee finishes its whole turn and the reply is fed back"},
+                    {"zh": "发了就走——不等回复，立刻继续自己的 loop",
+                     "en": "Fire-and-forget — it doesn't wait for a reply and immediately continues its own loop"},
+                    {"zh": "和 sleeptime 一样，被包成非阻塞后台任务异步执行",
+                     "en": "Like sleeptime, it's wrapped as a non-blocking background task and runs asynchronously"},
+                    {"zh": "并行群发给所有匹配的 agent，再聚合所有回复",
+                     "en": "It fans out in parallel to all matching agents and then aggregates every reply"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "..._and_wait_for_reply 是同步阻塞、双向：工具体内建 letta_client.Letta → client.agents.messages.create(B) 经 REST 重入、跑 B 自己完整的 loop（AgentLoop.load(B).step），再把 B 的 assistant 回复抽出来作为工具返回值交回 A——这一步 A 真的卡住，直到 B 整轮跑完（B 若再调 C、C 调 D，阻塞会层层叠加）。“发了就走”的是另一个变体 send_message_to_agent_async（异步单向），且它在生产环境被禁用。“并行群发”也不对：send_message_to_agents_matching_tags 是按标签筛一批后逐个 wait 的同步串行广播，不是真并行。把它和 sleeptime 的非阻塞后台任务搞混，正是本课提醒的“阻塞语义相反”。",
+                    "en": "..._and_wait_for_reply is synchronous, blocking, and two-way: the tool body builds a letta_client.Letta → client.agents.messages.create(B), re-entering over REST to run B's own full loop (AgentLoop.load(B).step), then pulls out B's assistant reply as the tool's return value back to A — and A genuinely stalls at this step until B's whole turn finishes (if B then calls C and C calls D, the blocking stacks layer by layer). The “fire-and-forget” one is the other variant, send_message_to_agent_async (asynchronous, one-way), which is disabled in production. “Parallel fan-out” is also wrong: send_message_to_agents_matching_tags filters a batch by tags then waits on each in turn — synchronous and serial, not truly parallel. Confusing it with sleeptime's non-blocking background task is exactly the “opposite blocking semantics” trap this lesson warns about.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“两条活路 ＋ 一行共享 Block”的框架，把“两个 agent 协作完成一件事”从头到尾讲一遍，并想透五件事：(1) 为什么说 v0.16.8 根本没有“多智能体运行时”？round_robin / supervisor / dynamic 各自卡在哪一层（load_multi_agent 从未被调、/v1/groups deprecated 无发消息端点、SupervisorMultiAgent.step 注释掉），又为什么留着这些睡着的枚举？(2) 当 agent A 调 send_message_to_agent_and_wait_for_reply(B) 时，为什么要绕一圈 REST 重入、而不在进程内直接调 B？这跟第 20 课的沙箱、第 24 课的“三层楼”有什么关系？B 跑的为什么是“自己完整的 loop”？(3) sleeptime 为什么“第一回合就触发”？请从 turns_counter=-1、默认 frequency=5、bump_turns_counter 的 (c+1) % frequency 把这条算清楚。(4) 前台与后台共享的是同一行 Block，可后台改完前台并非“立刻”看到——可见性边界到底在哪？为什么说这是“零额外机制”换来“弱实时”？(5) 把 manager_agent_id＝前台、group.agent_ids＝后台 这处反直觉接线讲清楚：为什么从实现视角它反而自洽？最后回到那句话：如果“多智能体”是从“一个 agent 调另一个的 API”和“两个 agent 指向同一行 block”里涌现的，你会怎样在其上自己搭一个 round_robin？",
+                "en": "Using this lesson's “two live paths plus one shared Block” framework, narrate “two agents collaborating to get one thing done” end to end, and think through five things: (1) Why does v0.16.8 have no “multi-agent runtime” at all? At which layer is each of round_robin / supervisor / dynamic stuck (load_multi_agent never called, /v1/groups deprecated with no send endpoint, SupervisorMultiAgent.step commented out), and why keep these sleeping enums around? (2) When agent A calls send_message_to_agent_and_wait_for_reply(B), why loop through a REST re-entry instead of calling B in-process? How does that relate to Lesson 20's sandbox and Lesson 24's “three floors”? Why does B run its “own full loop”? (3) Why does sleeptime trigger “on the very first turn”? Work it out from turns_counter=-1, the default frequency=5, and bump_turns_counter's (c+1) % frequency. (4) The foreground and background share the same Block row, yet the foreground doesn't see the edit “instantly” — where exactly is the visibility boundary, and why is this “zero extra machinery” traded for “weak real-time”? (5) Explain the counterintuitive wiring manager_agent_id = foreground and group.agent_ids = background: why is it self-consistent from the implementation's view? Finally, return to the line: if “multi-agent” emerges from “one agent calling another's API” and “two agents pointing at the same block row,” how would you build a round_robin on top of these primitives yourself?",
+            },
+        ],
+    },
+    "29-data-sources-rag.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "SourcePassage 和 ArchivalPassage 在底层到底“共享”了什么？",
+                    "en": "What exactly do SourcePassage and ArchivalPassage \"share\" at the bottom layer?",
+                },
+                "opts": [
+                    {"zh": "同一个 BasePassage：同一根向量列、同一套 4096 padding、同一个 cosine_distance 排序",
+                     "en": "The same BasePassage: one vector column, the same 4096 padding, one cosine_distance ordering"},
+                    {"zh": "同一张物理表，靠一个 type 字段区分源与归档两类行",
+                     "en": "The same physical table, telling source and archival rows apart by a type column"},
+                    {"zh": "同一行 passage——挂载时在两个 agent 间共享同一条记录",
+                     "en": "The same passage row — one record shared between two agents on attach"},
+                    {"zh": "什么都不共享：RAG 有自己独立的向量引擎与索引服务",
+                     "en": "Nothing — RAG has its own separate vector engine and index service"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "orm/passage.py::BasePassage 是 __abstract__ 抽象基类（自己不建表），定义了那根嵌入列：Postgres 上 embedding = Vector(MAX_EMBEDDING_DIM)（pgvector）、SQLite 上 CommonVector，外加同一套 4096 padding 与 cosine_distance。SourcePassage(BasePassage, FileMixin, SourceMixin) 与 ArchivalPassage(BasePassage, ArchiveMixin) 原样继承这根列、一行没改——这正是第 27 课的底座。所以它们共享的是“物理列＋算法”，不是同一张表（两表分别是 source_passages / archival_passages）、不是同一行（挂载从不复制或共享 passage 行），更不是“各自独立的引擎”（恰恰是同一套）。",
+                    "en": "orm/passage.py::BasePassage is an __abstract__ base (it builds no table of its own) that defines the embedding column: on Postgres embedding = Vector(MAX_EMBEDDING_DIM) (pgvector), on SQLite CommonVector, plus the same 4096 padding and cosine_distance. SourcePassage(BasePassage, FileMixin, SourceMixin) and ArchivalPassage(BasePassage, ArchiveMixin) inherit that column verbatim, not a line changed — exactly Lesson 27's substrate. So what they share is the \"physical column + algorithm,\" not one table (they are source_passages / archival_passages), not one row (attaching never copies or shares a passage row), and not \"separate engines\" (it is one and the same).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "既然底座相同，SourcePassage 与 ArchivalPassage 真正的差别在哪？",
+                    "en": "Given the shared foundation, where do SourcePassage and ArchivalPassage actually differ?",
+                },
+                "opts": [
+                    {"zh": "只在来源：表/外键/工具不同，向量搜索完全相同",
+                     "en": "Only in provenance: different table/FK/tool; the vector search is identical"},
+                    {"zh": "用不同的距离度量：源用 cosine、归档用 L2 欧氏距离",
+                     "en": "Different distance metrics: source uses cosine, archival uses L2 Euclidean"},
+                    {"zh": "向量维度不同：源是 1536 维、归档 pad 到 4096 维",
+                     "en": "Different vector dimensions: source is 1536-dim, archival padded to 4096"},
+                    {"zh": "只是命名不同，表、外键、工具其实完全一样",
+                     "en": "Only the names differ; table, FK, and tool are actually identical"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "向量机器完全相同（同 BasePassage、同 cosine_distance、同 4096 padding），差别只在“归属与来源”：SourcePassage 进 source_passages、带 source_id(必)+file_id(选)、检索走 build_source_passage_query join SourcesAgents、工具 semantic_search_files；ArchivalPassage 进 archival_passages、带 archive_id（外加 passage_tags 标签）、检索走 build_agent_passage_query join ArchivesAgents、工具 archival_memory_search。所以“不同距离度量”“不同维度”都错（恰恰相同）；“完全一样”也错——表/外键/工具确实分家。两个不同工具，同一套 pgvector cosine。",
+                    "en": "The vector machinery is identical (same BasePassage, same cosine_distance, same 4096 padding); the only difference is ownership and provenance. SourcePassage goes to source_passages with source_id(req)+file_id(opt), retrieved via build_source_passage_query joining SourcesAgents, tool semantic_search_files; ArchivalPassage goes to archival_passages with archive_id (plus passage_tags), retrieved via build_agent_passage_query joining ArchivesAgents, tool archival_memory_search. So \"different distance metrics\" and \"different dimensions\" are wrong (they are the same), and \"actually identical\" is wrong too — table/FK/tool really do diverge. Two different tools, one pgvector cosine.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "把一个源“挂载”到 agent 上（attach_source_async），底层到底做了什么？",
+                    "en": "When you attach a source to an agent (attach_source_async), what actually happens underneath?",
+                },
+                "opts": [
+                    {"zh": "只写一行 sources_agents junction——不复制、不重嵌；源是 org 级、可被多个 agent 共享",
+                     "en": "It writes one sources_agents junction row — no copy or re-embed; sources are org-scoped and shareable"},
+                    {"zh": "把该源的全部 passage 复制一份到该 agent 名下，并重新嵌入",
+                     "en": "It copies all of the source's passages under that agent and re-embeds them"},
+                    {"zh": "把源的文件逐字塞进该 agent 的上下文窗口（FileBlock）",
+                     "en": "It stuffs the source's files verbatim into the agent's context window (FileBlock)"},
+                    {"zh": "在该 agent 的 archive 里新建一批 ArchivalPassage 行",
+                     "en": "It creates a fresh batch of ArchivalPassage rows in the agent's archive"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "agent_manager.py::AgentManager.attach_source_async 只写一行 orm/sources_agents.py::SourcesAgents junction（复合主键 (agent_id, source_id)，保证只连一次），passage 一条都不复制、不重嵌。Source 由 services/source_manager.py::SourceManager.create_source 建在 org 这层、可被同组织多个 agent 经 junction 共享（一份 50 页手册挂给 10 个 agent 仍只嵌入一次）。检索时 build_source_passage_query 正是 join 这张 SourcesAgents 才知道“该 agent 能搜哪些源”。所以“复制+重嵌”“塞进上下文”“新建 ArchivalPassage”全错——挂载只是“连一条线”。",
+                    "en": "agent_manager.py::AgentManager.attach_source_async writes a single orm/sources_agents.py::SourcesAgents junction row (composite PK (agent_id, source_id), so it links only once); not one passage is copied or re-embedded. The Source is built at the org level by services/source_manager.py::SourceManager.create_source and shared across agents via the junction (a 50-page manual attached to 10 agents is still embedded once). At retrieval, build_source_passage_query joins exactly this SourcesAgents to know which sources the agent may search. So \"copy + re-embed,\" \"stuff into context,\" and \"create new ArchivalPassage\" are all wrong — attaching just draws a line.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "现代摄取管线 FileProcessor.process 把一份文件变成可搜索 passage 的正确步骤顺序是？",
+                    "en": "In the modern ingestion pipeline FileProcessor.process, what is the correct step order that turns a file into searchable passages?",
+                },
+                "opts": [
+                    {"zh": "extract_text(OCR) → 切块(LlamaIndexChunker) → 批量嵌入 → create_many_source_passages_async",
+                     "en": "extract_text (OCR) → chunk (LlamaIndexChunker) → batch-embed → create_many_source_passages_async"},
+                    {"zh": "先嵌入整份文件 → 再切块 → 最后 OCR 抽文本写库",
+                     "en": "Embed the whole file first → then chunk → finally OCR the text into the DB"},
+                    {"zh": "切块 → 写入 source_passages → 检索时才按需嵌入（懒嵌入）",
+                     "en": "Chunk → write to source_passages → embed lazily at retrieval time"},
+                    {"zh": "走 legacy connectors.load_data ＋ TokenTextSplitter ＋ create_many_passages_async",
+                     "en": "Go through legacy connectors.load_data + TokenTextSplitter + create_many_passages_async"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "services/file_processor/file_processor.py::FileProcessor.process：create_file(状态 PARSING) → extract_text(PDF/图片走 OCR、转 markdown) → upsert_file_content(全文存 file_contents) → insert_file_into_context_windows(建 FileAgent) → LlamaIndexChunker.chunk_text(chunk_size 来自 EmbeddingConfig，第 21 课) → generate_embedded_passages(按 EmbeddingConfig.batch_size 分批) → create_many_source_passages_async(写 source_passages，pgvector 上 pad 到 MAX_EMBEDDING_DIM、TPUF 跳过)。所以必须“先抽文本、再切块、再嵌入、最后落库”。“先嵌整文再切块”“懒嵌入”都违反顺序；legacy connectors.load_data 调的是已弃用的 create_many_passages_async，不是 v0.16.8 主线。",
+                    "en": "services/file_processor/file_processor.py::FileProcessor.process: create_file (status PARSING) → extract_text (PDF/image via OCR, to markdown) → upsert_file_content (full text into file_contents) → insert_file_into_context_windows (builds FileAgent) → LlamaIndexChunker.chunk_text (chunk_size from EmbeddingConfig, Lesson 21) → generate_embedded_passages (batched by EmbeddingConfig.batch_size) → create_many_source_passages_async (writes source_passages, padded to MAX_EMBEDDING_DIM on pgvector, skipped for TPUF). So it must be extract, then chunk, then embed, then land. \"Embed whole file first\" and \"lazy embedding\" break the order; legacy connectors.load_data calls the deprecated create_many_passages_async, not the v0.16.8 mainline.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一份挂载的文件在 Letta 里会同时以哪两种形态存在？",
+                    "en": "What two forms does an attached file take in Letta at the same time?",
+                },
+                "opts": [
+                    {"zh": "可语义搜的 SourcePassage（嵌入 chunk）＋ 上下文里只读的 FileBlock（FileAgent.visible_content）",
+                     "en": "A searchable SourcePassage (embedded chunk) + a read-only FileBlock in context (FileAgent.visible_content)"},
+                    {"zh": "一份 SourcePassage ＋ 一份内容相同的 ArchivalPassage 备份",
+                     "en": "A SourcePassage plus an identical ArchivalPassage backup"},
+                    {"zh": "只有可搜索的 SourcePassage 一种；“打开文件”也是搜 chunk",
+                     "en": "Only the searchable SourcePassage; opening a file is also just searching chunks"},
+                    {"zh": "一个可写的 core memory block ＋ 一份归档副本",
+                     "en": "A writable core-memory block plus an archival copy"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "同一趟摄取管线双重产出：①形态 A——切块嵌入成 SourcePassage、按 cosine 语义召回（工具 semantic_search_files）；②形态 B——insert_file_into_context_windows 建 orm/files_agents.py::FileAgent（files_agents junction，带 is_open/visible_content），经 to_pydantic_block 渲染成上下文里的 FileBlock(read_only=True)，由 open_files/grep_files 操作、默认最多开 5 个。两者互补：semantic 模糊定位、open_files 逐字细读。所以不是“再存一份 ArchivalPassage”（归档是 agent 自写、另一来源），不是“只有 SourcePassage 一种”，FileBlock 更是只读、不是可写 core memory。",
+                    "en": "One ingestion pass yields two forms: (A) chunked and embedded into a SourcePassage, recalled by cosine (tool semantic_search_files); (B) insert_file_into_context_windows builds orm/files_agents.py::FileAgent (the files_agents junction, with is_open/visible_content), rendered via to_pydantic_block into an in-context FileBlock(read_only=True), operated by open_files/grep_files and capped at 5 open by default. The two are complementary: semantic for fuzzy locating, open_files for verbatim reading. So it is not \"an extra ArchivalPassage backup\" (archival is agent-written, a different source), not \"only a SourcePassage,\" and FileBlock is read-only, not a writable core-memory block.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“同底座、不同来源”的框架，把“上传一份 PDF 手册、让 agent 用它回答问题”从头到尾讲一遍，并想透五件事：(1) 为什么说 Letta 没有独立的“RAG 引擎”？请从 orm/passage.py::BasePassage 那根 Vector(MAX_EMBEDDING_DIM) 列、cosine_distance、4096 padding 说清 SourcePassage 与 ArchivalPassage 到底共享什么、又在表/外键/工具/查询四层怎么分家。(2) 把 FileProcessor.process 的步骤顺序复述出来（create_file → extract_text → upsert_file_content → insert_file_into_context_windows → chunk_text → generate_embedded_passages → create_many_source_passages_async），并解释为什么 chunk_size 必须来自 EmbeddingConfig、为什么嵌入要按 EmbeddingConfig.batch_size 分批。(3) 同一份文件为什么会“同时”活成可搜的 SourcePassage 和上下文里只读的 FileBlock？semantic_search_files 与 grep_files/open_files 分别解决什么问题、为何 FileBlock 要 read_only=True、为何默认最多开 5 个？(4) “挂载源”为什么只写一行 sources_agents junction、而不复制 passage？这跟第 26 课多租户、第 28 课 blocks_agents 共享块是同一种套路吗？build_source_passage_query 里那个 join SourcesAgents 起什么护栏作用？(5) np.pad 到 4096 为什么只在 pgvector 路径做、TPUF 为什么跳过？如果摄取与召回用了不同的 EmbeddingConfig，pad 会怎样“静默掩盖”维度不匹配、埋下“搜不准”的坑？最后回到那句话：既然 RAG 就是“换了来源的归档记忆”，你会怎样只用 BasePassage ＋ 一张新 junction 表，给 agent 再加一类全新的“可语义搜索的知识”？",
+                "en": "Using this lesson's \"same foundation, different source\" framework, narrate \"upload a PDF manual and let the agent answer questions from it\" end to end, and think through five things: (1) Why does Letta have no separate \"RAG engine\"? From orm/passage.py::BasePassage's Vector(MAX_EMBEDDING_DIM) column, cosine_distance, and 4096 padding, spell out exactly what SourcePassage and ArchivalPassage share, and how they diverge across the four layers of table/FK/tool/query. (2) Recite the step order of FileProcessor.process (create_file → extract_text → upsert_file_content → insert_file_into_context_windows → chunk_text → generate_embedded_passages → create_many_source_passages_async), and explain why chunk_size must come from EmbeddingConfig and why embedding is batched by EmbeddingConfig.batch_size. (3) Why does one file live \"at once\" as a searchable SourcePassage and a read-only FileBlock in context? What does semantic_search_files solve versus grep_files/open_files, why is FileBlock read_only=True, and why cap at 5 open by default? (4) Why does \"attaching a source\" write only one sources_agents junction row rather than copy passages? Is this the same pattern as Lesson 26's multi-tenancy and Lesson 28's blocks_agents shared blocks? What guardrail does that join SourcesAgents play in build_source_passage_query? (5) Why does np.pad to 4096 happen only on the pgvector path, and why does TPUF skip it? If ingestion and recall used different EmbeddingConfigs, how would padding \"silently mask\" the dimension mismatch and bury a \"bad results\" trap? Finally, return to the line: since RAG is just \"archival memory with a different source,\" how would you add a brand-new kind of \"semantically searchable knowledge\" to an agent using only BasePassage plus one new junction table?",
+            },
+        ],
+    },
+    "30-jobs-runs-steps.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "关于 Run、Step、Job 的层级关系，下面哪种说法是对的？",
+                    "en": "Which statement about the Run / Step / Job hierarchy is correct?",
+                },
+                "opts": [
+                    {"zh": "Run ⊃ Step ⊃ StepMetrics（外加 Run–RunMetrics 一对一）；Job 是平级的另一张表，不是 Run 的父级",
+                     "en": "Run ⊃ Step ⊃ StepMetrics (plus a 1:1 Run–RunMetrics); Job is a sibling table, not Run's parent"},
+                    {"zh": "Job ⊃ Run ⊃ Step：Job 是最外层容器，每个 Run 都属于某个 Job",
+                     "en": "Job ⊃ Run ⊃ Step: Job is the outermost container and every Run belongs to a Job"},
+                    {"zh": "Run 与 Step 是平级两张表，靠 StepMetrics 关联",
+                     "en": "Run and Step are two sibling tables, linked through StepMetrics"},
+                    {"zh": "Step ⊃ Run：一个 Step 里包含多次 Run（每次重试算一个 Run）",
+                     "en": "Step ⊃ Run: one Step contains several Runs (one Run per retry)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "正确嵌套只有一条：orm/run.py::Run（表 runs，一次 agent 调用）挂 Run.steps（1:N），每个 orm/step.py::Step（表 steps）再 1:1 挂 orm/step_metrics.py::StepMetrics；建 Run 时 RunManager.create_run 同时写一份 RunMetrics（1:1）。orm/job.py::Job（表 jobs，UserMixin）是平级的后台/批任务，不在这条链上——“Job ⊃ Run ⊃ Steps”是本课头号坑。Job 与 Run 是两种正交的异步：Run 有 LLM/工具/step，Job（加载/解析/嵌入文件）根本没有 step 概念，所以做成两张平级表，而非 Job 包 Run。",
+                    "en": "There is only one correct nesting: orm/run.py::Run (table runs, one agent invocation) hangs Run.steps (1:N), and each orm/step.py::Step (table steps) hangs one orm/step_metrics.py::StepMetrics 1:1; creating a Run also writes one RunMetrics (1:1) via RunManager.create_run. orm/job.py::Job (table jobs, UserMixin) is a sibling background/batch task, off this chain — 'Job ⊃ Run ⊃ Steps' is the lesson's number-one trap. Job and Run are two orthogonal kinds of async: a Run has LLM/tools/steps, while a Job (load/parse/embed a file) has no concept of a step, which is why they are two sibling tables rather than Job-wraps-Run.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "在 Letta 的执行模型里，一个 Step 对应什么？",
+                    "en": "In Letta's execution model, what does one Step correspond to?",
+                },
+                "opts": [
+                    {"zh": "一圈 loop 迭代：一次 LLM 调用＋这一轮的工具执行",
+                     "en": "One loop iteration: a single LLM call plus that round's tool execution"},
+                    {"zh": "一条消息：每发出或收到一条 Message 就是一个 Step",
+                     "en": "One message: every Message sent or received is a Step"},
+                    {"zh": "一次工具调用：每调用一个工具记一个 Step",
+                     "en": "One tool call: each tool invocation is its own Step"},
+                    {"zh": "一整次 agent 调用：Step 与 Run 一一对应",
+                     "en": "A whole agent invocation: Step maps one-to-one to Run"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "Step ＝ 第 14 课那个 for i in range(max_steps) 的一圈迭代 ＝ 一次 LLM 调用＋这一轮工具执行（letta_agent_v2/v3 的 _step；连 legacy 的 StreamingServerInterface.step_complete 都把 step 定义为“LLM 响应＋工具执行”）。由此一个 Run 至多 max_steps 个 Step（Run:Step = 1:≤max_steps），每个 Step 产出的多条 Message 都被盖上 run_id+step_id（LettaAgentV3._checkpoint_messages，Step:Message = 1:N）。所以它既不是“一条消息”、也不是“一个工具”，更不与 Run 一一对应。",
+                    "en": "A Step is one iteration of Lesson 14's for i in range(max_steps) loop = one LLM call plus that round's tool execution (the _step in letta_agent_v2/v3; even the legacy StreamingServerInterface.step_complete defines step as 'LLM response + tool execution'). Hence a Run has at most max_steps Steps (Run:Step = 1:≤max_steps), and each Step stamps its several Messages with run_id+step_id (LettaAgentV3._checkpoint_messages, Step:Message = 1:N). So it is neither 'one message' nor 'one tool', and it does not map one-to-one to a Run.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "通过 messages/async 异步给 agent 发一条消息，底层创建的是什么？",
+                    "en": "Sending an agent a message asynchronously via messages/async creates what underneath?",
+                },
+                "opts": [
+                    {"zh": "一个后台 Run：send_message_async 立即返回，之后轮询查状态",
+                     "en": "A background Run: send_message_async returns immediately, then you poll for status"},
+                    {"zh": "一个 Job：异步路径专门建 Job 来追踪进度",
+                     "en": "A Job: the async path creates a Job to track progress"},
+                    {"zh": "一个 Step：异步消息直接落成一行 steps",
+                     "en": "A Step: the async message lands directly as a steps row"},
+                    {"zh": "什么都不建：消息排进队列，没有独立资源",
+                     "en": "Nothing: the message just goes on a queue, with no resource of its own"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "messages/async 走 send_message_async：立即返回一个 background Run（run-… id），真正的活儿丢进 shielded 后台任务，之后轮询 GET /v1/runs/{run_id}（及 /steps、/messages、/usage、/metrics），取消用 RunManager.cancel_run，后台流式恢复要 Redis（POST /v1/runs/{run_id}/stream）。它建的是 Run 不是 Job——orm/job.py::Job 是加载文件那类后台/批任务，和“一次 agent 调用”是两条正交的线。把异步 agent 消息当成建 Job，是本课点名的常见误区。",
+                    "en": "messages/async goes through send_message_async: it returns a background Run (a run-… id) immediately, throws the real work into a shielded background task, and you then poll GET /v1/runs/{run_id} (plus /steps, /messages, /usage, /metrics), cancel via RunManager.cancel_run, and resume a background stream through Redis (POST /v1/runs/{run_id}/stream). It creates a Run, not a Job — orm/job.py::Job is a background/batch task like loading a file, an orthogonal line from 'one agent invocation'. Treating an async agent message as creating a Job is the common mistake this lesson calls out.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "_step 在 loop 里怎么把一行 steps 记下来，使得连崩溃的迭代也留得下记录？",
+                    "en": "How does _step record a steps row in the loop so that even a crashed iteration leaves a record?",
+                },
+                "opts": [
+                    {"zh": "调 LLM 之前就以 PENDING/0 token 写行，跑完再回填真实用量翻 SUCCESS",
+                     "en": "It writes a PENDING/0-token row before the LLM call, then backfills real usage to SUCCESS after"},
+                    {"zh": "跑完整步、拿到真实 token 后才写一行 steps，状态直接是 SUCCESS",
+                     "en": "It writes the steps row only after the whole step, with real tokens and status straight to SUCCESS"},
+                    {"zh": "先写 SUCCESS，崩了再回滚删掉那一行",
+                     "en": "It writes SUCCESS first, then rolls back and deletes the row on a crash"},
+                    {"zh": "每步写两行：一行 PENDING、一行 SUCCESS，事后合并",
+                     "en": "It writes two rows per step — one PENDING, one SUCCESS — and merges them later"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "顺序是关键：_step_checkpoint_start 在调 LLM 之前就 log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...) 写下一行 steps（零 token）并开 OTel span agent_step；LLM＋工具跑完后，_step_checkpoint_finish 用 update_step_success_async(真实 per-step usage, stop_reason) 翻 SUCCESS 并 record_step_metrics_async。因为行“先存在”，finally 里的 StepProgression 状态机（START…FINISHED）一旦发现没走到 FINISHED，就 update_step_error_async 翻 FAILED/CANCELLED——崩溃/取消也留可归因记录。“跑完才写一行”正是它要避免的朴素设计：先占坑多付一次写，换来每圈迭代都可归因。",
+                    "en": "Order is the key: _step_checkpoint_start calls log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...) before the LLM call, writing one steps row (zero tokens) and opening the OTel span agent_step; after the LLM + tools, _step_checkpoint_finish uses update_step_success_async(real per-step usage, stop_reason) to flip to SUCCESS and record_step_metrics_async. Because the row already exists, the StepProgression state machine (START…FINISHED) in the finally detects anything short of FINISHED and calls update_step_error_async to mark FAILED/CANCELLED — so crashes/cancels still leave an accountable record. 'Write a row only when done' is the naive design this avoids: reserving first costs one extra write and buys per-iteration accountability.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "Step.trace_id = get_trace_id() 把哪三样东西缝在一起？",
+                    "en": "What three things does Step.trace_id = get_trace_id() stitch together?",
+                },
+                "opts": [
+                    {"zh": "steps 行（计费）↔ OTel 分布式 trace（延迟）↔ provider trace 原始 LLM payload（调试）——三种可观测粒度",
+                     "en": "The steps row (billing) ↔ the OTel distributed trace (latency) ↔ the provider-trace raw payload (debugging) — three observability granularities"},
+                    {"zh": "三个 agent：主 agent、sleeptime 子 agent、工具 agent 的调用链",
+                     "en": "Three agents: the call chain of the primary, the sleeptime sub-agent, and a tool agent"},
+                    {"zh": "三种外壳：同步、SSE 流式、后台 Run 三条连接",
+                     "en": "Three shells: the sync, SSE streaming, and background-Run connections"},
+                    {"zh": "两条流式路径：v3 的 StreamingService 与 legacy 的 StreamingServerInterface",
+                     "en": "The two streaming paths: v3's StreamingService and the legacy StreamingServerInterface"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "每跑一圈 step，Letta 同时往三个不同系统各记一笔：① steps 行（StepManager 写，per-step model/provider/token/stop_reason/feedback，给产品＋计费，默认就写）；② OTel（letta/otel/，trace_method 第 25 课开 span，MetricRegistry 的 ttft/step_execution_time/message_cost/sse_* 直方图，给延迟/分布式追踪，按 app.py 的 otel_exporter_otlp_endpoint 配置开关、pytest no-op）；③ provider trace（TelemetryManager 按 step_id 存原始 LLM 请求/响应，给调试，v3 默认就记/postgres，旧 Agent/sleeptime 路径才 Noop）。get_trace_id() 把当前 OTel trace id 写进 Step.trace_id，正是这枚缝合钉。干扰项里：v3 流式走 services/streaming_service.py::StreamingService（不是 legacy 的 StreamingServerInterface），那是流式路径之争，不是 trace_id 缝的三套账。",
+                    "en": "On every step Letta writes once into three different systems: (1) the steps row (written by StepManager — per-step model/provider/token/stop_reason/feedback, for product + billing, on by default); (2) OTel (letta/otel/, trace_method from Lesson 25 opens a span, MetricRegistry's ttft/step_execution_time/message_cost/sse_* histograms, for latency/distributed tracing, gated by app.py's otel_exporter_otlp_endpoint and a no-op under pytest); (3) the provider trace (TelemetryManager stores the raw LLM request/response keyed by step_id, for debugging, recorded by default on v3/postgres, Noop only on the legacy Agent/sleeptime path). get_trace_id() writes the current OTel trace id into Step.trace_id — exactly that stitching pin. As for the distractor: v3 streaming runs through services/streaming_service.py::StreamingService (not the legacy StreamingServerInterface) — that is a streaming-path distinction, not the three ledgers trace_id stitches.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“一个 loop、三套账、三种壳”的框架，把“你给一个 agent 发一条消息、它跑了三圈工具调用才停下”从头到尾讲一遍，并想透五件事：(1) 这次调用建了一个什么资源（Run，由 services/run_manager.py::RunManager.create_run 发 run-… id 并落 RunMetrics）？为什么它和加载文件用的 orm/job.py::Job 是两张平级的表，而不是 Job ⊃ Run？(2) 这三圈分别是三个 Step，复述 _step 的五段（_step_checkpoint_start 占坑 → LLM＋工具 → _step_checkpoint_finish 回填 → _checkpoint_messages 盖 run_id+step_id → finally·StepProgression 兜底），并解释为什么 log_step_async 要在 LLM 调用之前以 PENDING/0 token 写行。(3) 这一次调用“同时”留下了哪三套账？steps 行、OTel span、provider trace 各给谁看、默认开还是关、靠哪个字段（Step.trace_id = get_trace_id()）缝起来？(4) 如果第二圈 LLM 超时崩了，那一行 steps 会停在什么状态、由谁负责翻（StepProgression＋finally＋update_step_error_async）？对比“跑完才写一行”，先占坑多付出什么、换回什么？(5) 同一段 loop 被同步（LettaResponse）、流式（StreamingService 吐 data: {json} 帧）、后台（messages/async 立即返回 Run、轮询 GET /runs/{id}）三种壳包起来，三者各自的取舍是什么、为什么后台流式恢复要 Redis？最后想一想：既然 per-step token 在 steps 行、Run 总量靠 LettaAgentV2._update_global_usage_stats 跨 step 累加，那当你只看到 Run 总 token 却查不到任何 steps 行时，第一个该怀疑的是什么（提示：NoopStepManager，第 28 课）？",
+                "en": "Using this lesson's 'one loop, three ledgers, three shells' framework, narrate 'you send an agent a message and it runs three rounds of tool calls before stopping' from end to end, and think through five things: (1) What resource did this invocation create (a Run, whose run-… id and RunMetrics come from services/run_manager.py::RunManager.create_run)? Why are it and the orm/job.py::Job used for loading a file two sibling tables, rather than Job ⊃ Run? (2) The three rounds are three Steps; recite the five stages of _step (_step_checkpoint_start reserves the slot → LLM + tools → _step_checkpoint_finish backfills → _checkpoint_messages stamps run_id+step_id → finally · StepProgression covers the fall), and explain why log_step_async writes the row as PENDING/0 tokens before the LLM call. (3) Which three ledgers did this one invocation leave 'at once'? Who is each of the steps row, the OTel span, and the provider trace for, is each on or off by default, and which field (Step.trace_id = get_trace_id()) stitches them? (4) If the second round's LLM times out and crashes, what status does that steps row stop in and who flips it (StepProgression + finally + update_step_error_async)? Versus 'write a row only when done', what extra cost does reserving-first pay and what does it buy back? (5) The same loop is wrapped in sync (LettaResponse), streaming (StreamingService emitting data: {json} frames), and background (messages/async returns a Run at once, poll GET /runs/{id}) shells — what is each one's trade-off, and why does background stream recovery need Redis? Finally, ponder: since per-step tokens live in the steps row while a Run's total is accumulated across steps by LettaAgentV2._update_global_usage_stats, when you see a Run's total tokens but cannot find any steps rows, what should you suspect first (hint: NoopStepManager, Lesson 28)?",
+            },
+        ],
+    },
 }
 
 

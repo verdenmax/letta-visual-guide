@@ -100,6 +100,14 @@ PAGES = [
      "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
     ("27-dual-db-and-vectors.html", "双数据库与向量存储", "Dual database & vector storage",
      "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
+    ("28-multi-agent-sleeptime.html", "多智能体与 sleeptime", "Multi-agent & sleeptime",
+     "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
+    ("29-data-sources-rag.html", "数据源与 RAG", "Data sources & RAG",
+     "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
+    ("30-jobs-runs-steps.html", "jobs / runs / steps 与可观测性", "Jobs, runs, steps & observability",
+     "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
+    ("31-glossary.html", "术语表·概念索引", "Glossary & concept index",
+     "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
 ]
 
 
@@ -592,6 +600,14 @@ SUBTITLES = {
                                       "SqlalchemyBase generic CRUD; row-level access predicate; soft delete; audit fields"),
     "27-dual-db-and-vectors.html": ("database_engine 选 SQLite/Postgres · pgvector / numpy 距离 · pydantic-in-DB · alembic",
                                     "database_engine: SQLite/Postgres; pgvector / numpy distance; pydantic-in-DB; alembic"),
+    "28-multi-agent-sleeptime.html": ("groups · send_message_to_agent_* · sleeptime 后台改记忆 · 共享块",
+                                      "groups; send_message_to_agent_*; sleeptime background memory edits; shared blocks"),
+    "29-data-sources-rag.html": ("files → source passages · 摄取+嵌入 · 与归档记忆的区别",
+                                 "files → source passages; ingestion + embeddings; vs archival memory"),
+    "30-jobs-runs-steps.html": ("异步执行追踪 · otel/telemetry · 流式 SSE",
+                                "async execution tracking; otel/telemetry; streaming SSE"),
+    "31-glossary.html": ("全书术语一句话查 + 跳链到对应课",
+                         "every term in one line + jump links to its lesson"),
 }
 
 

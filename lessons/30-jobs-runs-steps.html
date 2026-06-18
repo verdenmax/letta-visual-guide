@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>30 · jobs / runs / steps 与可观测性 / Jobs, runs, steps &amp; observability - Letta 图解教程</title>
+<meta name="description" content="第八部分 · 进阶专题｜jobs / runs / steps 与可观测性 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="30 · jobs / runs / steps 与可观测性 / Jobs, runs, steps &amp; observability - Letta 图解教程">
+<meta property="og:description" content="第八部分 · 进阶专题｜jobs / runs / steps 与可观测性 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="30 · jobs / runs / steps 与可观测性 / Jobs, runs, steps &amp; observability - Letta 图解教程">
+<meta name="twitter:description" content="第八部分 · 进阶专题｜jobs / runs / steps 与可观测性 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第八部分 · 进阶专题</span><span class="lang-en">Part 8 · Advanced topics</span></span>
+    <span class="pill">30 / 31</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:96%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第八部分 · 进阶专题</span><span class="lang-en">Part 8 · Advanced topics</span></div>
+    <h1><span class="lang-zh">jobs / runs / steps 与可观测性</span><span class="lang-en">Jobs, runs, steps &amp; observability</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 14 课我们盯着那个朴素的 <span class="mono">for</span> 循环看了很久——agent 每跑一圈就调一次 LLM、执行一批工具，跑到停为止。这一课换个问题：这一圈一圈的执行，<strong>是怎么被记下来、被追踪、又被实时吐给你看的</strong>？</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">先把一个最常被记错的结构摆正：一次 agent 调用是一个 <span class="mono">Run</span>，它<strong>包含</strong>若干 <span class="mono">Step</span>，每个 Step 再挂一份 <span class="mono">StepMetrics</span>。而 <span class="mono">Job</span> <strong>不是 Run 的父级</strong>——它是平级的另一张表，管的是后台批任务。把这层关系记反，是读这块源码最常见的坑。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>一个 <span class="mono">for</span> 循环，三种外壳，三套账本</strong>。同一段 agent loop，被同步、流式、后台三种壳一包，每跑一步就同时记下三份互相关联的视图。</p>
+<p>三实体：<strong><span class="mono">Run</span></strong>(一次 agent 调用) ⊃ <strong><span class="mono">Step</span></strong>(一次 LLM＋工具) ⊃ <strong><span class="mono">StepMetrics</span></strong>(耗时)；<span class="mono">Job</span> 是<strong>平级</strong>的后台/批任务，不在这条嵌套链上。</p>
+<p>三套可观测：<strong><span class="mono">steps</span> 行</strong>(产品＋计费)、<strong>OTel span</strong>(延迟＋分布式追踪)、<strong>provider trace</strong>(原始 LLM payload)——靠 <span class="mono">Step.trace_id</span> 缝在一起。</p>
+<p>三种外壳：<strong>同步</strong> <span class="mono">LettaResponse</span>、<strong>流式</strong> SSE、<strong>后台</strong>可恢复的 Run——壳不同，里头都是那同一个 <span class="mono">for</span> 循环。</p>
+</div>
+<p>为什么值得专门讲？因为很多人把"任务追踪"当成 agent 之外的运维系统去找。看懂"它就是 loop 自己边跑边记的三份账"，你才知道该去哪张表、哪条 span 里查。</p>
+<p>把这条主线记牢：本课从头到尾都在回答同一个问题——<strong>一圈 loop 迭代，在三张表、三条追踪、三种外壳里各留下什么</strong>。下面先认三实体，再看 step 怎么落库，最后看可观测与流式。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">底注：<span class="mono">Run</span>(表 <span class="mono">runs</span>) ⊃ <span class="mono">Step</span>(表 <span class="mono">steps</span>) ⊃ <span class="mono">StepMetrics</span>，外加 <span class="mono">Run</span>–<span class="mono">RunMetrics</span> 一对一；<span class="mono">Job</span>(表 <span class="mono">jobs</span>)<strong>另起一张表、平级存在</strong>。"Job ⊃ Run ⊃ Steps" 是<strong>错</strong>的。</span></div>
+<h2>三实体三张表：Run、Step、Job 各管什么</h2>
+<p>先认三实体，它们对应三张表，别混。前两个是嵌套关系，第三个是平级的另一条线。</p>
+<p><strong>① <span class="mono">Run</span></strong>（<span class="mono">orm/run.py::Run</span>，表 <span class="mono">runs</span>）＝<strong>一次 agent 调用</strong>。带 <span class="mono">agent_id</span>(必填)、<span class="mono">OrganizationMixin</span>；挂 <span class="mono">Run.steps</span>(1:N，级联删) 和 <span class="mono">Run.messages</span>(1:N)。状态 <span class="mono">RunStatus{created,running,completed,failed,cancelled}</span>。</p>
+<p>建 Run 的同时还写一份 <span class="mono">RunMetrics</span>：<span class="mono">services/run_manager.py::RunManager.create_run</span> 落 <span class="mono">run_start_ns</span>、<span class="mono">num_steps=0</span>——Run 与 RunMetrics 是<strong>一对一</strong>。</p>
+<p><strong>② <span class="mono">Step</span></strong>（<span class="mono">orm/step.py::Step</span>，表 <span class="mono">steps</span>）＝<strong>一圈 loop 迭代</strong>，也就是<strong>一次 LLM 调用＋一轮工具执行</strong>。带 <span class="mono">run_id</span> 外键，回指它属于哪个 Run。</p>
+<p>Step 行里塞满"这一步发生了什么"：<span class="mono">model</span> / <span class="mono">provider_*</span>、per-step 的 <span class="mono">prompt/completion/total_tokens</span>、<span class="mono">stop_reason</span>、<span class="mono">trace_id</span>(OTel)、<span class="mono">feedback</span>、<span class="mono">status</span>。状态 <span class="mono">StepStatus{PENDING,SUCCESS,FAILED,CANCELLED}</span>。</p>
+<p>每个 Step 再 1:1 挂一份 <span class="mono">orm/step_metrics.py::StepMetrics</span>：<span class="mono">llm_request_ns</span> / <span class="mono">tool_execution_ns</span> / <span class="mono">step_ns</span> 三段耗时。Step 自己也 1:N 挂 <span class="mono">Step.messages</span>。写 Step 的是 <span class="mono">services/step_manager.py::StepManager</span>（外加单例 <span class="mono">NoopStepManager</span>，下文细说）。</p>
+<p><strong>③ <span class="mono">Job</span></strong>（<span class="mono">orm/job.py::Job</span>，表 <span class="mono">jobs</span>，带 <span class="mono">UserMixin</span>）＝<strong>后台/批任务</strong>，典型就是第 29 课那种"加载＋解析＋嵌入文件"。类型 <span class="mono">JobType{JOB,RUN,BATCH}</span>、状态 <span class="mono">JobStatus{created,running,completed,failed,pending,cancelled,expired}</span>，由 <span class="mono">services/job_manager.py::JobManager</span> 管。</p>
+<p>最关键的一句：<strong><span class="mono">Job</span> 不是 <span class="mono">Run</span> 的父级</strong>。它是<strong>另起一张表、平级存在</strong>的概念。嵌套链只有 <span class="mono">Run ⊃ Step ⊃ StepMetrics</span> 这一条，Job 站在旁边。</p>
+<div class="cellgroup"><div class="cg-cap"><b>嵌套链：<span class="mono">Run ⊃ Step ⊃ StepMetrics</span>（<span class="mono">Job</span> 平级，不在链上）</b></div><div class="cells"><span class="cell hl">Run · runs · RunStatus</span><span class="lab">1:1 RunMetrics</span><span class="sep">⊃</span><span class="cell">Step · steps · trace_id · StepStatus</span><span class="lab">1:N Message</span><span class="sep">⊃</span><span class="cell">StepMetrics · 三段耗时</span><span class="sep">‖</span><span class="cell q">Job · jobs · JobStatus（平级，非父级）</span></div></div>
+<p>多问一句：为什么 Job 和 Run 要做成<strong>两张平级的表</strong>，而不是让 Job 包住 Run？</p>
+<p>因为它们是<strong>两种正交的异步</strong>。Run 是"一次 agent 对话执行"——有 LLM、有工具、有 step；Job 是"一段后台数据处理"，典型是加载/解析/嵌入文件，<strong>根本没有 step 这个概念</strong>。</p>
+<p>硬把 Run 塞进 Job 当子级，等于给"加载文件"硬安一个"它跑了几次 LLM"的字段——驴唇不对马嘴。两张表各记各的，反而干净。</p>
+<p><span class="mono">JobType</span> 里那个 <span class="mono">BATCH</span> 也佐证这点：它是 LLM batch API 那类批量任务，和"一次对话"是两码事。Job 管"批"与"后台活儿"，Run 管"一次对话执行"。</p>
+<p>所以记法很简单：<strong>要追一次 agent 调用找 Run，要追一个后台文件任务找 Job</strong>。它们的状态机偶尔长得像（都有 <span class="mono">created/running/completed</span>），但语义和归属完全不同。</p>
+<p>三实体认完，看它们的 ID 怎么从一个 HTTP 请求一路串下去。这条链把"调用 → 步 → 消息"缝成可回查的层级：</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">POST …/messages</div><div class="nd">一次 agent 调用进来</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">create_run</div><div class="nd">发 run-… ＋ RunMetrics</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">agent_loop.step(run_id)</div><div class="nd">for i in range(max_steps)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">_step(run_id) → step-…</div><div class="nd">每圈写一行 steps</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">每条 Message 盖章</div><div class="nd">run_id ＋ step_id</div></div>
+</div>
+<p>逐段读这条链。<span class="mono">POST .../messages</span> 进来，<span class="mono">RunManager.create_run</span> 先发一个 <span class="mono">run-…</span> id；接着 <span class="mono">agent_loop.step(run_id)</span> 启动那个 <span class="mono">for i in range(max_steps)</span> 循环（第 14 课的主角）。</p>
+<p>循环里每圈调一次 <span class="mono">_step(run_id)</span>：用 <span class="mono">generate_step_id()</span> 发一个 <span class="mono">step-…</span> id，写一行 <span class="mono">steps</span>。这一步产出的<strong>每条新 <span class="mono">Message</span></strong> 都被盖上 <span class="mono">run_id</span>＋<span class="mono">step_id</span>（<span class="mono">letta_agent_v3.py::LettaAgentV3._checkpoint_messages</span>，回扣第 3 课）。</p>
+<p>于是层级很干净：<strong>一个 <span class="mono">Run</span> → 至多 <span class="mono">max_steps</span> 个 <span class="mono">Step</span> → 每个 <span class="mono">Step</span> 多条 <span class="mono">Message</span></strong>。拿着 <span class="mono">run_id</span> 能查到整次调用，拿着 <span class="mono">step_id</span> 能定位到具体哪一圈、产了哪些消息。</p>
+<details class="accordion"><summary>Job、Run、Step 到底谁包谁？一次说清</summary><div class="acc-body">
+<p><strong><span class="mono">Run</span></strong>：一次 agent 调用（你发一条消息、agent 跑一轮直到停）。它<strong>包含</strong> Step 与 Message。</p>
+<p><strong><span class="mono">Step</span></strong>：Run 里的<strong>一圈 loop 迭代</strong>＝一次 LLM 调用＋一轮工具执行。它<strong>被 Run 包含</strong>，再<strong>包含</strong> StepMetrics 与若干 Message。</p>
+<p><strong><span class="mono">Job</span></strong>：和 Run <strong>平级</strong>的后台/批任务（如加载文件）。它<strong>不包含</strong> Run，也<strong>不被</strong> Run 包含——是另一张表上的另一条线。</p>
+<p>所以正确嵌套是 <span class="mono">Run ⊃ Step ⊃ StepMetrics</span>（外加 <span class="mono">Run</span>–<span class="mono">RunMetrics</span> 一对一）。把它写成 <span class="mono">Job ⊃ Run ⊃ Steps</span> 是<strong>错</strong>的，这是本课要纠的第一个坑。</p>
+</div></details>
+<div class="card analogy"><div class="tag">📝 生活类比</div>
+<p>把一次 agent 调用想成一<strong>单快递</strong>。</p>
+<p>这一单（<span class="mono">Run</span>）在路上会被<strong>多次扫描</strong>——揽收、转运、派送，每次扫描就是一个 <span class="mono">Step</span>，留下<strong>时间戳和重量</strong>（<span class="mono">StepMetrics</span> 的耗时、<span class="mono">token</span> 用量）。</p>
+<p>而仓库那边的<strong>后台理货任务</strong>（<span class="mono">Job</span>）是<strong>另一条线</strong>：它不在你这单的轨迹里，自己跑自己的。</p>
+<p>你想知道包裹到哪了，有两种看法：要么盯着<strong>实时轨迹推送</strong>（SSE 流），要么事后拿<strong>单号查物流</strong>（轮询 <span class="mono">GET /runs/{id}</span>）。同一单，两种观察方式。</p>
+</div>
+<h2>Step 怎么在 loop 里边跑边落库</h2>
+<p>回到第 14 课那个 <span class="mono">_step</span>。一圈迭代不是"跑完才记账"，而是<strong>开跑前就先占个坑、跑完再回填</strong>。<span class="mono">LettaAgentV3._step</span> 内部分五段，落库逻辑由 <span class="mono">letta_agent_v2.py</span> 的两个 checkpoint 方法承担。</p>
+<p><strong>① <span class="mono">_step_checkpoint_start</span></strong>：建好 <span class="mono">StepMetrics</span>、开一个 OTel span <span class="mono">tracer.start_span("agent_step")</span>，然后 <span class="mono">StepManager.log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...)</span>——<strong>在 LLM 调用之前</strong>就写下一行 <span class="mono">steps</span>，token 先记零。</p>
+<p><strong>② LLM ＋ 工具</strong>：真正调一次 LLM，<span class="mono">_handle_ai_response</span> 执行这一轮的工具调用。</p>
+<p><strong>③ <span class="mono">_step_checkpoint_finish</span></strong>：算出 <span class="mono">step_ns</span>、结束 span、<span class="mono">record_step_metrics_async</span>，再 <span class="mono">update_step_success_async(真实 per-step usage, stop_reason)</span> 把那行从 <span class="mono">PENDING</span> 翻成 <span class="mono">SUCCESS</span> 并填真实用量。</p>
+<p><strong>④ <span class="mono">_checkpoint_messages</span></strong>：把这一步产出的 Message 盖上 <span class="mono">run_id</span>＋<span class="mono">step_id</span> 持久化（就是上一节那条 ID 链的落点）。</p>
+<p><strong>⑤ <span class="mono">finally</span> 兜底</strong>：用 <span class="mono">StepProgression</span> 状态机（<span class="mono">START…FINISHED</span>）守住——中途崩了/被取消，就 <span class="mono">update_step_error_async</span>，那行 <span class="mono">steps</span> 仍旧留底。</p>
+<p>把这五段竖着画出来，"先占坑、后回填、崩了也留底"的节奏就一目了然：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>_step_checkpoint_start（开 span ＋ 占坑）</h4><p>建 <span class="mono">StepMetrics</span>、开 span <span class="mono">"agent_step"</span>；<span class="mono">log_step_async(0,0,0, PENDING)</span> 先写一行 <span class="mono">steps</span>（零 token）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>LLM ＋ 工具</h4><p>调一次 LLM，<span class="mono">_handle_ai_response</span> 执行这一轮工具调用。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>_step_checkpoint_finish（回填）</h4><p>算 <span class="mono">step_ns</span>、结束 span、<span class="mono">record_step_metrics_async</span>；<span class="mono">update_step_success_async</span> 填真实用量＋<span class="mono">stop_reason</span>，翻 <span class="mono">SUCCESS</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>_checkpoint_messages</h4><p>这一步的 Message 盖上 <span class="mono">run_id</span>＋<span class="mono">step_id</span> 持久化。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>finally · StepProgression 兜底</h4><p>状态机 <span class="mono">START…FINISHED</span>；崩了/取消就 <span class="mono">update_step_error_async</span>，行仍留底。</p></div></div>
+</div>
+<p>把"占坑 → 回填 → 兜底"落成代码，省去细节，骨架就这么直：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v2.py</span><span class="ln">_step：开跑前占坑 PENDING/0，跑完回填 SUCCESS（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">_step</span>(self, run_id, step_id, ...):
+    <span class="cm"># ① 开跑前：开 span + 写一行 steps，token 先记零、状态 PENDING</span>
+    span = tracer.<span class="fn">start_span</span>(<span class="st">&quot;agent_step&quot;</span>)
+    <span class="kw">await</span> self.step_manager.<span class="fn">log_step_async</span>(
+        usage=UsageStatistics(0, 0, 0), status=StepStatus.PENDING,
+        run_id=run_id, step_id=step_id, model=..., provider_name=...)
+    <span class="kw">try</span>:
+        <span class="cm"># ② 调一次 LLM + 执行这一轮工具</span>
+        response = <span class="kw">await</span> self.<span class="fn">_handle_ai_response</span>(...)
+        <span class="cm"># ③ 跑完回填：真实 per-step 用量 + stop_reason，翻 SUCCESS</span>
+        <span class="kw">await</span> self.step_manager.<span class="fn">update_step_success_async</span>(
+            step_id, usage=response.usage, stop_reason=response.stop_reason)
+    <span class="kw">finally</span>:
+        <span class="cm"># ⑤ 崩了/取消也留底：进度没到 FINISHED 就兜成 error</span>
+        <span class="kw">if</span> progression &lt; StepProgression.FINISHED:
+            <span class="kw">await</span> self.step_manager.<span class="fn">update_step_error_async</span>(step_id, ...)
+</pre></div>
+<p>注意 <span class="mono">log_step_async</span> 传的是 <span class="mono">usage=(0,0,0)</span>。这<strong>不是 bug</strong>：行先以零 token 落库，真实用量等 <span class="mono">update_step_success_async</span> 回填。先有行、后有数，是这套设计的关键。</p>
+<p>说一句 token 的账，别和第 14 课混。<span class="mono">Step.total_tokens</span> 是<strong>这一步单次 LLM</strong> 的用量；一个 Run 的<strong>总用量</strong>是<strong>跨 Step 累加</strong>的（<span class="mono">LettaAgentV2._update_global_usage_stats</span>，正是第 14 课那个累加器）。per-step 看 <span class="mono">steps</span> 行，累计看 Run。</p>
+<p>顺便说说 <span class="mono">StepMetrics</span> 那三段耗时为什么要拆开。<span class="mono">llm_request_ns</span> 是等 LLM 回话的时间，<span class="mono">tool_execution_ns</span> 是执行这一轮工具的时间，<span class="mono">step_ns</span> 是这一圈的端到端总耗时。</p>
+<p>拆成三段，排查时一眼看出瓶颈在哪：是 LLM 慢，还是某个工具（查库、调外部 API）拖了后腿？混成一个数你只知道"这步慢"，拆开才知道"慢在哪一截"。</p>
+<p>它也和 OTel 那条 <span class="mono">agent_step</span> span 对得上——span 里嵌着更细的子区间，<span class="mono">StepMetrics</span> 则把最关键的三段<strong>固化进 DB</strong>，不依赖 OTel 后端也能查。</p>
+<details class="accordion"><summary><span class="mono">StepProgression</span> 兜底：为什么连崩溃的迭代也留得下记录？</summary><div class="acc-body">
+<p>秘诀在<strong>顺序</strong>：<span class="mono">log_step_async</span> 在<strong>调 LLM 之前</strong>就把 <span class="mono">steps</span> 行写下（<span class="mono">PENDING</span>/零 token）。所以哪怕 LLM 调用抛异常、或用户中途取消，那行<strong>早已存在</strong>。</p>
+<p><span class="mono">finally</span> 里那台 <span class="mono">StepProgression</span> 状态机（<span class="mono">START…FINISHED</span>）一查：进度没走到 <span class="mono">FINISHED</span>，就 <span class="mono">update_step_error_async</span> 把行翻成 <span class="mono">FAILED</span>/<span class="mono">CANCELLED</span>，而不是留个永远 <span class="mono">PENDING</span> 的孤儿。</p>
+<p>对比"跑完才写一行"的朴素设计：那种一崩就<strong>什么都没有</strong>，你根本不知道它在哪一步、用了哪个 model 挂掉。先占坑的代价是多一次写，换来的是<strong>每一圈迭代都可归因</strong>——连失败的也算账。</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">记住这个反直觉的顺序：<strong>steps 行在 LLM 调用<em>之前</em>就落库</strong>（<span class="mono">PENDING</span>/0 token），事后才回填真实用量。这正是"崩溃也留记录"的根因——先有行，后有数。</span></div>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">orm/run.py::Run</span> / <span class="mono">orm/step.py::Step</span> / <span class="mono">orm/job.py::Job</span>——三实体三张表，<span class="mono">Run.steps</span> 1:N、<span class="mono">Step.metrics</span> 1:1、<span class="mono">Job</span> 平级。</p>
+<p><span class="mono">letta_agent_v2.py::LettaAgentV2._step_checkpoint_start / _finish</span>——一圈迭代的"占坑"与"回填"，写 <span class="mono">steps</span> 行＋ <span class="mono">StepMetrics</span>。</p>
+<p><span class="mono">otel/tracing.py::get_trace_id</span>——取当前 OTel trace id，写进 <span class="mono">Step.trace_id</span>，把产品行缝到分布式追踪。</p>
+<p><span class="mono">services/streaming_service.py::StreamingService</span>——v3 的流式入口，建 Run 后把 loop 包成 SSE（末节细说）。</p>
+</div>
+<h2>三套可观测：同一步，三种粒度的账</h2>
+<p>上一节那行 <span class="mono">steps</span> 只是三套账里的一套。每跑一圈，Letta 其实<strong>同时</strong>往三个互不相同的系统里各记一笔——别把它们混成一回事。</p>
+<p><strong>① <span class="mono">steps</span> 行（产品＋计费）</strong>：就是前面那张表，per-step 的 <span class="mono">model</span> / <span class="mono">provider</span> / <span class="mono">tokens</span> / <span class="mono">stop_reason</span> / <span class="mono">feedback</span>。它是给<strong>产品分析和账单</strong>看的——谁用了多少 token、停在哪、用户点没点赞。</p>
+<p><strong>② OTel（<span class="mono">letta/otel/</span>）</strong>：<span class="mono">tracing.py::trace_method</span>（第 25 课那个装饰器）给方法开一个 <span class="mono">"{Class}.{method}"</span> span，<span class="mono">get_trace_id()</span> 把当前 trace id 写进 <span class="mono">Step.trace_id</span>。这套是给<strong>延迟与分布式追踪</strong>看的。</p>
+<p>OTel 还有一摞指标：<span class="mono">metric_registry.py::MetricRegistry</span>（单例）登记 <span class="mono">ttft_ms_histogram</span>、<span class="mono">step_execution_time_ms_histogram</span>、<span class="mono">message_cost</span>、<span class="mono">sse_*</span> 等。它由 <span class="mono">app.py</span> 启动时按 <span class="mono">otel_exporter_otlp_endpoint and not disable_tracing</span> 决定开不开，<strong>pytest 下是 no-op</strong>。</p>
+<p>这几个指标各有所指：<span class="mono">ttft_ms</span> 是 time-to-first-token（首 token 延迟，流式体验的关键），<span class="mono">step_execution_time_ms</span> 是单圈 step 的端到端耗时，<span class="mono">message_cost</span> 估这条消息的花费，<span class="mono">sse_*</span> 盯流式连接的健康。</p>
+<p>它们和 <span class="mono">steps</span> 行<strong>不重复</strong>：steps 行记"这一步用了多少 token"（离散、可计费），OTel 直方图记"延迟分布"（聚合、看趋势）。一个回答"花了多少钱"，一个回答"快不快"。</p>
+<p><strong>③ provider traces（<span class="mono">services/telemetry_manager.py::TelemetryManager</span>）</strong>：按 <span class="mono">step_id</span> 把<strong>原始 LLM 请求/响应</strong>整包存到 postgres/clickhouse/socket。这是给<strong>调试与复盘</strong>看的——想看那次到底发了什么 payload。v3 主线<strong>默认就记</strong>（真实 <span class="mono">TelemetryManager</span> + <span class="mono">track_provider_trace=True</span>，存到 postgres）；<span class="mono">NoopTelemetryManager</span> 是旧 <span class="mono">Agent</span>/sleeptime 那条路的默认。</p>
+<p>缝合三者的就是那一个字段：<strong><span class="mono">Step.trace_id = get_trace_id()</span></strong>。从一行产品记录，能跳到对应的分布式 trace，再顺着 <span class="mono">step_id</span> 翻到那次原始 LLM payload——三套账，一根线串起来。</p>
+<div class="cols">
+  <div class="col"><h4>🧾 steps 行 · 计费</h4>
+  <p>表 <span class="mono">steps</span>。per-step <span class="mono">model</span>/<span class="mono">provider</span>/<span class="mono">tokens</span>/<span class="mono">stop_reason</span>/<span class="mono">feedback</span>。给产品与账单。<strong>默认就写</strong>（除非用 Noop manager）。</p>
+  </div>
+  <div class="col"><h4>📈 OTel span · 延迟</h4>
+  <p><span class="mono">"{Class}.{method}"</span> span ＋ <span class="mono">MetricRegistry</span> 直方图。给延迟与分布式追踪。<strong>需配 endpoint</strong>，pytest 下 no-op。</p>
+  </div>
+  <div class="col"><h4>🔬 provider trace · 原始 payload</h4>
+  <p>按 <span class="mono">step_id</span> 存原始 LLM 请求/响应。给调试复盘。<strong>v3 默认就存</strong>（postgres）；旧路径才用 Noop。</p>
+  </div>
+</div>
+<p>把"一步盖三个章"画成萌图，那根缝合线一眼就懂：</p>
+<div class="cute"><div class="row"><span class="emoji">🧾</span><span class="lab">一圈 step</span><span class="arrow">→</span><span class="emoji">💰</span><span class="lab">计费章</span><span class="arrow">→</span><span class="emoji">⏱️</span><span class="lab">延迟章</span><span class="arrow">→</span><span class="emoji">🔬</span><span class="bubble">原始 payload 章</span></div><div class="cap">🧾 每跑完一圈 step，同时盖下三个章——💰 计费（<span class="mono">steps</span> 行）、⏱️ 延迟（OTel span）、🔬 原始 payload（provider trace）；一根 <span class="mono">trace_id</span> 把三个章串成一条线，从账单一路查到那次 LLM 到底发了什么</div></div>
+<details class="accordion"><summary>三套可观测各管什么、默认开还是关？</summary><div class="acc-body">
+<p><strong><span class="mono">steps</span> 行</strong>：由 <span class="mono">StepManager</span> 写，<strong>默认就记</strong>（产品＋计费）。只有用单例 <span class="mono">NoopStepManager</span> 的路径才不写行（下文细说）。</p>
+<p><strong>OTel</strong>：默认<strong>看配置</strong>。<span class="mono">app.py</span> 启动时按 <span class="mono">otel_exporter_otlp_endpoint and not disable_tracing</span> 决定开不开；没配 endpoint 或在 pytest 下，<span class="mono">trace_method</span> 与指标都是 no-op，几乎零开销。</p>
+<p><strong>provider traces</strong>：v3 主线默认<strong>就开</strong>——真实 <span class="mono">TelemetryManager</span> + <span class="mono">track_provider_trace=True</span>（默认 postgres 后端，可选 clickhouse/socket）。<span class="mono">NoopTelemetryManager</span> 只是旧 <span class="mono">Agent</span>/sleeptime 路径的默认。</p>
+<p>一句话：<strong>计费默认有、原始 payload v3 默认也有、延迟看 OTel 配置</strong>。三套粒度不同、开关不同、用途不同，排查时先想清楚自己要哪一套。</p>
+</div></details>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">三套账别混：<strong><span class="mono">steps</span> 行</strong>是产品/计费（per-step token），<strong>OTel span</strong>是延迟/追踪，<strong>provider trace</strong>是原始 payload。它们记的<strong>不是同一种东西</strong>，只是被 <span class="mono">Step.trace_id</span> 缝到一起。查计费别去翻 OTel，查 payload 别指望 <span class="mono">steps</span> 行。</span></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>第 14 课那个朴素的 <span class="mono">for</span> 循环，每跑一个 <span class="mono">_step</span> 就同时甩出<strong>三份被 <span class="mono">Step.trace_id</span> 缝在一起的视图</strong>——<span class="mono">steps</span> 行（计费）、OTel <span class="mono">agent_step</span> span（延迟）、可选的 provider trace（原始 payload），一行产品记录就能顺藤摸到那次原始 LLM 调用。</p>
+<p>而且它们都是"先占坑"写的：step 行<strong>在 LLM 调用之前</strong>就以 <span class="mono">PENDING</span>/零 token 落库、事后才翻 <span class="mono">SUCCESS</span>——所以崩溃/取消也留下<strong>可归因</strong>的持久记录，而不是凭空消失。</p>
+<p>但最大的亮点是：同一个 loop 被<strong>三种外壳</strong>一包——同步 <span class="mono">LettaResponse</span>、SSE 流、Redis 可恢复的后台 Run——只有壳不同。一个进程内的 <span class="mono">for</span> 循环，就此变成可追踪、可取消、可恢复的<strong>异步资源</strong>。</p>
+</div>
+<h2>三种外壳：同步阻塞、流式 SSE、后台异步</h2>
+<p>同一个 loop，外面能包三种壳。对用户来说就是<strong>三种发消息的姿势</strong>，里头跑的都是那同一段 <span class="mono">for</span> 循环。</p>
+<p><strong>① 同步</strong>：<span class="mono">messages</span>(streaming=false) → 建 Run → 阻塞跑完整个 loop → 返回 <span class="mono">LettaResponse</span>。<span class="mono">finally</span> 里 <span class="mono">update_run_by_id_async</span> 把 Run 置 <span class="mono">completed</span>/<span class="mono">failed</span>。</p>
+<p><strong>② 流式</strong>：<span class="mono">messages</span>(streaming=true) → 同样建 Run，但把 loop 的产出<strong>实时</strong>经 SSE 一段段吐出来。</p>
+<p><strong>③ 后台异步</strong>：<span class="mono">messages/async</span> → <span class="mono">send_message_async</span> <strong>立即返回</strong>一个 background Run，真正的活儿丢进 shielded 后台任务跑。你<strong>轮询</strong> <span class="mono">GET /v1/runs/{run_id}</span> 看进度。</p>
+<p>那个 background Run 还能顺藤摸瓜查更多：<span class="mono">/steps</span>、<span class="mono">/messages</span>、<span class="mono">/usage</span>、<span class="mono">/metrics</span> 乃至 trace；想中止就 <span class="mono">messages/cancel</span> 或 <span class="mono">RunManager.cancel_run</span>。后台<strong>流式</strong>要恢复得靠 Redis，可经 <span class="mono">POST /v1/runs/{run_id}/stream</span> 重连。</p>
+<p>把三态并排成一张表，入口与观察方式一眼分清：</p>
+<table class="t">
+<tr><th>形态</th><th>入口</th><th>返回 / 观察方式</th></tr>
+<tr><td>同步 sync</td><td class="mono">messages（streaming=false）</td><td>阻塞跑完，返回 <span class="mono">LettaResponse</span></td></tr>
+<tr><td>流式 stream</td><td class="mono">messages（streaming=true）</td><td>SSE 实时推 <span class="mono">data: {json}\n\n</span></td></tr>
+<tr><td>后台 async</td><td class="mono">messages/async</td><td>立即返回 background Run，轮询 <span class="mono">GET /runs/{id}</span></td></tr>
+</table>
+<p>为什么要三种壳，一种不够吗？因为"一次 agent 调用"的时长跨度太大——可能 1 秒，也可能跑十几圈、好几分钟。</p>
+<p>同步最简单，但长任务会把 HTTP 连接<strong>一直卡住</strong>，一超时就前功尽弃。它只适合"快进快出"的短调用。</p>
+<p>流式把"卡住"变成"边跑边吐"——首 token 一出来用户就看到反应，体验好；代价是连接得<strong>全程开着</strong>，断了就得想办法接回。</p>
+<p>后台异步则彻底<strong>解开连接</strong>：立即返回一个 run id，活儿在后台慢慢跑，你回头轮询。代价是要自己查状态，流式恢复还得靠 Redis。</p>
+<p>三种壳对应三种取舍：<strong>要简单用同步、要体验用流式、要扛长任务用异步</strong>。但记住——壳变了，里头那个 <span class="mono">for</span> 循环和它记的三套账，一点没变。</p>
+<p>先看同步那条路由怎么把 Run 的生命周期兜全。重点是那个 <span class="mono">finally</span>：无论成败，都得把 Run 状态写定。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message：建 Run → 跑 loop → finally 收尾 Run 状态（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, ...):
+    <span class="cm"># 1) 建一个 Run（发 run-… id，同时落 RunMetrics）</span>
+    run = <span class="kw">await</span> run_manager.<span class="fn">create_run</span>(agent_id=agent_id, ...)
+    <span class="kw">try</span>:
+        <span class="cm"># 2) 把 loop 跑起来，run_id 串进每一步</span>
+        result = <span class="kw">await</span> AgentLoop.<span class="fn">load</span>(agent, ...).<span class="fn">step</span>(
+            input_messages, run_id=run.id, max_steps=...)
+        status = RunStatus.completed
+        <span class="kw">return</span> result                      <span class="cm"># LettaResponse</span>
+    <span class="kw">except</span> Exception:
+        status = RunStatus.failed
+        <span class="kw">raise</span>
+    <span class="kw">finally</span>:
+        <span class="cm"># 3) 无论成败，收尾把 Run 状态写定</span>
+        <span class="kw">await</span> run_manager.<span class="fn">update_run_by_id_async</span>(run.id, status=status)
+</pre></div>
+<p>流式那条壳，v3 实际走的是 <span class="mono">services/streaming_service.py::StreamingService.create_agent_stream</span>。它同样先建 Run，再让 <span class="mono">AgentLoop.load(...).stream(...)</span> 逐段产出已经格式化好的 <span class="mono">data: {json}\n\n</span>。</p>
+<p>外面再裹两层：<span class="mono">_create_error_aware_stream</span> 兜 <span class="mono">[DONE]</span> 终止帧与 error 帧，加上 keepalive（<span class="mono">LettaPing</span>）防连接超时；最后用 <span class="mono">streaming_response.py::StreamingResponseWithStatusCode(media_type="text/event-stream")</span> 发出去。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/streaming_service.py</span><span class="ln">create_agent_stream：把 loop 产出一段段 yield 成 SSE（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">create_agent_stream</span>(self, agent_id, request, ...):
+    run = <span class="kw">await</span> self.run_manager.<span class="fn">create_run</span>(agent_id=agent_id, ...)
+    agent_loop = AgentLoop.<span class="fn">load</span>(agent, ...)
+    <span class="kw">async def</span> <span class="fn">_stream</span>():
+        <span class="cm"># loop.stream(...) 已逐段产出 data: {json}\n\n（见 sse_formatter）</span>
+        <span class="kw">async for</span> chunk <span class="kw">in</span> agent_loop.<span class="fn">stream</span>(..., run_id=run.id):
+            <span class="kw">yield</span> chunk
+        <span class="kw">yield</span> <span class="st">&quot;data: [DONE]\n\n&quot;</span>            <span class="cm"># 兜一个终止帧</span>
+    <span class="kw">return</span> <span class="fn">StreamingResponseWithStatusCode</span>(
+        _stream(), media_type=<span class="st">&quot;text/event-stream&quot;</span>)
+</pre></div>
+<p>SSE 的线格式很朴素：<span class="mono">utils.py::sse_formatter</span> 把每个事件序列化成 <span class="mono">data: {json}\n\n</span>，正常终止发 <span class="mono">data: [DONE]</span>，出错发 <span class="mono">event: error</span>。</p>
+<p>流过来的事件类型，正是第 3 课那套 <span class="mono">LettaMessage</span> 家族：<span class="mono">ReasoningMessage</span> / <span class="mono">AssistantMessage</span> / <span class="mono">ToolCallMessage</span> / <span class="mono">ToolReturnMessage</span>，外加 <span class="mono">LettaPing</span> / <span class="mono">LettaUsageStatistics</span> / <span class="mono">LettaStopReason</span> 等控制帧。</p>
+<details class="accordion"><summary>流式 v3（<span class="mono">StreamingService</span>）vs legacy（<span class="mono">StreamingServerInterface</span>）＋ 异步 Run 怎么追</summary><div class="acc-body">
+<p><strong>v3 真路</strong>：<span class="mono">services/streaming_service.py::StreamingService.create_agent_stream</span>——建 Run、让 <span class="mono">AgentLoop.stream(...)</span> 逐段吐 <span class="mono">data: {json}\n\n</span>，外裹 <span class="mono">[DONE]</span>/error 与 keepalive。本课讲的就是它。</p>
+<p><strong>legacy（别照抄）</strong>：<span class="mono">server/rest_api/interface.py::StreamingServerInterface</span>——用 deque 缓冲，它的 <span class="mono">step_complete</span> 给出了"step＝LLM 响应＋工具执行"这个<strong>权威定义</strong>，但背后是旧 <span class="mono">agent.py</span>/OpenAI-proxy 那条路，<strong>不是 v3</strong>。读到它知道是历史包袱即可。</p>
+<p><strong>异步 Run 怎么追</strong>：<span class="mono">messages/async</span> 立即返回 background Run，之后<strong>轮询</strong> <span class="mono">GET /v1/runs/{run_id}</span>（及 <span class="mono">/steps</span>/<span class="mono">/messages</span>/<span class="mono">/usage</span>/<span class="mono">/metrics</span>）。后台<strong>流式</strong>恢复要 Redis，可经 <span class="mono">POST /v1/runs/{run_id}/stream</span> 重连。</p>
+</div></details>
+<div class="note info"><span class="ni">💡</span><span class="nx">看 v0.16.8 的流式，认准 <span class="mono">StreamingService</span> 这条 v3 路。outline 里点名的 <span class="mono">StreamingServerInterface</span> 是 <strong>legacy</strong>——它对"step"的定义仍有参考价值，但代码路径已不是主线，别照它写新东西。</span></div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p><strong><span class="mono">Job</span> ≠ <span class="mono">Run</span></strong>：异步发 agent 消息（<span class="mono">messages/async</span>）建的是 background <strong>Run</strong>，<strong>不是 Job</strong>。Job 是加载文件那类后台批任务。</p>
+<p><strong>嵌套别记反</strong>：是 <span class="mono">Run ⊃ Step</span>，不是 <span class="mono">Job ⊃ Run ⊃ Step</span>。Job 平级、不在链上。</p>
+<p><strong>Step 粒度</strong>＝一圈迭代＝<strong>一次 LLM 调用＋一轮工具执行</strong>，不是"一条消息"也不是"一个工具"。</p>
+<p><strong>是否落 <span class="mono">steps</span> 行看 manager</strong>：sleeptime 子 agent、旧 agent 走单例 <span class="mono">NoopStepManager</span>——<strong>不写行</strong>（第 28 课）。看不到 step 记录先查是不是 Noop。</p>
+<p><strong>流式认 v3</strong>：走 <span class="mono">StreamingService</span>；<span class="mono">StreamingServerInterface</span> 是 legacy。<strong>token 别混</strong>：<span class="mono">Step.total_tokens</span> 是 per-step，Run 总量是跨 Step 累加。</p>
+</div>
+<h2>顺着一个 run_id，把三套账都翻出来</h2>
+<p>前面拆的全是机制，落到实战就一句话：<strong>手里有个 <span class="mono">run_id</span>，你能把这次调用的方方面面都查出来</strong>。把它当排查的总入口。</p>
+<p><strong>先看全局</strong>：<span class="mono">GET /v1/runs/{run_id}</span> 给你 Run 状态（<span class="mono">created…completed/failed/cancelled</span>）＋ <span class="mono">RunMetrics</span>（<span class="mono">run_start_ns</span>、<span class="mono">num_steps</span>）。一眼知道这次跑没跑完、跑了几圈。</p>
+<p><strong>再钻每一圈</strong>：<span class="mono">GET /v1/runs/{run_id}/steps</span> 列出每个 <span class="mono">Step</span> 行——哪一步用了哪个 <span class="mono">model</span>、烧了多少 token、<span class="mono">stop_reason</span> 是什么、<span class="mono">status</span> 成没成。这是产品＋计费视角。</p>
+<p><strong>想看延迟</strong>：拿某个 <span class="mono">Step.trace_id</span> 去 OTel 后端，翻那条 <span class="mono">agent_step</span> span 树——LLM 等了多久、工具花了多久，一目了然。</p>
+<p><strong>想看那次到底发了什么</strong>：拿 <span class="mono">step_id</span> 去 provider trace（v3 主线默认就记）翻原始 LLM 请求/响应；想看累计用量则 <span class="mono">GET …/usage</span>（跨 step 累加）。</p>
+<p>还有个常被忽略的 <span class="mono">feedback</span> 字段：用户对某条回复点赞/点踩，会落到对应的 <span class="mono">Step</span> 上。日后按 <span class="mono">feedback</span> 过滤，就能分析"哪类 step 表现好、哪类该改"——这是产品迭代的一手数据，也是 <span class="mono">steps</span> 行除计费之外的另一重价值。</p>
+<p>串起来就是：<strong><span class="mono">run_id</span> 是总入口，<span class="mono">step_id</span> 是分入口，<span class="mono">trace_id</span> 是跨系统的那枚缝合钉</strong>。三套账、一根线，排查 agent 行为不再靠猜。</p>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>三实体三张表：<span class="mono">Run</span>(一次 agent 调用，表 <span class="mono">runs</span>) ⊃ <span class="mono">Step</span>(一次 LLM＋一轮工具，表 <span class="mono">steps</span>) ⊃ <span class="mono">StepMetrics</span>(三段耗时)，外加 <span class="mono">Run</span>–<span class="mono">RunMetrics</span> 一对一；<span class="mono">Job</span>(表 <span class="mono">jobs</span>) 是<strong>平级</strong>的后台/批任务，<strong>不是</strong> Run 的父级。</li>
+<li>Step 在 loop 里<strong>先占坑后回填</strong>：<span class="mono">_step_checkpoint_start</span> 在 LLM 调用前写 <span class="mono">PENDING</span>/0 行＋开 span，<span class="mono">_step_checkpoint_finish</span> 用 <span class="mono">update_step_success_async</span> 回填真实用量翻 <span class="mono">SUCCESS</span>，<span class="mono">finally</span> 靠 <span class="mono">StepProgression</span> 兜底——崩溃/取消也留可归因记录。</li>
+<li>三套可观测、粒度与开关都不同：<span class="mono">steps</span> 行(产品/计费，默认写)、OTel span(延迟/追踪，看 <span class="mono">app.py</span> 配置，pytest no-op)、provider trace(原始 payload，v3 默认就记/postgres，旧路径才 Noop)，靠 <span class="mono">Step.trace_id = get_trace_id()</span> 缝合。</li>
+<li>三种外壳同一个 loop：同步 <span class="mono">LettaResponse</span> / 流式 SSE(<span class="mono">StreamingService</span>，线格式 <span class="mono">data: {json}\n\n</span>) / 后台异步 Run(<span class="mono">messages/async</span> 立即返回，轮询 <span class="mono">GET /runs/{id}</span>，流式恢复靠 Redis)。</li>
+<li>两个易混点：per-step token(<span class="mono">Step.total_tokens</span>) vs Run 累计(<span class="mono">_update_global_usage_stats</span>)；是否落 <span class="mono">steps</span> 行<strong>看 manager</strong>——sleeptime/旧 agent 用 <span class="mono">NoopStepManager</span> 不写。</li>
+</ul>
+</div>
+<h2>回扣与小结：一个 loop，三套账，三种壳</h2>
+<p>收个尾。本课没造任何新机器，它通篇都在把你<strong>早就学过</strong>的零件，接成一条"可追踪、可计费、可恢复"的链。</p>
+<p>回扣第 13、14 课：那个朴素的 <span class="mono">for</span> 循环就是 <span class="mono">Step</span> 的源头——每圈 <span class="mono">_step</span> 产出一行 <span class="mono">steps</span>、一条 span、一份（可选的）原始 payload。</p>
+<p>回扣第 24 课：建 Run 的就是那层路由（<span class="mono">send_message</span>）——最外层建 Run、跑 loop、<span class="mono">finally</span> 收尾 Run 状态。</p>
+<p>回扣第 25 课：OTel span 的来源正是 <span class="mono">trace_method</span> 装饰器；<span class="mono">get_trace_id()</span> 把 span id 写进 <span class="mono">Step.trace_id</span>，那枚缝合钉就是这么来的。</p>
+<p>回扣第 3 课：每条 Message 盖 <span class="mono">run_id</span>＋<span class="mono">step_id</span>，正是 <span class="mono">_checkpoint_messages</span> 干的活——那条 ID 链的终点。</p>
+<p>回扣第 28 课：sleeptime 子 agent 走 <span class="mono">NoopStepManager</span>——同一套 loop，却<strong>故意不写</strong> <span class="mono">steps</span> 行，省掉后台子 agent 的噪声。这也是"看不到 step 记录先查 manager"的由来。</p>
+<p>一句话带走：看到 <span class="mono">Run</span>/<span class="mono">Step</span>/<span class="mono">Job</span>，先分清<strong>嵌套的是 <span class="mono">Run ⊃ Step</span>、平级的是 <span class="mono">Job</span></strong>；看到追踪，先问<strong>这是 <span class="mono">steps</span> 行、OTel、还是 provider trace</strong>。</p>
+<p>把这条肌肉记忆带走，你再读 Letta 的执行与可观测代码，就不会在"任务到底记在哪"上绕圈子了——它一直都在那个 <span class="mono">for</span> 循环边跑边记的三套账里。</p>
+<p>第八部分的进阶专题到此告一段落：从多 agent、数据源，到这一课的执行可观测，你已经把 Letta 跑起来之后"看得见、追得到、收得住"的那一面摸清了。</p>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 关于 Run、Step、Job 的层级关系，下面哪种说法是对的？</div>
+  <ol class="opts">
+    <li>Job ⊃ Run ⊃ Step：Job 是最外层容器，每个 Run 都属于某个 Job</li>
+    <li>Run ⊃ Step ⊃ StepMetrics（外加 Run–RunMetrics 一对一）；Job 是平级的另一张表，不是 Run 的父级</li>
+    <li>Run 与 Step 是平级两张表，靠 StepMetrics 关联</li>
+    <li>Step ⊃ Run：一个 Step 里包含多次 Run（每次重试算一个 Run）</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。正确嵌套只有一条：orm/run.py::Run（表 runs，一次 agent 调用）挂 Run.steps（1:N），每个 orm/step.py::Step（表 steps）再 1:1 挂 orm/step_metrics.py::StepMetrics；建 Run 时 RunManager.create_run 同时写一份 RunMetrics（1:1）。orm/job.py::Job（表 jobs，UserMixin）是平级的后台/批任务，不在这条链上——“Job ⊃ Run ⊃ Steps”是本课头号坑。Job 与 Run 是两种正交的异步：Run 有 LLM/工具/step，Job（加载/解析/嵌入文件）根本没有 step 概念，所以做成两张平级表，而非 Job 包 Run。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 在 Letta 的执行模型里，一个 Step 对应什么？</div>
+  <ol class="opts">
+    <li>一次工具调用：每调用一个工具记一个 Step</li>
+    <li>一圈 loop 迭代：一次 LLM 调用＋这一轮的工具执行</li>
+    <li>一整次 agent 调用：Step 与 Run 一一对应</li>
+    <li>一条消息：每发出或收到一条 Message 就是一个 Step</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。Step ＝ 第 14 课那个 for i in range(max_steps) 的一圈迭代 ＝ 一次 LLM 调用＋这一轮工具执行（letta_agent_v2/v3 的 _step；连 legacy 的 StreamingServerInterface.step_complete 都把 step 定义为“LLM 响应＋工具执行”）。由此一个 Run 至多 max_steps 个 Step（Run:Step = 1:≤max_steps），每个 Step 产出的多条 Message 都被盖上 run_id+step_id（LettaAgentV3._checkpoint_messages，Step:Message = 1:N）。所以它既不是“一条消息”、也不是“一个工具”，更不与 Run 一一对应。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 通过 messages/async 异步给 agent 发一条消息，底层创建的是什么？</div>
+  <ol class="opts">
+    <li>一个 Job：异步路径专门建 Job 来追踪进度</li>
+    <li>一个后台 Run：send_message_async 立即返回，之后轮询查状态</li>
+    <li>什么都不建：消息排进队列，没有独立资源</li>
+    <li>一个 Step：异步消息直接落成一行 steps</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。messages/async 走 send_message_async：立即返回一个 background Run（run-… id），真正的活儿丢进 shielded 后台任务，之后轮询 GET /v1/runs/{run_id}（及 /steps、/messages、/usage、/metrics），取消用 RunManager.cancel_run，后台流式恢复要 Redis（POST /v1/runs/{run_id}/stream）。它建的是 Run 不是 Job——orm/job.py::Job 是加载文件那类后台/批任务，和“一次 agent 调用”是两条正交的线。把异步 agent 消息当成建 Job，是本课点名的常见误区。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. _step 在 loop 里怎么把一行 steps 记下来，使得连崩溃的迭代也留得下记录？</div>
+  <ol class="opts">
+    <li>每步写两行：一行 PENDING、一行 SUCCESS，事后合并</li>
+    <li>跑完整步、拿到真实 token 后才写一行 steps，状态直接是 SUCCESS</li>
+    <li>先写 SUCCESS，崩了再回滚删掉那一行</li>
+    <li>调 LLM 之前就以 PENDING/0 token 写行，跑完再回填真实用量翻 SUCCESS</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。顺序是关键：_step_checkpoint_start 在调 LLM 之前就 log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...) 写下一行 steps（零 token）并开 OTel span agent_step；LLM＋工具跑完后，_step_checkpoint_finish 用 update_step_success_async(真实 per-step usage, stop_reason) 翻 SUCCESS 并 record_step_metrics_async。因为行“先存在”，finally 里的 StepProgression 状态机（START…FINISHED）一旦发现没走到 FINISHED，就 update_step_error_async 翻 FAILED/CANCELLED——崩溃/取消也留可归因记录。“跑完才写一行”正是它要避免的朴素设计：先占坑多付一次写，换来每圈迭代都可归因。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. Step.trace_id = get_trace_id() 把哪三样东西缝在一起？</div>
+  <ol class="opts">
+    <li>三种外壳：同步、SSE 流式、后台 Run 三条连接</li>
+    <li>三个 agent：主 agent、sleeptime 子 agent、工具 agent 的调用链</li>
+    <li>两条流式路径：v3 的 StreamingService 与 legacy 的 StreamingServerInterface</li>
+    <li>steps 行（计费）↔ OTel 分布式 trace（延迟）↔ provider trace 原始 LLM payload（调试）——三种可观测粒度</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。每跑一圈 step，Letta 同时往三个不同系统各记一笔：① steps 行（StepManager 写，per-step model/provider/token/stop_reason/feedback，给产品＋计费，默认就写）；② OTel（letta/otel/，trace_method 第 25 课开 span，MetricRegistry 的 ttft/step_execution_time/message_cost/sse_* 直方图，给延迟/分布式追踪，按 app.py 的 otel_exporter_otlp_endpoint 配置开关、pytest no-op）；③ provider trace（TelemetryManager 按 step_id 存原始 LLM 请求/响应，给调试，v3 默认就记/postgres，旧 Agent/sleeptime 路径才 Noop）。get_trace_id() 把当前 OTel trace id 写进 Step.trace_id，正是这枚缝合钉。干扰项里：v3 流式走 services/streaming_service.py::StreamingService（不是 legacy 的 StreamingServerInterface），那是流式路径之争，不是 trace_id 缝的三套账。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用本课“一个 loop、三套账、三种壳”的框架，把“你给一个 agent 发一条消息、它跑了三圈工具调用才停下”从头到尾讲一遍，并想透五件事：(1) 这次调用建了一个什么资源（Run，由 services/run_manager.py::RunManager.create_run 发 run-… id 并落 RunMetrics）？为什么它和加载文件用的 orm/job.py::Job 是两张平级的表，而不是 Job ⊃ Run？(2) 这三圈分别是三个 Step，复述 _step 的五段（_step_checkpoint_start 占坑 → LLM＋工具 → _step_checkpoint_finish 回填 → _checkpoint_messages 盖 run_id+step_id → finally·StepProgression 兜底），并解释为什么 log_step_async 要在 LLM 调用之前以 PENDING/0 token 写行。(3) 这一次调用“同时”留下了哪三套账？steps 行、OTel span、provider trace 各给谁看、默认开还是关、靠哪个字段（Step.trace_id = get_trace_id()）缝起来？(4) 如果第二圈 LLM 超时崩了，那一行 steps 会停在什么状态、由谁负责翻（StepProgression＋finally＋update_step_error_async）？对比“跑完才写一行”，先占坑多付出什么、换回什么？(5) 同一段 loop 被同步（LettaResponse）、流式（StreamingService 吐 data: {json} 帧）、后台（messages/async 立即返回 Run、轮询 GET /runs/{id}）三种壳包起来，三者各自的取舍是什么、为什么后台流式恢复要 Redis？最后想一想：既然 per-step token 在 steps 行、Run 总量靠 LettaAgentV2._update_global_usage_stats 跨 step 累加，那当你只看到 Run 总 token 却查不到任何 steps 行时，第一个该怀疑的是什么（提示：NoopStepManager，第 28 课）？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">In Lesson 14 we stared a long time at that humble <span class="mono">for</span> loop — each iteration the agent calls the LLM once, runs a batch of tools, and keeps going until it stops. This lesson asks a different question: how is that round-after-round execution <strong>recorded, traced, and streamed back to you live</strong>?</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">First let's straighten out the structure people most often get backwards: one agent invocation is a <span class="mono">Run</span>, which <strong>contains</strong> several <span class="mono">Step</span>s, and each Step hangs one <span class="mono">StepMetrics</span>. But <span class="mono">Job</span> is <strong>not Run's parent</strong> — it is a sibling table that handles background batch tasks. Getting this relationship backwards is the most common trap in reading this source.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>The lesson in one line: <strong>one <span class="mono">for</span> loop, three shells, three ledgers</strong>. The same agent loop, wrapped in a sync, streaming, or background shell, records three interlinked views on every step it takes.</p>
+<p>Three entities: <strong><span class="mono">Run</span></strong> (one agent invocation) ⊃ <strong><span class="mono">Step</span></strong> (one LLM + tools) ⊃ <strong><span class="mono">StepMetrics</span></strong> (timings); <span class="mono">Job</span> is a <strong>sibling</strong> background/batch task, not on this nesting chain.</p>
+<p>Three observability ledgers: the <strong><span class="mono">steps</span> row</strong> (product + billing), the <strong>OTel span</strong> (latency + distributed tracing), the <strong>provider trace</strong> (raw LLM payload) — stitched together by <span class="mono">Step.trace_id</span>.</p>
+<p>Three shells: <strong>sync</strong> <span class="mono">LettaResponse</span>, <strong>streaming</strong> SSE, <strong>background</strong> resumable Run — different shells, same <span class="mono">for</span> loop inside.</p>
+</div>
+<p>Why a whole lesson on this? Because many people go hunting for "task tracking" as some ops system outside the agent. Once you see that <strong>it is just three ledgers the loop keeps as it runs</strong>, you know which table and which span to look in.</p>
+<p>Hold onto this through-line: the whole lesson answers one question — <strong>what does a single loop iteration leave behind across three tables, three traces, and three shells?</strong> We meet the three entities first, then watch how a step lands in the DB, and finally cover observability and streaming.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Footnote: <span class="mono">Run</span> (table <span class="mono">runs</span>) ⊃ <span class="mono">Step</span> (table <span class="mono">steps</span>) ⊃ <span class="mono">StepMetrics</span>, plus a one-to-one <span class="mono">Run</span>–<span class="mono">RunMetrics</span>; <span class="mono">Job</span> (table <span class="mono">jobs</span>) is a <strong>separate, sibling table</strong>. "Job ⊃ Run ⊃ Steps" is <strong>wrong</strong>.</span></div>
+<h2>Three entities, three tables: what Run, Step, and Job each own</h2>
+<p>Meet the three entities first; they map to three tables, don't mix them up. The first two nest; the third is a separate, sibling line.</p>
+<p><strong>① <span class="mono">Run</span></strong> (<span class="mono">orm/run.py::Run</span>, table <span class="mono">runs</span>) = <strong>one agent invocation</strong>. Carries <span class="mono">agent_id</span> (required) and <span class="mono">OrganizationMixin</span>; hangs <span class="mono">Run.steps</span> (1:N, cascade delete) and <span class="mono">Run.messages</span> (1:N). Status <span class="mono">RunStatus{created,running,completed,failed,cancelled}</span>.</p>
+<p>Creating a Run also writes one <span class="mono">RunMetrics</span>: <span class="mono">services/run_manager.py::RunManager.create_run</span> records <span class="mono">run_start_ns</span> and <span class="mono">num_steps=0</span> — Run and RunMetrics are <strong>one-to-one</strong>.</p>
+<p><strong>② <span class="mono">Step</span></strong> (<span class="mono">orm/step.py::Step</span>, table <span class="mono">steps</span>) = <strong>one loop iteration</strong>, that is <strong>one LLM call + one round of tool execution</strong>. Carries a <span class="mono">run_id</span> foreign key pointing back to the Run it belongs to.</p>
+<p>The Step row is packed with "what happened this step": <span class="mono">model</span> / <span class="mono">provider_*</span>, per-step <span class="mono">prompt/completion/total_tokens</span>, <span class="mono">stop_reason</span>, <span class="mono">trace_id</span> (OTel), <span class="mono">feedback</span>, <span class="mono">status</span>. Status <span class="mono">StepStatus{PENDING,SUCCESS,FAILED,CANCELLED}</span>.</p>
+<p>Each Step hangs one <span class="mono">orm/step_metrics.py::StepMetrics</span> 1:1: three timings <span class="mono">llm_request_ns</span> / <span class="mono">tool_execution_ns</span> / <span class="mono">step_ns</span>. A Step also hangs <span class="mono">Step.messages</span> 1:N. Steps are written by <span class="mono">services/step_manager.py::StepManager</span> (plus the singleton <span class="mono">NoopStepManager</span>, more below).</p>
+<p><strong>③ <span class="mono">Job</span></strong> (<span class="mono">orm/job.py::Job</span>, table <span class="mono">jobs</span>, with <span class="mono">UserMixin</span>) = a <strong>background/batch task</strong>, typically the "load + parse + embed a file" of Lesson 29. Type <span class="mono">JobType{JOB,RUN,BATCH}</span>, status <span class="mono">JobStatus{created,running,completed,failed,pending,cancelled,expired}</span>, managed by <span class="mono">services/job_manager.py::JobManager</span>.</p>
+<p>The key sentence: <strong><span class="mono">Job</span> is not <span class="mono">Run</span>'s parent</strong>. It is a separate table, a sibling concept. The nesting chain is only <span class="mono">Run ⊃ Step ⊃ StepMetrics</span>; Job stands off to the side.</p>
+<div class="cellgroup"><div class="cg-cap"><b>Nesting chain: <span class="mono">Run ⊃ Step ⊃ StepMetrics</span> (<span class="mono">Job</span> is a sibling, not on the chain)</b></div><div class="cells"><span class="cell hl">Run · runs · RunStatus</span><span class="lab">1:1 RunMetrics</span><span class="sep">⊃</span><span class="cell">Step · steps · trace_id · StepStatus</span><span class="lab">1:N Message</span><span class="sep">⊃</span><span class="cell">StepMetrics · three timings</span><span class="sep">‖</span><span class="cell q">Job · jobs · JobStatus (sibling, not parent)</span></div></div>
+<p>One more question: why are Job and Run two sibling tables, rather than letting Job wrap Run?</p>
+<p>Because they are <strong>two orthogonal kinds of async</strong>. A Run is "one agent conversation execution" — it has an LLM, tools, steps; a Job is "a stretch of background data processing", typically loading/parsing/embedding a file, with <strong>no concept of a step at all</strong>.</p>
+<p>Forcing Run under Job as a child would be like bolting a "how many LLM calls did it make" field onto "loading a file" — a total mismatch. Two tables, each minding its own, is actually cleaner.</p>
+<p>The <span class="mono">BATCH</span> in <span class="mono">JobType</span> backs this up: it is the LLM batch-API kind of bulk task, a different thing from "one conversation". Job handles "batches" and "background chores"; Run handles "one conversation execution".</p>
+<p>So the mnemonic is simple: <strong>to trace an agent invocation, go to Run; to trace a background file task, go to Job</strong>. Their state machines sometimes look alike (both have <span class="mono">created/running/completed</span>), but their meaning and ownership are entirely different.</p>
+<p>With the three entities met, let's see how their IDs thread all the way down from one HTTP request. This chain stitches "invocation → step → message" into a queryable hierarchy:</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">POST …/messages</div><div class="nd">one agent invocation arrives</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">create_run</div><div class="nd">issues run-… + RunMetrics</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">agent_loop.step(run_id)</div><div class="nd">for i in range(max_steps)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">_step(run_id) → step-…</div><div class="nd">one steps row per iteration</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">stamp every Message</div><div class="nd">run_id + step_id</div></div>
+</div>
+<p>Read the chain segment by segment. A <span class="mono">POST .../messages</span> arrives, <span class="mono">RunManager.create_run</span> first issues a <span class="mono">run-…</span> id; then <span class="mono">agent_loop.step(run_id)</span> kicks off that <span class="mono">for i in range(max_steps)</span> loop (the star of Lesson 14).</p>
+<p>Each turn of the loop calls <span class="mono">_step(run_id)</span> once: <span class="mono">generate_step_id()</span> issues a <span class="mono">step-…</span> id and writes one <span class="mono">steps</span> row. <strong>Every new <span class="mono">Message</span></strong> produced this step is stamped with <span class="mono">run_id</span>+<span class="mono">step_id</span> (<span class="mono">letta_agent_v3.py::LettaAgentV3._checkpoint_messages</span>, calling back to Lesson 3).</p>
+<p>So the hierarchy is clean: <strong>one <span class="mono">Run</span> → at most <span class="mono">max_steps</span> <span class="mono">Step</span>s → each <span class="mono">Step</span> many <span class="mono">Message</span>s</strong>. With a <span class="mono">run_id</span> you can query the whole invocation; with a <span class="mono">step_id</span> you can pin down exactly which iteration and which messages it produced.</p>
+<details class="accordion"><summary>Job, Run, Step — who contains whom? Settled once and for all</summary><div class="acc-body">
+<p><strong><span class="mono">Run</span></strong>: one agent invocation (you send a message, the agent runs a turn until it stops). It <strong>contains</strong> Steps and Messages.</p>
+<p><strong><span class="mono">Step</span></strong>: one loop iteration inside a Run = one LLM call + one round of tool execution. It is <strong>contained by</strong> Run, and in turn <strong>contains</strong> StepMetrics and several Messages.</p>
+<p><strong><span class="mono">Job</span></strong>: a background/batch task <strong>sibling</strong> to Run (such as loading a file). It <strong>neither contains</strong> Run <strong>nor is contained by</strong> Run — a separate line on a separate table.</p>
+<p>So the correct nesting is <span class="mono">Run ⊃ Step ⊃ StepMetrics</span> (plus a one-to-one <span class="mono">Run</span>–<span class="mono">RunMetrics</span>). Writing it as <span class="mono">Job ⊃ Run ⊃ Steps</span> is <strong>wrong</strong> — the first trap this lesson fixes.</p>
+</div></details>
+<div class="card analogy"><div class="tag">📝 Real-world analogy</div>
+<p>Picture one agent invocation as a <strong>single courier parcel</strong>.</p>
+<p>This parcel (<span class="mono">Run</span>) gets <strong>scanned several times</strong> on the way — pickup, transit, delivery; each scan is a <span class="mono">Step</span>, leaving a <strong>timestamp and weight</strong> (StepMetrics timings, token usage).</p>
+<p>Meanwhile the warehouse's <strong>background stock-sorting task</strong> (<span class="mono">Job</span>) is <strong>a separate line</strong>: it isn't on your parcel's trail, it runs on its own.</p>
+<p>To find out where the parcel is, you have two views: watch the <strong>live tracking feed</strong> (the SSE stream), or look it up later <strong>by tracking number</strong> (poll <span class="mono">GET /runs/{id}</span>). One parcel, two ways to observe.</p>
+</div>
+<h2>How a Step records itself in the loop as it runs</h2>
+<p>Back to that <span class="mono">_step</span> from Lesson 14. An iteration doesn't "book-keep only when done"; it <strong>reserves a slot before running and backfills afterward</strong>. <span class="mono">LettaAgentV3._step</span> breaks into five stages, with the persistence logic carried by two checkpoint methods in <span class="mono">letta_agent_v2.py</span>.</p>
+<p><strong>① <span class="mono">_step_checkpoint_start</span></strong>: build the <span class="mono">StepMetrics</span>, open an OTel span <span class="mono">tracer.start_span("agent_step")</span>, then <span class="mono">StepManager.log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...)</span> — write one <span class="mono">steps</span> row <strong>before the LLM call</strong>, tokens recorded as zero for now.</p>
+<p><strong>② LLM + tools</strong>: actually call the LLM once; <span class="mono">_handle_ai_response</span> runs this round's tool calls.</p>
+<p><strong>③ <span class="mono">_step_checkpoint_finish</span></strong>: compute <span class="mono">step_ns</span>, end the span, <span class="mono">record_step_metrics_async</span>, then <span class="mono">update_step_success_async(real per-step usage, stop_reason)</span> flips that row from <span class="mono">PENDING</span> to <span class="mono">SUCCESS</span> and fills the real usage.</p>
+<p><strong>④ <span class="mono">_checkpoint_messages</span></strong>: stamp this step's Messages with <span class="mono">run_id</span>+<span class="mono">step_id</span> and persist them (the landing point of the previous section's ID chain).</p>
+<p><strong>⑤ <span class="mono">finally</span> fallback</strong>: a <span class="mono">StepProgression</span> state machine (<span class="mono">START…FINISHED</span>) guards it — if it crashes or is cancelled midway, <span class="mono">update_step_error_async</span> runs, and that <span class="mono">steps</span> row still survives.</p>
+<p>Draw the five stages vertically and the rhythm — <strong>reserve first, backfill later, survive a crash</strong> — is plain to see:</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>_step_checkpoint_start (open span + reserve slot)</h4><p>Build <span class="mono">StepMetrics</span>, open span <span class="mono">"agent_step"</span>; <span class="mono">log_step_async(0,0,0, PENDING)</span> writes one <span class="mono">steps</span> row first (zero tokens).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>LLM + tools</h4><p>Call the LLM once; <span class="mono">_handle_ai_response</span> runs this round's tool calls.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>_step_checkpoint_finish (backfill)</h4><p>Compute <span class="mono">step_ns</span>, end the span, <span class="mono">record_step_metrics_async</span>; <span class="mono">update_step_success_async</span> fills real usage + <span class="mono">stop_reason</span> and flips to <span class="mono">SUCCESS</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>_checkpoint_messages</h4><p>Persist this step's Messages stamped with <span class="mono">run_id</span>+<span class="mono">step_id</span>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>finally · StepProgression fallback</h4><p>State machine <span class="mono">START…FINISHED</span>; on crash/cancel, <span class="mono">update_step_error_async</span> runs, the row still survives.</p></div></div>
+</div>
+<p>Put "reserve → backfill → fallback" into code, drop the details, and the skeleton is this straight:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v2.py</span><span class="ln">_step: reserve a PENDING/0 row before running, backfill SUCCESS after (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">_step</span>(self, run_id, step_id, ...):
+    <span class="cm"># 1) before running: open a span + write one steps row, tokens zero, status PENDING</span>
+    span = tracer.<span class="fn">start_span</span>(<span class="st">&quot;agent_step&quot;</span>)
+    <span class="kw">await</span> self.step_manager.<span class="fn">log_step_async</span>(
+        usage=UsageStatistics(0, 0, 0), status=StepStatus.PENDING,
+        run_id=run_id, step_id=step_id, model=..., provider_name=...)
+    <span class="kw">try</span>:
+        <span class="cm"># 2) call the LLM once + run this round's tools</span>
+        response = <span class="kw">await</span> self.<span class="fn">_handle_ai_response</span>(...)
+        <span class="cm"># 3) backfill after: real per-step usage + stop_reason, flip to SUCCESS</span>
+        <span class="kw">await</span> self.step_manager.<span class="fn">update_step_success_async</span>(
+            step_id, usage=response.usage, stop_reason=response.stop_reason)
+    <span class="kw">finally</span>:
+        <span class="cm"># 5) crash/cancel still leaves a record: not FINISHED, so mark error</span>
+        <span class="kw">if</span> progression &lt; StepProgression.FINISHED:
+            <span class="kw">await</span> self.step_manager.<span class="fn">update_step_error_async</span>(step_id, ...)
+</pre></div>
+<p>Note that <span class="mono">log_step_async</span> passes <span class="mono">usage=(0,0,0)</span>. This is <strong>not a bug</strong>: the row lands with zero tokens first, and the real usage is backfilled by <span class="mono">update_step_success_async</span>. <strong>Row first, numbers later</strong> is the key to this design.</p>
+<p>A word on the token ledger, don't confuse it with Lesson 14. <span class="mono">Step.total_tokens</span> is <strong>this step's single LLM call</strong> usage; a Run's <strong>total</strong> is <strong>accumulated across Steps</strong> (<span class="mono">LettaAgentV2._update_global_usage_stats</span>, exactly Lesson 14's accumulator). For per-step look at the <span class="mono">steps</span> row; for the running total look at the Run.</p>
+<p>While we are here, why split StepMetrics into three timings. <span class="mono">llm_request_ns</span> is the time waiting on the LLM to reply, <span class="mono">tool_execution_ns</span> is the time running this round's tools, and <span class="mono">step_ns</span> is the end-to-end total for the iteration.</p>
+<p>Split into three, and when debugging you see the bottleneck at a glance: is the LLM slow, or did some tool (a DB query, an external API call) drag? Mashed into one number you only know "this step is slow"; split apart you know "slow in which segment".</p>
+<p>It also lines up with that OTel <span class="mono">agent_step</span> span — the span nests finer sub-intervals, while <span class="mono">StepMetrics</span> freezes the three most important segments <strong>into the DB</strong>, queryable without any OTel backend.</p>
+<details class="accordion"><summary><span class="mono">StepProgression</span> fallback: why does even a crashed iteration leave a record?</summary><div class="acc-body">
+<p>The trick is <strong>order</strong>: <span class="mono">log_step_async</span> writes the <span class="mono">steps</span> row <strong>before</strong> calling the LLM (<span class="mono">PENDING</span>/zero tokens). So even if the LLM call throws, or the user cancels midway, that row <strong>already exists</strong>.</p>
+<p>In the <span class="mono">finally</span>, that <span class="mono">StepProgression</span> state machine (<span class="mono">START…FINISHED</span>) checks: if progress never reached <span class="mono">FINISHED</span>, <span class="mono">update_step_error_async</span> flips the row to <span class="mono">FAILED</span>/<span class="mono">CANCELLED</span> instead of leaving a forever-<span class="mono">PENDING</span> orphan.</p>
+<p>Contrast the naive "write a row only when done" design: there a crash leaves <strong>nothing</strong>, and you have no idea which step, or which model, died. Reserving first costs one extra write, and buys you <strong>every iteration being accountable</strong> — even the failed ones are on the books.</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">Remember this counterintuitive order: the <strong>steps row lands <em>before</em> the LLM call</strong> (<span class="mono">PENDING</span>/0 tokens), and real usage is backfilled afterward. This is exactly the root of "a crash still leaves a record" — row first, numbers later.</span></div>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">orm/run.py::Run</span> / <span class="mono">orm/step.py::Step</span> / <span class="mono">orm/job.py::Job</span> — three entities, three tables; <span class="mono">Run.steps</span> 1:N, <span class="mono">Step.metrics</span> 1:1, <span class="mono">Job</span> a sibling.</p>
+<p><span class="mono">letta_agent_v2.py::LettaAgentV2._step_checkpoint_start / _finish</span> — an iteration's "reserve" and "backfill", writing the <span class="mono">steps</span> row + <span class="mono">StepMetrics</span>.</p>
+<p><span class="mono">otel/tracing.py::get_trace_id</span> — grab the current OTel trace id and write it into <span class="mono">Step.trace_id</span>, stitching the product row to the distributed trace.</p>
+<p><span class="mono">services/streaming_service.py::StreamingService</span> — the v3 streaming entry; after creating a Run it wraps the loop into SSE (detailed in the last section).</p>
+</div>
+<h2>Three observability ledgers: one step, three granularities</h2>
+<p>That <span class="mono">steps</span> row from the last section is only one of three ledgers. On every iteration Letta actually writes <strong>once into each of three different systems at the same time</strong> — don't lump them into one thing.</p>
+<p><strong>① <span class="mono">steps</span> row (product + billing)</strong>: the table from before, with per-step <span class="mono">model</span> / <span class="mono">provider</span> / <span class="mono">tokens</span> / <span class="mono">stop_reason</span> / <span class="mono">feedback</span>. It is for <strong>product analytics and billing</strong> — who used how many tokens, where it stopped, whether the user gave a thumbs-up.</p>
+<p><strong>② OTel (<span class="mono">letta/otel/</span>)</strong>: <span class="mono">tracing.py::trace_method</span> (the decorator from Lesson 25) opens a <span class="mono">"{Class}.{method}"</span> span per method, and <span class="mono">get_trace_id()</span> writes the current trace id into <span class="mono">Step.trace_id</span>. This one is for <strong>latency and distributed tracing</strong>.</p>
+<p>OTel also has a pile of metrics: <span class="mono">metric_registry.py::MetricRegistry</span> (a singleton) registers <span class="mono">ttft_ms_histogram</span>, <span class="mono">step_execution_time_ms_histogram</span>, <span class="mono">message_cost</span>, <span class="mono">sse_*</span>, and more. <span class="mono">app.py</span> decides at startup whether to turn it on, gated on <span class="mono">otel_exporter_otlp_endpoint and not disable_tracing</span>; under pytest it is a <strong>no-op</strong>.</p>
+<p>Each metric points at something: <span class="mono">ttft_ms</span> is time-to-first-token (first-token latency, key to the streaming feel), <span class="mono">step_execution_time_ms</span> is one step's end-to-end duration, <span class="mono">message_cost</span> estimates this message's spend, and <span class="mono">sse_*</span> watches the health of streaming connections.</p>
+<p>They don't overlap with the <span class="mono">steps</span> row: the steps row records "how many tokens this step used" (discrete, billable), while the OTel histograms record "the latency distribution" (aggregate, trend-watching). One answers "how much did it cost", the other "how fast was it".</p>
+<p><strong>③ provider traces (<span class="mono">services/telemetry_manager.py::TelemetryManager</span>)</strong>: keyed by <span class="mono">step_id</span>, it stores the <strong>raw LLM request/response</strong> wholesale into postgres/clickhouse/socket. This is for <strong>debugging and post-mortems</strong> — when you want to see exactly what payload went out that time. On the v3 mainline it is <strong>recorded by default</strong> (a real <span class="mono">TelemetryManager</span> + <span class="mono">track_provider_trace=True</span>, stored in postgres); <span class="mono">NoopTelemetryManager</span> is the default only on the legacy <span class="mono">Agent</span>/sleeptime path.</p>
+<p>What stitches the three together is that one field: <strong><span class="mono">Step.trace_id = get_trace_id()</span></strong>. From one product row you can jump to the matching distributed trace, then follow <span class="mono">step_id</span> to that time's raw LLM payload — three ledgers, one thread.</p>
+<div class="cols">
+  <div class="col"><h4>🧾 steps row · billing</h4>
+  <p>Table <span class="mono">steps</span>. Per-step <span class="mono">model</span>/<span class="mono">provider</span>/<span class="mono">tokens</span>/<span class="mono">stop_reason</span>/<span class="mono">feedback</span>. For product and billing. <strong>Written by default</strong> (unless a Noop manager is used).</p>
+  </div>
+  <div class="col"><h4>📈 OTel span · latency</h4>
+  <p><span class="mono">"{Class}.{method}"</span> span + <span class="mono">MetricRegistry</span> histograms. For latency and distributed tracing. <strong>Needs an endpoint</strong>; a no-op under pytest.</p>
+  </div>
+  <div class="col"><h4>🔬 provider trace · raw payload</h4>
+  <p>Stores the raw LLM request/response keyed by <span class="mono">step_id</span>. For debugging and post-mortems. <strong>On by default on v3 (postgres)</strong>; the legacy path uses Noop.</p>
+  </div>
+</div>
+<p>Draw "one step, three stamps" as a cute figure and the stitching line is obvious at a glance:</p>
+<div class="cute"><div class="row"><span class="emoji">🧾</span><span class="lab">one step</span><span class="arrow">→</span><span class="emoji">💰</span><span class="lab">billing stamp</span><span class="arrow">→</span><span class="emoji">⏱️</span><span class="lab">latency stamp</span><span class="arrow">→</span><span class="emoji">🔬</span><span class="bubble">raw payload stamp</span></div><div class="cap">🧾 every finished step gets three stamps at once — 💰 billing (the <span class="mono">steps</span> row), ⏱️ latency (the OTel span), 🔬 raw payload (the provider trace); one <span class="mono">trace_id</span> threads the three stamps into a single line, from the bill all the way to what that LLM call actually sent</div></div>
+<details class="accordion"><summary>What does each of the three ledgers own, and is it on or off by default?</summary><div class="acc-body">
+<p><strong><span class="mono">steps</span> row</strong>: written by <span class="mono">StepManager</span>, <strong>recorded by default</strong> (product + billing). Only paths using the singleton <span class="mono">NoopStepManager</span> skip the row (more below).</p>
+<p><strong>OTel</strong>: <strong>depends on config</strong> by default. <span class="mono">app.py</span> decides at startup, gated on <span class="mono">otel_exporter_otlp_endpoint and not disable_tracing</span>; with no endpoint or under pytest, <span class="mono">trace_method</span> and the metrics are all no-ops, near-zero overhead.</p>
+<p><strong>provider traces</strong>: <strong>on by default on the v3 mainline</strong> — a real <span class="mono">TelemetryManager</span> + <span class="mono">track_provider_trace=True</span> (postgres backend by default, optionally clickhouse/socket). <span class="mono">NoopTelemetryManager</span> is only the default on the legacy <span class="mono">Agent</span>/sleeptime path.</p>
+<p>In one line: <strong>billing on by default, raw payload on by default on v3, latency on config</strong>. Three different granularities, switches, and purposes — when debugging, decide first which one you need.</p>
+</div></details>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't mix the three ledgers: the <strong><span class="mono">steps</span> row</strong> is product/billing (per-step tokens), the <strong>OTel span</strong> is latency/tracing, the <strong>provider trace</strong> is the raw payload. They record <strong>different things</strong>, merely stitched together by <span class="mono">Step.trace_id</span>. Don't dig through OTel for billing, and don't expect the <span class="mono">steps</span> row to hold a payload.</span></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>That humble <span class="mono">for</span> loop from Lesson 14 throws off, on every <span class="mono">_step</span>, <strong>three views stitched together by <span class="mono">Step.trace_id</span></strong> — a <span class="mono">steps</span> row (billing), an OTel <span class="mono">agent_step</span> span (latency), and an optional provider trace (the raw payload); from one product row you can trace straight to that raw LLM call.</p>
+<p>And all of them are written slot-first: the step row lands as <span class="mono">PENDING</span>/zero tokens <strong>before the LLM call</strong> and only flips to <span class="mono">SUCCESS</span> afterward — so a crash or cancellation still leaves an <strong>accountable</strong>, durable record instead of vanishing.</p>
+<p>But the biggest highlight: the same loop, wrapped in <strong>three shells</strong> — sync <span class="mono">LettaResponse</span>, the SSE stream, a Redis-resumable background Run — differs only in the shell. An in-process <span class="mono">for</span> loop thereby becomes a traceable, cancellable, resumable <strong>async resource</strong>.</p>
+</div>
+<h2>Three shells: blocking sync, streaming SSE, background async</h2>
+<p>The same loop can be wrapped in three shells. To the user they are <strong>three ways to send a message</strong>; inside, the very same <span class="mono">for</span> loop runs.</p>
+<p><strong>① Sync</strong>: <span class="mono">messages</span>(streaming=false) → create a Run → block through the whole loop → return <span class="mono">LettaResponse</span>. In the <span class="mono">finally</span>, <span class="mono">update_run_by_id_async</span> sets the Run to <span class="mono">completed</span>/<span class="mono">failed</span>.</p>
+<p><strong>② Streaming</strong>: <span class="mono">messages</span>(streaming=true) → create a Run the same way, but spit the loop's output out <strong>live</strong> over SSE, chunk by chunk.</p>
+<p><strong>③ Background async</strong>: <span class="mono">messages/async</span> → <span class="mono">send_message_async</span> <strong>returns immediately</strong> with a background Run, and the real work is thrown into a shielded background task. You <strong>poll</strong> <span class="mono">GET /v1/runs/{run_id}</span> for progress.</p>
+<p>That background Run lets you trace out further: <span class="mono">/steps</span>, <span class="mono">/messages</span>, <span class="mono">/usage</span>, <span class="mono">/metrics</span>, even the trace; to abort, use <span class="mono">messages/cancel</span> or <span class="mono">RunManager.cancel_run</span>. Resuming a background <strong>stream</strong> needs Redis, reconnectable via <span class="mono">POST /v1/runs/{run_id}/stream</span>.</p>
+<p>Lay the three states side by side in a table, and the entry point and observation method are clear at a glance:</p>
+<table class="t">
+<tr><th>Form</th><th>Entry point</th><th>Return / how to observe</th></tr>
+<tr><td>sync</td><td class="mono">messages (streaming=false)</td><td>blocks to completion, returns <span class="mono">LettaResponse</span></td></tr>
+<tr><td>stream</td><td class="mono">messages (streaming=true)</td><td>SSE pushes <span class="mono">data: {json}\n\n</span> live</td></tr>
+<tr><td>async</td><td class="mono">messages/async</td><td>returns a background Run at once, poll <span class="mono">GET /runs/{id}</span></td></tr>
+</table>
+<p>Why three shells, isn't one enough? Because "one agent invocation" spans a huge range of durations — maybe 1 second, maybe a dozen iterations over several minutes.</p>
+<p>Sync is simplest, but a long task <strong>holds the HTTP connection</strong> the whole time, and one timeout wastes all the work. It only suits "in-and-out" short calls.</p>
+<p>Streaming turns "stuck" into "emit as it runs" — the moment the first token appears the user sees a response, which feels good; the cost is the connection must stay open throughout, and if it drops you have to reconnect somehow.</p>
+<p>Background async fully <strong>detaches the connection</strong>: it returns a run id immediately, the work grinds on in the background, and you poll later. The cost is you must check status yourself, and stream recovery still needs Redis.</p>
+<p>Three shells, three trade-offs: <strong>sync for simplicity, streaming for experience, async for long tasks</strong>. But remember — the shell changes, while the <span class="mono">for</span> loop inside and the three ledgers it keeps don't change one bit.</p>
+<p>First, see how the sync route covers the Run's whole lifecycle. The key is that <span class="mono">finally</span>: success or failure, the Run status must be written down.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message: create Run → run loop → finally settle Run status (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, ...):
+    <span class="cm"># 1) create a Run (issues a run-… id, also writes RunMetrics)</span>
+    run = <span class="kw">await</span> run_manager.<span class="fn">create_run</span>(agent_id=agent_id, ...)
+    <span class="kw">try</span>:
+        <span class="cm"># 2) run the loop, threading run_id into every step</span>
+        result = <span class="kw">await</span> AgentLoop.<span class="fn">load</span>(agent, ...).<span class="fn">step</span>(
+            input_messages, run_id=run.id, max_steps=...)
+        status = RunStatus.completed
+        <span class="kw">return</span> result                      <span class="cm"># LettaResponse</span>
+    <span class="kw">except</span> Exception:
+        status = RunStatus.failed
+        <span class="kw">raise</span>
+    <span class="kw">finally</span>:
+        <span class="cm"># 3) success or failure, settle the Run status</span>
+        <span class="kw">await</span> run_manager.<span class="fn">update_run_by_id_async</span>(run.id, status=status)
+</pre></div>
+<p>For the streaming shell, v3 actually goes through <span class="mono">services/streaming_service.py::StreamingService.create_agent_stream</span>. It likewise creates a Run first, then has <span class="mono">AgentLoop.load(...).stream(...)</span> emit already-formatted <span class="mono">data: {json}\n\n</span> chunk by chunk.</p>
+<p>Two more layers wrap it: <span class="mono">_create_error_aware_stream</span> handles the <span class="mono">[DONE]</span> terminal frame and error frames, plus a keepalive (<span class="mono">LettaPing</span>) against connection timeouts; finally <span class="mono">streaming_response.py::StreamingResponseWithStatusCode(media_type="text/event-stream")</span> sends it out.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/streaming_service.py</span><span class="ln">create_agent_stream: yield the loop's output as SSE, chunk by chunk (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">create_agent_stream</span>(self, agent_id, request, ...):
+    run = <span class="kw">await</span> self.run_manager.<span class="fn">create_run</span>(agent_id=agent_id, ...)
+    agent_loop = AgentLoop.<span class="fn">load</span>(agent, ...)
+    <span class="kw">async def</span> <span class="fn">_stream</span>():
+        <span class="cm"># loop.stream(...) already yields data: {json}\n\n (see sse_formatter)</span>
+        <span class="kw">async for</span> chunk <span class="kw">in</span> agent_loop.<span class="fn">stream</span>(..., run_id=run.id):
+            <span class="kw">yield</span> chunk
+        <span class="kw">yield</span> <span class="st">&quot;data: [DONE]\n\n&quot;</span>            <span class="cm"># a terminal frame</span>
+    <span class="kw">return</span> <span class="fn">StreamingResponseWithStatusCode</span>(
+        _stream(), media_type=<span class="st">&quot;text/event-stream&quot;</span>)
+</pre></div>
+<p>The SSE wire format is plain: <span class="mono">utils.py::sse_formatter</span> serializes each event into <span class="mono">data: {json}\n\n</span>, sends <span class="mono">data: [DONE]</span> on normal termination, and <span class="mono">event: error</span> on error.</p>
+<p>The event types streaming through are exactly Lesson 3's <span class="mono">LettaMessage</span> family: <span class="mono">ReasoningMessage</span> / <span class="mono">AssistantMessage</span> / <span class="mono">ToolCallMessage</span> / <span class="mono">ToolReturnMessage</span>, plus control frames like <span class="mono">LettaPing</span> / <span class="mono">LettaUsageStatistics</span> / <span class="mono">LettaStopReason</span>.</p>
+<details class="accordion"><summary>Streaming v3 (<span class="mono">StreamingService</span>) vs legacy (<span class="mono">StreamingServerInterface</span>) + how to track an async Run</summary><div class="acc-body">
+<p><strong>The real v3 path</strong>: <span class="mono">services/streaming_service.py::StreamingService.create_agent_stream</span> — create a Run, have <span class="mono">AgentLoop.stream(...)</span> emit <span class="mono">data: {json}\n\n</span> chunk by chunk, wrapped with <span class="mono">[DONE]</span>/error and keepalive. This is what the lesson covers.</p>
+<p><strong>Legacy (don't copy it)</strong>: <span class="mono">server/rest_api/interface.py::StreamingServerInterface</span> — a deque buffer, whose <span class="mono">step_complete</span> gives the <strong>authoritative definition</strong> "step = LLM response + tool execution", but it backs the old <span class="mono">agent.py</span>/OpenAI-proxy path, <strong>not v3</strong>. Just recognize it as historical baggage.</p>
+<p><strong>How to track an async Run</strong>: <span class="mono">messages/async</span> returns a background Run immediately, after which you <strong>poll</strong> <span class="mono">GET /v1/runs/{run_id}</span> (and <span class="mono">/steps</span>/<span class="mono">/messages</span>/<span class="mono">/usage</span>/<span class="mono">/metrics</span>). Resuming a background <strong>stream</strong> needs Redis, reconnectable via <span class="mono">POST /v1/runs/{run_id}/stream</span>.</p>
+</div></details>
+<div class="note info"><span class="ni">💡</span><span class="nx">For streaming in v0.16.8, lock onto the <span class="mono">StreamingService</span> v3 path. The <span class="mono">StreamingServerInterface</span> singled out in the outline is <strong>legacy</strong> — its definition of "step" is still worth referencing, but its code path is no longer the mainline, so don't write new code against it.</span></div>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p><strong><span class="mono">Job</span> ≠ <span class="mono">Run</span></strong>: sending an agent message asynchronously (<span class="mono">messages/async</span>) creates a background <strong>Run</strong>, <strong>not a Job</strong>. A Job is a background batch task like loading a file.</p>
+<p><strong>Don't reverse the nesting</strong>: it is <span class="mono">Run ⊃ Step</span>, not <span class="mono">Job ⊃ Run ⊃ Step</span>. Job is a sibling, not on the chain.</p>
+<p><strong>Step granularity</strong> = one iteration = one LLM call + one round of tool execution, not "one message" and not "one tool".</p>
+<p><strong>Whether a steps row is written depends on the manager</strong>: sleeptime sub-agents and the old agent go through the singleton <span class="mono">NoopStepManager</span> — <strong>no row written</strong> (Lesson 28). If you see no step records, first check whether it's Noop.</p>
+<p><strong>For streaming, recognize v3</strong>: it goes through <span class="mono">StreamingService</span>; <span class="mono">StreamingServerInterface</span> is legacy. <strong>Don't mix tokens</strong>: <span class="mono">Step.total_tokens</span> is per-step, while the Run total is accumulated across Steps.</p>
+</div>
+<h2>Follow a single run_id to pull up all three ledgers</h2>
+<p>Everything so far was mechanism; in practice it comes down to one line: <strong>with a <span class="mono">run_id</span> in hand, you can pull up every facet of this invocation</strong>. Treat it as the master entry point for debugging.</p>
+<p><strong>Start with the overview</strong>: <span class="mono">GET /v1/runs/{run_id}</span> gives you the Run status (<span class="mono">created…completed/failed/cancelled</span>) + <span class="mono">RunMetrics</span> (<span class="mono">run_start_ns</span>, <span class="mono">num_steps</span>). At a glance you know whether it finished and how many iterations it ran.</p>
+<p><strong>Then drill into each iteration</strong>: <span class="mono">GET /v1/runs/{run_id}/steps</span> lists every <span class="mono">Step</span> row — which step used which <span class="mono">model</span>, how many tokens it burned, what the <span class="mono">stop_reason</span> was, whether the <span class="mono">status</span> succeeded. This is the product + billing view.</p>
+<p><strong>Want latency</strong>: take a <span class="mono">Step.trace_id</span> to the OTel backend and open that <span class="mono">agent_step</span> span tree — how long the LLM waited, how long the tools took, plain to see.</p>
+<p><strong>Want to see exactly what was sent</strong>: take the <span class="mono">step_id</span> to the provider trace (recorded by default on v3) for the raw LLM request/response; for the cumulative usage, <span class="mono">GET …/usage</span> (accumulated across steps).</p>
+<p>There's also an often-overlooked <span class="mono">feedback</span> field: a user's thumbs-up/thumbs-down on a reply lands on the corresponding <span class="mono">Step</span>. Filtering by <span class="mono">feedback</span> later lets you analyze "which kind of step does well, which needs fixing" — first-hand data for product iteration, and the <span class="mono">steps</span> row's other value beyond billing.</p>
+<p>Put together: <strong><span class="mono">run_id</span> is the master entry, <span class="mono">step_id</span> the per-step entry, and <span class="mono">trace_id</span> the cross-system stitching pin</strong>. Three ledgers, one thread — debugging agent behavior is no longer guesswork.</p>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>Three entities, three tables: <span class="mono">Run</span> (one agent invocation, table <span class="mono">runs</span>) ⊃ <span class="mono">Step</span> (one LLM + one round of tools, table <span class="mono">steps</span>) ⊃ <span class="mono">StepMetrics</span> (three timings), plus a one-to-one <span class="mono">Run</span>–<span class="mono">RunMetrics</span>; <span class="mono">Job</span> (table <span class="mono">jobs</span>) is a <strong>sibling</strong> background/batch task, <strong>not</strong> Run's parent.</li>
+<li>A Step <strong>reserves first, backfills later</strong> in the loop: <span class="mono">_step_checkpoint_start</span> writes a <span class="mono">PENDING</span>/0 row + opens a span before the LLM call, <span class="mono">_step_checkpoint_finish</span> uses <span class="mono">update_step_success_async</span> to backfill real usage and flip to <span class="mono">SUCCESS</span>, and <span class="mono">finally</span> falls back via <span class="mono">StepProgression</span> — crashes/cancels still leave an accountable record.</li>
+<li>Three observability ledgers, each with its own granularity and switch: the <span class="mono">steps</span> row (product/billing, written by default), the OTel span (latency/tracing, per <span class="mono">app.py</span> config, no-op under pytest), the provider trace (raw payload, recorded by default on v3/postgres; Noop only on the legacy path) — stitched by <span class="mono">Step.trace_id = get_trace_id()</span>.</li>
+<li>Three shells, one loop: sync <span class="mono">LettaResponse</span> / streaming SSE (<span class="mono">StreamingService</span>, wire format <span class="mono">data: {json}\n\n</span>) / background async Run (<span class="mono">messages/async</span> returns immediately, poll <span class="mono">GET /runs/{id}</span>, stream recovery via Redis).</li>
+<li>Two easy mix-ups: per-step tokens (<span class="mono">Step.total_tokens</span>) vs the Run total (<span class="mono">_update_global_usage_stats</span>); whether a <span class="mono">steps</span> row is written depends on the manager — sleeptime/old agent use <span class="mono">NoopStepManager</span> and write nothing.</li>
+</ul>
+</div>
+<h2>Callbacks and wrap-up: one loop, three ledgers, three shells</h2>
+<p>Let's wrap up. This lesson built no new machine; throughout, it wired parts <strong>you already learned</strong> into a "traceable, billable, resumable" chain.</p>
+<p>Callback to Lessons 13 and 14: that humble <span class="mono">for</span> loop is the source of the <span class="mono">Step</span> — each <span class="mono">_step</span> produces one <span class="mono">steps</span> row, one span, and one (optional) raw payload.</p>
+<p>Callback to Lesson 24: it's the routing layer (<span class="mono">send_message</span>) that creates the Run — the outermost layer creates the Run, runs the loop, and settles the Run status in <span class="mono">finally</span>.</p>
+<p>Callback to Lesson 25: the OTel span comes from the <span class="mono">trace_method</span> decorator; <span class="mono">get_trace_id()</span> writes the span id into <span class="mono">Step.trace_id</span> — that's where the stitching pin comes from.</p>
+<p>Callback to Lesson 3: stamping every Message with <span class="mono">run_id</span>+<span class="mono">step_id</span> is exactly what <span class="mono">_checkpoint_messages</span> does — the end of that ID chain.</p>
+<p>Callback to Lesson 28: sleeptime sub-agents go through <span class="mono">NoopStepManager</span> — the same loop, yet deliberately writing no <span class="mono">steps</span> row, sparing the noise of background sub-agents. This is also why "no step records, check the manager first".</p>
+<p>One line to take away: when you see <span class="mono">Run</span>/<span class="mono">Step</span>/<span class="mono">Job</span>, first sort out that <strong><span class="mono">Run ⊃ Step</span> nests and <span class="mono">Job</span> is a sibling</strong>; when you see tracing, first ask <strong>whether it's the <span class="mono">steps</span> row, OTel, or a provider trace</strong>.</p>
+<p>Take this muscle memory with you, and the next time you read Letta's execution and observability code you won't go in circles over "where is the task even recorded" — it has always been in the three ledgers that <span class="mono">for</span> loop keeps as it runs.</p>
+<p>Part 8's advanced topics close here: from multi-agent and data sources to this lesson's execution observability, you've now mapped the side of Letta that, once it's running, is "visible, traceable, and under control".</p>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. Which statement about the Run / Step / Job hierarchy is correct?</div>
+  <ol class="opts">
+    <li>Job ⊃ Run ⊃ Step: Job is the outermost container and every Run belongs to a Job</li>
+    <li>Run ⊃ Step ⊃ StepMetrics (plus a 1:1 Run–RunMetrics); Job is a sibling table, not Run's parent</li>
+    <li>Run and Step are two sibling tables, linked through StepMetrics</li>
+    <li>Step ⊃ Run: one Step contains several Runs (one Run per retry)</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. There is only one correct nesting: orm/run.py::Run (table runs, one agent invocation) hangs Run.steps (1:N), and each orm/step.py::Step (table steps) hangs one orm/step_metrics.py::StepMetrics 1:1; creating a Run also writes one RunMetrics (1:1) via RunManager.create_run. orm/job.py::Job (table jobs, UserMixin) is a sibling background/batch task, off this chain — 'Job ⊃ Run ⊃ Steps' is the lesson's number-one trap. Job and Run are two orthogonal kinds of async: a Run has LLM/tools/steps, while a Job (load/parse/embed a file) has no concept of a step, which is why they are two sibling tables rather than Job-wraps-Run.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. In Letta's execution model, what does one Step correspond to?</div>
+  <ol class="opts">
+    <li>One tool call: each tool invocation is its own Step</li>
+    <li>One loop iteration: a single LLM call plus that round's tool execution</li>
+    <li>A whole agent invocation: Step maps one-to-one to Run</li>
+    <li>One message: every Message sent or received is a Step</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. A Step is one iteration of Lesson 14's for i in range(max_steps) loop = one LLM call plus that round's tool execution (the _step in letta_agent_v2/v3; even the legacy StreamingServerInterface.step_complete defines step as 'LLM response + tool execution'). Hence a Run has at most max_steps Steps (Run:Step = 1:≤max_steps), and each Step stamps its several Messages with run_id+step_id (LettaAgentV3._checkpoint_messages, Step:Message = 1:N). So it is neither 'one message' nor 'one tool', and it does not map one-to-one to a Run.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. Sending an agent a message asynchronously via messages/async creates what underneath?</div>
+  <ol class="opts">
+    <li>A Job: the async path creates a Job to track progress</li>
+    <li>A background Run: send_message_async returns immediately, then you poll for status</li>
+    <li>Nothing: the message just goes on a queue, with no resource of its own</li>
+    <li>A Step: the async message lands directly as a steps row</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. messages/async goes through send_message_async: it returns a background Run (a run-… id) immediately, throws the real work into a shielded background task, and you then poll GET /v1/runs/{run_id} (plus /steps, /messages, /usage, /metrics), cancel via RunManager.cancel_run, and resume a background stream through Redis (POST /v1/runs/{run_id}/stream). It creates a Run, not a Job — orm/job.py::Job is a background/batch task like loading a file, an orthogonal line from 'one agent invocation'. Treating an async agent message as creating a Job is the common mistake this lesson calls out.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. How does _step record a steps row in the loop so that even a crashed iteration leaves a record?</div>
+  <ol class="opts">
+    <li>It writes two rows per step — one PENDING, one SUCCESS — and merges them later</li>
+    <li>It writes the steps row only after the whole step, with real tokens and status straight to SUCCESS</li>
+    <li>It writes SUCCESS first, then rolls back and deletes the row on a crash</li>
+    <li>It writes a PENDING/0-token row before the LLM call, then backfills real usage to SUCCESS after</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Order is the key: _step_checkpoint_start calls log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...) before the LLM call, writing one steps row (zero tokens) and opening the OTel span agent_step; after the LLM + tools, _step_checkpoint_finish uses update_step_success_async(real per-step usage, stop_reason) to flip to SUCCESS and record_step_metrics_async. Because the row already exists, the StepProgression state machine (START…FINISHED) in the finally detects anything short of FINISHED and calls update_step_error_async to mark FAILED/CANCELLED — so crashes/cancels still leave an accountable record. 'Write a row only when done' is the naive design this avoids: reserving first costs one extra write and buys per-iteration accountability.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. What three things does Step.trace_id = get_trace_id() stitch together?</div>
+  <ol class="opts">
+    <li>Three shells: the sync, SSE streaming, and background-Run connections</li>
+    <li>Three agents: the call chain of the primary, the sleeptime sub-agent, and a tool agent</li>
+    <li>The two streaming paths: v3's StreamingService and the legacy StreamingServerInterface</li>
+    <li>The steps row (billing) ↔ the OTel distributed trace (latency) ↔ the provider-trace raw payload (debugging) — three observability granularities</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. On every step Letta writes once into three different systems: (1) the steps row (written by StepManager — per-step model/provider/token/stop_reason/feedback, for product + billing, on by default); (2) OTel (letta/otel/, trace_method from Lesson 25 opens a span, MetricRegistry's ttft/step_execution_time/message_cost/sse_* histograms, for latency/distributed tracing, gated by app.py's otel_exporter_otlp_endpoint and a no-op under pytest); (3) the provider trace (TelemetryManager stores the raw LLM request/response keyed by step_id, for debugging, recorded by default on v3/postgres, Noop only on the legacy Agent/sleeptime path). get_trace_id() writes the current OTel trace id into Step.trace_id — exactly that stitching pin. As for the distractor: v3 streaming runs through services/streaming_service.py::StreamingService (not the legacy StreamingServerInterface) — that is a streaming-path distinction, not the three ledgers trace_id stitches.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Using this lesson's 'one loop, three ledgers, three shells' framework, narrate 'you send an agent a message and it runs three rounds of tool calls before stopping' from end to end, and think through five things: (1) What resource did this invocation create (a Run, whose run-… id and RunMetrics come from services/run_manager.py::RunManager.create_run)? Why are it and the orm/job.py::Job used for loading a file two sibling tables, rather than Job ⊃ Run? (2) The three rounds are three Steps; recite the five stages of _step (_step_checkpoint_start reserves the slot → LLM + tools → _step_checkpoint_finish backfills → _checkpoint_messages stamps run_id+step_id → finally · StepProgression covers the fall), and explain why log_step_async writes the row as PENDING/0 tokens before the LLM call. (3) Which three ledgers did this one invocation leave 'at once'? Who is each of the steps row, the OTel span, and the provider trace for, is each on or off by default, and which field (Step.trace_id = get_trace_id()) stitches them? (4) If the second round's LLM times out and crashes, what status does that steps row stop in and who flips it (StepProgression + finally + update_step_error_async)? Versus 'write a row only when done', what extra cost does reserving-first pay and what does it buy back? (5) The same loop is wrapped in sync (LettaResponse), streaming (StreamingService emitting data: {json} frames), and background (messages/async returns a Run at once, poll GET /runs/{id}) shells — what is each one's trade-off, and why does background stream recovery need Redis? Finally, ponder: since per-step tokens live in the steps row while a Run's total is accumulated across steps by LettaAgentV2._update_global_usage_stats, when you see a Run's total tokens but cannot find any steps rows, what should you suspect first (hint: NoopStepManager, Lesson 28)?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="29-data-sources-rag.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">数据源与 RAG</span><span class="lang-en">Data sources &amp; RAG</span></div></a><a class="next" href="31-glossary.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">术语表·概念索引</span><span class="lang-en">Glossary &amp; concept index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

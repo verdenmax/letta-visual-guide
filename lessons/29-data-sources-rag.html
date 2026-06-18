@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>29 · 数据源与 RAG / Data sources &amp; RAG - Letta 图解教程</title>
+<meta name="description" content="第八部分 · 进阶专题｜数据源与 RAG - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="29 · 数据源与 RAG / Data sources &amp; RAG - Letta 图解教程">
+<meta property="og:description" content="第八部分 · 进阶专题｜数据源与 RAG - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="29 · 数据源与 RAG / Data sources &amp; RAG - Letta 图解教程">
+<meta name="twitter:description" content="第八部分 · 进阶专题｜数据源与 RAG - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第八部分 · 进阶专题</span><span class="lang-en">Part 8 · Advanced topics</span></span>
+    <span class="pill">29 / 31</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:93%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第八部分 · 进阶专题</span><span class="lang-en">Part 8 · Advanced topics</span></div>
+    <h1><span class="lang-zh">数据源与 RAG</span><span class="lang-en">Data sources &amp; RAG</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 27 课我们拆开了向量存储那根 <span class="mono">Vector(4096)</span> 列——agent 自己写的记忆怎么落库、又怎么按 <span class="mono">cosine_distance</span> 召回。这一课接着问一个很自然的问题：你<strong>从外部上传的文档</strong>，是怎么钻进同一套向量机器里、变得可被语义搜索的？答案两个字：RAG。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">先把一个反直觉的事实摆上台面：Letta <strong>没有另造一台"RAG 引擎"</strong>。它把第 27 课那套归档记忆的向量机器<strong>原样复用</strong>了一遍，只换了张表、换个外键、换个工具名。"RAG"和"长期记忆"，在物理层根本是同一回事。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>RAG 与归档记忆"同底座、不同来源"</strong>——同一根向量列、同一套召回，唯一的真差别是"谁写进去的"。</p>
+<p>底座：<span class="mono">SourcePassage</span>（你上传的文档）和 <span class="mono">ArchivalPassage</span>（agent 自己写的记忆）是<strong>同一个 <span class="mono">BasePassage</span></strong> 的两个兄弟子类，骑同一根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列。</p>
+<p>摄取：一份文件经<strong>解析 → 切块 → 嵌入</strong>的管线，被打散成一排 <span class="mono">SourcePassage</span> 行，从此可被语义搜索。</p>
+<p>检索：源用 <span class="mono">semantic_search_files</span>、归档用 <span class="mono">archival_memory_search</span>——<strong>两个不同工具，同一套 pgvector cosine</strong>。</p>
+</div>
+<p>为什么值得专门讲这件事？因为很多人以为 RAG 是"另一个系统"，于是去找配置、找引擎、找索引服务。看懂"它就是归档记忆换了来源"，你会省下大量找错地方的时间。</p>
+<p>还有个实际好处：理解了同底座，你就知道<strong>调优 RAG 和调优记忆是同一件事</strong>——换嵌入模型、调 chunk 尺寸、改距离度量，对源和归档<strong>同时生效</strong>，因为它们共用那根列。</p>
+<p>把这条主线记牢：本课从头到尾都在反复印证"<strong>底座一样，来源不同</strong>"这八个字。下面先认底座，再走摄取，最后看检索。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">底注：两类 passage <strong>共用</strong>第 27 课那根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列、同一套 4096 padding、同一个 <span class="mono">cosine_distance</span> 排序。差别<strong>不在</strong>向量机器，只在<strong>来源</strong>与<strong>外键</strong>。</span></div>
+<h2>同一个 BasePassage，两个兄弟子类</h2>
+<p>先认底座。<span class="mono">orm/passage.py::BasePassage</span> 是个 <span class="mono">__abstract__</span> 抽象基类——它<strong>自己不建表</strong>，只规定"一条 passage 长什么样"：主键、文本、元数据，以及最关键的那根<strong>嵌入向量列</strong>。</p>
+<p>那根列正是第 27 课的主角：Postgres 上是 <span class="mono">embedding = Vector(MAX_EMBEDDING_DIM)</span>（pgvector），SQLite 上是 <span class="mono">CommonVector</span>。<strong>同列、同 4096 填充、同 <span class="mono">cosine_distance</span></strong>——两个子类<strong>原样继承</strong>，一行没改。</p>
+<p>两个子类只在<strong>"挂到谁身上"</strong>这件事上分道扬镳：</p>
+<p><strong>① <span class="mono">SourcePassage(BasePassage, FileMixin, SourceMixin)</span></strong>：表 <span class="mono">source_passages</span>，带 <span class="mono">source_id</span>(必填) ＋ <span class="mono">file_id</span>(可选) ＋ <span class="mono">file_name</span>。它属于"某个源里的某个文件"。</p>
+<p><strong>② <span class="mono">ArchivalPassage(BasePassage, ArchiveMixin)</span></strong>：表 <span class="mono">archival_passages</span>，带 <span class="mono">archive_id</span>，还多挂一张 <span class="mono">passage_tags</span> 标签 junction。它属于"某个 archive"。</p>
+<p>那些外键从哪来？全在 <span class="mono">orm/mixins.py</span> 的三个 mixin 里：<span class="mono">FileMixin</span>(给 file_id/file_name)、<span class="mono">SourceMixin</span>(给 source_id)、<span class="mono">ArchiveMixin</span>(给 archive_id)。子类只是<strong>拼装 mixin</strong>，就拿到各自的归属外键。</p>
+<p>为什么底座要做成 <span class="mono">__abstract__</span>？因为那根 4096 维向量列、<span class="mono">cosine_distance</span> 算法、padding 约定<strong>只想写一遍</strong>。两个子类继承同一份定义，就<strong>天然不可能</strong>出现"源和归档用了不同向量空间"这种灾难。</p>
+<p>为什么 <span class="mono">SourcePassage</span> 要 <span class="mono">source_id</span> ＋ <span class="mono">file_id</span> 两个外键？因为一个源能装<strong>多个文件</strong>：<span class="mono">source_id</span> 标"属于哪个源"，<span class="mono">file_id</span> 标"来自源里哪个文件"，<span class="mono">file_name</span> 方便回显出处。</p>
+<p>而 <span class="mono">ArchivalPassage</span> 多挂的那张 <span class="mono">passage_tags</span> junction，是归档<strong>独有</strong>的：它让 agent 给记忆片段打标签，检索时按标签过滤（回扣第 11 课）。源 passage <strong>没有</strong>这层标签。</p>
+<p>记住这个分层：<strong>mixin 决定"归属"，base 决定"能力"</strong>。能力（向量、检索）共享，归属（源 / archive、文件）分家——这正是"同底座、不同来源"在 ORM 层的精确投影。</p>
+<p>反过来想更清楚：要新增第三类 passage（比如某种"工具产出的缓存"），你只需写个新 mixin ＋ 新表，继承 <span class="mono">BasePassage</span> 就<strong>白拿</strong>整套向量检索。底座的复用性，就体现在这种"加一类几乎零成本"上。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py</span><span class="ln">一个抽象基类，两个兄弟子类（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">BasePassage</span>(Base):
+    __abstract__ = <span class="kw">True</span>                       <span class="cm"># 不建表，只定义"一条 passage 长什么样"</span>
+    text: Mapped[str]
+    <span class="cm"># 第 27 课那根列：Postgres 用 pgvector，SQLite 用 CommonVector</span>
+    <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+        embedding = <span class="fn">mapped_column</span>(<span class="fn">Vector</span>(MAX_EMBEDDING_DIM))   <span class="cm"># 固定 4096 维</span>
+    <span class="kw">else</span>:
+        embedding = <span class="fn">mapped_column</span>(CommonVector)
+
+<span class="kw">class</span> <span class="fn">SourcePassage</span>(BasePassage, FileMixin, SourceMixin):   <span class="cm"># 你上传的文档</span>
+    __tablename__ = <span class="st">&quot;source_passages&quot;</span>      <span class="cm"># source_id(必) + file_id(选) + file_name</span>
+
+<span class="kw">class</span> <span class="fn">ArchivalPassage</span>(BasePassage, ArchiveMixin):            <span class="cm"># agent 自己写的记忆</span>
+    __tablename__ = <span class="st">&quot;archival_passages&quot;</span>    <span class="cm"># archive_id；另挂 passage_tags 标签</span>
+</pre></div>
+<p>把"两个子类、同一底座"摆成左右两栏看，差别一目了然——除了来源与外键，其余全共用：</p>
+<div class="cols">
+  <div class="col"><h4>🧠 ArchivalPassage · agent 写的</h4>
+  <p>表 <span class="mono">archival_passages</span> · 外键 <span class="mono">archive_id</span> · 工具 <span class="mono">archival_memory_search</span> · join <span class="mono">ArchivesAgents</span> · 带 <span class="mono">passage_tags</span>。</p>
+  <p>来源：agent 调 <span class="mono">archival_memory_insert</span> 自己写下（第 10、11 课）。</p>
+  </div>
+  <div class="col"><h4>📄 SourcePassage · 你上传的</h4>
+  <p>表 <span class="mono">source_passages</span> · 外键 <span class="mono">source_id</span>＋<span class="mono">file_id</span> · 工具 <span class="mono">semantic_search_files</span> · join <span class="mono">SourcesAgents</span>。</p>
+  <p>来源：上传文件，经摄取管线解析+嵌入而成（下一节）。</p>
+  </div>
+</div>
+<div class="cellgroup"><div class="cg-cap"><b>两子类共用：<span class="mono">BasePassage</span> 的同一根向量列（第 27 课）</b></div><div class="cells"><span class="cell">archival_passages</span><span class="sep">·</span><span class="cell">source_passages</span><span class="sep">→</span><span class="cell hl">BasePassage.embedding = Vector(MAX_EMBEDDING_DIM)</span><span class="sep">·</span><span class="cell hl">cosine_distance</span></div></div>
+<details class="accordion"><summary>source 与 archival 真就"井水不犯河水"？</summary><div class="acc-body">
+<p><strong>写入互斥（库层守卫）</strong>：<span class="mono">PassageManager.create_source_passage_async</span> 要求<strong>必须有</strong> <span class="mono">source_id</span>、<strong>不能有</strong> <span class="mono">archive_id</span>；<span class="mono">create_agent_passage_async</span> 反之。给错一个就直接报错。</p>
+<p><strong>检索互不返回</strong>：源走 <span class="mono">build_source_passage_query</span>（扫 <span class="mono">source_passages</span>），归档走 <span class="mono">build_agent_passage_query</span>（扫 <span class="mono">archival_passages</span>）。两条查询<strong>各扫各的表</strong>，永不把对方的行混进结果。</p>
+<p>所以"同底座"指的是<strong>物理列与算法</strong>一样，不是"数据混在一起"。两类 passage 在表、外键、工具、查询四个层面都<strong>分开</strong>。</p>
+</div></details>
+<div class="card analogy"><div class="tag">📝 生活类比</div>
+<p>把向量库想成一座<strong>图书馆</strong>，馆里有<strong>两种藏书</strong>。</p>
+<p>一种是<strong>你捐进来的书</strong>（<span class="mono">SourcePassage</span> ／ RAG）：从外面带进来的文档，馆员拆页、编号、上架。</p>
+<p>另一种是<strong>馆员自己手写的读书笔记</strong>（<span class="mono">ArchivalPassage</span> ／ 归档）：agent 工作中随手记下的心得。</p>
+<p>两种书都进<strong>同一套"按语义检索"的索引</strong>（那根向量列）——查的时候都按"意思相近"排序。</p>
+<p>只是它们分放<strong>两个书架</strong>（两张表），借阅要填<strong>不同的检索单</strong>（两个工具）：找捐书用 <span class="mono">semantic_search_files</span>，翻笔记用 <span class="mono">archival_memory_search</span>。</p>
+</div>
+<h2>摄取管线：一份文件怎么变成一排可搜索的 passage</h2>
+<p>认完底座，看"文件怎么进来"。现代摄取的主入口是 <span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>，它把一份原始文件一步步加工成一排 <span class="mono">SourcePassage</span>。</p>
+<p>整条管线可拆成八步，从上传一路走到落库。先看全景，再逐段解释：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Upload → 进入某个 source</h4><p>文件被上传，归到一个已建好的 <span class="mono">Source</span>（org 级，下一节细说）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>create_file（PARSING）</h4><p><span class="mono">FileManager.create_file</span> 登记一行 <span class="mono">FileMetadata</span>，状态置 <span class="mono">PARSING</span>。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>extract_text（OCR）</h4><p><span class="mono">FileParser.extract_text</span> 抽全文：PDF/图片走 OCR，文档转 markdown。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>upsert_file_content（全文）</h4><p>全文落进 <span class="mono">file_contents</span> 表——原文留底，独立于切块。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>insert_file_into_context_windows</h4><p>把文件"打开"成 <span class="mono">FileAgent</span>（上下文里的只读原文，末节专讲）。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>chunk_text（按 EmbeddingConfig）</h4><p><span class="mono">LlamaIndexChunker.chunk_text</span> 切块，<span class="mono">chunk_size</span> 来自 <span class="mono">EmbeddingConfig</span>（第 21 课）。</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>generate_embedded_passages（按 batch_size 分批）</h4><p><span class="mono">Embedder</span> 按 <span class="mono">EmbeddingConfig.batch_size</span> 分批算嵌入向量。</p></div></div>
+  <div class="step"><div class="num">8</div><div class="sc"><h4>create_many_source_passages_async</h4><p>批量写进 <span class="mono">source_passages</span>，每条 pad 到 4096 → 一排 <span class="mono">SourcePassage</span> 行。</p></div></div>
+</div>
+<p>把这八步落成代码，省去错误处理与状态机，骨架就这么直：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/file_processor/file_processor.py</span><span class="ln">FileProcessor.process：存原文 → 切块 → 嵌入 → 落库（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">process</span>(self, source_id, content, ...):
+    <span class="cm"># 1) 登记文件行，状态置 PARSING</span>
+    file = <span class="kw">await</span> self.file_manager.<span class="fn">create_file</span>(..., status=FileProcessingStatus.PARSING)
+    <span class="cm"># 2) 抽全文（OCR / markdown），存进 file_contents 表</span>
+    text = <span class="kw">await</span> self.file_parser.<span class="fn">extract_text</span>(content)
+    <span class="kw">await</span> self.file_manager.<span class="fn">upsert_file_content</span>(file.id, text)
+    <span class="cm"># 3) 把文件"打开"进上下文（FileAgent，见末节）</span>
+    <span class="kw">await</span> self.agent_manager.<span class="fn">insert_file_into_context_windows</span>(source_id, file, ...)
+    <span class="cm"># 4) 切块 → 嵌入（chunk_size 来自 EmbeddingConfig）</span>
+    chunks = self.chunker.<span class="fn">chunk_text</span>(text)
+    passages = <span class="kw">await</span> self.embedder.<span class="fn">generate_embedded_passages</span>(chunks)  <span class="cm"># 批大小取自 embedding_config.batch_size</span>
+    <span class="cm"># 5) 批量写入 source_passages（每条 pad 到 4096）</span>
+    <span class="kw">await</span> self.passage_manager.<span class="fn">create_many_source_passages_async</span>(passages, source_id=source_id)
+</pre></div>
+<p>逐段读这条管线。<strong>前三步是"存原文"</strong>：<span class="mono">create_file</span> 把文件登记成一行 <span class="mono">FileMetadata</span>（状态 <span class="mono">PARSING</span>）；<span class="mono">extract_text</span> 经 OCR/markdown 抽出纯文本；<span class="mono">upsert_file_content</span> 把全文存进 <span class="mono">file_contents</span> 表。</p>
+<p><strong>第四步是岔路</strong>：<span class="mono">insert_file_into_context_windows</span> 把文件"打开"进 agent 上下文（建 <span class="mono">FileAgent</span>）——这条支线留到最后一节专讲。</p>
+<p>这条岔路本身就很妙：<strong>摄取一次，双重产出</strong>——同一趟管线既把文件切块嵌入（建 RAG），又顺手把它"打开"进上下文（建 FileAgent）。上传一个文件，两种形态<strong>一并就位</strong>。</p>
+<p><strong>后三步才是"建 RAG"</strong>：<span class="mono">chunk_text</span> 按 <span class="mono">EmbeddingConfig</span> 切块，<span class="mono">generate_embedded_passages</span> 按 <span class="mono">EmbeddingConfig.batch_size</span> 分批算嵌入，<span class="mono">create_many_source_passages_async</span> 落进 <span class="mono">source_passages</span>。</p>
+<p>那行 <span class="mono">status=PARSING</span> 不是摆设。<span class="mono">FileMetadata</span> 带 <span class="mono">processing_status</span> 状态字段，配 <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span> 两个计数——状态从 <span class="mono">PARSING</span> 起步，两个计数记录嵌入进度，全嵌完才算就绪。前端"处理中…"进度条就读它。</p>
+<p>为什么把全文单独存进 <span class="mono">file_contents</span>，而不只留 chunk？因为两种形态各有所需：<strong>chunk 供语义召回</strong>（模糊找相关段），<strong>全文供逐字打开</strong>（<span class="mono">open_files</span> 要原原本本的文本）。拆开存，两条路互不干扰。</p>
+<p>嵌入为什么要<strong>分批</strong>（批大小取自 <span class="mono">EmbeddingConfig.batch_size</span>）？因为嵌入要调外部模型 API，逐条发太慢太贵；攒成批一次发，吞吐高、往返少。这是工程上常见的"批处理摊薄开销"。</p>
+<p>顺带说一句容错：全文存在 <span class="mono">file_contents</span> 是<strong>独立于</strong> chunk 的一份底稿。将来想换嵌入模型、重切重嵌，原文还在，不必让用户重传——<span class="mono">total_chunks</span> 归零、重跑后半段即可。</p>
+<details class="accordion"><summary>摄取有两条路：现代 file_processor 与 legacy connectors</summary><div class="acc-body">
+<p><strong>现代（主线）</strong>：<span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>——带 OCR/markdown 解析、<span class="mono">LlamaIndexChunker</span> 切块、<span class="mono">generate_embedded_passages</span> 批量嵌入，末了 <span class="mono">create_many_source_passages_async</span>。本课讲的就是它。</p>
+<p><strong>legacy（旧路）</strong>：<span class="mono">data_sources/connectors.py::load_data</span>——用 <span class="mono">DirectoryConnector</span> ＋ llama_index 的 <span class="mono">TokenTextSplitter</span>，调的是<strong>已弃用</strong>的 <span class="mono">create_many_passages_async</span>。</p>
+<p>看 v0.16.8 认准 <span class="mono">file_processor</span> 这条；遇到 <span class="mono">connectors.load_data</span> 知道它是旧路即可，别照它写新代码。</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">切块的 <span class="mono">chunk_size</span> 不是拍脑袋定的，它来自 agent 的 <span class="mono">EmbeddingConfig</span>（第 21 课）——<strong>嵌入模型窗口多大，块就切多大</strong>。摄取与召回必须用<strong>同一套嵌入配置</strong>，否则两边向量根本不在一个空间里。</span></div>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">一份文档</span><span class="arrow">→</span><span class="emoji">📚</span><span class="lab">切成小卡片</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="bubble">每张盖个向量戳</span></div><div class="cap">📄 一份上传的文档被拆成 📚 一摞小卡片（chunk），每张盖上一枚 🔢 向量戳（embedding），再统一排进那座 4096 维货架——从此"按意思"就能一把抓出最相近的几张</div></div>
+<h2>检索：同一套向量搜索，换个工具与表</h2>
+<p>passage 建好了，怎么查？关键还是那句"同底座、不同来源"——<strong>检索用的也是同一套向量搜索</strong>，只是查询 builder 与工具名各换一个。</p>
+<p>源的检索 builder 是 <span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span>，它和归档那条 <span class="mono">build_agent_passage_query</span> <strong>形状几乎一样</strong>，差别只在 join 哪张 junction、扫哪张表。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/agent_manager_helper.py</span><span class="ln">build_source_passage_query：嵌入查询 → join → cosine 排序（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">build_source_passage_query</span>(agent_id, query_text, embed_config, ...):
+    <span class="cm"># 1) 查询文本嵌成向量，pad 到 4096（与落库同一套配置）</span>
+    q = <span class="fn">embed_query</span>(query_text, embed_config)
+    q = np.<span class="fn">pad</span>(q, (<span class="nb">0</span>, MAX_EMBEDDING_DIM - <span class="fn">len</span>(q)))
+    <span class="cm"># 2) 只取"这个 agent 挂载的源"里的 passage：join SourcesAgents</span>
+    query = (
+        <span class="fn">select</span>(SourcePassage)
+        .<span class="fn">join</span>(SourcesAgents, SourcesAgents.source_id == SourcePassage.source_id)
+        .<span class="fn">where</span>(SourcesAgents.agent_id == agent_id)
+    )
+    <span class="cm"># 3) 按 cosine 距离升序（Postgres pgvector；SQLite 走 numpy）</span>
+    <span class="kw">return</span> query.<span class="fn">order_by</span>(SourcePassage.embedding.<span class="fn">cosine_distance</span>(q).<span class="fn">asc</span>())
+</pre></div>
+<p>三步看懂这条查询。<strong>① 嵌入 + pad</strong>：把查询文本用<strong>同一套 <span class="mono">EmbeddingConfig</span></strong> 嵌成向量，再 <span class="mono">np.pad</span> 到 4096，好和库里 padding 过的向量对齐。</p>
+<p><strong>② join 限定范围</strong>：<span class="mono">select(SourcePassage)</span> join <span class="mono">SourcesAgents</span> on <span class="mono">source_id</span>、where <span class="mono">agent_id</span>——只搜"<strong>这个 agent 挂载的源</strong>"里的 passage，不越界。</p>
+<p><strong>③ 排序</strong>：Postgres 用 <span class="mono">embedding.cosine_distance(q).asc()</span>（pgvector），SQLite 落回 numpy 算距离；文本兜底则用 <span class="mono">func.lower(text).contains</span>。</p>
+<p>这里方向别记反：<span class="mono">cosine_distance</span> 是<strong>距离</strong>，<strong>越小越近</strong>，所以用 <span class="mono">.asc()</span> 升序取前几条——和"相似度越大越好"正好反着来（回扣第 27 课）。</p>
+<p>对照归档那条 <span class="mono">build_agent_passage_query</span>：同样的嵌入 + pad + cosine，只是 join 的是 <span class="mono">ArchivesAgents</span>(on <span class="mono">archive_id</span>)；归档检索路径还支持按标签过滤。<strong>同一套机器，换个接头。</strong></p>
+<p>那条 <span class="mono">func.lower(text).contains</span> 文本兜底，是给"没嵌入 / 纯关键词"场景留的后路：拿不到向量时，至少能按子串、大小写不敏感地命中，不至于两手空空。</p>
+<p>还有一处分支：<span class="mono">np.pad</span> 到 4096 <strong>只在 pgvector 路径</strong>做；若走外部向量库 Turbopuffer（TPUF），padding 被<strong>跳过</strong>——维度交给它自己管。pad 是 pgvector"定长列"的迁就，不是通用步骤。</p>
+<p>别小看那个 <span class="mono">join SourcesAgents</span>：它就是<strong>多租户的护栏</strong>（回扣第 26 课）。没有它，向量搜索会扫到别的 agent、别的组织的源；有了它，每个 agent 只能搜<strong>自己挂载</strong>的那几个源。</p>
+<div class="note info"><span class="ni">🔧</span><span class="nx">小心"函数声明"与"真实现"分家：<span class="mono">function_sets/files.py</span>、<span class="mono">function_sets/base.py</span> 里的 <span class="mono">semantic_search_files</span> / <span class="mono">archival_memory_search</span> 只是 <span class="mono">raise NotImplementedError</span> 的 <strong>schema 占位</strong>；真正干活的在 <span class="mono">tool_executor/files_tool_executor.py</span> 与 <span class="mono">core_tool_executor.py</span>。</span></div>
+<p>把源检索这条链画直，五个节点一目了然：</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">查询文本</div><div class="nd">找关于 X 的段落</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">嵌入 + pad</div><div class="nd">embed(q) → np.pad 4096</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">select(SourcePassage)</div><div class="nd">join SourcesAgents · source_id</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">cosine_distance.asc()</div><div class="nd">按相近度排序</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">top-k 段落</div><div class="nd">回灌给工具调用方</div></div>
+</div>
+<p>最后用一张表把"源 vs 归档"在六个维度上并排清楚，便于随时回查：</p>
+<table class="t">
+<tr><th>维度</th><th>SourcePassage（源 / RAG）</th><th>ArchivalPassage（归档）</th></tr>
+<tr><td>表</td><td class="mono">source_passages</td><td class="mono">archival_passages</td></tr>
+<tr><td>来源外键</td><td class="mono">source_id（必）+ file_id（选）</td><td class="mono">archive_id</td></tr>
+<tr><td>谁写进去</td><td>你上传文档，摄取管线建</td><td>agent 调 archival_memory_insert</td></tr>
+<tr><td>查询 builder</td><td class="mono">build_source_passage_query</td><td class="mono">build_agent_passage_query</td></tr>
+<tr><td>检索工具</td><td class="mono">semantic_search_files</td><td class="mono">archival_memory_search</td></tr>
+<tr><td>标签</td><td>无</td><td class="mono">passage_tags junction</td></tr>
+</table>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">orm/passage.py::SourcePassage / ArchivalPassage</span>——同一个 <span class="mono">BasePassage</span> 的两个子类，分表 <span class="mono">source_passages / archival_passages</span>。</p>
+<p><span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>——现代摄取管线：解析 → 切块 → 嵌入 → <span class="mono">create_many_source_passages_async</span>。</p>
+<p><span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span>——源向量搜索：嵌入查询 ＋ pad ＋ join <span class="mono">SourcesAgents</span> ＋ <span class="mono">cosine_distance</span>。</p>
+<p><span class="mono">orm/files_agents.py::FileAgent</span>——文件的另一形态：上下文里的只读 <span class="mono">FileBlock</span>（下一节）。</p>
+</div>
+<h2>文件的两种形态：可搜索的 passage vs 上下文里"打开的文件"</h2>
+<p>回到摄取管线第五步那条岔路。一份挂载的文件，在 Letta 里会<strong>同时活成两种形态</strong>——这是本课第二个值得记住的点。</p>
+<p><strong>形态 A：可搜索的 RAG chunk</strong>，就是前面讲的 <span class="mono">SourcePassage</span>——切块、嵌入、按 cosine 召回。</p>
+<p><strong>形态 B：上下文里"打开的文件"</strong>，是另一套机制：<span class="mono">orm/files_agents.py::FileAgent</span>。它是 <span class="mono">files_agents</span> junction 上的一行，带 <span class="mono">is_open</span> / <span class="mono">visible_content</span>。</p>
+<div class="cellgroup"><div class="cg-cap"><b>一个文件，两种形态：元数据 <span class="mono">FileMetadata</span>(表 files) ＋ 全文 <span class="mono">FileContent</span>(表 file_contents)</b></div><div class="cells"><span class="cell hl">SourcePassage</span><span class="lab">embedded · 语义搜</span><span class="sep">‖</span><span class="cell q">FileAgent / FileBlock</span><span class="lab">visible_content · 上下文只读原文</span></div></div>
+<p>关键一句：<span class="mono">FileAgent.to_pydantic_block(...)</span> 会把它<strong>渲染成一个 <span class="mono">FileBlock(read_only=True)</span></strong>——"打开一个文件" ＝ 在上下文里塞进一块<strong>只读的记忆 block</strong>，内容是原文（或片段）。</p>
+<p>操作这层的是 <span class="mono">open_files</span> / <span class="mono">grep_files</span> 工具：把文件开进上下文、在已开文件里按行抓取。注意有个上限——<strong>默认最多 5 个</strong>同时打开的文件。</p>
+<p><span class="mono">grep_files</span> 和 <span class="mono">semantic_search_files</span> 是<strong>两种找法</strong>：前者在<strong>已打开的文件</strong>里按关键词逐行精确抓，后者在<strong>全部 chunk</strong> 里按语义模糊召回。要"原文逐字"用 grep，要"意思相近"用 semantic。</p>
+<p>为什么 <span class="mono">FileBlock</span> 是 <span class="mono">read_only=True</span>？因为它是<strong>外部文档的镜像</strong>，不该被 agent 改写——你不希望 LLM"顺手"把你上传的合同改了。只读，正是把"源文档"和"agent 自己的记忆块"分开的护栏。</p>
+<p>那"最多开 5 个"的上限又为何？因为打开的文件是<strong>实打实塞进上下文</strong>的只读块，要占 token。限量是替你守住上下文预算，免得一口气开十几个文件把窗口撑爆。</p>
+<p>所以同一份文件，<span class="mono">SourcePassage</span> 与 <span class="mono">FileBlock</span> 是<strong>互补</strong>而非重复：先用 <span class="mono">semantic_search_files</span> 模糊定位到相关文件，再 <span class="mono">open_files</span> 把它逐字调进上下文细读。一个负责"找到"，一个负责"看清"。</p>
+<p>把"一个文件 → 两种形态"画直，左边落库、右边进上下文：</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">一个挂载文件</div><div class="nd">FileMetadata + FileContent</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">形态 A · 切块嵌入</div><div class="nd">SourcePassage（语义可搜）</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node q"><div class="nt">形态 B · open_files</div><div class="nd">FileAgent → FileBlock</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">上下文只读原文</div><div class="nd">visible_content（read_only=True）</div></div>
+</div>
+<details class="accordion"><summary>"打开的文件"为什么是另一套机制，而不是 passage？</summary><div class="acc-body">
+<p><span class="mono">FileAgent</span>（<span class="mono">orm/files_agents.py</span>）是 <span class="mono">files_agents</span> junction 的一行，记"哪个 agent 开着哪个文件"，带 <span class="mono">is_open</span> / <span class="mono">visible_content</span>。它<strong>不进向量库</strong>，靠 <span class="mono">to_pydantic_block</span> 渲染成上下文里的 <span class="mono">FileBlock(read_only=True)</span>。</p>
+<p>所以"打开文件" ＝ 把原文（片段）作为<strong>只读记忆块</strong>塞进上下文窗口，让 LLM 直接逐字读到——这是<strong>精确</strong>的；而 <span class="mono">SourcePassage</span> 是<strong>模糊、语义</strong>的近邻召回。两者解决不同问题。</p>
+<p>元数据存 <span class="mono">orm/file.py::FileMetadata</span>（表 <span class="mono">files</span>，带 <span class="mono">processing_status</span> / <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span>），全文存 <span class="mono">FileContent</span>（表 <span class="mono">file_contents</span>）。<span class="mono">open_files</span> 读全文，<span class="mono">semantic_search_files</span> 搜 chunk。</p>
+</div></details>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">别把两种形态搞混：<strong>"上下文里打开的文件"（<span class="mono">FileBlock</span>，只读原文）</strong>不是<strong>"可语义搜索的 passage"（<span class="mono">SourcePassage</span>）</strong>。前者逐字、占上下文、默认最多 5 个；后者按意思召回、不占上下文。同一份文件，两条路。</span></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>Letta <strong>不另造"RAG 引擎"</strong>——它直接复用归档记忆那套向量机器，只把表、外键、junction、工具名各换一个。</p>
+<p>于是"RAG"和"长期记忆"在物理层根本是<strong>一回事</strong>——唯一的真差别是来源：一个你给的，一个它写的。</p>
+<p>次亮点：一份挂载的文件会<strong>同时</strong>活成两种形态——可语义搜索的 <span class="mono">SourcePassage</span> chunk，与上下文窗口里那块只读的 <span class="mono">FileBlock</span>(原文)。一份文件，两种"被记住"的方式。</p>
+</div>
+<h2>源是 org 级资产：挂载 ≠ 复制</h2>
+<p>还有一处容易踩错：<strong>源不是某个 agent 私有的</strong>。<span class="mono">services/source_manager.py::SourceManager.create_source</span> 建出的 <span class="mono">Source</span> 是 <strong>org 级</strong>，可被同组织的<strong>多个 agent 共享</strong>。</p>
+<p>怎么共享？<span class="mono">orm/sources_agents.py::SourcesAgents</span> 是一张<strong>复合主键的 M2M 表</strong>——一个源能连多个 agent，一个 agent 也能挂多个源。</p>
+<p>复合主键 <span class="mono">(agent_id, source_id)</span> 保证同一对"agent — 源"<strong>只连一次</strong>，不会重复挂载；这和第 28 课 <span class="mono">blocks_agents</span> 那张共享块表是<strong>同一种套路</strong>——用 junction 表表达"谁能用什么"。</p>
+<p>最关键的一点：<span class="mono">agent_manager.py::AgentManager.attach_source_async</span> "挂载一个源"时，<strong>只写一行 <span class="mono">sources_agents</span> junction</strong>——<strong>不复制 passage、不重新嵌入</strong>。passage 还是那一批，挂载只是"连一条线"。</p>
+<p>这点呼应第 26 课的多租户：源在 org 这层登记一次，多个 agent 经 junction 复用同一批向量。检索时 <span class="mono">build_source_passage_query</span> 正是 join 这张 <span class="mono">SourcesAgents</span>，才知道"这个 agent 能搜哪些源"。</p>
+<p>把账算清：一个 50 页的手册，挂给 10 个 agent，<strong>只嵌入一次</strong>、只存一份 passage；10 个 agent 经 10 行 <span class="mono">sources_agents</span> 共用它。若挂载真去"复制+重嵌"，那就是 10 倍的存储与嵌入开销——Letta 用一张 junction 表把这笔账省了。</p>
+<p>这也是为什么源叫"org 级资产"：它和 agent 是<strong>多对多</strong>的松耦合，建一次、共享给多人；删 agent 不连累源，删源也只清掉 junction 连线——和第 26 课"组织拥有资源、成员按需挂载"的思路一脉相承。</p>
+<p>一句话给源定性：它是<strong>组织的共享知识库</strong>，不是 agent 的私人笔记。私人笔记是归档（<span class="mono">archival_passages</span>），共享知识库是源（<span class="mono">source_passages</span>）——又一次落回"同底座、不同来源"。</p>
+<details class="accordion"><summary>读源码时的术语漂移：<span class="mono">Source</span> 正改名 <span class="mono">Folder</span></summary><div class="acc-body">
+<p>v0.16.8 里你会同时看到 <span class="mono">Source</span> 和 <span class="mono">Folder</span> 两个词。<span class="mono">schemas/source.py::Source</span> 的 docstring 已标 <strong>"Deprecated: Use Folder"</strong>，<span class="mono">PassageBase.source_id</span> 也打了 <span class="mono">deprecated</span> 标记。</p>
+<p>但 <strong>ORM 表与类仍是 <span class="mono">source_*</span></strong>：表名 <span class="mono">source_passages</span> / <span class="mono">sources_agents</span>、外键 <span class="mono">source_id</span>、类 <span class="mono">SourcePassage</span> / <span class="mono">SourceManager</span> 一律没改。</p>
+<p>结论：读到 <span class="mono">Folder</span> 知道它就是 <span class="mono">Source</span> 的新名；写 v0.16.8 代码仍照 <span class="mono">source_</span> 来。本课通篇用 <span class="mono">Source</span>，与源码一致。</p>
+</div></details>
+<h2>回扣与小结：RAG 就是"换了来源的归档记忆"</h2>
+<p>收个尾。本课没引入任何新的向量技术，它通篇都在复用你<strong>早就学过</strong>的零件。</p>
+<p>回扣第 27 课：两类 passage 骑的<strong>就是那根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列</strong>——同一套 4096 padding、同一个 <span class="mono">cosine_distance</span>。RAG 没有"自己的"向量存储。</p>
+<p>回扣第 10、11 课：归档记忆那套 <span class="mono">archival_memory_insert</span> / <span class="mono">search</span> 是<strong>另一个来源</strong>的同款机器；本课的源只是把"谁来写"从 agent 换成了你。</p>
+<p>回扣第 21 课：切块尺寸、查询嵌入都听 <span class="mono">EmbeddingConfig</span> 的——摄取和召回<strong>同一套配置</strong>，向量才在同一个空间里可比。</p>
+<p>一句话串起来：<strong>RAG ＝ 归档记忆的向量机器 ＋ 外部来源的 passage ＋ 一张 <span class="mono">sources_agents</span> 共享表</strong>。底座没变，变的只是"东西从哪来"。</p>
+<p>再补一刀对称之美：归档是 agent <strong>写给未来的自己</strong>，源是你<strong>写给 agent</strong> 的资料——方向相反，却共用同一套"嵌入 → 存 → cosine 召回"的肌肉。读 Letta 久了，你会反复遇到这种"一套机制、多处复用"。</p>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>源与归档<strong>不混</strong>：不同表 / 外键 / 工具，检索互不返回，写入点<strong>互斥</strong>（给错 source_id/archive_id 直接报错）。</p>
+<p>源是 <strong>org 级、可共享</strong>，不是 per-agent；"挂载源"只写 <span class="mono">sources_agents</span> junction，<strong>不复制、不重嵌</strong> passage。</p>
+<p>嵌入模型与维度<strong>必须一致</strong>：摄取和召回用同一套 <span class="mono">EmbeddingConfig</span>；pad 到 4096 会<strong>静默掩盖</strong>维度不匹配，埋下"搜不准"的坑。</p>
+<p><span class="mono">pad</span> 到 <span class="mono">MAX_EMBEDDING_DIM</span> 仅 <strong>pgvector 路径</strong>做（TPUF 跳过）。</p>
+<p><span class="mono">Source</span> 正改名 <span class="mono">Folder</span>，但 v0.16.8 的 ORM 表 / 类仍是 <span class="mono">source_*</span>；"上下文里开的文件"（<span class="mono">FileBlock</span>，只读）<strong>≠</strong>"可搜索的 passage"（<span class="mono">SourcePassage</span>）。</p>
+</div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>RAG 与归档记忆<strong>同底座、不同来源</strong>：<span class="mono">SourcePassage</span>（你上传的文档）与 <span class="mono">ArchivalPassage</span>（agent 自己写的记忆）是同一 <span class="mono">BasePassage</span> 子类，共用第 27 课那根 <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> 列 ＋ 4096 padding ＋ <span class="mono">cosine_distance</span>。</li>
+<li>摄取管线 <span class="mono">FileProcessor.process</span>：<span class="mono">create_file</span>(PARSING) → <span class="mono">extract_text</span>(OCR) → <span class="mono">upsert_file_content</span>(全文) → <span class="mono">insert_file_into_context_windows</span> → <span class="mono">chunk_text</span>(按 EmbeddingConfig) → <span class="mono">generate_embedded_passages</span>(按 batch_size 分批) → <span class="mono">create_many_source_passages_async</span>(pad 4096)。</li>
+<li>检索是<strong>同一套向量搜索、换表换工具</strong>：<span class="mono">build_source_passage_query</span> join <span class="mono">SourcesAgents</span>、工具 <span class="mono">semantic_search_files</span>；归档则 join <span class="mono">ArchivesAgents</span>、工具 <span class="mono">archival_memory_search</span>。</li>
+<li>一份文件有<strong>两种形态</strong>：可语义搜的 <span class="mono">SourcePassage</span> chunk，与上下文里只读的 <span class="mono">FileAgent</span> / <span class="mono">FileBlock</span>(原文，默认最多开 5 个)。</li>
+<li>源是 <strong>org 级可共享</strong>资产，<span class="mono">attach_source_async</span> 只写 junction 不复制；<span class="mono">Source</span> 正改名 <span class="mono">Folder</span>，但 v0.16.8 ORM 仍 <span class="mono">source_*</span>。</li>
+</ul>
+</div>
+<p>把这条肌肉记忆带走：看到"RAG / 数据源"，先别找新引擎——先问<strong>"它和归档记忆是不是同一根向量列"</strong>。答案是肯定的，于是一切都顺理成章。</p>
+<p>第八部分的进阶专题继续往下走。下一课我们换个视角，看 Letta 怎么把这些执行步骤变得<strong>可观测、可追踪</strong>。</p>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. SourcePassage 和 ArchivalPassage 在底层到底“共享”了什么？</div>
+  <ol class="opts">
+    <li>什么都不共享：RAG 有自己独立的向量引擎与索引服务</li>
+    <li>同一张物理表，靠一个 type 字段区分源与归档两类行</li>
+    <li>同一行 passage——挂载时在两个 agent 间共享同一条记录</li>
+    <li>同一个 BasePassage：同一根向量列、同一套 4096 padding、同一个 cosine_distance 排序</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。orm/passage.py::BasePassage 是 __abstract__ 抽象基类（自己不建表），定义了那根嵌入列：Postgres 上 embedding = Vector(MAX_EMBEDDING_DIM)（pgvector）、SQLite 上 CommonVector，外加同一套 4096 padding 与 cosine_distance。SourcePassage(BasePassage, FileMixin, SourceMixin) 与 ArchivalPassage(BasePassage, ArchiveMixin) 原样继承这根列、一行没改——这正是第 27 课的底座。所以它们共享的是“物理列＋算法”，不是同一张表（两表分别是 source_passages / archival_passages）、不是同一行（挂载从不复制或共享 passage 行），更不是“各自独立的引擎”（恰恰是同一套）。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. 既然底座相同，SourcePassage 与 ArchivalPassage 真正的差别在哪？</div>
+  <ol class="opts">
+    <li>向量维度不同：源是 1536 维、归档 pad 到 4096 维</li>
+    <li>只在来源：表/外键/工具不同，向量搜索完全相同</li>
+    <li>用不同的距离度量：源用 cosine、归档用 L2 欧氏距离</li>
+    <li>只是命名不同，表、外键、工具其实完全一样</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。向量机器完全相同（同 BasePassage、同 cosine_distance、同 4096 padding），差别只在“归属与来源”：SourcePassage 进 source_passages、带 source_id(必)+file_id(选)、检索走 build_source_passage_query join SourcesAgents、工具 semantic_search_files；ArchivalPassage 进 archival_passages、带 archive_id（外加 passage_tags 标签）、检索走 build_agent_passage_query join ArchivesAgents、工具 archival_memory_search。所以“不同距离度量”“不同维度”都错（恰恰相同）；“完全一样”也错——表/外键/工具确实分家。两个不同工具，同一套 pgvector cosine。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 把一个源“挂载”到 agent 上（attach_source_async），底层到底做了什么？</div>
+  <ol class="opts">
+    <li>把该源的全部 passage 复制一份到该 agent 名下，并重新嵌入</li>
+    <li>把源的文件逐字塞进该 agent 的上下文窗口（FileBlock）</li>
+    <li>在该 agent 的 archive 里新建一批 ArchivalPassage 行</li>
+    <li>只写一行 sources_agents junction——不复制、不重嵌；源是 org 级、可被多个 agent 共享</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。agent_manager.py::AgentManager.attach_source_async 只写一行 orm/sources_agents.py::SourcesAgents junction（复合主键 (agent_id, source_id)，保证只连一次），passage 一条都不复制、不重嵌。Source 由 services/source_manager.py::SourceManager.create_source 建在 org 这层、可被同组织多个 agent 经 junction 共享（一份 50 页手册挂给 10 个 agent 仍只嵌入一次）。检索时 build_source_passage_query 正是 join 这张 SourcesAgents 才知道“该 agent 能搜哪些源”。所以“复制+重嵌”“塞进上下文”“新建 ArchivalPassage”全错——挂载只是“连一条线”。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. 现代摄取管线 FileProcessor.process 把一份文件变成可搜索 passage 的正确步骤顺序是？</div>
+  <ol class="opts">
+    <li>走 legacy connectors.load_data ＋ TokenTextSplitter ＋ create_many_passages_async</li>
+    <li>先嵌入整份文件 → 再切块 → 最后 OCR 抽文本写库</li>
+    <li>extract_text(OCR) → 切块(LlamaIndexChunker) → 批量嵌入 → create_many_source_passages_async</li>
+    <li>切块 → 写入 source_passages → 检索时才按需嵌入（懒嵌入）</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。services/file_processor/file_processor.py::FileProcessor.process：create_file(状态 PARSING) → extract_text(PDF/图片走 OCR、转 markdown) → upsert_file_content(全文存 file_contents) → insert_file_into_context_windows(建 FileAgent) → LlamaIndexChunker.chunk_text(chunk_size 来自 EmbeddingConfig，第 21 课) → generate_embedded_passages(按 EmbeddingConfig.batch_size 分批) → create_many_source_passages_async(写 source_passages，pgvector 上 pad 到 MAX_EMBEDDING_DIM、TPUF 跳过)。所以必须“先抽文本、再切块、再嵌入、最后落库”。“先嵌整文再切块”“懒嵌入”都违反顺序；legacy connectors.load_data 调的是已弃用的 create_many_passages_async，不是 v0.16.8 主线。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. 一份挂载的文件在 Letta 里会同时以哪两种形态存在？</div>
+  <ol class="opts">
+    <li>可语义搜的 SourcePassage（嵌入 chunk）＋ 上下文里只读的 FileBlock（FileAgent.visible_content）</li>
+    <li>只有可搜索的 SourcePassage 一种；“打开文件”也是搜 chunk</li>
+    <li>一个可写的 core memory block ＋ 一份归档副本</li>
+    <li>一份 SourcePassage ＋ 一份内容相同的 ArchivalPassage 备份</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。同一趟摄取管线双重产出：①形态 A——切块嵌入成 SourcePassage、按 cosine 语义召回（工具 semantic_search_files）；②形态 B——insert_file_into_context_windows 建 orm/files_agents.py::FileAgent（files_agents junction，带 is_open/visible_content），经 to_pydantic_block 渲染成上下文里的 FileBlock(read_only=True)，由 open_files/grep_files 操作、默认最多开 5 个。两者互补：semantic 模糊定位、open_files 逐字细读。所以不是“再存一份 ArchivalPassage”（归档是 agent 自写、另一来源），不是“只有 SourcePassage 一种”，FileBlock 更是只读、不是可写 core memory。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用本课“同底座、不同来源”的框架，把“上传一份 PDF 手册、让 agent 用它回答问题”从头到尾讲一遍，并想透五件事：(1) 为什么说 Letta 没有独立的“RAG 引擎”？请从 orm/passage.py::BasePassage 那根 Vector(MAX_EMBEDDING_DIM) 列、cosine_distance、4096 padding 说清 SourcePassage 与 ArchivalPassage 到底共享什么、又在表/外键/工具/查询四层怎么分家。(2) 把 FileProcessor.process 的步骤顺序复述出来（create_file → extract_text → upsert_file_content → insert_file_into_context_windows → chunk_text → generate_embedded_passages → create_many_source_passages_async），并解释为什么 chunk_size 必须来自 EmbeddingConfig、为什么嵌入要按 EmbeddingConfig.batch_size 分批。(3) 同一份文件为什么会“同时”活成可搜的 SourcePassage 和上下文里只读的 FileBlock？semantic_search_files 与 grep_files/open_files 分别解决什么问题、为何 FileBlock 要 read_only=True、为何默认最多开 5 个？(4) “挂载源”为什么只写一行 sources_agents junction、而不复制 passage？这跟第 26 课多租户、第 28 课 blocks_agents 共享块是同一种套路吗？build_source_passage_query 里那个 join SourcesAgents 起什么护栏作用？(5) np.pad 到 4096 为什么只在 pgvector 路径做、TPUF 为什么跳过？如果摄取与召回用了不同的 EmbeddingConfig，pad 会怎样“静默掩盖”维度不匹配、埋下“搜不准”的坑？最后回到那句话：既然 RAG 就是“换了来源的归档记忆”，你会怎样只用 BasePassage ＋ 一张新 junction 表，给 agent 再加一类全新的“可语义搜索的知识”？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 27 cracked open the <span class="mono">Vector(4096)</span> column behind vector storage — how the memory an agent writes for itself lands in the database, and how it is recalled by <span class="mono">cosine_distance</span>. This lesson asks the natural next question: the documents <strong>you upload from outside</strong>, how do they burrow into that same vector machinery and become semantically searchable? The answer is three letters: RAG.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Let's put a counterintuitive fact on the table first: Letta <strong>did not build a separate "RAG engine."</strong> It reuses Lesson 27's archival-memory vector machinery <strong>verbatim</strong>, swapping only the table, the foreign key, and the tool name. "RAG" and "long-term memory" are, at the physical layer, the very same thing.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>One sentence to grasp this lesson: <strong>RAG and archival memory are "same foundation, different source"</strong> — the same vector column, the same recall; the only real difference is "who wrote it in."</p>
+<p>The foundation: <span class="mono">SourcePassage</span> (the documents you upload) and <span class="mono">ArchivalPassage</span> (the memory the agent writes for itself) are <strong>two sibling subclasses of the same <span class="mono">BasePassage</span></strong>, riding the same <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column.</p>
+<p>Ingestion: a file goes through a <strong>parse → chunk → embed</strong> pipeline and is scattered into a row of <span class="mono">SourcePassage</span> records, searchable from then on.</p>
+<p>Retrieval: sources use <span class="mono">semantic_search_files</span>, archival uses <span class="mono">archival_memory_search</span> — <strong>two different tools, the same pgvector cosine</strong>.</p>
+</div>
+<p>Why single this out for a whole lesson? Because many people assume RAG is "another system" and go hunting for a config, an engine, an index service. Once you see that "it is just archival memory with a different source," you save a lot of time looking in the wrong place.</p>
+<p>There's a practical payoff too: once you grasp the shared foundation, you know <strong>tuning RAG and tuning memory are one and the same job</strong> — swap the embedding model, adjust the chunk size, change the distance metric, and it takes effect for <strong>both</strong> source and archival at once, because they share that one column.</p>
+<p>Hold onto this through-line: from start to finish, this lesson keeps re-proving four words — "<strong>same foundation, different source</strong>." First we meet the foundation, then walk the ingestion, and finally look at retrieval.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Footnote: the two kinds of passage <strong>share</strong> Lesson 27's <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column, the same 4096 padding, and the same <span class="mono">cosine_distance</span> ordering. The difference is <strong>not</strong> in the vector machinery, only in the <strong>source</strong> and the <strong>foreign key</strong>.</span></div>
+<h2>One BasePassage, two sibling subclasses</h2>
+<p>Meet the foundation first. <span class="mono">orm/passage.py::BasePassage</span> is an <span class="mono">__abstract__</span> base class — it <strong>builds no table of its own</strong>, it only dictates "what a passage looks like": primary key, text, metadata, and most crucially that one <strong>embedding vector column</strong>.</p>
+<p>That column is precisely Lesson 27's protagonist: on Postgres it is <span class="mono">embedding = Vector(MAX_EMBEDDING_DIM)</span> (pgvector), on SQLite it is <span class="mono">CommonVector</span>. <strong>Same column, same 4096 padding, same <span class="mono">cosine_distance</span></strong> — the two subclasses <strong>inherit it verbatim</strong>, not a line changed.</p>
+<p>The two subclasses part ways on one thing only — <strong>"whom they attach to"</strong>:</p>
+<p><strong>① <span class="mono">SourcePassage(BasePassage, FileMixin, SourceMixin)</span></strong>: table <span class="mono">source_passages</span>, carrying <span class="mono">source_id</span> (required) + <span class="mono">file_id</span> (optional) + <span class="mono">file_name</span>. It belongs to "a particular file inside a particular source."</p>
+<p><strong>② <span class="mono">ArchivalPassage(BasePassage, ArchiveMixin)</span></strong>: table <span class="mono">archival_passages</span>, carrying <span class="mono">archive_id</span>, plus one extra <span class="mono">passage_tags</span> tag junction. It belongs to "a particular archive."</p>
+<p>Where do those foreign keys come from? All from three mixins in <span class="mono">orm/mixins.py</span>: <span class="mono">FileMixin</span> (gives file_id/file_name), <span class="mono">SourceMixin</span> (gives source_id), <span class="mono">ArchiveMixin</span> (gives archive_id). A subclass merely <strong>assembles mixins</strong> to obtain its own ownership foreign keys.</p>
+<p>Why make the foundation <span class="mono">__abstract__</span>? Because that 4096-dim vector column, the <span class="mono">cosine_distance</span> algorithm, and the padding convention are <strong>meant to be written once</strong>. With both subclasses inheriting one definition, the disaster of "source and archival living in different vector spaces" becomes <strong>structurally impossible</strong>.</p>
+<p>Why does <span class="mono">SourcePassage</span> need both <span class="mono">source_id</span> and <span class="mono">file_id</span>? Because one source can hold <strong>many files</strong>: <span class="mono">source_id</span> marks "which source it belongs to," <span class="mono">file_id</span> marks "which file inside the source it came from," and <span class="mono">file_name</span> makes the provenance easy to echo back.</p>
+<p>The extra <span class="mono">passage_tags</span> junction on <span class="mono">ArchivalPassage</span> is <strong>archival-only</strong>: it lets the agent tag memory fragments and filter by tag at retrieval time (a callback to Lesson 11). Source passages have <strong>no</strong> such tag layer.</p>
+<p>Remember this split: <strong>the mixin decides "ownership," the base decides "capability."</strong> Capability (vector, retrieval) is shared, ownership (source / archive, file) is separated — exactly the ORM-layer projection of "same foundation, different source."</p>
+<p>Flip it around for clarity: to add a third kind of passage (say some "tool-produced cache"), you only write a new mixin + new table; inheriting <span class="mono">BasePassage</span> hands you the whole vector-retrieval stack <strong>for free</strong>. The foundation's reusability shows up exactly in this "adding a kind costs almost nothing."</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py</span><span class="ln">one abstract base, two sibling subclasses (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">BasePassage</span>(Base):
+    __abstract__ = <span class="kw">True</span>                       <span class="cm"># no table; only defines "what a passage looks like"</span>
+    text: Mapped[str]
+    <span class="cm"># Lesson 27's column: Postgres uses pgvector, SQLite uses CommonVector</span>
+    <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+        embedding = <span class="fn">mapped_column</span>(<span class="fn">Vector</span>(MAX_EMBEDDING_DIM))   <span class="cm"># fixed 4096 dims</span>
+    <span class="kw">else</span>:
+        embedding = <span class="fn">mapped_column</span>(CommonVector)
+
+<span class="kw">class</span> <span class="fn">SourcePassage</span>(BasePassage, FileMixin, SourceMixin):   <span class="cm"># documents you upload</span>
+    __tablename__ = <span class="st">&quot;source_passages&quot;</span>      <span class="cm"># source_id(req) + file_id(opt) + file_name</span>
+
+<span class="kw">class</span> <span class="fn">ArchivalPassage</span>(BasePassage, ArchiveMixin):            <span class="cm"># memory the agent writes itself</span>
+    __tablename__ = <span class="st">&quot;archival_passages&quot;</span>    <span class="cm"># archive_id; plus passage_tags tags</span>
+</pre></div>
+<p>Lay "two subclasses, one foundation" out as two side-by-side columns and the difference is obvious — apart from source and foreign key, everything else is shared:</p>
+<div class="cols">
+  <div class="col"><h4>🧠 ArchivalPassage · agent-written</h4>
+  <p>Table <span class="mono">archival_passages</span> · FK <span class="mono">archive_id</span> · tool <span class="mono">archival_memory_search</span> · join <span class="mono">ArchivesAgents</span> · carries <span class="mono">passage_tags</span>.</p>
+  <p>Source: the agent writes it via <span class="mono">archival_memory_insert</span> (Lessons 10, 11).</p>
+  </div>
+  <div class="col"><h4>📄 SourcePassage · you-uploaded</h4>
+  <p>Table <span class="mono">source_passages</span> · FK <span class="mono">source_id</span>+<span class="mono">file_id</span> · tool <span class="mono">semantic_search_files</span> · join <span class="mono">SourcesAgents</span>.</p>
+  <p>Source: an uploaded file, built by the ingestion pipeline's parse+embed (next section).</p>
+  </div>
+</div>
+<div class="cellgroup"><div class="cg-cap"><b>Both subclasses share: <span class="mono">BasePassage</span>'s one vector column (Lesson 27)</b></div><div class="cells"><span class="cell">archival_passages</span><span class="sep">·</span><span class="cell">source_passages</span><span class="sep">→</span><span class="cell hl">BasePassage.embedding = Vector(MAX_EMBEDDING_DIM)</span><span class="sep">·</span><span class="cell hl">cosine_distance</span></div></div>
+<details class="accordion"><summary>Are source and archival really "kept entirely apart"?</summary><div class="acc-body">
+<p><strong>Mutually exclusive writes (DB-layer guard)</strong>: <span class="mono">PassageManager.create_source_passage_async</span> <strong>requires</strong> <span class="mono">source_id</span> and <strong>forbids</strong> <span class="mono">archive_id</span>; <span class="mono">create_agent_passage_async</span> is the reverse. Pass the wrong one and it errors out immediately.</p>
+<p><strong>Retrieval never crosses over</strong>: sources go through <span class="mono">build_source_passage_query</span> (scanning <span class="mono">source_passages</span>), archival through <span class="mono">build_agent_passage_query</span> (scanning <span class="mono">archival_passages</span>). Each query <strong>scans its own table</strong> and never mixes the other's rows into the result.</p>
+<p>So "same foundation" means the <strong>physical column and algorithm</strong> are identical, not that "the data is commingled." The two kinds of passage are <strong>separate</strong> at all four levels: table, foreign key, tool, and query.</p>
+</div></details>
+<div class="card analogy"><div class="tag">📝 Real-world analogy</div>
+<p>Picture the vector store as a <strong>library</strong> holding <strong>two kinds of books</strong>.</p>
+<p>One kind is <strong>books you donate</strong> (<span class="mono">SourcePassage</span> / RAG): documents brought in from outside, which the librarian tears into pages, numbers, and shelves.</p>
+<p>The other is <strong>the librarian's own handwritten reading notes</strong> (<span class="mono">ArchivalPassage</span> / archival): jottings the agent makes as it works.</p>
+<p>Both kinds go into <strong>the same "search by meaning" index</strong> (that one vector column) — at query time both are ranked by "closeness of meaning."</p>
+<p>They just sit on <strong>two different shelves</strong> (two tables), and borrowing means filling out <strong>different request slips</strong> (two tools): use <span class="mono">semantic_search_files</span> for donated books, <span class="mono">archival_memory_search</span> to flip through the notes.</p>
+</div>
+<h2>The ingestion pipeline: how a file becomes a row of searchable passages</h2>
+<p>With the foundation met, let's see "how a file gets in." The modern ingestion entry point is <span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>, which works a raw file step by step into a row of <span class="mono">SourcePassage</span> records.</p>
+<p>The whole pipeline breaks into eight steps, from upload all the way to landing in the database. Look at the panorama first, then we'll explain segment by segment:</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Upload → into some source</h4><p>The file is uploaded and assigned to an already-created <span class="mono">Source</span> (org-scoped; detailed next section).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>create_file (PARSING)</h4><p><span class="mono">FileManager.create_file</span> registers one <span class="mono">FileMetadata</span> row, status set to <span class="mono">PARSING</span>.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>extract_text (OCR)</h4><p><span class="mono">FileParser.extract_text</span> pulls the full text: PDFs/images go through OCR, documents convert to markdown.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>upsert_file_content (full text)</h4><p>The full text lands in the <span class="mono">file_contents</span> table — the original kept on file, independent of chunking.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>insert_file_into_context_windows</h4><p>It "opens" the file into a <span class="mono">FileAgent</span> (read-only original in context; covered in the final section).</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>chunk_text (by EmbeddingConfig)</h4><p><span class="mono">LlamaIndexChunker.chunk_text</span> chunks the text; <span class="mono">chunk_size</span> comes from <span class="mono">EmbeddingConfig</span> (Lesson 21).</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>generate_embedded_passages (batched by batch_size)</h4><p>The <span class="mono">Embedder</span> computes embedding vectors in batches sized by <span class="mono">EmbeddingConfig.batch_size</span>.</p></div></div>
+  <div class="step"><div class="num">8</div><div class="sc"><h4>create_many_source_passages_async</h4><p>Bulk-writes into <span class="mono">source_passages</span>, each padded to 4096 → a row of <span class="mono">SourcePassage</span> records.</p></div></div>
+</div>
+<p>Put those eight steps into code, drop the error handling and the state machine, and the skeleton is this straight:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/file_processor/file_processor.py</span><span class="ln">FileProcessor.process: store text → chunk → embed → land (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">process</span>(self, source_id, content, ...):
+    <span class="cm"># 1) register the file row, status set to PARSING</span>
+    file = <span class="kw">await</span> self.file_manager.<span class="fn">create_file</span>(..., status=FileProcessingStatus.PARSING)
+    <span class="cm"># 2) pull full text (OCR / markdown), store into file_contents</span>
+    text = <span class="kw">await</span> self.file_parser.<span class="fn">extract_text</span>(content)
+    <span class="kw">await</span> self.file_manager.<span class="fn">upsert_file_content</span>(file.id, text)
+    <span class="cm"># 3) "open" the file into context (FileAgent, see final section)</span>
+    <span class="kw">await</span> self.agent_manager.<span class="fn">insert_file_into_context_windows</span>(source_id, file, ...)
+    <span class="cm"># 4) chunk -&gt; embed (chunk_size comes from EmbeddingConfig)</span>
+    chunks = self.chunker.<span class="fn">chunk_text</span>(text)
+    passages = <span class="kw">await</span> self.embedder.<span class="fn">generate_embedded_passages</span>(chunks)  <span class="cm"># batch size from embedding_config.batch_size</span>
+    <span class="cm"># 5) bulk-write into source_passages (each padded to 4096)</span>
+    <span class="kw">await</span> self.passage_manager.<span class="fn">create_many_source_passages_async</span>(passages, source_id=source_id)
+</pre></div>
+<p>Read the pipeline segment by segment. <strong>The first three steps "store the original"</strong>: <span class="mono">create_file</span> registers the file as one <span class="mono">FileMetadata</span> row (status <span class="mono">PARSING</span>); <span class="mono">extract_text</span> pulls plain text via OCR/markdown; <span class="mono">upsert_file_content</span> stores the full text into the <span class="mono">file_contents</span> table.</p>
+<p><strong>The fourth step is a fork</strong>: <span class="mono">insert_file_into_context_windows</span> "opens" the file into the agent's context (creating a <span class="mono">FileAgent</span>) — that branch is saved for the final section.</p>
+<p>The fork itself is rather elegant: <strong>ingest once, produce twice</strong> — the same pass both chunks-and-embeds the file (building RAG) and "opens" it into context (building a <span class="mono">FileAgent</span>). Upload one file and both forms are ready at once.</p>
+<p><strong>The last three steps are where RAG is built</strong>: <span class="mono">chunk_text</span> chunks by <span class="mono">EmbeddingConfig</span>, <span class="mono">generate_embedded_passages</span> embeds in batches sized by <span class="mono">EmbeddingConfig.batch_size</span>, and <span class="mono">create_many_source_passages_async</span> lands them into <span class="mono">source_passages</span>.</p>
+<p>That <span class="mono">status=PARSING</span> line is no decoration. <span class="mono">FileMetadata</span> carries a <span class="mono">processing_status</span> field plus two counters, <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span> — status starts at <span class="mono">PARSING</span>, the counters track embedding progress, and only when every chunk is embedded is it ready. The frontend's "processing…" progress bar reads exactly this.</p>
+<p>Why store the full text separately in <span class="mono">file_contents</span> rather than keep only chunks? Because the two forms have different needs: <strong>chunks serve semantic recall</strong> (fuzzy-find relevant passages), <strong>full text serves verbatim opening</strong> (<span class="mono">open_files</span> wants the text exactly as is). Stored apart, the two paths don't interfere.</p>
+<p>Why embed in <strong>batches</strong> (size from <span class="mono">EmbeddingConfig.batch_size</span>)? Because embedding calls an external model API; sending one at a time is too slow and too costly. Batch them and send once: higher throughput, fewer round trips. This is the familiar engineering move of "batching to amortize overhead."</p>
+<p>A word on resilience: the full text in <span class="mono">file_contents</span> is a master copy <strong>independent</strong> of the chunks. Want to swap the embedding model later and re-chunk/re-embed? The original is still there, no need to make the user re-upload — zero out <span class="mono">total_chunks</span> and re-run the back half.</p>
+<details class="accordion"><summary>Ingestion has two paths: the modern file_processor and the legacy connectors</summary><div class="acc-body">
+<p><strong>Modern (the mainline)</strong>: <span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span> — with OCR/markdown parsing, <span class="mono">LlamaIndexChunker</span> chunking, <span class="mono">generate_embedded_passages</span> batch embedding, and finally <span class="mono">create_many_source_passages_async</span>. This is what the lesson covers.</p>
+<p><strong>Legacy (the old path)</strong>: <span class="mono">data_sources/connectors.py::load_data</span> — using <span class="mono">DirectoryConnector</span> plus llama_index's <span class="mono">TokenTextSplitter</span>, calling the <strong>deprecated</strong> <span class="mono">create_many_passages_async</span>.</p>
+<p>For v0.16.8, lock onto the <span class="mono">file_processor</span> path; if you run into <span class="mono">connectors.load_data</span>, just recognize it as the old path and don't model new code on it.</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">The <span class="mono">chunk_size</span> isn't picked arbitrarily; it comes from the agent's <span class="mono">EmbeddingConfig</span> (Lesson 21) — <strong>chunks are cut as large as the embedding model's window</strong>. Ingestion and recall must use the <strong>same embedding config</strong>, or the vectors on the two sides simply aren't in the same space.</span></div>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">one document</span><span class="arrow">→</span><span class="emoji">📚</span><span class="lab">cut into cards</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="bubble">stamp each with a vector</span></div><div class="cap">📄 one uploaded document is split into 📚 a stack of little cards (chunks), each stamped with a 🔢 vector (embedding), then lined up on that 4096-dim shelf — and from then on you can grab the closest few "by meaning" in one go</div></div>
+<h2>Retrieval: the same vector search, just a different tool and table</h2>
+<p>Passages are built — how do you query them? The key is still "same foundation, different source": <strong>retrieval also uses the same vector search</strong>, only the query builder and the tool name each get swapped.</p>
+<p>The source retrieval builder is <span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span>, and it is <strong>nearly identical in shape</strong> to archival's <span class="mono">build_agent_passage_query</span> — the only difference is which junction it joins and which table it scans.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/agent_manager_helper.py</span><span class="ln">build_source_passage_query: embed query → join → cosine sort (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">build_source_passage_query</span>(agent_id, query_text, embed_config, ...):
+    <span class="cm"># 1) embed the query text, pad to 4096 (same config as on write)</span>
+    q = <span class="fn">embed_query</span>(query_text, embed_config)
+    q = np.<span class="fn">pad</span>(q, (<span class="nb">0</span>, MAX_EMBEDDING_DIM - <span class="fn">len</span>(q)))
+    <span class="cm"># 2) take only passages from "sources this agent attached": join SourcesAgents</span>
+    query = (
+        <span class="fn">select</span>(SourcePassage)
+        .<span class="fn">join</span>(SourcesAgents, SourcesAgents.source_id == SourcePassage.source_id)
+        .<span class="fn">where</span>(SourcesAgents.agent_id == agent_id)
+    )
+    <span class="cm"># 3) ascending by cosine distance (Postgres pgvector; SQLite uses numpy)</span>
+    <span class="kw">return</span> query.<span class="fn">order_by</span>(SourcePassage.embedding.<span class="fn">cosine_distance</span>(q).<span class="fn">asc</span>())
+</pre></div>
+<p>Three steps to understand this query. <strong>① Embed + pad</strong>: embed the query text with the <strong>same <span class="mono">EmbeddingConfig</span></strong>, then <span class="mono">np.pad</span> to 4096 so it aligns with the padded vectors in the store.</p>
+<p><strong>② Join scopes the range</strong>: <span class="mono">select(SourcePassage)</span> join <span class="mono">SourcesAgents</span> on <span class="mono">source_id</span>, where <span class="mono">agent_id</span> — searching only passages in "the sources this agent has attached," never out of bounds.</p>
+<p><strong>③ Sort</strong>: Postgres uses <span class="mono">embedding.cosine_distance(q).asc()</span> (pgvector), SQLite falls back to numpy for the distance; the text fallback uses <span class="mono">func.lower(text).contains</span>.</p>
+<p>Don't get the direction backwards: <span class="mono">cosine_distance</span> is a <strong>distance</strong>, <strong>smaller is closer</strong>, so use <span class="mono">.asc()</span> to take the top few — the exact opposite of "bigger similarity is better" (a callback to Lesson 27).</p>
+<p>Compare archival's <span class="mono">build_agent_passage_query</span>: the same embed + pad + cosine, only it joins <span class="mono">ArchivesAgents</span> (on <span class="mono">archive_id</span>) and the archival path also supports tag filtering. <strong>Same machine, different connector.</strong></p>
+<p>That <span class="mono">func.lower(text).contains</span> text fallback is a back road for the "no embedding / pure keyword" case: when no vector is available, you can at least match by substring, case-insensitively, instead of coming up empty-handed.</p>
+<p>One more branch: the <span class="mono">np.pad</span> to 4096 happens <strong>only on the pgvector path</strong>; if you go through the external vector store Turbopuffer (TPUF), padding is <strong>skipped</strong> — it manages dimensions itself. Padding is a concession to pgvector's "fixed-length column," not a universal step.</p>
+<p>Don't underestimate that <span class="mono">join SourcesAgents</span>: it is the <strong>multi-tenant guardrail</strong> (a callback to Lesson 26). Without it, the vector search would reach other agents' and other orgs' sources; with it, each agent can only search the handful of sources <strong>it has attached</strong>.</p>
+<div class="note info"><span class="ni">🔧</span><span class="nx">Watch out for the split between "function declaration" and "real implementation": the <span class="mono">semantic_search_files</span> / <span class="mono">archival_memory_search</span> in <span class="mono">function_sets/files.py</span> and <span class="mono">function_sets/base.py</span> are just <span class="mono">raise NotImplementedError</span> <strong>schema stubs</strong>; the real work lives in <span class="mono">tool_executor/files_tool_executor.py</span> and <span class="mono">core_tool_executor.py</span>.</span></div>
+<p>Straighten the source-retrieval chain into a line and the five nodes are clear at a glance:</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">query text</div><div class="nd">find passages about X</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">embed + pad</div><div class="nd">embed(q) → np.pad 4096</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">select(SourcePassage)</div><div class="nd">join SourcesAgents · source_id</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">cosine_distance.asc()</div><div class="nd">ranked by closeness</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">top-k passages</div><div class="nd">fed back to the tool caller</div></div>
+</div>
+<p>Finally, a table lays "source vs archival" side by side across six dimensions, handy to look back at any time:</p>
+<table class="t">
+<tr><th>Dimension</th><th>SourcePassage (source / RAG)</th><th>ArchivalPassage (archival)</th></tr>
+<tr><td>Table</td><td class="mono">source_passages</td><td class="mono">archival_passages</td></tr>
+<tr><td>Source FK</td><td class="mono">source_id (req) + file_id (opt)</td><td class="mono">archive_id</td></tr>
+<tr><td>Who writes it</td><td>you upload docs; built by ingestion</td><td>the agent calls archival_memory_insert</td></tr>
+<tr><td>Query builder</td><td class="mono">build_source_passage_query</td><td class="mono">build_agent_passage_query</td></tr>
+<tr><td>Retrieval tool</td><td class="mono">semantic_search_files</td><td class="mono">archival_memory_search</td></tr>
+<tr><td>Tags</td><td>none</td><td class="mono">passage_tags junction</td></tr>
+</table>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">orm/passage.py::SourcePassage / ArchivalPassage</span> — two subclasses of the same <span class="mono">BasePassage</span>, split across tables <span class="mono">source_passages / archival_passages</span>.</p>
+<p><span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span> — the modern ingestion pipeline: parse → chunk → embed → <span class="mono">create_many_source_passages_async</span>.</p>
+<p><span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span> — source vector search: embed query + pad + join <span class="mono">SourcesAgents</span> + <span class="mono">cosine_distance</span>.</p>
+<p><span class="mono">orm/files_agents.py::FileAgent</span> — the file's other form: a read-only <span class="mono">FileBlock</span> in context (next section).</p>
+</div>
+<h2>A file's two forms: a searchable passage vs an "opened file" in context</h2>
+<p>Back to that fork at step five of the ingestion pipeline. An attached file lives in Letta as <strong>two forms at once</strong> — this is the lesson's second point worth remembering.</p>
+<p><strong>Form A: the searchable RAG chunk</strong>, the <span class="mono">SourcePassage</span> we just covered — chunked, embedded, recalled by cosine.</p>
+<p><strong>Form B: the "opened file" in context</strong>, a different mechanism: <span class="mono">orm/files_agents.py::FileAgent</span>. It is one row on the <span class="mono">files_agents</span> junction, carrying <span class="mono">is_open</span> / <span class="mono">visible_content</span>.</p>
+<div class="cellgroup"><div class="cg-cap"><b>One file, two forms: metadata <span class="mono">FileMetadata</span> (table files) + full text <span class="mono">FileContent</span> (table file_contents)</b></div><div class="cells"><span class="cell hl">SourcePassage</span><span class="lab">embedded · semantic search</span><span class="sep">‖</span><span class="cell q">FileAgent / FileBlock</span><span class="lab">visible_content · read-only original in context</span></div></div>
+<p>The key line: <span class="mono">FileAgent.to_pydantic_block(...)</span> renders it into a <strong><span class="mono">FileBlock(read_only=True)</span></strong> — "opening a file" = stuffing a <strong>read-only memory block</strong> into context, whose content is the original text (or a fragment).</p>
+<p>The tools that operate this layer are <span class="mono">open_files</span> / <span class="mono">grep_files</span>: open a file into context, and grab lines within already-open files. Note the cap — <strong>at most 5 files open</strong> at once by default.</p>
+<p><span class="mono">grep_files</span> and <span class="mono">semantic_search_files</span> are <strong>two ways of finding</strong>: the former grabs lines exactly by keyword <strong>within already-open files</strong>, the latter fuzzily recalls across <strong>all chunks</strong> by meaning. Want "verbatim text," use grep; want "close in meaning," use semantic.</p>
+<p>Why is <span class="mono">FileBlock</span> <span class="mono">read_only=True</span>? Because it is a <strong>mirror of an external document</strong> and shouldn't be rewritten by the agent — you don't want the LLM "casually" editing the contract you uploaded. Read-only is exactly the guardrail separating "source document" from "the agent's own memory block."</p>
+<p>And why the "at most 5 open" cap? Because an opened file is a read-only block <strong>actually stuffed into context</strong>, costing tokens. The limit guards your context budget for you, so you don't blow the window by opening a dozen files at once.</p>
+<p>So for the same file, <span class="mono">SourcePassage</span> and <span class="mono">FileBlock</span> are <strong>complementary, not redundant</strong>: first use <span class="mono">semantic_search_files</span> to fuzzily locate the relevant file, then <span class="mono">open_files</span> to pull it verbatim into context for a close read. One handles "finding," the other "seeing clearly."</p>
+<p>Straighten "one file → two forms": database on the left, context on the right:</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">an attached file</div><div class="nd">FileMetadata + FileContent</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Form A · chunk+embed</div><div class="nd">SourcePassage (semantically searchable)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node q"><div class="nt">Form B · open_files</div><div class="nd">FileAgent → FileBlock</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">read-only original in context</div><div class="nd">visible_content (read_only=True)</div></div>
+</div>
+<details class="accordion"><summary>Why is an "opened file" a different mechanism, not a passage?</summary><div class="acc-body">
+<p><span class="mono">FileAgent</span> (<span class="mono">orm/files_agents.py</span>) is one row on the <span class="mono">files_agents</span> junction, recording "which agent has which file open," with <span class="mono">is_open</span> / <span class="mono">visible_content</span>. It <strong>does not enter the vector store</strong>; it renders via <span class="mono">to_pydantic_block</span> into a <span class="mono">FileBlock(read_only=True)</span> in context.</p>
+<p>So "opening a file" = stuffing the original text (a fragment) into the context window as a read-only memory block, so the LLM reads it verbatim — this is <strong>exact</strong>; whereas <span class="mono">SourcePassage</span> is <strong>fuzzy, semantic</strong> nearest-neighbor recall. The two solve different problems.</p>
+<p>Metadata lives in <span class="mono">orm/file.py::FileMetadata</span> (table <span class="mono">files</span>, with <span class="mono">processing_status</span> / <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span>), full text in <span class="mono">FileContent</span> (table <span class="mono">file_contents</span>). <span class="mono">open_files</span> reads the full text, <span class="mono">semantic_search_files</span> searches chunks.</p>
+</div></details>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't conflate the two forms: <strong>"a file opened in context" (<span class="mono">FileBlock</span>, read-only original)</strong> is not <strong>"a semantically searchable passage" (<span class="mono">SourcePassage</span>)</strong>. The former is verbatim, occupies context, and is capped at 5 by default; the latter is recalled by meaning and costs no context. One file, two paths.</span></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>Letta <strong>builds no separate "RAG engine"</strong> — it directly reuses archival memory's vector machinery, swapping only the table, the foreign key, the junction, and the tool name.</p>
+<p>So "RAG" and "long-term memory" are, at the physical layer, the very same thing — the only real difference is the source: one you give, one it writes.</p>
+<p>A secondary highlight: an attached file lives as <strong>two forms at once</strong> — the semantically searchable <span class="mono">SourcePassage</span> chunk, and that read-only <span class="mono">FileBlock</span> (the original) in the context window. One file, two ways of "being remembered."</p>
+</div>
+<h2>A source is an org-scoped asset: attaching ≠ copying</h2>
+<p>Another easy misstep: a source is <strong>not private to any one agent</strong>. The <span class="mono">Source</span> built by <span class="mono">services/source_manager.py::SourceManager.create_source</span> is <strong>org-scoped</strong> and can be <strong>shared across multiple agents</strong> in the same org.</p>
+<p>How is it shared? <span class="mono">orm/sources_agents.py::SourcesAgents</span> is a <strong>composite-PK M2M table</strong> — one source can link to many agents, and one agent can attach many sources.</p>
+<p>The composite PK <span class="mono">(agent_id, source_id)</span> guarantees the same "agent — source" pair <strong>links only once</strong>, never double-attached; this is the <strong>same pattern</strong> as Lesson 28's shared-block table <span class="mono">blocks_agents</span> — using a junction table to express "who can use what."</p>
+<p>The crucial point: when <span class="mono">agent_manager.py::AgentManager.attach_source_async</span> "attaches a source," it <strong>writes only one <span class="mono">sources_agents</span> junction row</strong> — <strong>no passage copy, no re-embedding</strong>. The passages are still the same batch; attaching just "draws a line."</p>
+<p>This echoes Lesson 26's multi-tenancy: a source is registered once at the org level, and multiple agents reuse the same batch of vectors through the junction. At retrieval, <span class="mono">build_source_passage_query</span> joins exactly this <span class="mono">SourcesAgents</span> to know "which sources this agent may search."</p>
+<p>Do the math: a 50-page manual attached to 10 agents is <strong>embedded once, stored once</strong> as one set of passages; 10 agents share it via 10 <span class="mono">sources_agents</span> rows. If attaching truly did "copy + re-embed," that would be 10× the storage and embedding cost — Letta saves that bill with a single junction table.</p>
+<p>This is also why a source is an "org-scoped asset": it is loosely coupled to agents in a many-to-many way, built once and shared with many; deleting an agent doesn't drag the source down, and deleting a source only clears the junction lines — of a piece with Lesson 26's "the org owns resources, members attach as needed."</p>
+<p>To characterize a source in one line: it is the <strong>org's shared knowledge base</strong>, not an agent's private notebook. The private notebook is archival (<span class="mono">archival_passages</span>), the shared knowledge base is the source (<span class="mono">source_passages</span>) — landing once more on "same foundation, different source."</p>
+<details class="accordion"><summary>Terminology drift when reading the source: Source is being renamed Folder</summary><div class="acc-body">
+<p>In v0.16.8 you'll see both words, <span class="mono">Source</span> and <span class="mono">Folder</span>. The docstring of <span class="mono">schemas/source.py::Source</span> already reads <strong>"Deprecated: Use Folder"</strong>, and <span class="mono">PassageBase.source_id</span> is also marked <span class="mono">deprecated</span>.</p>
+<p>But the <strong>ORM tables and classes are still <span class="mono">source_*</span></strong>: table names <span class="mono">source_passages</span> / <span class="mono">sources_agents</span>, the foreign key <span class="mono">source_id</span>, and the classes <span class="mono">SourcePassage</span> / <span class="mono">SourceManager</span> are all unchanged.</p>
+<p>Conclusion: when you read <span class="mono">Folder</span>, know it's the new name for <span class="mono">Source</span>; for v0.16.8 code still go by <span class="mono">source_</span>. This lesson uses <span class="mono">Source</span> throughout, consistent with the source code.</p>
+</div></details>
+<h2>Callbacks and recap: RAG is just "archival memory with a different source"</h2>
+<p>Let's wrap up. This lesson introduced no new vector technology; throughout, it reused parts <strong>you already learned</strong>.</p>
+<p>Callback to Lesson 27: the two kinds of passage ride <strong>that very <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column</strong> — the same 4096 padding, the same <span class="mono">cosine_distance</span>. RAG has no vector storage "of its own."</p>
+<p>Callback to Lessons 10, 11: archival memory's <span class="mono">archival_memory_insert</span> / search is the same machine fed by <strong>another source</strong>; this lesson's source merely swaps "who writes" from the agent to you.</p>
+<p>Callback to Lesson 21: chunk size and query embedding both obey <span class="mono">EmbeddingConfig</span> — ingestion and recall share one config, and only then are vectors comparable in the same space.</p>
+<p>One line to tie it together: <strong>RAG = archival memory's vector machine + passages from an external source + one <span class="mono">sources_agents</span> sharing table</strong>. The foundation didn't change; all that changed is "where the stuff comes from."</p>
+<p>One more note on symmetry: archival is the agent <strong>writing to its future self</strong>, a source is you <strong>writing material for the agent</strong> — opposite directions, yet sharing the same "embed → store → cosine recall" muscle. Read Letta long enough and you'll keep meeting this "one mechanism, reused in many places."</p>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>Source and archival don't mix: different tables / foreign keys / tools, retrieval never crosses over, and the write points are <strong>mutually exclusive</strong> (pass the wrong source_id/archive_id and it errors out).</p>
+<p>A source is <strong>org-scoped and shareable</strong>, not per-agent; "attaching a source" only writes a <span class="mono">sources_agents</span> junction row and does <strong>not copy or re-embed</strong> passages.</p>
+<p>The embedding model and dimension <strong>must match</strong>: ingestion and recall use the same <span class="mono">EmbeddingConfig</span>; padding to 4096 will <strong>silently mask</strong> a dimension mismatch, burying a "bad search results" trap.</p>
+<p>Padding to <span class="mono">MAX_EMBEDDING_DIM</span> happens only on the pgvector path (TPUF skips it).</p>
+<p><span class="mono">Source</span> is being renamed <span class="mono">Folder</span>, but v0.16.8's ORM tables / classes are still <span class="mono">source_*</span>; "a file opened in context" (<span class="mono">FileBlock</span>, read-only) <strong>≠</strong> "a searchable passage" (<span class="mono">SourcePassage</span>).</p>
+</div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>RAG and archival memory are <strong>same foundation, different source</strong>: <span class="mono">SourcePassage</span> (the documents you upload) and <span class="mono">ArchivalPassage</span> (the memory the agent writes itself) are subclasses of the same <span class="mono">BasePassage</span>, sharing Lesson 27's <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column + 4096 padding + <span class="mono">cosine_distance</span>.</li>
+<li>Ingestion pipeline <span class="mono">FileProcessor.process</span>: <span class="mono">create_file</span>(PARSING) → <span class="mono">extract_text</span>(OCR) → <span class="mono">upsert_file_content</span>(full text) → <span class="mono">insert_file_into_context_windows</span> → <span class="mono">chunk_text</span>(by EmbeddingConfig) → <span class="mono">generate_embedded_passages</span>(batched by batch_size) → <span class="mono">create_many_source_passages_async</span>(pad 4096).</li>
+<li>Retrieval is <strong>the same vector search with a different table and tool</strong>: <span class="mono">build_source_passage_query</span> joins <span class="mono">SourcesAgents</span>, tool <span class="mono">semantic_search_files</span>; archival joins <span class="mono">ArchivesAgents</span>, tool <span class="mono">archival_memory_search</span>.</li>
+<li>A file has <strong>two forms</strong>: the semantically searchable <span class="mono">SourcePassage</span> chunk, and the read-only <span class="mono">FileAgent</span> / <span class="mono">FileBlock</span> (the original) in context (at most 5 open by default).</li>
+<li>A source is an <strong>org-scoped, shareable</strong> asset; <span class="mono">attach_source_async</span> only writes the junction, no copy; <span class="mono">Source</span> is being renamed <span class="mono">Folder</span>, but v0.16.8's ORM is still <span class="mono">source_*</span>.</li>
+</ul>
+</div>
+<p>Take this muscle memory with you: when you see "RAG / data sources," don't go hunting for a new engine first — first ask "is it the same vector column as archival memory?" The answer is yes, and everything falls into place.</p>
+<p>Part 8's advanced topics roll on. Next lesson we switch perspective and see how Letta makes these execution steps <strong>observable and traceable</strong>.</p>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. What exactly do SourcePassage and ArchivalPassage "share" at the bottom layer?</div>
+  <ol class="opts">
+    <li>Nothing — RAG has its own separate vector engine and index service</li>
+    <li>The same physical table, telling source and archival rows apart by a type column</li>
+    <li>The same passage row — one record shared between two agents on attach</li>
+    <li>The same BasePassage: one vector column, the same 4096 padding, one cosine_distance ordering</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. orm/passage.py::BasePassage is an __abstract__ base (it builds no table of its own) that defines the embedding column: on Postgres embedding = Vector(MAX_EMBEDDING_DIM) (pgvector), on SQLite CommonVector, plus the same 4096 padding and cosine_distance. SourcePassage(BasePassage, FileMixin, SourceMixin) and ArchivalPassage(BasePassage, ArchiveMixin) inherit that column verbatim, not a line changed — exactly Lesson 27's substrate. So what they share is the "physical column + algorithm," not one table (they are source_passages / archival_passages), not one row (attaching never copies or shares a passage row), and not "separate engines" (it is one and the same).</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. Given the shared foundation, where do SourcePassage and ArchivalPassage actually differ?</div>
+  <ol class="opts">
+    <li>Different vector dimensions: source is 1536-dim, archival padded to 4096</li>
+    <li>Only in provenance: different table/FK/tool; the vector search is identical</li>
+    <li>Different distance metrics: source uses cosine, archival uses L2 Euclidean</li>
+    <li>Only the names differ; table, FK, and tool are actually identical</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The vector machinery is identical (same BasePassage, same cosine_distance, same 4096 padding); the only difference is ownership and provenance. SourcePassage goes to source_passages with source_id(req)+file_id(opt), retrieved via build_source_passage_query joining SourcesAgents, tool semantic_search_files; ArchivalPassage goes to archival_passages with archive_id (plus passage_tags), retrieved via build_agent_passage_query joining ArchivesAgents, tool archival_memory_search. So "different distance metrics" and "different dimensions" are wrong (they are the same), and "actually identical" is wrong too — table/FK/tool really do diverge. Two different tools, one pgvector cosine.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. When you attach a source to an agent (attach_source_async), what actually happens underneath?</div>
+  <ol class="opts">
+    <li>It copies all of the source's passages under that agent and re-embeds them</li>
+    <li>It stuffs the source's files verbatim into the agent's context window (FileBlock)</li>
+    <li>It creates a fresh batch of ArchivalPassage rows in the agent's archive</li>
+    <li>It writes one sources_agents junction row — no copy or re-embed; sources are org-scoped and shareable</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. agent_manager.py::AgentManager.attach_source_async writes a single orm/sources_agents.py::SourcesAgents junction row (composite PK (agent_id, source_id), so it links only once); not one passage is copied or re-embedded. The Source is built at the org level by services/source_manager.py::SourceManager.create_source and shared across agents via the junction (a 50-page manual attached to 10 agents is still embedded once). At retrieval, build_source_passage_query joins exactly this SourcesAgents to know which sources the agent may search. So "copy + re-embed," "stuff into context," and "create new ArchivalPassage" are all wrong — attaching just draws a line.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. In the modern ingestion pipeline FileProcessor.process, what is the correct step order that turns a file into searchable passages?</div>
+  <ol class="opts">
+    <li>Go through legacy connectors.load_data + TokenTextSplitter + create_many_passages_async</li>
+    <li>Embed the whole file first → then chunk → finally OCR the text into the DB</li>
+    <li>extract_text (OCR) → chunk (LlamaIndexChunker) → batch-embed → create_many_source_passages_async</li>
+    <li>Chunk → write to source_passages → embed lazily at retrieval time</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. services/file_processor/file_processor.py::FileProcessor.process: create_file (status PARSING) → extract_text (PDF/image via OCR, to markdown) → upsert_file_content (full text into file_contents) → insert_file_into_context_windows (builds FileAgent) → LlamaIndexChunker.chunk_text (chunk_size from EmbeddingConfig, Lesson 21) → generate_embedded_passages (batched by EmbeddingConfig.batch_size) → create_many_source_passages_async (writes source_passages, padded to MAX_EMBEDDING_DIM on pgvector, skipped for TPUF). So it must be extract, then chunk, then embed, then land. "Embed whole file first" and "lazy embedding" break the order; legacy connectors.load_data calls the deprecated create_many_passages_async, not the v0.16.8 mainline.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. What two forms does an attached file take in Letta at the same time?</div>
+  <ol class="opts">
+    <li>A searchable SourcePassage (embedded chunk) + a read-only FileBlock in context (FileAgent.visible_content)</li>
+    <li>Only the searchable SourcePassage; opening a file is also just searching chunks</li>
+    <li>A writable core-memory block plus an archival copy</li>
+    <li>A SourcePassage plus an identical ArchivalPassage backup</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. One ingestion pass yields two forms: (A) chunked and embedded into a SourcePassage, recalled by cosine (tool semantic_search_files); (B) insert_file_into_context_windows builds orm/files_agents.py::FileAgent (the files_agents junction, with is_open/visible_content), rendered via to_pydantic_block into an in-context FileBlock(read_only=True), operated by open_files/grep_files and capped at 5 open by default. The two are complementary: semantic for fuzzy locating, open_files for verbatim reading. So it is not "an extra ArchivalPassage backup" (archival is agent-written, a different source), not "only a SourcePassage," and FileBlock is read-only, not a writable core-memory block.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Using this lesson's "same foundation, different source" framework, narrate "upload a PDF manual and let the agent answer questions from it" end to end, and think through five things: (1) Why does Letta have no separate "RAG engine"? From orm/passage.py::BasePassage's Vector(MAX_EMBEDDING_DIM) column, cosine_distance, and 4096 padding, spell out exactly what SourcePassage and ArchivalPassage share, and how they diverge across the four layers of table/FK/tool/query. (2) Recite the step order of FileProcessor.process (create_file → extract_text → upsert_file_content → insert_file_into_context_windows → chunk_text → generate_embedded_passages → create_many_source_passages_async), and explain why chunk_size must come from EmbeddingConfig and why embedding is batched by EmbeddingConfig.batch_size. (3) Why does one file live "at once" as a searchable SourcePassage and a read-only FileBlock in context? What does semantic_search_files solve versus grep_files/open_files, why is FileBlock read_only=True, and why cap at 5 open by default? (4) Why does "attaching a source" write only one sources_agents junction row rather than copy passages? Is this the same pattern as Lesson 26's multi-tenancy and Lesson 28's blocks_agents shared blocks? What guardrail does that join SourcesAgents play in build_source_passage_query? (5) Why does np.pad to 4096 happen only on the pgvector path, and why does TPUF skip it? If ingestion and recall used different EmbeddingConfigs, how would padding "silently mask" the dimension mismatch and bury a "bad results" trap? Finally, return to the line: since RAG is just "archival memory with a different source," how would you add a brand-new kind of "semantically searchable knowledge" to an agent using only BasePassage plus one new junction table?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="28-multi-agent-sleeptime.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">多智能体与 sleeptime</span><span class="lang-en">Multi-agent &amp; sleeptime</span></div></a><a class="next" href="30-jobs-runs-steps.html"><div class="dir"><span class="lang-zh">下一课 →</span><span class="lang-en">Next →</span></div><div class="ttl"><span class="lang-zh">jobs / runs / steps 与可观测性</span><span class="lang-en">Jobs, runs, steps &amp; observability</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>
