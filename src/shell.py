@@ -92,6 +92,14 @@ PAGES = [
      "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
     ("23-local-models-gbnf.html", "本地模型与 GBNF 受限解码", "Local models & GBNF constrained decoding",
      "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
+    ("24-three-layer-architecture.html", "三层架构", "The three-layer architecture",
+     "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
+    ("25-service-managers.html", "服务层 Managers", "The service-layer Managers",
+     "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
+    ("26-crud-and-multitenancy.html", "通用 CRUD 与多租户隔离", "Generic CRUD & multi-tenant isolation",
+     "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
+    ("27-dual-db-and-vectors.html", "双数据库与向量存储", "Dual database & vector storage",
+     "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
 ]
 
 
@@ -576,6 +584,14 @@ SUBTITLES = {
                                 "OpenAIClient reuse; Anthropic cache/thinking/batch; inner thoughts as a tool arg"),
     "23-local-models-gbnf.html": ("chat_completion_proxy · GBNF 约束 JSON · wrapper · 经典老路径",
                                   "chat_completion_proxy; GBNF-constrained JSON; wrappers; the classic legacy path"),
+    "24-three-layer-architecture.html": ("薄路由 → SyncServer/Manager → ORM → DB · 一个全局 server",
+                                         "thin routers → SyncServer/Managers → ORM → DB; one global server"),
+    "25-service-managers.html": ("db_registry.async_session 统一事务 · schema↔ORM · enforce_types/trace_method",
+                                 "db_registry.async_session transactions; schema↔ORM; enforce_types/trace_method"),
+    "26-crud-and-multitenancy.html": ("SqlalchemyBase 泛型 CRUD · apply_access_predicate 行级隔离 · 软删除 · 审计字段",
+                                      "SqlalchemyBase generic CRUD; row-level access predicate; soft delete; audit fields"),
+    "27-dual-db-and-vectors.html": ("database_engine 选 SQLite/Postgres · pgvector / numpy 距离 · pydantic-in-DB · alembic",
+                                    "database_engine: SQLite/Postgres; pgvector / numpy distance; pydantic-in-DB; alembic"),
 }
 
 

@@ -2156,6 +2156,466 @@ QUIZZES = {
             },
         ],
     },
+    "24-three-layer-architecture.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，那个唯一的全局 SyncServer 究竟在哪里被创建？",
+                    "en": "In letta v0.16.8, where is that single global SyncServer actually created?",
+                },
+                "opts": [
+                    {"zh": "在 app.py 的模块级——import 这个模块那一刻就同步建好了",
+                     "en": "At module level in app.py — built synchronously the moment the module is imported"},
+                    {"zh": "在 create_application 工厂里，构建 FastAPI 应用时一并 new 出来",
+                     "en": "Inside the create_application factory, newed up together with the FastAPI app"},
+                    {"zh": "在 lifespan 里，第一次 await server.init_async(...) 时才创建",
+                     "en": "Inside lifespan, created on the first await server.init_async(...)"},
+                    {"zh": "在 get_letta_server 里惰性创建，每个请求新建一个",
+                     "en": "Lazily created inside get_letta_server, a fresh one per request"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "它是 app.py::server 这个模块级全局，在模块被 import 那一刻就同步构造好。create_application 工厂里其实也有一行 SyncServer(...)，但那行是注释掉的——server 不在工厂里建。lifespan 只做异步引导：await server.init_async(...) 建默认 org/user、把基础工具 upsert 进库，那是“对象建好之后”才需要 await 的初始化，不是构造。get_letta_server 只是惰性 import 那个模块全局并返回，每个路由经 Depends(get_letta_server) 拿到的都是同一个实例，并不新建。一句话：import 时同步接线、启动时异步 init。",
+                    "en": "It's the module-level global app.py::server, constructed synchronously the moment the module is imported. The create_application factory does contain a SyncServer(...) line, but it's commented out — the server isn't built in the factory. lifespan only does async bootstrapping: await server.init_async(...) creates the default org/user and upserts base tools, an initialization that needs await after the object already exists, not construction. get_letta_server merely lazy-imports that module global and returns it, so every router that asks via Depends(get_letta_server) gets the same instance and none builds a new one. In one line: synchronous wiring at import, async init at startup.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个薄 CRUD 端点，通常靠什么拿到它要的数据？",
+                    "en": "How does a thin CRUD endpoint usually reach the data it needs?",
+                },
+                "opts": [
+                    {"zh": "直接调 server.&lt;manager&gt;.&lt;method&gt;()；SyncServer 自己的方法只留给跨-manager 编排",
+                     "en": "Directly via server.&lt;manager&gt;.&lt;method&gt;(); SyncServer's own methods are reserved for cross-manager orchestration"},
+                    {"zh": "每次读写都得过一道 SyncServer 方法，那是通往 DB 的唯一一道门",
+                     "en": "Every read/write must pass through a SyncServer method, the one door to the DB"},
+                    {"zh": "路由自己开一个 db_registry.async_session() 跑查询",
+                     "en": "The router opens a db_registry.async_session() itself and runs the query"},
+                    {"zh": "把请求投进一个内部消息队列，由 manager 工作者异步消费",
+                     "en": "It posts the request onto an internal message queue consumed by a manager worker"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "绝大多数时候，端点通过 server 对象直接调对应 manager：server.agent_manager.get_agent_by_id_async(...) 这种。在 agents.py 里，这种“直调 manager”约 131 次，而调 SyncServer 自己方法只约 16 次——后者只用于跨多个 manager 的编排（如 create_agent_async 解析 LLM/embedding 配置、变换 block、再委托 agent_manager 写）。所以 SyncServer 是服务定位器加跨-manager 协调者，不是“通往 DB 的唯一一道门”。路由从不自己开 session（session 在 manager 里开关），层与层之间也没有消息队列：所有 manager 都是 SyncServer 的普通属性，调用就是普通的 async 方法调用。",
+                    "en": "The vast majority of the time, the endpoint calls the matching manager directly through the server object: things like server.agent_manager.get_agent_by_id_async(...). In agents.py this “direct manager call” appears about 131 times, while calling SyncServer's own methods appears only about 16 — and the latter is reserved for orchestration across several managers (e.g. create_agent_async resolves the LLM/embedding config, transforms blocks, then delegates the write to agent_manager). So SyncServer is a service locator plus cross-manager coordinator, not “the one door to the DB”. The router never opens a session itself (sessions are opened and closed inside the manager), and there's no message queue between layers: every manager is a plain attribute of SyncServer, so a call is just an ordinary async method call.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "对一条请求来说，actor 的解析究竟发生在哪一步？",
+                    "en": "For a request, at which step does actor resolution actually happen?",
+                },
+                "opts": [
+                    {"zh": "在处理函数体内、await get_actor_or_default_async 时；get_headers 只解析/校验 user_id 头",
+                     "en": "In the handler body, when it awaits get_actor_or_default_async; get_headers only parses/validates the user_id header"},
+                    {"zh": "在一个跑在每个端点之前的全局鉴权中间件里",
+                     "en": "In a global auth middleware that runs before every endpoint"},
+                    {"zh": "在 get_headers 里——它顺手查库拿到 user 并返回 actor",
+                     "en": "Inside get_headers — it conveniently looks up the user in the DB and returns the actor"},
+                    {"zh": "在 ORM 里，跑 agent 查询、apply_access_predicate 焊进 SQL 时",
+                     "en": "In the ORM, when the agent query runs and apply_access_predicate is welded into the SQL"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "actor 在处理函数体内解析（薄路由第 ① 步）：await server.user_manager.get_actor_or_default_async(actor_id=headers.actor_id)，这才开 session #1 真正查 user。dependencies.py::get_headers 只把 user_id 头解析/校验成 HeaderParams.actor_id（校验 user-&lt;uuid4&gt; 格式、不碰 DB），并不查库、也不返回 actor。它不是全局鉴权中间件——靠的是每个 handler 自己的 Depends 加函数体。而 apply_access_predicate 是 session #2 查 agent 时焊进的组织级隔离，管的是“能看谁的数据”，跟“解析出 actor 是谁”是两回事。缺 user_id 时，OSS 模式落到 default user。",
+                    "en": "The actor is resolved inside the handler body (the thin router's step ①): await server.user_manager.get_actor_or_default_async(actor_id=headers.actor_id), which is what opens session #1 to actually look up the user. dependencies.py::get_headers only parses/validates the user_id header into HeaderParams.actor_id (checking the user-&lt;uuid4&gt; format, touching no DB); it neither queries the DB nor returns an actor. It is not a global auth middleware — it relies on each handler's own Depends plus the function body. And apply_access_predicate is the organization-level isolation welded into session #2's agent query; it governs “whose data you may see”, a separate concern from “resolving who the actor is”. When user_id is missing, OSS mode falls back to the default user.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "谁来开 DB session / 事务？一条 GET /v1/agents/{id} 又跨了几个事务？",
+                    "en": "Who opens the DB session/transaction, and how many does one GET /v1/agents/{id} span?",
+                },
+                "opts": [
+                    {"zh": "manager 用 db_registry.async_session() 开；路由从不开——一条请求跨多个独立事务",
+                     "en": "The manager, via db_registry.async_session(); the router never does — one request spans multiple independent transactions"},
+                    {"zh": "路由一开始就开一个 session，把整条请求包进单个事务",
+                     "en": "The router opens one session up front, wrapping the whole request in a single transaction"},
+                    {"zh": "SyncServer 开一个共享 session，本请求里所有 manager 复用它",
+                     "en": "SyncServer opens one shared session that every manager reuses for this request"},
+                    {"zh": "一个全局中间件开启并提交一个请求级工作单元（UoW）",
+                     "en": "A global middleware opens and commits one request-level unit of work (UoW)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "事务边界被划在 manager 方法里：每个方法各自 async with db_registry.async_session() 开一个 session，办完即 commit/close。于是 retrieve_agent 这一条请求跨了两个独立事务——session #1 查 user，session #2 走 select(AgentModel)+apply_access_predicate+where(id==...)——并没有把整条请求包进一个请求级 UoW。路由层从不开 session（薄：不写业务、不开库），SyncServer 也不替大家开共享 session。代价是两次读不是同一个快照；也因为没有大事务，后一步失败不会自动回滚前一步已提交的写，补偿/幂等的责任落回编排方。session 的来历，第 27 课细讲。",
+                    "en": "Transaction boundaries are drawn inside manager methods: each method opens its own session with async with db_registry.async_session() and commits/closes once done. So the single retrieve_agent request spans two independent transactions — session #1 to look up the user, session #2 for select(AgentModel)+apply_access_predicate+where(id==...) — rather than wrapping the whole request in a request-level UoW. The router layer never opens a session (thin: no business, no DB), and SyncServer doesn't open a shared one for everybody either. The cost is that the two reads aren't the same snapshot; and because there's no big transaction, a failure in a later step won't auto-roll-back a write already committed earlier, so compensation/idempotency falls back on the orchestrator. Lesson 27 covers where the session comes from.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "类名叫 SyncServer、docstring 还写着“单线程 / 阻塞”。可 v0.16.8 的现实是什么？",
+                    "en": "The class is named SyncServer and its docstring still says “single-threaded / blocking”. What's the reality in v0.16.8?",
+                },
+                "opts": [
+                    {"zh": "名不副实的历史遗留——路由调到的方法几乎全是 async def",
+                     "en": "A legacy misnomer — the methods routers call are almost all async def"},
+                    {"zh": "名副其实——它确实单线程、阻塞，请求严格一个接一个处理",
+                     "en": "Accurate — it really is single-threaded and blocking, serving requests strictly one at a time"},
+                    {"zh": "它为每个请求开一个操作系统线程，这正是“Sync”的本意",
+                     "en": "It spawns one OS thread per request, which is exactly what “Sync” means"},
+                    {"zh": "它在路由层是同步的，只有进了 ORM 内部才阻塞",
+                     "en": "It's synchronous at the router layer and blocks only once inside the ORM"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "docstring “Simple single-threaded / blocking server process” 是历史遗留：早期确有“同步、单线程、阻塞”的设想，名字就是那时定的。但 v0.16.8 里路由调到的方法几乎全是 async def，并发靠单事件循环上的协作式 async，不是多线程、不是阻塞、不是一个接一个、也不是“每请求一线程”。名字没改，是因为它早已是无数调用点的稳定符号，改名的收益远抵不过全仓改动的风险——读代码时把 “Sync” 当历史标签即可。提醒：这跟那个可选的服务器口令中间件（CheckPasswordMiddleware，仅 secure 模式）是两码事，后者管“整台服务器让不让进”，与 actor/租户身份正交。",
+                    "en": "The docstring “Simple single-threaded / blocking server process” is a legacy remnant: there really was an early vision of “synchronous, single-threaded, blocking”, and the name was fixed back then. But in v0.16.8 the methods routers call are almost all async def, with concurrency from cooperative async on a single event loop — not multithreading, not blocking, not one-at-a-time, and not “one thread per request”. The name hasn't changed because it's long been a stable symbol at countless call sites, and renaming's payoff is far outweighed by the repo-wide risk — when reading the code, just treat “Sync” as a historical label. A reminder: this is unrelated to the optional server-password middleware (CheckPasswordMiddleware, secure mode only), which governs “whether the whole server lets you in” and is orthogonal to actor/tenant identity.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“三层楼公司”的比喻，把一条 GET /v1/agents/{id} 从进门到落库再原路返回完整讲一遍，并想透四件事：(1) 那个唯一的全局 SyncServer 为什么在 app.py 模块级、import 时就同步建好（create_application 里那行是注释掉的），而 init_async 却推迟到 lifespan？这“import 同步接线 + 启动异步 init”的两段式，到底买到了什么？(2) 为什么是“薄路由直调 manager”（agents.py 约 131 : 16），而不是把 CRUD 都走 SyncServer？这又如何跟“actor 在函数体内解析、session 只在 manager 里开”扣在一起？(3) 为什么一次请求＝多个独立事务、没有请求级 UoW？这把什么责任交回给了编排方？(4) SyncServer 这个“同步”的误名、再加上那道正交的服务器口令中间件，和每请求的 actor/租户身份，三者各管什么、谁也不替代谁？",
+                "en": "Use this lesson's “three-floor company” metaphor to tell a single GET /v1/agents/{id} as a whole — from the front door to the database and back along the same path — and think through four things: (1) Why is that single global SyncServer built synchronously at module level in app.py at import time (the line in create_application is commented out), while init_async is deferred to lifespan? What exactly does this “synchronous wiring at import + async init at startup” two-phase split buy? (2) Why is it “thin routers calling managers directly” (about 131 : 16 in agents.py) rather than routing all CRUD through SyncServer? And how does that clasp together with “the actor is resolved in the handler body, the session is opened only in the manager”? (3) Why is one request = multiple independent transactions with no request-level UoW, and what responsibility does that hand back to the orchestrator? (4) SyncServer's “sync” misnomer, plus that orthogonal server-password middleware, plus the per-request actor/tenant identity — what does each govern, and why does none replace the others?",
+            },
+        ],
+    },
+    "25-service-managers.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，一个典型 manager 方法（如 OrganizationManager.get_organization_by_id_async）的“标准骨架”是什么？",
+                    "en": "In letta v0.16.8, what is the “standard skeleton” of a typical manager method (e.g. OrganizationManager.get_organization_by_id_async)?",
+                },
+                "opts": [
+                    {"zh": "async with db_registry.async_session() 开 session → 按 actor 做范围 CRUD → 仍在 session 内 to_pydantic() → 返回 pydantic",
+                     "en": "async with db_registry.async_session() → actor-scoped CRUD → to_pydantic() still inside the session → return pydantic"},
+                    {"zh": "直接 select(Model) 查询，把拿到的 ORM 行原样 return，让路由层自己转成 schema",
+                     "en": "Run a plain select(Model) and return the ORM row as-is, letting the router layer turn it into a schema"},
+                    {"zh": "先 to_pydantic() 复制成纯对象、退出 session 之后，再在门外补做访问控制过滤",
+                     "en": "Convert via to_pydantic() first, exit the session, then apply access-control filtering outside the door"},
+                    {"zh": "由 SyncServer 开一个共享 session，manager 只拼查询、统一在 server 层提交事务",
+                     "en": "SyncServer opens one shared session; the manager only builds the query while the server layer commits the transaction"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "标准骨架五步雷打不动：装饰器 → async with db_registry.async_session() 开 session（同时定事务边界与 actor/org 范围）→ 门内做 actor 范围 CRUD（read_async/create_async）→ 仍在 session 内 to_pydantic() 把 ORM 行换成纯 pydantic → 返回。最简样板是 organization_manager.py::OrganizationManager.get_organization_by_id_async。绝不把 ORM 行漏出门外：访问控制（apply_access_predicate）由 ORM 焊进 SQL、不是门外补做；session 也只在 manager 里开，SyncServer 只持有与编排、不开共享 session。",
+                    "en": "The five-step skeleton never budges: decorators → async with db_registry.async_session() opens the session (fixing both the transaction boundary and the actor/org scope) → actor-scoped CRUD inside the door (read_async/create_async) → to_pydantic() while still inside the session turns the ORM row into pure pydantic → return. The simplest exemplar is organization_manager.py::OrganizationManager.get_organization_by_id_async. An ORM row never slips out the door: access control (apply_access_predicate) is welded into the SQL by the ORM, not applied outside; and the session is opened only in the manager — SyncServer merely holds and orchestrates, it never opens a shared session.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "db.py 里的 db_registry 到底是个什么东西？",
+                    "en": "What exactly is db_registry in db.py?",
+                },
+                "opts": [
+                    {"zh": "一个进程级单例 DatabaseRegistry，docstring 自称“Dummy registry”，v0.16.8 只暴露 async_session()",
+                     "en": "A process-wide singleton DatabaseRegistry, self-described “Dummy registry”, exposing only async_session()"},
+                    {"zh": "一个按 DATABASE_URL 在 SQLite 与 Postgres 引擎间动态选择、并抹平方言差异的注册表",
+                     "en": "A registry that dynamically picks between SQLite and Postgres engines by DATABASE_URL and smooths over dialect differences"},
+                    {"zh": "一个依赖注入容器，启动时把所有 manager 注册进去、供路由按名解析",
+                     "en": "A dependency-injection container that registers all managers at startup for routers to resolve by name"},
+                    {"zh": "每个请求新建一个的对象，同时提供同步 session() 和异步 async_session() 两种入口",
+                     "en": "An object created fresh per request, offering both a sync session() and an async async_session()"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "db.py::DatabaseRegistry 是进程级单例 db_registry，类 docstring 只有一句自嘲——“Dummy registry to maintain the existing interface.”：它不再做花哨的注册或选择，只为维持旧接口而留，于是上百处 db_registry.async_session() 调用点一字未改。模块级是一个 create_async_engine(async_pg_uri) + async_session_factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)。v0.16.8 只有 async_session()、没有同步 session()；db.py 是 Postgres-only，不在这层分 SQLite/Postgres——方言透明属于 ORM 层（第 27 课）。它也不是 DI 容器：manager 是 SyncServer.__init__ 里普通 new 出来的。",
+                    "en": "db.py::DatabaseRegistry is the process-wide singleton db_registry, and its class docstring is a single self-deprecating line — “Dummy registry to maintain the existing interface.”: it no longer does fancy registration or selection, staying only to keep the old interface, so hundreds of db_registry.async_session() call sites went unchanged. At module level it's one create_async_engine(async_pg_uri) + async_session_factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False). v0.16.8 has only async_session(), no sync session(); db.py is Postgres-only and doesn't split SQLite/Postgres here — dialect transparency lives in the ORM layer (Lesson 27). It's also not a DI container: managers are plainly newed up in SyncServer.__init__.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "@enforce_types 和 @trace_method 各自做什么、又分别定义在哪？",
+                    "en": "What do @enforce_types and @trace_method each do, and where is each defined?",
+                },
+                "opts": [
+                    {"zh": "enforce_types（letta/utils.py）运行时校验入参类型；trace_method（letta/otel/tracing.py）开一个 OTel span",
+                     "en": "enforce_types (letta/utils.py) runtime-checks argument types; trace_method (letta/otel/tracing.py) opens an OTel span"},
+                    {"zh": "两个都定义在 letta/utils.py：一个校验类型，一个把返回值序列化成 pydantic",
+                     "en": "Both live in letta/utils.py: one checks types, the other serializes the return value into pydantic"},
+                    {"zh": "enforce_types 把同步方法包成 async；trace_method 负责开 session 并提交事务",
+                     "en": "enforce_types wraps sync methods into async; trace_method opens the session and commits the transaction"},
+                    {"zh": "enforce_types 校验 id 前缀；trace_method 在 OTel 未初始化时改为抛错",
+                     "en": "enforce_types validates the id prefix; trace_method raises when OTel is uninitialized"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "enforce_types 定义在 letta/utils.py：它的 wrapper 是同步 def，用 get_type_hints 逐个比对入参、不符就 raise ValueError；对 async 方法它同步校验后把协程原样返回，并不自己 await。trace_method 定义在 letta/otel/tracing.py：开一个名为“{ClassName}.{method}”的 OTel span，记参时跳过 messages/embeddings 等大对象；当 _is_tracing_initialized 为 False 时纯透传（no-op、零开销），绝不抛错。两者并非都在 utils；id 前缀校验是另一个装饰器 raise_on_invalid_id（letta/validators.py）。典型叠放：@enforce_types（最外）→ @raise_on_invalid_id → @trace_method（最内）→ 方法。",
+                    "en": "enforce_types is defined in letta/utils.py: its wrapper is a sync def that compares each argument against get_type_hints and raises ValueError on a mismatch; for an async method it validates synchronously then returns the coroutine as-is, never awaiting itself. trace_method is defined in letta/otel/tracing.py: it opens an OTel span named “{ClassName}.{method}” and skips big objects like messages/embeddings when recording; when _is_tracing_initialized is False it's a pure pass-through (no-op, zero overhead) and never raises. They are not both in utils; id-prefix checking is a separate decorator, raise_on_invalid_id (letta/validators.py). Typical stacking: @enforce_types (outermost) → @raise_on_invalid_id → @trace_method (innermost) → method.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "ORM 行与 pydantic schema 之间，两个方向各靠什么方法转换？",
+                    "en": "Between an ORM row and a pydantic schema, what method handles each direction of conversion?",
+                },
+                "opts": [
+                    {"zh": "出门 ORM→pydantic 靠 to_pydantic / to_pydantic_async；进门 pydantic→ORM 靠 model_dump(to_orm=True)",
+                     "en": "Outbound ORM→pydantic via to_pydantic / to_pydantic_async; inbound pydantic→ORM via model_dump(to_orm=True)"},
+                    {"zh": "两个方向都用 ORM 类上的 to_record()：传 to_orm=True 出 ORM 行、不传则出 pydantic",
+                     "en": "Both directions use to_record() on the ORM class: pass to_orm=True for an ORM row, omit it for pydantic"},
+                    {"zh": "出门 to_orm()、进门 from_orm()，两者都定义在 SqlalchemyBase 上",
+                     "en": "Outbound to_orm(), inbound from_orm(), both defined on SqlalchemyBase"},
+                    {"zh": "manager 在方法体里手写字段映射，没有统一的转换入口",
+                     "en": "The manager hand-writes the field mapping in the method body; there's no unified conversion entry point"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "出门（读）：SqlalchemyBase.to_pydantic ＝ self.__pydantic_model__.model_validate(self, from_attributes=True)，每个 ORM 模型声明自己的 __pydantic_model__（如 orm/agent.py → PydanticAgentState）；带一堆关系的复杂模型（如 agent）重写 to_pydantic_async，因为拼关系可能再发查询、要 await。进门（写）：model_dump(to_orm=True)（schemas/letta_base.py::LettaBase.model_dump）把字段拆成字典，顺手把 metadata 改名成 metadata_，再喂给 ORM 构造器。根本没有 to_record() / to_orm() / from_orm() 这种方法——就 to_pydantic 和 model_dump(to_orm=True) 这两把钥匙。",
+                    "en": "Outbound (read): SqlalchemyBase.to_pydantic = self.__pydantic_model__.model_validate(self, from_attributes=True), and each ORM model declares its own __pydantic_model__ (e.g. orm/agent.py → PydanticAgentState); a complex model with many relations (like agent) overrides to_pydantic_async because assembling relations may issue more queries and needs await. Inbound (write): model_dump(to_orm=True) (schemas/letta_base.py::LettaBase.model_dump) breaks the fields into a dict, renames metadata to metadata_ along the way, then feeds the ORM constructor. There is no to_record() / to_orm() / from_orm() at all — just the two keys to_pydantic and model_dump(to_orm=True).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么 manager 必须在 async with 块内（session 还开着）就 to_pydantic()，而不是返回之后再转？",
+                    "en": "Why must the manager call to_pydantic() inside the async with block (while the session is still open), rather than after returning?",
+                },
+                "opts": [
+                    {"zh": "退出块后 session 已 expunge_all + close、ORM 行被解绑，再读字段多半 DetachedInstanceError",
+                     "en": "After the block exits, the session has run expunge_all + close and the row is detached, so reading a field usually raises DetachedInstanceError"},
+                    {"zh": "因为 to_pydantic() 本身需要一个打开的事务来 commit，否则转换不生效",
+                     "en": "Because to_pydantic() itself needs an open transaction to commit, or the conversion won't take effect"},
+                    {"zh": "因为 expire_on_commit=False 会让对象在退出后立即过期、字段全部清空",
+                     "en": "Because expire_on_commit=False makes the object expire immediately on exit, wiping all its fields"},
+                    {"zh": "纯属代码风格约定，返回后在路由层转换功能上完全等价、没有风险",
+                     "en": "It's purely a style convention; converting in the router after returning is functionally equivalent and risk-free"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "async_session 的 finally 一定跑 expunge_all() + close()：一旦出了 async with 块，ORM 行已被解绑、session 已关，这时再读它的字段多半直接 DetachedInstanceError。expire_on_commit=False 只保证“已加载”的字段在 commit 后不过期（省一次 DB 往返），但碰到尚未加载的关系/惰性属性，脱离 session 的对象没法补查、照样炸——所以它不是“对象立即过期”，方向正好相反。规矩很硬：趁门开着把要用的都读出、定形成 pydantic；复印件一旦成形就和 session 无关。get_agent_by_id_async 甚至故意先转 pydantic、放掉 DB 连接后再跑昂贵的 PBKDF2 解密，把 schema 边界顺手变成连接池优化。",
+                    "en": "async_session's finally always runs expunge_all() + close(): once you leave the async with block the ORM row is detached and the session closed, so reading its fields then usually raises DetachedInstanceError outright. expire_on_commit=False only keeps already-loaded fields from expiring after commit (saving a DB round trip), but for an unloaded relationship/lazy attribute an object cut off from its session can't re-query and blows up all the same — so it does not make the object “expire immediately”; it's the opposite. The rule is hard: while the door is open, read out everything you need and set it into pydantic; once formed, the copy is independent of the session. get_agent_by_id_async even deliberately converts to pydantic first and releases the DB connection before running the expensive PBKDF2 decryption, turning the schema boundary into a connection-pool optimization.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“银行柜台”的比喻，把一次 server.organization_manager.get_organization_by_id_async(...) 从进门到返回完整讲一遍，并想透四件事：(1) 那一行 async with db_registry.async_session() 为什么能“一行定两件事”——既是事务的 BEGIN/commit 边界，又是 actor/org 范围（apply_access_predicate）的注入点？(2) 为什么 ORM 行绝不出柜台、递出去的永远是 to_pydantic() 的复印件？这跟 finally 里的 expunge_all + close、以及 expire_on_commit=False 各自扣在哪？(3) 三个装饰器（enforce_types / raise_on_invalid_id / trace_method）分别定义在哪、按什么顺序叠、又“免费”换来了什么？(4) 既然 db_registry 自称“Dummy registry”、v0.16.8 还是 Postgres-only，那 SQLite/Postgres 的方言差异到底在哪一层被吃掉、为什么不该记到 db_registry 头上？",
+                "en": "Use this lesson's “bank counter” metaphor to tell a single server.organization_manager.get_organization_by_id_async(...) as a whole — from the front door to the return — and think through four things: (1) Why can that one line async with db_registry.async_session() “fix two things at once” — being both the transaction's BEGIN/commit boundary and the injection point for the actor/org scope (apply_access_predicate)? (2) Why does an ORM row never leave the counter, with only the to_pydantic() copy handed out, and how does that clasp onto the finally's expunge_all + close and onto expire_on_commit=False? (3) Where is each of the three decorators (enforce_types / raise_on_invalid_id / trace_method) defined, in what order are they stacked, and what do they buy “for free”? (4) Given that db_registry calls itself a “Dummy registry” and v0.16.8 is Postgres-only, in which layer are the SQLite/Postgres dialect differences actually absorbed, and why shouldn't that be pinned on db_registry?",
+            },
+        ],
+    },
+    "26-crud-and-multitenancy.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，多租户隔离（“只看你这个 org 的行”）到底是在哪一层、怎么强制的？",
+                    "en": "In letta v0.16.8, at which layer — and how — is multi-tenant isolation (“see only your own org's rows”) actually enforced?",
+                },
+                "opts": [
+                    {"zh": "焊在最底层的查询构造器里：SqlalchemyBase.apply_access_predicate 给每次读自动追加 WHERE organization_id == actor.organization_id",
+                     "en": "Welded into the lowest-level query builder: SqlalchemyBase.apply_access_predicate auto-appends WHERE organization_id == actor.organization_id to every read"},
+                    {"zh": "每个路由 / handler 自己记得在查询里手写一句 WHERE org==... 来过滤别的租户",
+                     "en": "Each router / handler remembers to hand-write a WHERE org==... in its own query to filter other tenants"},
+                    {"zh": "由 CheckPasswordMiddleware 在请求入口按 org 校验，挡掉别的租户",
+                     "en": "CheckPasswordMiddleware checks by org at the request entrance and blocks other tenants"},
+                    {"zh": "先把整张表查回来，再在 manager 里用 Python 按 actor.id 筛掉别的租户",
+                     "en": "Pull the whole table back, then filter out other tenants by actor.id in Python inside the manager"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "隔离焊在最低层：orm/sqlalchemy_base.py::SqlalchemyBase.apply_access_predicate 是行级过滤的唯一注入点——ORGANIZATION 范围（默认）追加 where(organization_id == actor.organization_id)，USER 范围（仅 jobs / runs）追加 where(user_id == actor.id)。约 40 个模型共用这一个 SqlalchemyBase，read_async / list_async / size_async / bulk_hard_delete_async 都自动套上它，没有任何 per-endpoint 的 WHERE 需要各 handler 记得写——这正是“secure by default”的反转。它在 SQL 执行前注到 query 对象上、在 DB 侧完成，不是拉回全表再用 Python 筛。CheckPasswordMiddleware 管的是“能不能进这台服务器”（单一共享密钥），与租户正交，不做按 org 的行级过滤。",
+                    "en": "Isolation is welded into the lowest layer: orm/sqlalchemy_base.py::SqlalchemyBase.apply_access_predicate is the single injection point for row-level filtering — the ORGANIZATION scope (default) appends where(organization_id == actor.organization_id), the USER scope (jobs / runs only) appends where(user_id == actor.id). Around 40 models share this one SqlalchemyBase, and read_async / list_async / size_async / bulk_hard_delete_async all auto-apply it, so there's no per-endpoint WHERE for any handler to remember — that's the “secure by default” inversion. It's injected onto the query object before the SQL runs and completed DB-side, not by pulling the whole table back and filtering in Python. CheckPasswordMiddleware governs “can you enter this server” (a single shared secret), is orthogonal to tenancy, and does no per-org row filtering.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "用你自己 org 的 actor 调 read_async 去读一行属于“别的 org”的数据，会发生什么？",
+                    "en": "With an actor carrying your own org, you call read_async for a row that belongs to “another org.” What happens?",
+                },
+                "opts": [
+                    {"zh": "那行被 predicate 的 WHERE 排除→read_async 抛 NoResultFound，list_async 返回 []",
+                     "en": "The row is excluded by the predicate's WHERE → read_async raises NoResultFound, and list_async returns []"},
+                    {"zh": "门禁识别出越权，直接抛一个 403 / 权限错误（PermissionError）",
+                     "en": "The gate detects the violation and raises a 403 / permission error (PermissionError) outright"},
+                    {"zh": "照常返回那一行——隔离只在写路生效，读路不拦",
+                     "en": "It returns the row as usual — isolation only applies on the write path, reads aren't blocked"},
+                    {"zh": "抛 ValueError，因为 actor 的 org 和那行的 org 不匹配",
+                     "en": "It raises ValueError because the actor's org doesn't match the row's org"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "越权＝查不到，而非报错。apply_access_predicate 在 SQL 执行前就把 where(organization_id == actor.organization_id) 注进 query，别的 org 的行根本不进结果集：read_async 的 scalar_one_or_none() 拿到 None → 抛 NoResultFound；list_async 得 []。这是有意为之——连“那行存在”这件事都不向调用方泄露，所以不是 403、不是 PermissionError。唯一的 ValueError 来自 actor 连 org / id accessor 都没有（配置错），而非跨租户。隔离也不是“只在写路”——读路四个方法（有 actor 时）都套 predicate，写 / 删则骑在读建立的边界上。调试时别被 NoResultFound 骗了：先确认 actor 的 org 对不对。",
+                    "en": "A violation = not found, not an error. apply_access_predicate injects where(organization_id == actor.organization_id) onto the query before the SQL runs, so another org's row never enters the result set: read_async's scalar_one_or_none() gets None → raises NoResultFound; list_async gets []. This is by design — it leaks nothing about “that row exists,” so it's not a 403 and not a PermissionError. The only ValueError comes from an actor lacking even the org / id accessor (a misconfig), not from cross-tenant access. Isolation isn't “write-path only” either — the four read methods (when an actor is present) all apply the predicate, while write / delete ride the boundary the read established. When debugging, don't be fooled by NoResultFound: first check that the actor's org is right.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "约 40 个模型共用的 SqlalchemyBase.delete_async，默认到底“删”了什么？",
+                    "en": "What does the shared SqlalchemyBase.delete_async actually “delete” by default?",
+                },
+                "opts": [
+                    {"zh": "软删：只把 is_deleted 翻成 True，行仍留在库里；读路默认（check_is_deleted=False）仍能查到它",
+                     "en": "A soft delete: it only flips is_deleted to True; the row stays in the table, and the read path still finds it by default (check_is_deleted=False)"},
+                    {"zh": "物理删：session.delete(self) 把整行从库里抹掉，之后再也查不到",
+                     "en": "A physical delete: session.delete(self) wipes the whole row from the table, never findable again"},
+                    {"zh": "软删，但读路默认会自动过滤掉软删行，所以删完立刻就查不到了",
+                     "en": "A soft delete, but the read path auto-filters soft-deleted rows by default, so it's immediately unfindable"},
+                    {"zh": "先级联删掉所有外键关联行，再物理删本行",
+                     "en": "It cascades through all foreign-key rows first, then physically deletes this row"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "delete_async 是软删：内部走 update_async 把 is_deleted 翻成 True（有 actor 则顺手盖审计），行的字节一个没动、外键关联照旧。关键反直觉点：读路过滤是 opt-in——read_async / list_async 的 check_is_deleted 默认 False，不追加 where(is_deleted == False)，所以软删行默认仍被返回；想挡掉得显式传 check_is_deleted=True（如 provider_manager 的读路）。物理删是另外两个方法：hard_delete_async（session.delete(self) + 死锁重试）和 bulk_hard_delete_async（delete(cls).where(id.in_(...)) + apply_access_predicate，唯一在 SQL 层强制租户的删）。delete_async 自己不级联物理删。",
+                    "en": "delete_async is a soft delete: internally it goes through update_async to flip is_deleted to True (stamping audit too if there's an actor); not a byte of the row moves and foreign-key relations stay intact. The key counterintuitive point: read-side filtering is opt-in — read_async / list_async default check_is_deleted to False and don't append where(is_deleted == False), so soft-deleted rows are still returned by default; to keep them out you must pass check_is_deleted=True explicitly (as in provider_manager's read path). Physical deletion is the other two methods: hard_delete_async (session.delete(self) + deadlock retry) and bulk_hard_delete_async (delete(cls).where(id.in_(...)) + apply_access_predicate, the only delete that enforces tenancy at the SQL level). delete_async itself does not cascade-physically-delete.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "每行的审计字段（created_at / updated_at、_created_by_id / _last_updated_by_id）是怎么被填上的？",
+                    "en": "How do a row's audit fields (created_at / updated_at, _created_by_id / _last_updated_by_id) get filled in?",
+                },
+                "opts": [
+                    {"zh": "CRUD 方法里显式调 _set_created_and_updated_by_fields(actor_id) 盖“谁”，且只有传了 actor 才盖",
+                     "en": "The CRUD methods explicitly call _set_created_and_updated_by_fields(actor_id) to stamp the “who,” only when an actor is passed"},
+                    {"zh": "靠 SQLAlchemy 的事件监听（event listener）在 flush 时自动给每行填上",
+                     "en": "SQLAlchemy event listeners fill them in automatically on flush"},
+                    {"zh": "全部由数据库触发器（trigger）在 INSERT / UPDATE 时生成，应用层不参与",
+                     "en": "Database triggers generate them all on INSERT / UPDATE; the app layer isn't involved"},
+                    {"zh": "由基类构造函数统一填，不管有没有 actor 都会盖上“谁建 / 谁改”",
+                     "en": "The base class constructor fills them uniformly, stamping “who created / changed” whether or not there's an actor"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "审计字段不是事件监听、也不是 DB 触发器盖的，而是 CRUD 路径里显式调 orm/base.py::CommonSqlalchemyMetaMixins 的 _set_created_and_updated_by_fields(actor_id)——create_async / update_async 手动点一下。关键前提：只有传了 actor 才盖“谁”；没 actor 的写（系统内部路径）不落 *_by_id，只有时间列照常。时间列确实交给 DB：created_at 用 server_default=func.now()，updated_at 再加 server_onupdate（不依赖应用时钟）。物理列名带下划线 _created_by_id / _last_updated_by_id，对外属性去掉下划线，setter 还断言 id 前缀＝“user”。created_by_id 只在首次写设定、此后不变；last_updated_by_id 每次写刷新。",
+                    "en": "Audit fields aren't stamped by event listeners or DB triggers but by an explicit call in the CRUD path to orm/base.py::CommonSqlalchemyMetaMixins's _set_created_and_updated_by_fields(actor_id) — create_async / update_async touch it manually. The key precondition: it stamps the “who” only when an actor is passed; a write without an actor (a system-internal path) records no *_by_id, only the time columns as usual. The time columns are indeed left to the DB: created_at uses server_default=func.now(), and updated_at adds server_onupdate (not relying on the app clock). The physical columns carry an underscore, _created_by_id / _last_updated_by_id; the outward attributes drop it, and the setter asserts the id prefix = “user.” created_by_id is set only on the first write and never changes; last_updated_by_id refreshes on every write.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "对一个 org 级模型做读取，但没传 actor（actor=None）时，SqlalchemyBase 会怎么做？",
+                    "en": "When you read an org-scoped model but pass no actor (actor=None), what does SqlalchemyBase do?",
+                },
+                "opts": [
+                    {"zh": "不硬失败：打一条 SECURITY: ...bypasses organization filtering 警告，然后无范围（不套 predicate）照常跑查询",
+                     "en": "It doesn't hard-fail: it logs a SECURITY: ...bypasses organization filtering warning, then runs the query unscoped (no predicate applied)"},
+                    {"zh": "直接拒绝：抛异常 / 报错，强制每次读都必须带 actor",
+                     "en": "It rejects outright: raises an exception / error, forcing every read to carry an actor"},
+                    {"zh": "自动套上 DEFAULT_USER_ID 当 actor，于是查询被限定到默认 org",
+                     "en": "It auto-substitutes DEFAULT_USER_ID as the actor, so the query gets scoped to the default org"},
+                    {"zh": "静默返回空结果（[] / None），当作“没有任何行可见”",
+                     "en": "It silently returns an empty result ([] / None), treating it as “no rows visible”"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "actor=None 时 base 不硬失败：read_async 里 predicate 是 gated on if actor:——没 actor 就跳过 apply_access_predicate，并对 org 级模型记一条响亮的 logger.warning(“SECURITY: ... bypasses organization filtering”)，然后无范围照跑（返回的是该 org 之外也不设限的全表行，不是空）。这是有意取舍：Letta 有合法的、系统内部无 user 的查询，于是选了“中央强制 + 响亮日志”而非脆弱的硬失败。别和入口混淆：真正能“强制带身份”的是 user_manager.py::get_actor_or_default_async——当 settings.no_default_actor 且无 id 时抛 NoResultFound，否则才回退 DEFAULT_USER_ID；那是解析 actor 的入口逻辑，不是 SqlalchemyBase 在 actor=None 时自己做的事。",
+                    "en": "When actor=None the base does not hard-fail: in read_async the predicate is gated on if actor: — with no actor it skips apply_access_predicate and, for an org-scoped model, logs a loud logger.warning(“SECURITY: ... bypasses organization filtering”), then runs unscoped (returning unrestricted rows across the table, not empty). This is a deliberate trade-off: Letta has legitimate system-internal queries with no user, so it chose “central enforcement + a loud log” over brittle hard failure. Don't conflate this with the entrance: the thing that can actually “force identity” is user_manager.py::get_actor_or_default_async — it raises NoResultFound when settings.no_default_actor and no id, otherwise it falls back to DEFAULT_USER_ID; that's the actor-resolution entry logic, not what SqlalchemyBase itself does when actor=None.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“带门禁的共享档案库”的比喻，把一次“按 id 读一行”的查询从进门到落库完整讲一遍，并想透四件事：(1) 为什么说多租户隔离是“焊在最低层的查询构造器里”、而不是每个 handler 各写一句 WHERE？apply_access_predicate 的 ORGANIZATION 与 USER 两个分支分别按什么字段限定、各覆盖哪些对象？(2) 跨租户读为什么是“查不到”（NoResultFound / []）而不是 403？这种“连存在性都隔离”的设计买到了什么、又给调试埋了什么坑？(3) delete_async 的“软删”默认可逆意味着什么——is_deleted 翻 True 之后，为什么读路默认仍能看见它、要怎样才“看起来真的删了”？软删 vs hard_delete_async vs bulk_hard_delete_async 三者在“是否套 predicate”上有何不同？(4) actor 这条身份链（user_id header → get_headers 只校格式不碰 DB → get_actor_or_default_async 解析成带 org 的 PydanticUser → predicate 的 WHERE）里，为什么 base 在 actor=None 时选择“警告 + 无范围照跑”而非硬失败？这跟服务器口令（CheckPasswordMiddleware）那道正交的闸又是什么关系？",
+                "en": "Using this lesson's “shared archive with a gate” metaphor, narrate a single “read one row by id” query from the front door to the DB, and think through four things: (1) Why is multi-tenant isolation “welded into the lowest-level query builder” rather than each handler hand-writing a WHERE? In apply_access_predicate, what field does each of the ORGANIZATION and USER branches scope by, and which objects does each cover? (2) Why is a cross-tenant read “not found” (NoResultFound / []) rather than a 403? What does this “isolate even existence” design buy, and what debugging trap does it set? (3) What does delete_async's reversible-by-default “soft delete” mean — after is_deleted flips to True, why does the read path still see it by default, and what makes it “look truly deleted”? How do soft delete vs hard_delete_async vs bulk_hard_delete_async differ on “whether the predicate is applied”? (4) In the actor identity chain (user_id header → get_headers validates format without touching the DB → get_actor_or_default_async resolves it into a PydanticUser with org → the predicate's WHERE), why does the base choose “warn + run unscoped” rather than hard-fail when actor=None? And how does that relate to the orthogonal server-password gate (CheckPasswordMiddleware)?",
+            },
+        ],
+    },
+    "27-dual-db-and-vectors.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，“这个进程到底用 SQLite 还是 Postgres”由什么决定？",
+                    "en": "In letta v0.16.8, what actually decides whether a process uses SQLite or Postgres?",
+                },
+                "opts": [
+                    {"zh": "派生 @property settings.database_engine：配了 PG URI（letta_pg_uri_no_default 非 None）就是 Postgres，否则 SQLite",
+                     "en": "The derived @property settings.database_engine: a configured PG URI (letta_pg_uri_no_default not None) means Postgres, otherwise SQLite"},
+                    {"zh": "环境变量 LETTA_DATABASE_ENGINE=sqlite|postgres，手动二选一",
+                     "en": "An env var LETTA_DATABASE_ENGINE=sqlite|postgres, a manual either/or"},
+                    {"zh": "server/db.py 启动时按可用驱动探测：装了 asyncpg 就走 Postgres，否则 SQLite",
+                     "en": "server/db.py probes available drivers at startup: with asyncpg installed it goes Postgres, else SQLite"},
+                    {"zh": "看 letta_pg_uri 是否为 None——为 None 就回退 SQLite",
+                     "en": "Whether letta_pg_uri is None — if None it falls back to SQLite"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "决定权在 settings.py::Settings.database_engine，它是只读 @property，逻辑就一行：POSTGRES if self.letta_pg_uri_no_default else SQLITE。所以“配没配 PG URI”是 dev/prod 的唯一分界；DatabaseChoice(str, Enum) 只有 POSTGRES / SQLITE 两值，是被读出来的结论而非可写字段。没有 LETTA_DATABASE_ENGINE 这种开关——你只要设了任意 LETTA_PG_*（host/db/user/password/port/uri）就会静默翻成 Postgres。陷阱：letta_pg_uri 永远有默认值（postgresql+pg8000://letta:letta@localhost:5432/letta），判定不能看它，真正“URI-或-None”的是 letta_pg_uri_no_default。也不是按驱动探测：server/db.py 模块级只 create_async_engine(async_pg_uri)，不做后端探测。",
+                    "en": "The decision lives in settings.py::Settings.database_engine, a read-only @property whose logic is one line: POSTGRES if self.letta_pg_uri_no_default else SQLITE. So “is a PG URI configured” is the only dev/prod divider; DatabaseChoice(str, Enum) has just POSTGRES / SQLITE and is a conclusion read out, not a writable field. There is no LETTA_DATABASE_ENGINE switch — set any LETTA_PG_* (host/db/user/password/port/uri) and it silently flips to Postgres. The trap: letta_pg_uri always has a default (postgresql+pg8000://letta:letta@localhost:5432/letta), so the check can't read it — the real “URI-or-None” is letta_pg_uri_no_default. It isn't driver probing either: server/db.py at module level only does create_async_engine(async_pg_uri) and detects no backend.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "“一套 ORM 在两套库上跑”，这个双库接缝主要落在代码哪里？",
+                    "en": "For “one ORM running on two databases,” where in the code does the dual-DB seam mainly live?",
+                },
+                "opts": [
+                    {"zh": "分布在多处、大多声明式：列类型、查询分支、连接事件、自定义列、alembic——不在某一个 switch 里",
+                     "en": "Distributed across several places, mostly declarative: column type, query branch, connect event, custom columns, alembic — not in any single switch"},
+                    {"zh": "集中在 server/db.py 一个 if database_engine 大开关里，按后端建不同引擎",
+                     "en": "Concentrated in one big if database_engine switch inside server/db.py, building a different engine per backend"},
+                    {"zh": "由 SQLAlchemy 的方言层自动处理，应用代码完全不含分库逻辑",
+                     "en": "Handled automatically by SQLAlchemy's dialect layer; the application code contains no dual-DB logic at all"},
+                    {"zh": "每个 manager 在自己的方法里各写一段 if sqlite/else postgres 来切换",
+                     "en": "Each manager writes its own if sqlite/else postgres block inside its methods to switch"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "双库不是 server/db.py 里的聪明 switch——v0.16.8 它其实是 Postgres-only async（模块级只 create_async_engine(async_pg_uri)，不按 database_engine 分叉、不加载 sqlite-vec）。真正的接缝分布在约六处、且大多 import 期声明：① settings.database_engine 这个派生 property；② orm/passage.py::BasePassage 类体里、import 期的 if POSTGRES: Vector(MAX_EMBEDDING_DIM) else CommonVector；③ 查询构造器两路 order_by（sqlalchemy_base.py 与 services/helpers/agent_manager_helper.py）；④ orm/sqlite_functions.py::register_functions 用 @event.listens_for(Engine, “connect”) 给任何 SQLite 连接注册 numpy cosine_distance；⑤ orm/custom_columns.py 的 TypeDecorator；⑥ alembic/env.py 选 URI、分两后端建表。唯一还构造 SQLite URI 的地方就是 alembic/env.py。也不是 manager 各写分支：分叉只在用到向量搜索处各写一次。",
+                    "en": "The dual DB isn't a clever switch in server/db.py — in v0.16.8 that file is Postgres-only async (module level only create_async_engine(async_pg_uri), no branch on database_engine, no sqlite-vec loaded). The real seam is distributed across ~six places, most declared at import time: (1) the derived settings.database_engine property; (2) orm/passage.py::BasePassage's class-body, import-time if POSTGRES: Vector(MAX_EMBEDDING_DIM) else CommonVector; (3) the two-way order_by in the query builder (sqlalchemy_base.py and services/helpers/agent_manager_helper.py); (4) orm/sqlite_functions.py::register_functions using @event.listens_for(Engine, “connect”) to register a numpy cosine_distance on any SQLite connection; (5) orm/custom_columns.py's TypeDecorators; (6) alembic/env.py picking the URI and building tables for two backends. The only place that still builds a SQLite URI is alembic/env.py. It isn't per-manager branches either — the fork only appears where vector search is used.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "向量在 Postgres 与 SQLite 两套库里分别怎么存、怎么搜？",
+                    "en": "How are vectors stored and searched in Postgres versus SQLite?",
+                },
+                "opts": [
+                    {"zh": "Postgres：pgvector 的 Vector(4096) + 原生算子 &lt;=&gt;；SQLite：CommonVector(BINARY) + numpy cosine_distance UDF",
+                     "en": "Postgres: pgvector's Vector(4096) + the native operator &lt;=&gt;; SQLite: CommonVector(BINARY) + a numpy cosine_distance UDF"},
+                    {"zh": "两套库都用 pgvector 的 Vector 列与原生 &lt;=&gt;，SQLite 靠 sqlite-vec 扩展提供同款算子",
+                     "en": "Both databases use pgvector's Vector column and the native &lt;=&gt;, with SQLite getting the same operator from the sqlite-vec extension"},
+                    {"zh": "两套库都把向量存成 JSON 文本，搜索时在 Python 里反序列化后算 cosine",
+                     "en": "Both store vectors as JSON text and, at search time, deserialize in Python to compute cosine"},
+                    {"zh": "SQLite 用 sqlite-vec 的原生 KNN 索引，Postgres 反而是全表暴力没有索引",
+                     "en": "SQLite uses sqlite-vec's native KNN index, while Postgres is the brute-force one with no index"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "存：Postgres 是 pgvector 的 Vector(4096) 定长列；SQLite 是 orm/custom_columns.py::CommonVector——impl=BINARY 的 TypeDecorator，用 sqlite_vec.serialize_float32 打包、np.frombuffer 还原。搜：列类型与搜索分支共用一个 if settings.database_engine is POSTGRES（orm/passage.py::BasePassage import 期定列类型；sqlalchemy_base.py / agent_manager_helper.py 运行时分支）。Postgres 走 cls.embedding.cosine_distance(q) → 编译成原生 &lt;=&gt;，可挂 ivfflat / hnsw 做 ANN；SQLite 走 func.cosine_distance(col, q) → 调 orm/sqlite_functions.py::register_functions 注册的 numpy UDF，对全表逐行算再 ORDER BY ASC。关键纠正：SQLite 的相似度不是 sqlite-vec 原生——sqlite_vec.load() 是注释掉的，只借了它的 serialize_float32 打包字节。两边语义一致（按 cosine 升序取最近），只是一个有 ANN、一个全表暴力。",
+                    "en": "Storage: Postgres is pgvector's Vector(4096) fixed-length column; SQLite is orm/custom_columns.py::CommonVector — an impl=BINARY TypeDecorator packing with sqlite_vec.serialize_float32 and restoring with np.frombuffer. Search: the column type and the search branch share one if settings.database_engine is POSTGRES (orm/passage.py::BasePassage fixes the column type at import time; sqlalchemy_base.py / agent_manager_helper.py branch at runtime). Postgres uses cls.embedding.cosine_distance(q) → compiles to native &lt;=&gt; and can attach ivfflat / hnsw for ANN; SQLite uses func.cosine_distance(col, q) → the numpy UDF registered by orm/sqlite_functions.py::register_functions, computed row by row over the whole table then ORDER BY ASC. Key correction: SQLite's similarity is not sqlite-vec native — sqlite_vec.load() is commented out; only its serialize_float32 is borrowed to pack bytes. Both are semantically the same (nearest by ascending cosine); one just has ANN, the other brute-forces the whole table.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "所有 embedding 都被 np.pad 到 MAX_EMBEDDING_DIM=4096（尾部补 0）。为什么这对相似度搜索是“免费”的？",
+                    "en": "Every embedding is np.padded to MAX_EMBEDDING_DIM=4096 (zeros at the tail). Why is this “free” for similarity search?",
+                },
+                "opts": [
+                    {"zh": "等量补 0 既不改点积、也不改 L2 范数，于是 cosine 与未填充时数学上完全相等，排序一模一样",
+                     "en": "Equal zero-padding changes neither the dot product nor the L2 norm, so cosine is mathematically identical to the unpadded vector and the ranking is unchanged"},
+                    {"zh": "因为搜索前会把补的 0 再切掉，只比较原始维度，所以毫无影响",
+                     "en": "Because the padding zeros are sliced off again before search, so only the original dims are compared and there's no effect"},
+                    {"zh": "因为 cosine 会先做 L2 归一化，归一化能消除任何长度差异，所以补什么都行",
+                     "en": "Because cosine first L2-normalizes the vectors, and normalization erases any length difference, so any padding works"},
+                    {"zh": "因为补的是很小的随机数，对高维点积的影响可以忽略不计",
+                     "en": "Because the padding is tiny random numbers whose effect on a high-dimensional dot product is negligible"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "cosine = 点积 /（两向量 L2 范数之积）。尾部补的全是 0：点积里每个新增项是 0 × x = 0，分子不变；L2 里每个新增项是 0² = 0，分母不变。分子分母都不动，cosine 值与排序就和未填充严格相等——这是恒等式，不是近似。所以 constants.py::MAX_EMBEDDING_DIM=4096 把任意维度零填充到定长，一个 Vector(4096)/CommonVector 列即可装下任意模型的输出，且不影响检索排序。注意几个错误项：并没有“搜索前切掉 0”这一步（写路与查询路都补到 4096 再比，是共同前提）；补的是 0 而非随机数；cosine 确实含归一化，但“免费”的根因是补 0 同时不改点积与范数，而非归一化能抹掉任意填充。代价仅是多存一串 0（如 1024 维白存 3072 个 0）。",
+                    "en": "Cosine = dot product / (product of the two L2 norms). The tail padding is all zeros: in the dot product each added term is 0 × x = 0, so the numerator is unchanged; in the L2 norm each added term is 0² = 0, so the denominator is unchanged. With neither moving, the cosine value and the ranking are exactly equal to the unpadded case — an identity, not an approximation. So constants.py::MAX_EMBEDDING_DIM=4096 zero-pads any dimension to a fixed length, letting one Vector(4096)/CommonVector column hold any model's output without affecting retrieval order. Watch the wrong options: there is no “slice the zeros off before search” step (both write and query pad to 4096 before comparing — a shared precondition); the padding is zeros, not random numbers; and although cosine does include normalization, the reason it's “free” is that zero-padding leaves both dot product and norm unchanged, not that normalization erases arbitrary padding. The only cost is storing extra zeros (e.g. 3072 wasted zeros for a 1024-dim model).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "把 EmbeddingConfig / LLMConfig 这类配置整块 model_dump 成一列 JSON（而非拆成多列），买到了什么、代价是什么？",
+                    "en": "Storing configs like EmbeddingConfig / LLMConfig as one whole model_dumped JSON column (instead of splitting into many columns) — what does it buy, and what does it cost?",
+                },
+                "opts": [
+                    {"zh": "买到扁平 schema + schema-on-read 演化（加字段免迁移）；代价是子字段不能 WHERE / 建索引，且每次读写都要 (de)序列化",
+                     "en": "Buys a flat schema + schema-on-read evolution (adding a field needs no migration); costs the inability to WHERE / index subfields, plus (de)serialization on every read/write"},
+                    {"zh": "买到对任意子字段高效 WHERE / 建索引；代价是每加一个字段都要写一次 alembic 迁移",
+                     "en": "Buys efficient WHERE / indexing on any subfield; costs an alembic migration for every new field"},
+                    {"zh": "买到跨表外键与 JOIN 的能力；代价是失去 pydantic 的类型校验",
+                     "en": "Buys cross-table foreign keys and JOINs; costs the loss of pydantic's type validation"},
+                    {"zh": "买到更小的存储体积与更快的查询；没有任何实际代价",
+                     "en": "Buys smaller storage and faster queries, with no real cost at all"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "orm/custom_columns.py 的 TypeDecorator（EmbeddingConfigColumn / LLMConfigColumn / ToolRulesColumn，impl=JSON、cache_ok=True）把整个 pydantic 对象一格存下：process_bind_param 写时 model_dump(mode=“json”) → dict，process_result_value 读时 dict → Model(**data) 还原（真正转换委托 helpers/converters.py）。买到两样：① 扁平 schema + 免迁移——给 LLMConfig 加 pydantic 字段不动表结构，老行靠 deserialize_llm_config 在读时补默认（schema-on-read）；② 保真——嵌套结构不被拍平，读回仍是强类型对象。代价两样：① JSON 子字段不能高效 WHERE / 建索引（没法“按 embedding 模型名筛选”）；② 每次读写都跑一遍 (de)序列化，有 CPU 开销。impl=JSON 在 Postgres 落成 JSONB、SQLite 落成文本，但对上层透明。对配置多变、又很少按子字段查询的 Letta，这笔账划算。",
+                    "en": "The TypeDecorators in orm/custom_columns.py (EmbeddingConfigColumn / LLMConfigColumn / ToolRulesColumn, impl=JSON, cache_ok=True) store the whole pydantic object in one cell: process_bind_param writes via model_dump(mode=“json”) → dict, and process_result_value reads dict → Model(**data) to restore it (the real conversion delegated to helpers/converters.py). It buys two things: (1) a flat schema + no migration — adding a pydantic field to LLMConfig leaves the table schema untouched, and old rows get defaults filled on read by deserialize_llm_config (schema-on-read); (2) fidelity — nested structure isn't flattened, and it reads back as a strongly-typed object. It costs two things: (1) JSON subfields can't be efficiently put in a WHERE or indexed (no “filter by embedding model name”); (2) every read/write runs a round of (de)serialization, a CPU cost. impl=JSON lands as JSONB on Postgres and text on SQLite, but that's transparent to the upper layers. For Letta — configs that change a lot and are rarely queried by subfield — it pays off.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“一张蓝图、两座工厂”的比喻，把“一条 archival 记忆从写入到按相似度被搜出来”完整讲一遍，并想透四件事：(1) 为什么说“用哪套库”不是 server/db.py 里的一个聪明 switch，而是散在六处、大多 import 期就声明好的接缝？settings.database_engine 这个 @property 凭什么判定 Postgres / SQLite，又为什么不能用 LETTA_DATABASE_ENGINE 手动选？(2) 同一个 Passage 模型，为什么 Postgres 落成 pgvector 的 Vector(4096)、SQLite 落成 CommonVector(BINARY)？那个“列类型在 import 期烤进模型”的 if，为什么意味着一个进程运行时不能切库？(3) 同一句“按相似度排序”，怎么在 Postgres 编译成原生 &lt;=&gt;（可 ANN）、在 SQLite 变成 numpy UDF 全表暴力？为什么 sqlite_vec.load() 注释掉了、却还要 import sqlite_vec？(4) 为什么把任意维度 np.pad 到 4096 对 cosine 排序是“免费”的（请从点积与 L2 范数说清）？再把 pydantic-in-DB 那列 JSON 的“免迁移 + 保真”红利与“子字段不可索引 + 序列化开销”代价摆到一起权衡。最后回到那个诚实星号：v0.16.8 的 server/db.py 只建 Postgres，这跟“双库故事完整活在 ORM 与 alembic”是否矛盾？",
+                "en": "Using this lesson's “one blueprint, two factories” metaphor, narrate a single archival memory from being written to being searched out by similarity, and think through four things: (1) Why is “which database” not a clever switch in server/db.py but a seam scattered across six places, most declared at import time? On what basis does the settings.database_engine @property decide Postgres / SQLite, and why can't you pick it by hand with LETTA_DATABASE_ENGINE? (2) For the same Passage model, why does Postgres land as pgvector's Vector(4096) and SQLite as CommonVector(BINARY)? Why does that “bake the column type into the model at import time” if mean a process can't switch databases at runtime? (3) How does the same “order by similarity” compile into the native &lt;=&gt; (ANN-capable) on Postgres and into a numpy UDF brute-force over the whole table on SQLite? And why is sqlite_vec still imported even though sqlite_vec.load() is commented out? (4) Why is np.padding any dimension to 4096 “free” for cosine ranking (explain it from the dot product and the L2 norm)? Then weigh the pydantic-in-DB JSON column's “no-migration + fidelity” payoff against its “non-indexable subfields + serialization overhead” cost. Finally, return to the honest asterisk: v0.16.8's server/db.py only builds Postgres — does that contradict “the dual-DB story lives fully in the ORM and alembic”?",
+            },
+        ],
+    },
 }
 
 

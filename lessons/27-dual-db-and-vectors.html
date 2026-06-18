@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>27 · 双数据库与向量存储 / Dual database &amp; vector storage - Letta 图解教程</title>
+<meta name="description" content="第七部分 · 服务端与持久化｜双数据库与向量存储 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="27 · 双数据库与向量存储 / Dual database &amp; vector storage - Letta 图解教程">
+<meta property="og:description" content="第七部分 · 服务端与持久化｜双数据库与向量存储 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="27 · 双数据库与向量存储 / Dual database &amp; vector storage - Letta 图解教程">
+<meta name="twitter:description" content="第七部分 · 服务端与持久化｜双数据库与向量存储 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第七部分 · 服务端与持久化</span><span class="lang-en">Part 7 · Server &amp; persistence</span></span>
+    <span class="pill">27 / 27</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第七部分 · 服务端与持久化</span><span class="lang-en">Part 7 · Server &amp; persistence</span></div>
+    <h1><span class="lang-zh">双数据库与向量存储</span><span class="lang-en">Dual database &amp; vector storage</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">上一课在三楼档案室，我们看清了 <span class="mono">SqlalchemyBase</span> 怎么把隔离、软删、审计焊进每条 SQL。可那句 SQL 最终落进哪个库、靠哪个引擎执行，当时只用一句"走到楼底的引擎房"带过。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就推开引擎房那扇门：同一套 ORM 模型，怎么在 SQLite 与 Postgres 两套库上都能跑？向量又怎么在两套库里存、怎么搜？答案不在某个聪明的 <span class="mono">db.py</span> 里，而是<strong>散在六处、且大多声明式</strong>的接缝。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>一套 ORM 模型，按一个开关在两套库上跑；向量两存两搜；配置当 JSON blob 整块塞进列</strong>。</p>
+<p>开关＝ <span class="mono">settings.database_engine</span>：配了 Postgres URI 就走 Postgres，否则走 SQLite。</p>
+<p>向量两套：Postgres 用 pgvector 的 <span class="mono">Vector(4096)</span> + 原生算子 <span class="mono">&lt;=&gt;</span>；SQLite 用 BINARY blob + numpy 写的 <span class="mono">cosine_distance</span> 全表暴力。</p>
+<p>pydantic-in-DB：<span class="mono">EmbeddingConfig</span> / <span class="mono">LLMConfig</span> 这类配置不拆成列，整个 <span class="mono">model_dump</span> 成 JSON 存一格。</p>
+<p>一处诚实的现状：v0.16.8 的 <span class="mono">server/db.py</span> 其实只建 Postgres——双库故事完整活在 ORM 与 alembic 层。</p>
+</div>
+<p>这不是一句"if 后端 == sqlite"的大开关。真正的接缝<strong>分布在六处</strong>，大多在 import 期就声明好，而不是运行时临场判断。</p>
+<p>先把镜头拉远：第 24 课看三层架构，第 25 课看 manager 开事务，第 26 课看每行怎么被隔离。这一课走到最底，看这些行<strong>落在哪个库、向量怎么被搜出来</strong>。</p>
+<p>也先打个预防针：本课有几处专治"想当然"。比如 <span class="mono">db.py</span> 并不分库、<span class="mono">database_engine</span> 不是个能手设的字段、SQLite 的相似度也不是 sqlite-vec 原生——下文逐一点破。</p>
+<h2>一套 ORM，两套引擎：换的是零件，不是蓝图</h2>
+<p>先看全景。<span class="mono">letta/orm/</span> 下那约 40 个模型只写<strong>一份</strong>；到底落进哪套库，由一个开关 <span class="mono">settings.database_engine</span> 决定。两条线并排看最清楚：</p>
+<div class="cols">
+  <div class="col"><h4>🪶 SQLite · 开发默认</h4>
+  <p>驱动：<span class="mono">aiosqlite</span>（async）。</p>
+  <p>向量列：<span class="mono">CommonVector</span>，一个 BINARY blob。</p>
+  <p>距离：<span class="mono">func.cosine_distance</span>，走 numpy UDF。</p>
+  <p>搜索：<span class="mono">ORDER BY</span> 全表暴力，没有 ANN。</p>
+  <p>迁移：单个 baseline 快照 <span class="mono">2c059cad97cc</span>。</p>
+  </div>
+  <div class="col"><h4>🐘 Postgres · 生产</h4>
+  <p>驱动：<span class="mono">asyncpg</span>（async）。</p>
+  <p>向量列：pgvector 的 <span class="mono">Vector(4096)</span>。</p>
+  <p>距离：<span class="mono">cosine_distance()</span> → SQL <span class="mono">&lt;=&gt;</span>。</p>
+  <p>搜索：可挂 <span class="mono">ivfflat</span> / <span class="mono">hnsw</span> 索引。</p>
+  <p>迁移：从 <span class="mono">9a505cc7eca9</span> 起的增量链。</p>
+  </div>
+</div>
+<p>看出门道了吗？两列的<strong>形状一模一样</strong>，被换掉的只是零件：驱动、向量列类型、距离算子、序列化方式、迁移路径，以及"要不要把向量填充到定长"。</p>
+<p>同样别忽略"没被换"的那一长串：表名、列名、关系、约束、<span class="mono">SqlalchemyBase</span> 的隔离与审计、manager 的事务边界——全来自<strong>同一份模型</strong>，两库一字不差。换库只动了贴近存储的薄薄一层。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">一个诚实的星号：上表把"双库"画得很对称，但 v0.16.8 的 <span class="mono">server/db.py</span> 模块级<strong>只建 Postgres async 引擎</strong>。双库的完整故事活在 ORM 列类型与 alembic 迁移里，运行期引擎层已悄悄收敛到 Postgres——为什么这样，本课末尾的"诚实星号"专门讲。</span></div>
+<div class="card analogy"><div class="tag">🏭 生活类比</div>
+<p>把这套设计想成<strong>一张蓝图、两座工厂</strong>。蓝图＝ORM 模型，画的是"有哪些表、哪些列、怎么关联"，<strong>一份不变</strong>。</p>
+<p>两座工厂＝SQLite 厂与 Postgres 厂。同一张蓝图发下去，按墙上那个开关（<span class="mono">database_engine</span>）在装配线上换不同零件。</p>
+<p>换的零件很具体：向量列用哪种料（pgvector 定长格 vs BINARY 袋子）、距离用哪台机器（原生 <span class="mono">&lt;=&gt;</span> vs numpy 手算）、迁移走哪条流水线。</p>
+<p>妙在工人（写新功能的人）只认蓝图——他不必知道今天在哪座厂开工，照着模型写就行，两套库都装得出来。</p>
+</div>
+<p>这个"蓝图不变、零件可换"的设计，正是接下来每节要逐一拆开的：先看那个开关，再看换列类型、换距离算子、换迁移路径。</p>
+<h2>唯一的开关：database_engine 其实是个 property</h2>
+<p>"两套库"听起来该有个枚举让你挑。可打开 <span class="mono">settings.py</span> 你会愣一下：<span class="mono">database_engine</span> <strong>根本不是字段</strong>，而是个只读 <span class="mono">@property</span>。</p>
+<p>它的逻辑短到一行：<span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>。换句话说，<strong>配没配 Postgres URI</strong>，就是 dev/prod 的全部分界。</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">settings.database_engine</div><div class="nd">@property，不是字段</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">看 letta_pg_uri_no_default</div><div class="nd">URI 或 None</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">非 None → POSTGRES</div><div class="nd">否则 → SQLITE</div></div>
+</div>
+<p>注意这里有个陷阱：<span class="mono">letta_pg_uri</span> <strong>永远</strong>有默认值，所以判定不能看它；真正"URI-或-None"的是 <span class="mono">letta_pg_uri_no_default</span>。</p>
+<p><span class="mono">DatabaseChoice</span> 是个 <span class="mono">(str, Enum)</span>，只有 <span class="mono">POSTGRES</span> / <span class="mono">SQLITE</span> 两值。它是被<strong>读出来的结论</strong>，不是被你写进去的选择。</p>
+<p>那个默认 URI 还透露了驱动：<span class="mono">postgresql+pg8000://…</span>——同步路径用 pg8000，异步引擎再换成 asyncpg。组成它的是一组 <span class="mono">LETTA_PG_HOST / DB / USER / PASSWORD / PORT</span>，或直接给整条 <span class="mono">LETTA_PG_URI</span>。</p>
+<p>引擎本身在哪建？这正是第一处反直觉：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/db.py · letta/orm/sqlite_functions.py</span><span class="ln">引擎只建 Postgres；给任何 SQLite 连接挂 numpy UDF（节选）</span></div>
+<pre><span class="cm"># server/db.py：模块级只有一条 async 引擎——Postgres-only</span>
+engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span class="cm"># 不按 database_engine 分叉、不在此加载 sqlite-vec</span>
+
+<span class="cm"># orm/sqlite_functions.py：任何 SQLite 连接一建立，就挂上 numpy 写的距离函数</span>
+<span class="nb">@event.listens_for(Engine, &quot;connect&quot;)</span>
+<span class="kw">def</span> <span class="fn">register_functions</span>(dbapi_conn, _):
+    <span class="kw">if</span> <span class="fn">isinstance</span>(dbapi_conn, sqlite3.Connection):
+        dbapi_conn.<span class="fn">create_function</span>(<span class="st">&quot;cosine_distance&quot;</span>, 2, cosine_distance)  <span class="cm"># 纯 numpy 实现</span>
+        <span class="cm"># sqlite_vec.load(dbapi_conn)  ← 注释掉了：不用 sqlite-vec 原生相似度</span>
+</pre></div>
+<p>两段对照着看：左边 <span class="mono">db.py</span> 的引擎是 Postgres-only；右边那个全局 <span class="mono">@event.listens_for</span> 才是 SQLite 的接缝——它给<strong>任何</strong> SQLite 连接注册一个 numpy 写的 <span class="mono">cosine_distance</span>。</p>
+<p>留意最后那行注释：<span class="mono">sqlite_vec.load()</span> 是<strong>被注释掉</strong>的。SQLite 的相似度靠纯 numpy UDF，而不是 sqlite-vec 原生算子——这个纠正后面还会强调。</p>
+<p>这个 <span class="mono">@event.listens_for(Engine, "connect")</span> 是<strong>全局</strong>的：不管哪条 SQLite 连接——开发库、测试库、临时内存库——一建立就挂上这个 UDF。所以"SQLite 能算 cosine"是连接级的既成事实，无需每处显式启用。</p>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">settings.py::Settings.database_engine</span>——<span class="mono">@property</span>：<span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>；<span class="mono">DatabaseChoice(str, Enum){POSTGRES, SQLITE}</span>。</p>
+<p><span class="mono">orm/passage.py::BasePassage</span>——import 期按 <span class="mono">database_engine</span> 定 embedding 列类型。</p>
+<p><span class="mono">orm/custom_columns.py</span>——pydantic-in-DB 的一批 <span class="mono">TypeDecorator</span>；<span class="mono">orm/sqlite_functions.py::register_functions</span>——SQLite 的 numpy <span class="mono">cosine_distance</span>。</p>
+<p><span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span>——定长填充的那把尺；<span class="mono">alembic/env.py</span>——选 URI、分两后端建表。</p>
+</div>
+<details class="accordion"><summary><span class="mono">database_engine</span> 到底怎么定？能用环境变量手动选 SQLite 吗？</summary><div class="acc-body">
+<p>不能直接选。<span class="mono">database_engine</span> 是个<strong>派生 <span class="mono">@property</span></strong>，不是可写字段：它只看 <span class="mono">letta_pg_uri_no_default</span> 是不是 None。</p>
+<p><span class="mono">letta_pg_uri</span> 永远有默认值（<span class="mono">postgresql+pg8000://letta:letta@localhost:5432/letta</span>）；真正"URI-或-None"的是 <span class="mono">letta_pg_uri_no_default</span>。配了它＝Postgres，没配＝SQLite。</p>
+<p><strong>没有 <span class="mono">LETTA_DATABASE_ENGINE=sqlite</span> 这种开关</strong>。你只要设了任意 <span class="mono">LETTA_PG_*</span>（host / db / user / password / port / uri），就会<strong>静默</strong>翻成 Postgres。</p>
+<p>所以"dev 用 SQLite、prod 用 Postgres"不是手动切换，而是<strong>有没有给它 PG 连接信息</strong>这一件事的副作用。</p>
+</div></details>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">想强制 SQLite？别找开关，<strong>清掉所有 <span class="mono">LETTA_PG_*</span> 环境变量</strong>即可——只要 <span class="mono">letta_pg_uri_no_default</span> 为 None，<span class="mono">database_engine</span> 自然回到 SQLITE。反过来，生产里"怎么没走 Postgres"，先查是不是漏配了 PG URI。</span></div>
+<h2>向量怎么存：把任意维度塞进定长 4096 的一列</h2>
+<p>记忆里的 archival / recall（第 10、11 课）本质是带 embedding 的 <span class="mono">Passage</span>。可不同模型输出的维度天差地别：有的 1024，有的 1536，有的 3072。一列怎么装得下？</p>
+<p>Letta 的答案简单粗暴：<span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span>——所有 embedding 在写入和查询时都 <span class="mono">np.pad</span> 到 4096 维，<strong>尾部补 0</strong>。于是一个 <span class="mono">Vector(4096)</span> 列就能装下任意模型的输出。</p>
+<p>填充发生在<strong>写入前</strong>：embedding 一生成就被 <span class="mono">np.pad</span> 到 4096，再交给 ORM 落库；查询向量在比对前也走同一步。两端对齐，定长列才装得下、比得了。</p>
+<div class="cute"><div class="row"><span class="emoji">📐</span><span class="lab">定长 4096 格</span><span class="arrow">→</span><span class="emoji">🧮</span><span class="lab">某模型 1536 维</span><span class="arrow">→</span><span class="emoji">0️⃣</span><span class="bubble">尾部补 0 填满</span></div><div class="cap">📐 一列就是 4096 维的固定格子；🧮 某模型只输出 1536 维；0️⃣ 尾部补 0 填满格子——补的全是 0，<strong>cosine 排序一点不变</strong>，所以一列能装下任意模型的输出</div></div>
+<p>等等，补一堆 0 进去，不会把相似度算歪吗？这正是设计的精妙处：<strong>补 0 对 cosine 完全无影响</strong>。</p>
+<div class="cellgroup"><div class="cg-cap"><b>补 0 为什么"免费"：cosine = 点积 /（L2 × L2），两端都不动</b></div><div class="cells"><span class="cell hl">点积 +0×x=0</span><span class="sep">→</span><span class="cell">分子不变</span><span class="sep">·</span><span class="cell">L2 +0²=0</span><span class="sep">→</span><span class="cell">分母不变</span><span class="sep">⇒</span><span class="cell hl">cosine 不变</span></div></div>
+<p>道理很直白。cosine ＝点积 ÷（两个向量的 L2 范数之积）。补的是 0：点积里 <span class="mono">0 × 任何 = 0</span>，分子不变；L2 里 <span class="mono">0² = 0</span>，分母也不变。<strong>分子分母都不动，排序自然一模一样</strong>。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">所以"定长一列装任意模型"不是近似、不是妥协，而是<strong>数学上严格等价于不填充</strong>，代价只是多存一串 0、占点空间。SQLite 的 numpy UDF <span class="mono">cosine_distance</span> 会先用 <span class="mono">validate_and_transform_embedding</span> 校验维度＝＝4096，对不上（捕获 <span class="mono">ValueError</span> 后）返回 <span class="mono">0.0</span>——填充是写路和查询路<strong>共同的前提</strong>。</span></div>
+<p>那"存哪种列"呢？这是六处接缝里的第二处，发生在 <span class="mono">BasePassage</span> 的<strong>类体里、import 期</strong>：Postgres 用 pgvector 的 <span class="mono">Vector(4096)</span>，SQLite 用 <span class="mono">CommonVector</span>（一个 BINARY blob）。具体代码下一节连搜索一起看。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">MAX_EMBEDDING_DIM</span> 的注释明确写着"别改，否则得重置数据库"：它定死了列宽，一旦改动，就和库里已存的定长向量对不上了。这把尺是<strong>全局约定</strong>，不是某张表的局部选择。</span></div>
+<p>定长也不是全无代价：1024 维的模型，每行白存 3072 个 0，磁盘和内存都摊上这份浪费。但换来的是<strong>一列通吃所有模型</strong>、不必为每种维度各建表——对一个要兼容多家 embedding 的系统，这笔账划算。</p>
+<h2>向量怎么搜：原生 &lt;=&gt; vs numpy 暴力</h2>
+<p>存定了，怎么搜？这是六处接缝里的第三处，也是运行时唯一真正"分两路"的地方：同一句"按相似度排序"，在两套库上编译成完全不同的执行。</p>
+<p>先把列类型和搜索分支放进同一张代码里看——它们其实共用一个 <span class="mono">if database_engine is POSTGRES</span>：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py · letta/orm/sqlalchemy_base.py</span><span class="ln">import 期定列类型；运行时按引擎分两路搜（节选）</span></div>
+<pre><span class="cm"># orm/passage.py::BasePassage —— 类体里、import 期就把列类型烤进模型</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    embedding = <span class="fn">mapped_column</span>(<span class="fn">Vector</span>(MAX_EMBEDDING_DIM))   <span class="cm"># pgvector 定长 4096</span>
+<span class="kw">else</span>:
+    embedding = <span class="fn">Column</span>(CommonVector)                      <span class="cm"># SQLite：BINARY blob</span>
+
+<span class="cm"># orm/sqlalchemy_base.py 查询构造器：运行时按同一个开关，分两路排序</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    query = query.<span class="fn">order_by</span>(cls.embedding.<span class="fn">cosine_distance</span>(q_emb).<span class="fn">asc</span>())          <span class="cm"># 编译成 SQL &lt;=&gt;</span>
+<span class="kw">else</span>:
+    query = query.<span class="fn">order_by</span>(<span class="fn">func.cosine_distance</span>(cls.embedding, q_emb).<span class="fn">asc</span>())   <span class="cm"># 走 numpy UDF</span>
+</pre></div>
+<p>看清两处分叉：上半段是 <strong>import 期</strong>的——类体里那个 <span class="mono">if</span> 在模块被导入时就执行一次，把列类型<strong>烤死</strong>在模型上。所以一个进程被特化到一种后端，运行时<strong>不能切库</strong>。</p>
+<p>下半段是<strong>运行时</strong>的：Postgres 把 <span class="mono">cosine_distance()</span> 翻成原生算子 <span class="mono">&lt;=&gt;</span>，SQLite 则调那个我们在 <span class="mono">register_functions</span> 里见过的 numpy UDF。把全貌摆成一张表：</p>
+<table class="t">
+<tr><th>维度</th><th>Postgres（pgvector）</th><th>SQLite</th></tr>
+<tr><td>向量列</td><td class="mono">Vector(4096)</td><td class="mono">CommonVector（BINARY）</td></tr>
+<tr><td>距离调用</td><td class="mono">embedding.cosine_distance(q)</td><td class="mono">func.cosine_distance(col, q)</td></tr>
+<tr><td>实际算子</td><td>SQL 原生 <span class="mono">&lt;=&gt;</span></td><td>Python numpy UDF</td></tr>
+<tr><td>排序</td><td class="mono">ORDER BY dist ASC</td><td class="mono">ORDER BY dist ASC</td></tr>
+<tr><td>索引 / ANN</td><td>可挂 <span class="mono">ivfflat</span> / <span class="mono">hnsw</span></td><td>无，全表暴力</td></tr>
+<tr><td>适用规模</td><td>大库也扛得住</td><td>小库 / 开发够用</td></tr>
+</table>
+<p>两边<strong>语义相同</strong>——都按 cosine 升序取最近的若干条；差别只在执行：Postgres 可借索引做近似最近邻（ANN），SQLite 对全表逐行算、再排序。</p>
+<p>有人担心"全表暴力"太慢。在开发与小数据量下其实不慢：几千上万条逐行算 cosine，numpy 是向量化的，眨眼就回。真正需要 ANN 的是生产级海量记忆，那时你本就该上 Postgres。</p>
+<p>这两路分支也不只活在 <span class="mono">sqlalchemy_base.py</span> 的通用查询里：<span class="mono">services/helpers/agent_manager_helper.py</span> 拼 archival 检索时带的是同一个 <span class="mono">if POSTGRES</span>——同一道分叉，在用到向量搜索的地方各写一次。</p>
+<p>这也呼应第 10、11 课：你读过的 archival / recall 检索，底层那句"找最像的记忆"，到这层就分成了这两条路。</p>
+<details class="accordion"><summary>向量在两套库里到底怎么存、怎么搜？性能差在哪？</summary><div class="acc-body">
+<p><strong>存</strong>：Postgres 是 pgvector 的 <span class="mono">Vector(4096)</span> 定长列；SQLite 是 <span class="mono">CommonVector</span>——一个 BINARY blob，用 <span class="mono">sqlite_vec.serialize_float32</span> 打包、<span class="mono">np.frombuffer</span> 还原。</p>
+<p><strong>搜</strong>：Postgres 把 <span class="mono">cosine_distance()</span> 编译成原生算子 <span class="mono">&lt;=&gt;</span>，可借 <span class="mono">ivfflat</span> / <span class="mono">hnsw</span> 索引做 ANN；SQLite 调 numpy UDF，对<strong>全表</strong>逐行算距离再排序。</p>
+<p>所以差距在<strong>规模</strong>：小库、开发环境，SQLite 全表暴力毫无压力；行数一大，就得靠 Postgres 的向量索引。两边语义一致，只是一个有 ANN、一个没有。</p>
+<p>别忘了：两边都先把查询向量 <span class="mono">np.pad</span> 到 4096 再比——填充是存和搜<strong>共同的前提</strong>，它让"任意模型的向量"落进同一个定长空间。</p>
+</div></details>
+<h2>pydantic-in-DB：把配置整块塞进一列 JSON</h2>
+<p>魔术的另一半和向量无关，却同样优雅：<span class="mono">EmbeddingConfig</span>、<span class="mono">LLMConfig</span>、<span class="mono">ToolRules</span> 这些配置，<strong>不拆成列</strong>，而是整块当 JSON blob 存一格。</p>
+<p>第 21 课你见过 <span class="mono">LLMConfig</span> / <span class="mono">EmbeddingConfig</span> 在内存里是 pydantic 模型。它们怎么落库？靠 <span class="mono">custom_columns.py</span> 里一批 <span class="mono">TypeDecorator</span>——SQLAlchemy 的"列类型适配器"。</p>
+<p>它在 ORM 与 DB 之间架了一座双向桥，往返各走一道转换：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>EmbeddingConfig（pydantic）</h4><p>内存里是个带类型、带默认值的 pydantic 模型。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>写 · process_bind_param</h4><p><span class="mono">model_dump(mode="json")</span> → 一个普通 dict。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>落库 · 一列 JSON</h4><p>整块配置塞进 <span class="mono">impl=JSON</span> 那一格，关系 schema 保持扁平。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>读 · process_result_value</h4><p>dict → <span class="mono">Model(**data)</span>，还原成 pydantic。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>schema-on-read 兜底</h4><p><span class="mono">deserialize_llm_config</span> 给缺失字段填默认——加字段<strong>免迁移</strong>。</p></div></div>
+</div>
+<p>这批 <span class="mono">TypeDecorator</span> 都继承同一套骨架（<span class="mono">cache_ok=True</span>，委托 <span class="mono">helpers/converters.py</span> 做真正的转换）。挑两个最有代表性的看代码：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/custom_columns.py</span><span class="ln">两类 TypeDecorator：配置存 JSON、向量存 BINARY（节选）</span></div>
+<pre><span class="kw">class</span> <span class="fn">EmbeddingConfigColumn</span>(TypeDecorator):
+    impl = JSON                          <span class="cm"># 底层就是一列 JSON</span>
+    cache_ok = <span class="kw">True</span>
+    <span class="kw">def</span> <span class="fn">process_bind_param</span>(self, value, _):      <span class="cm"># 写：pydantic -&gt; dict</span>
+        <span class="kw">return</span> value.<span class="fn">model_dump</span>(mode=<span class="st">&quot;json&quot;</span>) <span class="kw">if</span> value <span class="kw">else</span> value
+    <span class="kw">def</span> <span class="fn">process_result_value</span>(self, value, _):    <span class="cm"># 读：dict -&gt; pydantic</span>
+        <span class="kw">return</span> <span class="fn">EmbeddingConfig</span>(**value) <span class="kw">if</span> value <span class="kw">else</span> value
+
+<span class="kw">class</span> <span class="fn">CommonVector</span>(TypeDecorator):
+    impl = BINARY                        <span class="cm"># 向量打包成二进制</span>
+    cache_ok = <span class="kw">True</span>
+    <span class="kw">def</span> <span class="fn">process_bind_param</span>(self, value, _):
+        <span class="kw">return</span> <span class="fn">serialize_vector</span>(value)           <span class="cm"># sqlite_vec.serialize_float32</span>
+    <span class="kw">def</span> <span class="fn">process_result_value</span>(self, value, _):
+        <span class="kw">return</span> <span class="fn">deserialize_vector</span>(value)         <span class="cm"># np.frombuffer</span>
+</pre></div>
+<p>两个类一个模子：<span class="mono">bind</span> 管"进库怎么打包"，<span class="mono">result</span> 管"出库怎么还原"。<span class="mono">EmbeddingConfigColumn</span> 走 JSON，<span class="mono">CommonVector</span> 走 BINARY——后者正是上文 SQLite 那列向量的真身。</p>
+<p>而 <span class="mono">impl=JSON</span> 在两套库上也各有落地：Postgres 用原生 <span class="mono">JSONB</span>，SQLite 把 JSON 存成文本。但这对上层完全透明——你拿到的永远是还原好的 pydantic 对象。</p>
+<p>有意思的是 <span class="mono">CommonVector</span> 只<strong>借用</strong>了 <span class="mono">sqlite_vec.serialize_float32</span> 来打包字节，并没有用它的原生相似度。还记得吗？<span class="mono">sqlite_vec.load()</span> 是注释掉的。</p>
+<p>顺带认全这家族：<span class="mono">impl=JSON</span> 那一脉有 <span class="mono">EmbeddingConfigColumn</span>、<span class="mono">LLMConfigColumn</span>、<span class="mono">ToolRulesColumn</span> 三个，套路一致；<span class="mono">CommonVector</span> 是 <span class="mono">impl=BINARY</span> 的独苗。</p>
+<p>其中 <span class="mono">deserialize_llm_config</span> 多做一步：读出来若缺新字段，就<strong>就地补默认</strong>再构造 pydantic。这正是 schema-on-read——老数据不必迁移，读时顺手"升级"。</p>
+<details class="accordion"><summary>把配置塞进一列 JSON，是聪明还是偷懒？取舍在哪？</summary><div class="acc-body">
+<p>买到两样东西。其一<strong>免迁移</strong>：给 <span class="mono">LLMConfig</span> 加个 pydantic 字段，不用动表结构——老行反序列化时 <span class="mono">deserialize_llm_config</span> 自动补默认（schema-on-read）。</p>
+<p>其二<strong>保真</strong>：整个 pydantic 对象原样进、原样出，嵌套结构不被拍平成一堆列，读回来还是那个强类型对象。</p>
+<p>代价也实在：JSON 里的子字段<strong>不能 <span class="mono">WHERE</span>、不能建索引</strong>——你没法高效地"按 embedding 模型名筛选"。而且每次读写都要跑一遍 (de)序列化，有 CPU 开销。</p>
+<p>一句话取舍：<strong>用"不可查询子字段 + 序列化开销"，换"扁平 schema + 加字段免迁移 + 配置保真"</strong>。对 Letta 这种配置多变、又很少按子字段查询的场景，划算。</p>
+</div></details>
+<h2>alembic：两套迁移，怎么不打架</h2>
+<p>列类型、向量、配置都说清了，最后一处接缝是<strong>建表与迁移</strong>。两套库的 schema 怎么各自立起来、又不互相踩？答案在 <span class="mono">alembic/env.py</span>。</p>
+<p><span class="mono">env.py</span> 先按 <span class="mono">database_engine</span> 选 URI：Postgres 用 pg8000 同步 URI，SQLite 用 <span class="mono">sqlite:///…sqlite.db</span>。建表策略则一边一个套路。</p>
+<p><strong>Postgres</strong> 走一条<strong>增量链</strong>：从 <span class="mono">9a505cc7eca9</span> 起一版版往上叠。早期迁移还带门禁——<span class="mono">if not settings.letta_pg_uri_no_default: return</span>，没配 PG 就跳过。</p>
+<p><strong>SQLite</strong> 则是<strong>单个 baseline 快照</strong> <span class="mono">2c059cad97cc</span>：一个反向门禁 <span class="mono">if settings.letta_pg_uri_no_default: return</span>，用纯 <span class="mono">sa.JSON()</span> 一次性把整套 schema 建出来。</p>
+<p>baseline 之后的迁移<strong>两边都跑</strong>，方言差异在脚本里<strong>内联处理</strong>——比如时间默认值，Postgres 用 <span class="mono">now()</span>，SQLite 用 <span class="mono">CURRENT_TIMESTAMP</span>。</p>
+<p>这套设计的红利是 dev 体验：开发者装好后不配任何 PG，直接拿 SQLite 起一个本地库；要上生产，配上 PG URI，同一套迁移自动走 Postgres 的增量链。<strong>一份代码，两种部署</strong>。</p>
+<details class="accordion"><summary>一套 alembic 怎么同时伺候两套库？baseline 和增量链什么关系？</summary><div class="acc-body">
+<p>靠两道<strong>方向相反的门禁</strong>。Postgres 早期迁移：<span class="mono">if not letta_pg_uri_no_default: return</span>——没配 PG 就整段跳过；SQLite baseline：<span class="mono">if letta_pg_uri_no_default: return</span>——配了 PG 反而跳过。</p>
+<p>于是同一次 <span class="mono">upgrade</span>，Postgres 那侧顺着 <span class="mono">9a505cc7eca9</span> 的增量链一版版建；SQLite 那侧只认 baseline <span class="mono">2c059cad97cc</span>，用纯 <span class="mono">sa.JSON()</span> 一把建全。</p>
+<p>baseline <strong>之后</strong>新增的迁移没有门禁，<strong>两库都执行</strong>；遇到方言差异（<span class="mono">now()</span> vs <span class="mono">CURRENT_TIMESTAMP</span>、类型名等）就在脚本里按 dialect 内联分叉。</p>
+<p>所以 SQLite 不必重放 Postgres 那条长长的历史——它直接从一张"今日全貌"的快照起步，再跟上后续增量。两条起跑线，同一条终点。</p>
+</div></details>
+<h2>诚实的星号：为什么 v0.16.8 的 db.py 只建 Postgres</h2>
+<p>本课开头就埋了伏笔：双库画得这么对称，可 <span class="mono">server/db.py</span> 模块级<strong>只</strong> <span class="mono">create_async_engine(async_pg_uri)</span>，根本不按 <span class="mono">database_engine</span> 建 SQLite 引擎。这不矛盾吗？</p>
+<p>不矛盾，而是<strong>分层收敛</strong>。双库的故事完整活在<strong>两层</strong>：ORM 的列类型（<span class="mono">Vector</span> vs <span class="mono">CommonVector</span>）、alembic 的两后端建表。这两层至今仍是货真价实的双轨。</p>
+<p>真正悄悄收敛到 Postgres 的，只是<strong>运行期那条 async 引擎</strong>。换句话说，"声明层"还双着，"连接层"先一步统一了。唯一还构造 SQLite URI 的地方，是 <span class="mono">alembic/env.py</span>。</p>
+<p>对你读码的实际影响：想确认"当前进程在用哪套库"，别去翻 <span class="mono">db.py</span>（那里永远 Postgres），而要看 <span class="mono">settings.database_engine</span> 的取值——它才是 ORM 列类型与迁移路径的真正依据。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">这其实是个很好的教学点：<strong>读架构别只盯一个文件</strong>。只看 <span class="mono">db.py</span>，你会以为 Letta 只支持 Postgres；只看 ORM 与 alembic，你又会以为运行期能随意切 SQLite。真相是分层的——不同层处在收敛的不同阶段。</span></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>"同一套代码两套库"最反直觉的一点：<strong>根本没有一个 <span class="mono">db.py</span> 里的聪明 switch</strong>。接缝是<strong>分布式且大多声明式</strong>的。</p>
+<p>数一数就五六处：一个派生的 <span class="mono">database_engine</span> property；一句<strong>类体 <span class="mono">if</span> 把 embedding 列类型在 import 期烤进模型</strong>（所以一个进程被特化到一种后端、运行时不能切库）；查询构造器里两行 <span class="mono">order_by</span> 分支；一个全局 <span class="mono">@event.listens_for</span> 往任何 SQLite 连接注入 numpy <span class="mono">cosine_distance</span>；外加 <span class="mono">alembic/env.py</span> 选 URI。</p>
+<p>pydantic-in-DB 是另一半魔术：配置当 JSON blob、schema-on-read 演化，<strong>保真胜过范式化</strong>。</p>
+<p>而安静的拱顶石是 <span class="mono">MAX_EMBEDDING_DIM=4096</span>：把每个 embedding 零填充到定长，一个 <span class="mono">Vector(4096)</span> 列就能装任意模型的输出；又因等量补 0 不改点积与 L2 范数，<strong>cosine 排序与未填充数学等价</strong>。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p><span class="mono">server/db.py</span> <strong>不</strong>按后端分叉：v0.16.8 它是 <strong>Postgres-only async</strong>，别在这找 SQLite 引擎或 sqlite-vec 加载。</p>
+<p><span class="mono">database_engine</span> 是 <span class="mono">@property</span>，由"<strong>有没有配 PG URI</strong>"决定，<strong>没有 <span class="mono">LETTA_DATABASE_ENGINE</span></strong> 这种环境变量。</p>
+<p>SQLite 的相似度是 <strong>numpy UDF，不是 sqlite-vec 原生</strong>——<span class="mono">sqlite_vec.load()</span> 是注释掉的，只借了它的 <span class="mono">serialize_float32</span>。</p>
+<p>没有 <span class="mono">AgentPassage</span> 这个 ORM 类：只有 <span class="mono">SourcePassage</span> 与 <span class="mono">ArchivalPassage</span>，都继承 <span class="mono">BasePassage</span>。</p>
+<p>列类型在 <strong>import 期定死</strong>，一个进程运行时<strong>不能切库</strong>；还有——填充让不同模型的向量<strong>可存进同一列</strong>，但不等于它们跨模型<strong>可比</strong>。</p>
+</div>
+<h2>回扣与铺垫：一套 ORM 两套库，装下整座记忆</h2>
+<p>把第七部分收个尾。这四课其实是<strong>从骨架到向量</strong>的一条线：</p>
+<div class="cellgroup"><div class="cg-cap"><b>第七部分四课连起来：从骨架到向量</b></div><div class="cells"><span class="cell">24 三层架构</span><span class="sep">→</span><span class="cell">25 服务层 Managers</span><span class="sep">→</span><span class="cell">26 CRUD / 隔离</span><span class="sep">→</span><span class="cell hl">27 双库 / 向量</span></div></div>
+<p>一句话串起来：<strong>分层立骨架（24）→ manager 管事务与转换（25）→ 一个 base 默认安全（26）→ 一套 ORM 两套库装下记忆的向量（27）</strong>。</p>
+<p>回指第 03 课：你追过的消息生命周期，最终"持久化的那一端"就落在这层引擎与列上。</p>
+<p>回指第 10、11 课：archival / recall 的那些向量，存的就是这里的 <span class="mono">Passage</span>——<span class="mono">SourcePassage</span> 与 <span class="mono">ArchivalPassage</span>，搜索就是本课的两条路。</p>
+<p>也回指第 21 课：<span class="mono">LLMConfig</span> / <span class="mono">EmbeddingConfig</span> 经 <span class="mono">custom_columns</span> 的 JSON 列落库——你配的模型参数，就这么躺在一格 JSON 里。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">一句话收束：<strong>一套 ORM、一个 property 开关、两套库</strong>——pgvector 的原生 <span class="mono">&lt;=&gt;</span> 与 SQLite 的 numpy UDF 各搜各的，定长 4096 让任意模型的向量同住一列，pydantic-in-DB 让配置免迁移地演化。记忆的向量，就这样被两套库稳稳装下。</span></div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><strong>一个开关</strong>：<span class="mono">settings.database_engine</span> 是<strong>派生 @property</strong>——配了 PG URI（<span class="mono">letta_pg_uri_no_default</span> 非 None）走 Postgres，否则 SQLite；<strong>没有 <span class="mono">LETTA_DATABASE_ENGINE</span></strong>。</li>
+<li><strong>接缝分布在六处、大多声明式</strong>：property、<span class="mono">BasePassage</span> import 期列类型 <span class="mono">if</span>、查询两路 <span class="mono">order_by</span>、<span class="mono">register_functions</span> 的 numpy UDF、<span class="mono">custom_columns</span>、<span class="mono">alembic/env.py</span>。</li>
+<li><strong>向量两存两搜</strong>：Postgres ＝ <span class="mono">Vector(4096)</span> + 原生 <span class="mono">&lt;=&gt;</span>（可 ANN 索引）；SQLite ＝ <span class="mono">CommonVector</span> BINARY + numpy UDF 全表暴力。所有向量 <span class="mono">np.pad</span> 到 <span class="mono">MAX_EMBEDDING_DIM=4096</span>，<strong>补 0 不改 cosine</strong>。</li>
+<li><strong>pydantic-in-DB</strong>：<span class="mono">TypeDecorator</span> 把 <span class="mono">EmbeddingConfig</span> / <span class="mono">LLMConfig</span> 整块 <span class="mono">model_dump</span> 成 JSON 存一列；schema-on-read 加字段免迁移，代价是子字段不可索引 + 序列化开销。</li>
+<li><strong>诚实星号</strong>：v0.16.8 <span class="mono">server/db.py</span> 只建 Postgres async 引擎；双库故事完整活在 ORM 列类型与 alembic 两后端里。</li>
+</ul>
+</div>
+<p>第七部分到此完整：从三层架构，到 manager、到 secure-by-default 的 base、再到双库与向量。服务端怎么把"一个 agent 的记忆"安全地存下、又精准地取回，你已看穿整条链路。</p>
+<p>接下来是<strong>第八部分</strong>：进阶专题与术语表。我们会挑几个横切全局的主题深挖，再用一份术语表把这一路的关键词收拢成可随时回查的索引。</p>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 在 letta v0.16.8 里，“这个进程到底用 SQLite 还是 Postgres”由什么决定？</div>
+  <ol class="opts">
+    <li>环境变量 LETTA_DATABASE_ENGINE=sqlite|postgres，手动二选一</li>
+    <li>server/db.py 启动时按可用驱动探测：装了 asyncpg 就走 Postgres，否则 SQLite</li>
+    <li>派生 @property settings.database_engine：配了 PG URI（letta_pg_uri_no_default 非 None）就是 Postgres，否则 SQLite</li>
+    <li>看 letta_pg_uri 是否为 None——为 None 就回退 SQLite</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。决定权在 settings.py::Settings.database_engine，它是只读 @property，逻辑就一行：POSTGRES if self.letta_pg_uri_no_default else SQLITE。所以“配没配 PG URI”是 dev/prod 的唯一分界；DatabaseChoice(str, Enum) 只有 POSTGRES / SQLITE 两值，是被读出来的结论而非可写字段。没有 LETTA_DATABASE_ENGINE 这种开关——你只要设了任意 LETTA_PG_*（host/db/user/password/port/uri）就会静默翻成 Postgres。陷阱：letta_pg_uri 永远有默认值（postgresql+pg8000://letta:letta@localhost:5432/letta），判定不能看它，真正“URI-或-None”的是 letta_pg_uri_no_default。也不是按驱动探测：server/db.py 模块级只 create_async_engine(async_pg_uri)，不做后端探测。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. “一套 ORM 在两套库上跑”，这个双库接缝主要落在代码哪里？</div>
+  <ol class="opts">
+    <li>由 SQLAlchemy 的方言层自动处理，应用代码完全不含分库逻辑</li>
+    <li>每个 manager 在自己的方法里各写一段 if sqlite/else postgres 来切换</li>
+    <li>集中在 server/db.py 一个 if database_engine 大开关里，按后端建不同引擎</li>
+    <li>分布在多处、大多声明式：列类型、查询分支、连接事件、自定义列、alembic——不在某一个 switch 里</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。双库不是 server/db.py 里的聪明 switch——v0.16.8 它其实是 Postgres-only async（模块级只 create_async_engine(async_pg_uri)，不按 database_engine 分叉、不加载 sqlite-vec）。真正的接缝分布在约六处、且大多 import 期声明：① settings.database_engine 这个派生 property；② orm/passage.py::BasePassage 类体里、import 期的 if POSTGRES: Vector(MAX_EMBEDDING_DIM) else CommonVector；③ 查询构造器两路 order_by（sqlalchemy_base.py 与 services/helpers/agent_manager_helper.py）；④ orm/sqlite_functions.py::register_functions 用 @event.listens_for(Engine, “connect”) 给任何 SQLite 连接注册 numpy cosine_distance；⑤ orm/custom_columns.py 的 TypeDecorator；⑥ alembic/env.py 选 URI、分两后端建表。唯一还构造 SQLite URI 的地方就是 alembic/env.py。也不是 manager 各写分支：分叉只在用到向量搜索处各写一次。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 向量在 Postgres 与 SQLite 两套库里分别怎么存、怎么搜？</div>
+  <ol class="opts">
+    <li>SQLite 用 sqlite-vec 的原生 KNN 索引，Postgres 反而是全表暴力没有索引</li>
+    <li>Postgres：pgvector 的 Vector(4096) + 原生算子 &lt;=&gt;；SQLite：CommonVector(BINARY) + numpy cosine_distance UDF</li>
+    <li>两套库都用 pgvector 的 Vector 列与原生 &lt;=&gt;，SQLite 靠 sqlite-vec 扩展提供同款算子</li>
+    <li>两套库都把向量存成 JSON 文本，搜索时在 Python 里反序列化后算 cosine</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。存：Postgres 是 pgvector 的 Vector(4096) 定长列；SQLite 是 orm/custom_columns.py::CommonVector——impl=BINARY 的 TypeDecorator，用 sqlite_vec.serialize_float32 打包、np.frombuffer 还原。搜：列类型与搜索分支共用一个 if settings.database_engine is POSTGRES（orm/passage.py::BasePassage import 期定列类型；sqlalchemy_base.py / agent_manager_helper.py 运行时分支）。Postgres 走 cls.embedding.cosine_distance(q) → 编译成原生 &lt;=&gt;，可挂 ivfflat / hnsw 做 ANN；SQLite 走 func.cosine_distance(col, q) → 调 orm/sqlite_functions.py::register_functions 注册的 numpy UDF，对全表逐行算再 ORDER BY ASC。关键纠正：SQLite 的相似度不是 sqlite-vec 原生——sqlite_vec.load() 是注释掉的，只借了它的 serialize_float32 打包字节。两边语义一致（按 cosine 升序取最近），只是一个有 ANN、一个全表暴力。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. 所有 embedding 都被 np.pad 到 MAX_EMBEDDING_DIM=4096（尾部补 0）。为什么这对相似度搜索是“免费”的？</div>
+  <ol class="opts">
+    <li>因为补的是很小的随机数，对高维点积的影响可以忽略不计</li>
+    <li>等量补 0 既不改点积、也不改 L2 范数，于是 cosine 与未填充时数学上完全相等，排序一模一样</li>
+    <li>因为搜索前会把补的 0 再切掉，只比较原始维度，所以毫无影响</li>
+    <li>因为 cosine 会先做 L2 归一化，归一化能消除任何长度差异，所以补什么都行</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：B</strong>。cosine = 点积 /（两向量 L2 范数之积）。尾部补的全是 0：点积里每个新增项是 0 × x = 0，分子不变；L2 里每个新增项是 0² = 0，分母不变。分子分母都不动，cosine 值与排序就和未填充严格相等——这是恒等式，不是近似。所以 constants.py::MAX_EMBEDDING_DIM=4096 把任意维度零填充到定长，一个 Vector(4096)/CommonVector 列即可装下任意模型的输出，且不影响检索排序。注意几个错误项：并没有“搜索前切掉 0”这一步（写路与查询路都补到 4096 再比，是共同前提）；补的是 0 而非随机数；cosine 确实含归一化，但“免费”的根因是补 0 同时不改点积与范数，而非归一化能抹掉任意填充。代价仅是多存一串 0（如 1024 维白存 3072 个 0）。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. 把 EmbeddingConfig / LLMConfig 这类配置整块 model_dump 成一列 JSON（而非拆成多列），买到了什么、代价是什么？</div>
+  <ol class="opts">
+    <li>买到跨表外键与 JOIN 的能力；代价是失去 pydantic 的类型校验</li>
+    <li>买到更小的存储体积与更快的查询；没有任何实际代价</li>
+    <li>买到对任意子字段高效 WHERE / 建索引；代价是每加一个字段都要写一次 alembic 迁移</li>
+    <li>买到扁平 schema + schema-on-read 演化（加字段免迁移）；代价是子字段不能 WHERE / 建索引，且每次读写都要 (de)序列化</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。orm/custom_columns.py 的 TypeDecorator（EmbeddingConfigColumn / LLMConfigColumn / ToolRulesColumn，impl=JSON、cache_ok=True）把整个 pydantic 对象一格存下：process_bind_param 写时 model_dump(mode=“json”) → dict，process_result_value 读时 dict → Model(**data) 还原（真正转换委托 helpers/converters.py）。买到两样：① 扁平 schema + 免迁移——给 LLMConfig 加 pydantic 字段不动表结构，老行靠 deserialize_llm_config 在读时补默认（schema-on-read）；② 保真——嵌套结构不被拍平，读回仍是强类型对象。代价两样：① JSON 子字段不能高效 WHERE / 建索引（没法“按 embedding 模型名筛选”）；② 每次读写都跑一遍 (de)序列化，有 CPU 开销。impl=JSON 在 Postgres 落成 JSONB、SQLite 落成文本，但对上层透明。对配置多变、又很少按子字段查询的 Letta，这笔账划算。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用本课“一张蓝图、两座工厂”的比喻，把“一条 archival 记忆从写入到按相似度被搜出来”完整讲一遍，并想透四件事：(1) 为什么说“用哪套库”不是 server/db.py 里的一个聪明 switch，而是散在六处、大多 import 期就声明好的接缝？settings.database_engine 这个 @property 凭什么判定 Postgres / SQLite，又为什么不能用 LETTA_DATABASE_ENGINE 手动选？(2) 同一个 Passage 模型，为什么 Postgres 落成 pgvector 的 Vector(4096)、SQLite 落成 CommonVector(BINARY)？那个“列类型在 import 期烤进模型”的 if，为什么意味着一个进程运行时不能切库？(3) 同一句“按相似度排序”，怎么在 Postgres 编译成原生 &lt;=&gt;（可 ANN）、在 SQLite 变成 numpy UDF 全表暴力？为什么 sqlite_vec.load() 注释掉了、却还要 import sqlite_vec？(4) 为什么把任意维度 np.pad 到 4096 对 cosine 排序是“免费”的（请从点积与 L2 范数说清）？再把 pydantic-in-DB 那列 JSON 的“免迁移 + 保真”红利与“子字段不可索引 + 序列化开销”代价摆到一起权衡。最后回到那个诚实星号：v0.16.8 的 server/db.py 只建 Postgres，这跟“双库故事完整活在 ORM 与 alembic”是否矛盾？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Last lesson, in the third-floor archive, we saw how <span class="mono">SqlalchemyBase</span> welds isolation, soft delete and audit into every SQL statement. But which database that SQL finally lands in, and which engine runs it, we waved past with a single phrase — "down to the engine room at the bottom."</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson pushes that engine-room door open: how does one set of ORM models run on both SQLite and Postgres? And how are vectors stored and searched in each? The answer isn't some clever <span class="mono">db.py</span> — it's a seam <strong>scattered across six places, most of it declarative</strong>.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Catch this lesson in one line: <strong>one set of ORM models runs on two databases by one switch; vectors are stored two ways and searched two ways; configs get stuffed whole into a column as a JSON blob</strong>.</p>
+<p>The switch = <span class="mono">settings.database_engine</span>: configure a Postgres URI and you're on Postgres, otherwise SQLite.</p>
+<p>Two vector paths: Postgres uses pgvector's <span class="mono">Vector(4096)</span> + the native operator <span class="mono">&lt;=&gt;</span>; SQLite uses a BINARY blob + a numpy <span class="mono">cosine_distance</span> brute-forced over the whole table.</p>
+<p>pydantic-in-DB: configs like <span class="mono">EmbeddingConfig</span> / <span class="mono">LLMConfig</span> aren't split into columns — the whole thing is <span class="mono">model_dump</span>ed to JSON and stored in one cell.</p>
+<p>One honest caveat: v0.16.8's <span class="mono">server/db.py</span> actually only builds Postgres — the dual-DB story lives fully in the ORM and alembic layers.</p>
+</div>
+<p>This is not one big "if backend == sqlite" switch. The real seam is <strong>distributed across six places</strong>, most of it declared at import time rather than decided on the fly at runtime.</p>
+<p>Pull the camera back first: Lesson 24 looked at the three-layer architecture, Lesson 25 at managers opening transactions, Lesson 26 at how each row is isolated. This lesson goes to the very bottom — which database these rows <strong>land in, and how vectors get searched out</strong>.</p>
+<p>A quick inoculation too: this lesson cures a few "taking it for granted" assumptions. For instance, <span class="mono">db.py</span> doesn't branch by backend, <span class="mono">database_engine</span> isn't a field you can set by hand, and SQLite's similarity isn't sqlite-vec native — we puncture each below.</p>
+<h2>One ORM, two engines: swap the parts, not the blueprint</h2>
+<p>Start with the panorama. The ~40 models under <span class="mono">letta/orm/</span> are written <strong>once</strong>; which database they land in is decided by one switch, <span class="mono">settings.database_engine</span>. Two tracks side by side make it clearest:</p>
+<div class="cols">
+  <div class="col"><h4>🪶 SQLite · dev default</h4>
+  <p>Driver: <span class="mono">aiosqlite</span> (async).</p>
+  <p>Vector column: <span class="mono">CommonVector</span>, a BINARY blob.</p>
+  <p>Distance: <span class="mono">func.cosine_distance</span>, via a numpy UDF.</p>
+  <p>Search: <span class="mono">ORDER BY</span> brute-force over the whole table, no ANN.</p>
+  <p>Migration: a single baseline snapshot <span class="mono">2c059cad97cc</span>.</p>
+  </div>
+  <div class="col"><h4>🐘 Postgres · production</h4>
+  <p>Driver: <span class="mono">asyncpg</span> (async).</p>
+  <p>Vector column: pgvector's <span class="mono">Vector(4096)</span>.</p>
+  <p>Distance: <span class="mono">cosine_distance()</span> → SQL <span class="mono">&lt;=&gt;</span>.</p>
+  <p>Search: can attach an <span class="mono">ivfflat</span> / <span class="mono">hnsw</span> index.</p>
+  <p>Migration: an incremental chain from <span class="mono">9a505cc7eca9</span>.</p>
+  </div>
+</div>
+<p>See the trick? The two tracks are <strong>identically shaped</strong>; only the parts get swapped: driver, vector column type, distance operator, serialization, migration path, and "whether to pad vectors to a fixed length."</p>
+<p>Don't overlook the long list that <strong>isn't</strong> swapped either: table names, column names, relationships, constraints, <span class="mono">SqlalchemyBase</span>'s isolation and audit, the managers' transaction boundaries — all from <strong>one set of models</strong>, identical on both databases. Switching DBs only moves a thin layer next to storage.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">An honest asterisk: the table above paints the "dual DB" very symmetrically, but v0.16.8's <span class="mono">server/db.py</span> only builds a <strong>Postgres async engine</strong> at module level. The full dual-DB story lives in the ORM column types and the alembic migrations; the runtime engine layer has quietly converged on Postgres — the "honest asterisk" at the end of this lesson explains why.</span></div>
+<div class="card analogy"><div class="tag">🏭 An everyday analogy</div>
+<p>Picture this design as <strong>one blueprint, two factories</strong>. The blueprint = the ORM models, drawing "which tables, which columns, how they relate" — <strong>one copy, unchanging</strong>.</p>
+<p>The two factories = the SQLite plant and the Postgres plant. The same blueprint goes to both; following the switch on the wall (<span class="mono">database_engine</span>), the assembly line swaps in different parts.</p>
+<p>The swapped parts are concrete: which material the vector column uses (pgvector's fixed-length slot vs a BINARY bag), which machine computes distance (the native <span class="mono">&lt;=&gt;</span> vs numpy by hand), which line the migration runs down.</p>
+<p>The beauty: the workers (people writing new features) only read the blueprint — they needn't know which plant runs today; coding against the models is enough, and both databases can build it.</p>
+</div>
+<p>This "blueprint fixed, parts swappable" design is exactly what the following sections take apart one by one: first the switch, then swapping the column type, the distance operator, the migration path.</p>
+<h2>The only switch: database_engine is really a property</h2>
+<p>"Two databases" sounds like it should come with an enum to pick from. But open <span class="mono">settings.py</span> and you'll do a double take: <span class="mono">database_engine</span> <strong>isn't a field at all</strong> — it's a read-only <span class="mono">@property</span>.</p>
+<p>Its logic fits on one line: <span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>. In other words, <strong>whether a Postgres URI is configured</strong> is the entire dev/prod dividing line.</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">settings.database_engine</div><div class="nd">a @property, not a field</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">check letta_pg_uri_no_default</div><div class="nd">a URI or None</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">not None → POSTGRES</div><div class="nd">else → SQLITE</div></div>
+</div>
+<p>Note the trap here: <span class="mono">letta_pg_uri</span> <strong>always</strong> has a default, so the decision can't read it; the real "URI-or-None" is <span class="mono">letta_pg_uri_no_default</span>.</p>
+<p><span class="mono">DatabaseChoice</span> is a <span class="mono">(str, Enum)</span> with only two values, <span class="mono">POSTGRES</span> / <span class="mono">SQLITE</span>. It's a conclusion <strong>read out</strong>, not a choice you write in.</p>
+<p>That default URI also reveals the driver: <span class="mono">postgresql+pg8000://…</span> — the sync path uses pg8000, while the async engine switches to asyncpg. It's assembled from a set of <span class="mono">LETTA_PG_HOST / DB / USER / PASSWORD / PORT</span>, or you give the whole <span class="mono">LETTA_PG_URI</span> directly.</p>
+<p>Where is the engine itself built? This is the first counterintuitive spot:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/db.py · letta/orm/sqlite_functions.py</span><span class="ln">engine only builds Postgres; attach a numpy UDF to any SQLite connection (excerpt)</span></div>
+<pre><span class="cm"># server/db.py: at module level there's only one async engine — Postgres-only</span>
+engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span class="cm"># no branch on database_engine, no sqlite-vec loaded here</span>
+
+<span class="cm"># orm/sqlite_functions.py: the moment any SQLite connection is made, attach the numpy distance function</span>
+<span class="nb">@event.listens_for(Engine, &quot;connect&quot;)</span>
+<span class="kw">def</span> <span class="fn">register_functions</span>(dbapi_conn, _):
+    <span class="kw">if</span> <span class="fn">isinstance</span>(dbapi_conn, sqlite3.Connection):
+        dbapi_conn.<span class="fn">create_function</span>(<span class="st">&quot;cosine_distance&quot;</span>, 2, cosine_distance)  <span class="cm"># pure numpy impl</span>
+        <span class="cm"># sqlite_vec.load(dbapi_conn)  ← commented out: no sqlite-vec native similarity</span>
+</pre></div>
+<p>Read the two snippets together: on the left, <span class="mono">db.py</span>'s engine is Postgres-only; on the right, that global <span class="mono">@event.listens_for</span> is the actual SQLite seam — it registers a numpy <span class="mono">cosine_distance</span> for <strong>any</strong> SQLite connection.</p>
+<p>Note the last comment line: <span class="mono">sqlite_vec.load()</span> is <strong>commented out</strong>. SQLite's similarity rides on a pure numpy UDF, not a sqlite-vec native operator — a correction we'll stress again later.</p>
+<p>This <span class="mono">@event.listens_for(Engine, "connect")</span> is <strong>global</strong>: whichever SQLite connection it is — dev DB, test DB, a throwaway in-memory one — the UDF attaches the moment it's made. So "SQLite can compute cosine" is a connection-level fait accompli, with no per-site opt-in needed.</p>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">settings.py::Settings.database_engine</span> — a <span class="mono">@property</span>: <span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>; <span class="mono">DatabaseChoice(str, Enum){POSTGRES, SQLITE}</span>.</p>
+<p><span class="mono">orm/passage.py::BasePassage</span> — at import time, the embedding column type is fixed by <span class="mono">database_engine</span>.</p>
+<p><span class="mono">orm/custom_columns.py</span> — a batch of pydantic-in-DB <span class="mono">TypeDecorator</span>s; <span class="mono">orm/sqlite_functions.py::register_functions</span> — SQLite's numpy <span class="mono">cosine_distance</span>.</p>
+<p><span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span> — the ruler for fixed-length padding; <span class="mono">alembic/env.py</span> — picks the URI and builds tables for two backends.</p>
+</div>
+<details class="accordion"><summary>How exactly is <span class="mono">database_engine</span> decided? Can you pick SQLite by hand with an env var?</summary><div class="acc-body">
+<p>You can't pick it directly. <span class="mono">database_engine</span> is a <strong>derived <span class="mono">@property</span></strong>, not a writable field: it only looks at whether <span class="mono">letta_pg_uri_no_default</span> is None.</p>
+<p><span class="mono">letta_pg_uri</span> always has a default (<span class="mono">postgresql+pg8000://letta:letta@localhost:5432/letta</span>); the real "URI-or-None" is <span class="mono">letta_pg_uri_no_default</span>. Set it = Postgres, leave it = SQLite.</p>
+<p>There's <strong>no <span class="mono">LETTA_DATABASE_ENGINE=sqlite</span></strong> switch. Set any <span class="mono">LETTA_PG_*</span> (host / db / user / password / port / uri) and it <strong>silently</strong> flips to Postgres.</p>
+<p>So "SQLite in dev, Postgres in prod" isn't a manual toggle — it's a side effect of the single fact of <strong>whether you handed it PG connection info</strong>.</p>
+</div></details>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Want to force SQLite? Don't hunt for a switch — <strong>clear every <span class="mono">LETTA_PG_*</span> env var</strong>. As long as <span class="mono">letta_pg_uri_no_default</span> is None, <span class="mono">database_engine</span> falls back to SQLITE on its own. Conversely, if production "somehow isn't on Postgres," first check whether the PG URI was left unconfigured.</span></div>
+<h2>How vectors are stored: cramming any dimension into one fixed-length 4096 column</h2>
+<p>The archival / recall memory you met (Lessons 10, 11) is essentially a <span class="mono">Passage</span> carrying an embedding. But different models output wildly different dimensions: some 1024, some 1536, some 3072. How can one column hold them all?</p>
+<p>Letta's answer is blunt: <span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span> — every embedding is <span class="mono">np.pad</span>ded to 4096 dims on write and on query, <strong>zero-padded at the tail</strong>. So one <span class="mono">Vector(4096)</span> column holds any model's output.</p>
+<p>Padding happens <strong>before the write</strong>: an embedding is <span class="mono">np.pad</span>ded to 4096 the moment it's generated, then handed to the ORM to persist; the query vector takes the same step before comparison. Both ends aligned, the fixed-length column can hold and compare them.</p>
+<div class="cute"><div class="row"><span class="emoji">📐</span><span class="lab">fixed 4096-slot</span><span class="arrow">→</span><span class="emoji">🧮</span><span class="lab">a model's 1536 dims</span><span class="arrow">→</span><span class="emoji">0️⃣</span><span class="bubble">zero-pad the tail</span></div><div class="cap">📐 one column is a fixed 4096-dim slot; 🧮 a model outputs only 1536 dims; 0️⃣ zero-pad the tail to fill the slot — the padding is all zeros, so <strong>cosine ranking doesn't change at all</strong>, which is why one column holds any model's output</div></div>
+<p>Wait — stuffing in a pile of zeros, won't it skew the similarity? That's exactly the clever part: <strong>zero-padding has no effect on cosine at all</strong>.</p>
+<div class="cellgroup"><div class="cg-cap"><b>Why zero-padding is "free": cosine = dot / (L2 × L2), neither end moves</b></div><div class="cells"><span class="cell hl">dot +0×x=0</span><span class="sep">→</span><span class="cell">numerator unchanged</span><span class="sep">·</span><span class="cell">L2 +0²=0</span><span class="sep">→</span><span class="cell">denominator unchanged</span><span class="sep">⇒</span><span class="cell hl">cosine unchanged</span></div></div>
+<p>The reasoning is plain. Cosine = dot product ÷ (the product of the two vectors' L2 norms). What's added is zeros: in the dot product <span class="mono">0 × anything = 0</span>, so the numerator is unchanged; in the L2 norm <span class="mono">0² = 0</span>, so the denominator is unchanged too. <strong>Neither numerator nor denominator moves, so the ranking is naturally identical</strong>.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">So "one fixed column fits any model" is not an approximation or a compromise — it's <strong>mathematically exactly equivalent to no padding</strong>, costing only an extra run of zeros and a little space. SQLite's numpy UDF <span class="mono">cosine_distance</span> first checks the dimension == 4096 via <span class="mono">validate_and_transform_embedding</span>, and (after catching the <span class="mono">ValueError</span>) returns <span class="mono">0.0</span> on a mismatch — padding is a <strong>shared precondition</strong> of both the write and query paths.</span></div>
+<p>And "which column type"? This is the second of the six seams, happening in <span class="mono">BasePassage</span>'s <strong>class body, at import time</strong>: Postgres uses pgvector's <span class="mono">Vector(4096)</span>, SQLite uses <span class="mono">CommonVector</span> (a BINARY blob). The next section shows the code together with search.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">MAX_EMBEDDING_DIM</span>'s comment spells it out — "don't change it, or you'll have to reset the database": it pins the column width, and once changed it no longer matches the fixed-length vectors already stored. This ruler is a <strong>global convention</strong>, not some table's local choice.</span></div>
+<p>Fixed length isn't free of cost either: for a 1024-dim model, every row wastes 3072 stored zeros, a waste borne by both disk and memory. But what you get is <strong>one column for every model</strong>, with no per-dimension table — for a system that must support many embedding vendors, the math pays off.</p>
+<h2>How vectors are searched: native &lt;=&gt; vs numpy brute force</h2>
+<p>Storage settled, how do we search? This is the third of the six seams, and the only place that genuinely <strong>forks two ways at runtime</strong>: the same "order by similarity" compiles into completely different execution on the two databases.</p>
+<p>Let's put the column type and the search branch in one code view — they actually share a single <span class="mono">if database_engine is POSTGRES</span>:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py · letta/orm/sqlalchemy_base.py</span><span class="ln">column type fixed at import time; search forks by engine at runtime (excerpt)</span></div>
+<pre><span class="cm"># orm/passage.py::BasePassage — in the class body, import time bakes the column type into the model</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    embedding = <span class="fn">mapped_column</span>(<span class="fn">Vector</span>(MAX_EMBEDDING_DIM))   <span class="cm"># pgvector fixed-length 4096</span>
+<span class="kw">else</span>:
+    embedding = <span class="fn">Column</span>(CommonVector)                      <span class="cm"># SQLite: BINARY blob</span>
+
+<span class="cm"># orm/sqlalchemy_base.py query builder: at runtime, the same switch forks the sort two ways</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    query = query.<span class="fn">order_by</span>(cls.embedding.<span class="fn">cosine_distance</span>(q_emb).<span class="fn">asc</span>())          <span class="cm"># compiles to SQL &lt;=&gt;</span>
+<span class="kw">else</span>:
+    query = query.<span class="fn">order_by</span>(<span class="fn">func.cosine_distance</span>(cls.embedding, q_emb).<span class="fn">asc</span>())   <span class="cm"># via numpy UDF</span>
+</pre></div>
+<p>See the two forks clearly: the top half is <strong>import-time</strong> — that <span class="mono">if</span> in the class body runs once when the module is imported, baking the column type onto the model. So a process is specialized to one backend and <strong>can't switch databases at runtime</strong>.</p>
+<p>The bottom half is <strong>runtime</strong>: Postgres turns <span class="mono">cosine_distance()</span> into the native operator <span class="mono">&lt;=&gt;</span>, while SQLite calls that numpy UDF we saw in <span class="mono">register_functions</span>. Laying the whole picture out as a table:</p>
+<table class="t">
+<tr><th>Aspect</th><th>Postgres (pgvector)</th><th>SQLite</th></tr>
+<tr><td>Vector column</td><td class="mono">Vector(4096)</td><td class="mono">CommonVector (BINARY)</td></tr>
+<tr><td>Distance call</td><td class="mono">embedding.cosine_distance(q)</td><td class="mono">func.cosine_distance(col, q)</td></tr>
+<tr><td>Actual operator</td><td>native SQL <span class="mono">&lt;=&gt;</span></td><td>Python numpy UDF</td></tr>
+<tr><td>Sort</td><td class="mono">ORDER BY dist ASC</td><td class="mono">ORDER BY dist ASC</td></tr>
+<tr><td>Index / ANN</td><td>can attach <span class="mono">ivfflat</span> / <span class="mono">hnsw</span></td><td>none, brute-force whole table</td></tr>
+<tr><td>Scale fit</td><td>holds up even for large stores</td><td>small stores / dev is enough</td></tr>
+</table>
+<p>Both sides are <strong>semantically the same</strong> — both take the nearest few in ascending cosine order; the difference is only execution: Postgres can use an index for approximate nearest neighbor (ANN), SQLite computes row by row over the whole table and then sorts.</p>
+<p>Some worry "brute-force over the whole table" is too slow. In dev and at small scale it actually isn't: computing cosine row by row over a few thousand to tens of thousands, numpy is vectorized and returns in a blink. ANN is only truly needed for production-scale massive memory — by then you should be on Postgres anyway.</p>
+<p>These two branches don't only live in <span class="mono">sqlalchemy_base.py</span>'s generic query: <span class="mono">services/helpers/agent_manager_helper.py</span> carries the same <span class="mono">if POSTGRES</span> when assembling archival retrieval — the same fork, written once at each place that uses vector search.</p>
+<p>This echoes Lessons 10, 11: the archival / recall retrieval you read about — its underlying "find the most similar memory" — splits into these two paths at this layer.</p>
+<details class="accordion"><summary>How exactly are vectors stored and searched in each database? Where's the performance difference?</summary><div class="acc-body">
+<p><strong>Storage</strong>: Postgres is pgvector's <span class="mono">Vector(4096)</span> fixed-length column; SQLite is <span class="mono">CommonVector</span> — a BINARY blob, packed with <span class="mono">sqlite_vec.serialize_float32</span> and restored with <span class="mono">np.frombuffer</span>.</p>
+<p><strong>Search</strong>: Postgres compiles <span class="mono">cosine_distance()</span> into the native operator <span class="mono">&lt;=&gt;</span> and can do ANN via an <span class="mono">ivfflat</span> / <span class="mono">hnsw</span> index; SQLite calls a numpy UDF, computing distance row by row over the whole table and then sorting.</p>
+<p>So the gap is about <strong>scale</strong>: at small size and in dev, SQLite's brute-force is no strain; once the row count grows, you need Postgres's vector index. Both sides are semantically the same — one just has ANN and the other doesn't.</p>
+<p>Don't forget: both sides first <span class="mono">np.pad</span> the query vector to 4096 before comparing — padding is a shared precondition of storage and search, dropping "any model's vector" into one fixed-length space.</p>
+</div></details>
+<h2>pydantic-in-DB: stuffing a whole config into one JSON column</h2>
+<p>The other half of the magic has nothing to do with vectors yet is just as elegant: configs like <span class="mono">EmbeddingConfig</span>, <span class="mono">LLMConfig</span>, <span class="mono">ToolRules</span> aren't split into columns — the whole thing is stored in one cell as a JSON blob.</p>
+<p>In Lesson 21 you saw <span class="mono">LLMConfig</span> / <span class="mono">EmbeddingConfig</span> as pydantic models in memory. How do they persist? Through a batch of <span class="mono">TypeDecorator</span>s in <span class="mono">custom_columns.py</span> — SQLAlchemy's "column-type adapters."</p>
+<p>It builds a two-way bridge between the ORM and the DB, with one conversion in each direction:</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>EmbeddingConfig (pydantic)</h4><p>In memory it's a pydantic model with types and defaults.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Write · process_bind_param</h4><p><span class="mono">model_dump(mode="json")</span> → a plain dict.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Persist · one JSON column</h4><p>the whole config goes into the <span class="mono">impl=JSON</span> cell; the relational schema stays flat.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Read · process_result_value</h4><p>dict → <span class="mono">Model(**data)</span>, restored to pydantic.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>schema-on-read fallback</h4><p><span class="mono">deserialize_llm_config</span> fills defaults for missing fields — adding a field needs no migration.</p></div></div>
+</div>
+<p>These <span class="mono">TypeDecorator</span>s all inherit one skeleton (<span class="mono">cache_ok=True</span>, delegating the real conversion to <span class="mono">helpers/converters.py</span>). Let's read the two most representative ones:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/custom_columns.py</span><span class="ln">two kinds of TypeDecorator: config to JSON, vector to BINARY (excerpt)</span></div>
+<pre><span class="kw">class</span> <span class="fn">EmbeddingConfigColumn</span>(TypeDecorator):
+    impl = JSON                          <span class="cm"># underneath it's just a JSON column</span>
+    cache_ok = <span class="kw">True</span>
+    <span class="kw">def</span> <span class="fn">process_bind_param</span>(self, value, _):      <span class="cm"># write: pydantic -&gt; dict</span>
+        <span class="kw">return</span> value.<span class="fn">model_dump</span>(mode=<span class="st">&quot;json&quot;</span>) <span class="kw">if</span> value <span class="kw">else</span> value
+    <span class="kw">def</span> <span class="fn">process_result_value</span>(self, value, _):    <span class="cm"># read: dict -&gt; pydantic</span>
+        <span class="kw">return</span> <span class="fn">EmbeddingConfig</span>(**value) <span class="kw">if</span> value <span class="kw">else</span> value
+
+<span class="kw">class</span> <span class="fn">CommonVector</span>(TypeDecorator):
+    impl = BINARY                        <span class="cm"># vector packed to binary</span>
+    cache_ok = <span class="kw">True</span>
+    <span class="kw">def</span> <span class="fn">process_bind_param</span>(self, value, _):
+        <span class="kw">return</span> <span class="fn">serialize_vector</span>(value)           <span class="cm"># sqlite_vec.serialize_float32</span>
+    <span class="kw">def</span> <span class="fn">process_result_value</span>(self, value, _):
+        <span class="kw">return</span> <span class="fn">deserialize_vector</span>(value)         <span class="cm"># np.frombuffer</span>
+</pre></div>
+<p>Two classes from one mold: <span class="mono">bind</span> governs "how to pack on the way in," <span class="mono">result</span> governs "how to restore on the way out." <span class="mono">EmbeddingConfigColumn</span> goes JSON, <span class="mono">CommonVector</span> goes BINARY — the latter is exactly the true form of that SQLite vector column above.</p>
+<p>And <span class="mono">impl=JSON</span> lands differently on each database too: Postgres uses native <span class="mono">JSONB</span>, SQLite stores JSON as text. But that's fully transparent to the upper layers — what you get is always a restored pydantic object.</p>
+<p>Interestingly, <span class="mono">CommonVector</span> only <strong>borrows</strong> <span class="mono">sqlite_vec.serialize_float32</span> to pack bytes — it doesn't use its native similarity. Remember? <span class="mono">sqlite_vec.load()</span> is commented out.</p>
+<p>While we're at it, meet the whole family: the <span class="mono">impl=JSON</span> line has three — <span class="mono">EmbeddingConfigColumn</span>, <span class="mono">LLMConfigColumn</span>, <span class="mono">ToolRulesColumn</span> — same pattern throughout; <span class="mono">CommonVector</span> is the lone <span class="mono">impl=BINARY</span> member.</p>
+<p>Among them <span class="mono">deserialize_llm_config</span> does one extra step: if a new field is missing on read, it fills the default in place before constructing the pydantic object. That's exactly schema-on-read — old data needs no migration, "upgraded" on the fly as it's read.</p>
+<details class="accordion"><summary>Stuffing a config into one JSON column — clever or lazy? Where's the trade-off?</summary><div class="acc-body">
+<p>You buy two things. One, <strong>no migration</strong>: add a pydantic field to <span class="mono">LLMConfig</span> and you needn't touch the table schema — old rows get the default filled automatically by <span class="mono">deserialize_llm_config</span> on deserialization (schema-on-read).</p>
+<p>Two, <strong>fidelity</strong>: the whole pydantic object goes in and comes out as-is; nested structure isn't flattened into a pile of columns, and it reads back as that same strongly-typed object.</p>
+<p>The cost is real too: subfields inside the JSON <strong>can't be in a <span class="mono">WHERE</span> or indexed</strong> — you can't efficiently "filter by embedding model name." And every read/write runs a round of (de)serialization, a CPU cost.</p>
+<p>The trade-off in one line: trade "non-queryable subfields + serialization overhead" for "flat schema + add-field-without-migration + config fidelity." For Letta's case — configs that change a lot and are rarely queried by subfield — it pays off.</p>
+</div></details>
+<h2>alembic: two migration sets that don't clash</h2>
+<p>Column types, vectors and configs are all clear now; the last seam is <strong>table creation and migration</strong>. How do the two databases' schemas each stand up without stepping on each other? The answer is in <span class="mono">alembic/env.py</span>.</p>
+<p><span class="mono">env.py</span> first picks the URI by <span class="mono">database_engine</span>: Postgres uses a pg8000 sync URI, SQLite uses <span class="mono">sqlite:///…sqlite.db</span>. The table-building strategy then differs on each side.</p>
+<p><strong>Postgres</strong> follows an <strong>incremental chain</strong>: stacking version on version from <span class="mono">9a505cc7eca9</span>. Early migrations even carry a gate — <span class="mono">if not settings.letta_pg_uri_no_default: return</span> — skipping when no PG is configured.</p>
+<p><strong>SQLite</strong> is a <strong>single baseline snapshot</strong> <span class="mono">2c059cad97cc</span>: a reverse gate <span class="mono">if settings.letta_pg_uri_no_default: return</span>, building the entire schema in one shot with plain <span class="mono">sa.JSON()</span>.</p>
+<p>Migrations after the baseline <strong>run on both sides</strong>, with dialect differences handled <strong>inline</strong> in the scripts — for example a time default: Postgres uses <span class="mono">now()</span>, SQLite uses <span class="mono">CURRENT_TIMESTAMP</span>.</p>
+<p>The payoff of this design is dev experience: after install a developer configures no PG and spins up a local DB on SQLite directly; to go to production, configure a PG URI and the same migrations automatically run Postgres's incremental chain. <strong>One codebase, two deployments</strong>.</p>
+<details class="accordion"><summary>How does one alembic serve both databases at once? What's the relationship between the baseline and the incremental chain?</summary><div class="acc-body">
+<p>Through two <strong>oppositely-directed gates</strong>. The early Postgres migrations: <span class="mono">if not letta_pg_uri_no_default: return</span> — skip the whole block when no PG is configured; the SQLite baseline: <span class="mono">if letta_pg_uri_no_default: return</span> — skip precisely when PG is configured.</p>
+<p>So in one <span class="mono">upgrade</span>, the Postgres side builds version by version along the <span class="mono">9a505cc7eca9</span> incremental chain; the SQLite side recognizes only the baseline <span class="mono">2c059cad97cc</span>, building everything at once with plain <span class="mono">sa.JSON()</span>.</p>
+<p>Migrations added <strong>after</strong> the baseline have no gate and <strong>run on both</strong>; where dialects differ (<span class="mono">now()</span> vs <span class="mono">CURRENT_TIMESTAMP</span>, type names, etc.) the script forks inline by dialect.</p>
+<p>So SQLite needn't replay Postgres's long history — it starts straight from a "today's full picture" snapshot and then keeps up with later increments. Two starting lines, one finish line.</p>
+</div></details>
+<h2>The honest asterisk: why v0.16.8's db.py only builds Postgres</h2>
+<p>We planted this at the start: the dual DB is painted so symmetrically, yet <span class="mono">server/db.py</span> at module level <strong>only</strong> does <span class="mono">create_async_engine(async_pg_uri)</span>, never building a SQLite engine by <span class="mono">database_engine</span>. Isn't that a contradiction?</p>
+<p>No contradiction — it's <strong>layered convergence</strong>. The dual-DB story lives fully in <strong>two layers</strong>: the ORM column types (<span class="mono">Vector</span> vs <span class="mono">CommonVector</span>) and alembic's two-backend table building. Those two layers are still genuinely dual-track today.</p>
+<p>What has quietly converged on Postgres is only the <strong>runtime async engine</strong>. In other words, the "declaration layer" is still dual, while the "connection layer" unified one step ahead. The only place that still builds a SQLite URI is <span class="mono">alembic/env.py</span>.</p>
+<p>The practical impact on your code reading: to confirm "which database the current process uses," don't flip through <span class="mono">db.py</span> (always Postgres there) — look at the value of <span class="mono">settings.database_engine</span>, which is the real basis for the ORM column type and migration path.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">This is actually a fine teaching point: <strong>don't read architecture by staring at one file</strong>. Look only at <span class="mono">db.py</span> and you'd think Letta only supports Postgres; look only at the ORM and alembic and you'd think you can freely switch to SQLite at runtime. The truth is layered — different layers sit at different stages of convergence.</span></div>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>The most counterintuitive thing about "one codebase, two databases": there's <strong>no clever switch inside <span class="mono">db.py</span> at all</strong>. The seam is <strong>distributed and mostly declarative</strong>.</p>
+<p>Count them and it's five or six places: a derived <span class="mono">database_engine</span> property; a <strong>class-body <span class="mono">if</span> that bakes the embedding column type into the model at import time</strong> (so a process is specialized to one backend and can't switch at runtime); two <span class="mono">order_by</span> branch lines in the query builder; a global <span class="mono">@event.listens_for</span> injecting a numpy <span class="mono">cosine_distance</span> into any SQLite connection; plus <span class="mono">alembic/env.py</span> picking the URI.</p>
+<p>pydantic-in-DB is the other half of the magic: config as a JSON blob, schema-on-read evolution — <strong>fidelity over normalization</strong>.</p>
+<p>And the quiet keystone is <span class="mono">MAX_EMBEDDING_DIM=4096</span>: zero-pad every embedding to a fixed length and one <span class="mono">Vector(4096)</span> column holds any model's output; and because equal zero-padding doesn't change the dot product or the L2 norm, <strong>cosine ranking is mathematically equivalent to the unpadded vector</strong>.</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p><span class="mono">server/db.py</span> does <strong>not</strong> branch by backend: in v0.16.8 it's <strong>Postgres-only async</strong> — don't look here for a SQLite engine or sqlite-vec loading.</p>
+<p><span class="mono">database_engine</span> is a <span class="mono">@property</span>, decided by "<strong>whether a PG URI is configured</strong>" — there's <strong>no <span class="mono">LETTA_DATABASE_ENGINE</span></strong> env var.</p>
+<p>SQLite's similarity is a <strong>numpy UDF, not sqlite-vec native</strong> — <span class="mono">sqlite_vec.load()</span> is commented out; only its <span class="mono">serialize_float32</span> is borrowed.</p>
+<p>There's no <span class="mono">AgentPassage</span> ORM class: only <span class="mono">SourcePassage</span> and <span class="mono">ArchivalPassage</span>, both inheriting <span class="mono">BasePassage</span>.</p>
+<p>The column type is fixed <strong>at import time</strong>, so a process <strong>can't switch databases at runtime</strong>; and — padding lets different models' vectors <strong>be stored in one column</strong>, but that doesn't make them <strong>comparable across models</strong>.</p>
+</div>
+<h2>Looking back, looking ahead: one ORM, two databases, holding the whole memory</h2>
+<p>Let's wrap up Part 7. These four lessons are really one line <strong>from skeleton to vector</strong>:</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 7's four lessons strung together: from skeleton to vector</b></div><div class="cells"><span class="cell">24 three layers</span><span class="sep">→</span><span class="cell">25 service-layer Managers</span><span class="sep">→</span><span class="cell">26 CRUD / isolation</span><span class="sep">→</span><span class="cell hl">27 dual DB / vectors</span></div></div>
+<p>Strung into one line: <strong>layers raise the skeleton (24) → managers handle transactions and conversion (25) → one base is secure by default (26) → one ORM on two databases holds memory's vectors (27)</strong>.</p>
+<p>Pointing back to Lesson 03: the message lifecycle you traced — its "persistence end" finally lands on this layer of engine and columns.</p>
+<p>Pointing back to Lessons 10, 11: those archival / recall vectors are stored as this layer's <span class="mono">Passage</span> — <span class="mono">SourcePassage</span> and <span class="mono">ArchivalPassage</span> — and the search is this lesson's two paths.</p>
+<p>And pointing back to Lesson 21: <span class="mono">LLMConfig</span> / <span class="mono">EmbeddingConfig</span> persist through <span class="mono">custom_columns</span>' JSON column — the model parameters you set lie right there in one JSON cell.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">To close in one line: <strong>one ORM, one property switch, two databases</strong> — pgvector's native <span class="mono">&lt;=&gt;</span> and SQLite's numpy UDF each search their own way, a fixed-length 4096 lets any model's vector share one column, and pydantic-in-DB lets configs evolve without migration. Memory's vectors are held steadily by both databases, just like this.</span></div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><strong>One switch</strong>: <span class="mono">settings.database_engine</span> is a <strong>derived @property</strong> — a configured PG URI (<span class="mono">letta_pg_uri_no_default</span> not None) goes Postgres, else SQLite; <strong>no <span class="mono">LETTA_DATABASE_ENGINE</span></strong>.</li>
+<li><strong>The seam is distributed across six places, mostly declarative</strong>: the property, <span class="mono">BasePassage</span>'s import-time column-type <span class="mono">if</span>, the two-way query <span class="mono">order_by</span>, <span class="mono">register_functions</span>' numpy UDF, <span class="mono">custom_columns</span>, <span class="mono">alembic/env.py</span>.</li>
+<li><strong>Vectors stored two ways, searched two ways</strong>: Postgres = <span class="mono">Vector(4096)</span> + native <span class="mono">&lt;=&gt;</span> (ANN-index capable); SQLite = <span class="mono">CommonVector</span> BINARY + a numpy UDF brute-forcing the whole table. All vectors <span class="mono">np.pad</span> to <span class="mono">MAX_EMBEDDING_DIM=4096</span>; <strong>zero-padding doesn't change cosine</strong>.</li>
+<li><strong>pydantic-in-DB</strong>: a <span class="mono">TypeDecorator</span> <span class="mono">model_dump</span>s the whole <span class="mono">EmbeddingConfig</span> / <span class="mono">LLMConfig</span> to JSON in one column; schema-on-read makes adding a field migration-free, at the cost of non-indexable subfields + serialization overhead.</li>
+<li><strong>Honest asterisk</strong>: v0.16.8's <span class="mono">server/db.py</span> only builds a Postgres async engine; the dual-DB story lives fully in the ORM column types and alembic's two backends.</li>
+</ul>
+</div>
+<p>Part 7 is now complete: from the three-layer architecture, to managers, to the secure-by-default base, to dual DB and vectors. How the server safely stores and precisely retrieves "an agent's memory" — you've now seen through the whole chain.</p>
+<p>Next is <strong>Part 8</strong>: advanced topics and a glossary. We'll dig into a few cross-cutting themes, then pull this whole journey's keywords into a glossary you can look up any time.</p>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. In letta v0.16.8, what actually decides whether a process uses SQLite or Postgres?</div>
+  <ol class="opts">
+    <li>An env var LETTA_DATABASE_ENGINE=sqlite|postgres, a manual either/or</li>
+    <li>server/db.py probes available drivers at startup: with asyncpg installed it goes Postgres, else SQLite</li>
+    <li>The derived @property settings.database_engine: a configured PG URI (letta_pg_uri_no_default not None) means Postgres, otherwise SQLite</li>
+    <li>Whether letta_pg_uri is None — if None it falls back to SQLite</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. The decision lives in settings.py::Settings.database_engine, a read-only @property whose logic is one line: POSTGRES if self.letta_pg_uri_no_default else SQLITE. So “is a PG URI configured” is the only dev/prod divider; DatabaseChoice(str, Enum) has just POSTGRES / SQLITE and is a conclusion read out, not a writable field. There is no LETTA_DATABASE_ENGINE switch — set any LETTA_PG_* (host/db/user/password/port/uri) and it silently flips to Postgres. The trap: letta_pg_uri always has a default (postgresql+pg8000://letta:letta@localhost:5432/letta), so the check can't read it — the real “URI-or-None” is letta_pg_uri_no_default. It isn't driver probing either: server/db.py at module level only does create_async_engine(async_pg_uri) and detects no backend.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. For “one ORM running on two databases,” where in the code does the dual-DB seam mainly live?</div>
+  <ol class="opts">
+    <li>Handled automatically by SQLAlchemy's dialect layer; the application code contains no dual-DB logic at all</li>
+    <li>Each manager writes its own if sqlite/else postgres block inside its methods to switch</li>
+    <li>Concentrated in one big if database_engine switch inside server/db.py, building a different engine per backend</li>
+    <li>Distributed across several places, mostly declarative: column type, query branch, connect event, custom columns, alembic — not in any single switch</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. The dual DB isn't a clever switch in server/db.py — in v0.16.8 that file is Postgres-only async (module level only create_async_engine(async_pg_uri), no branch on database_engine, no sqlite-vec loaded). The real seam is distributed across ~six places, most declared at import time: (1) the derived settings.database_engine property; (2) orm/passage.py::BasePassage's class-body, import-time if POSTGRES: Vector(MAX_EMBEDDING_DIM) else CommonVector; (3) the two-way order_by in the query builder (sqlalchemy_base.py and services/helpers/agent_manager_helper.py); (4) orm/sqlite_functions.py::register_functions using @event.listens_for(Engine, “connect”) to register a numpy cosine_distance on any SQLite connection; (5) orm/custom_columns.py's TypeDecorators; (6) alembic/env.py picking the URI and building tables for two backends. The only place that still builds a SQLite URI is alembic/env.py. It isn't per-manager branches either — the fork only appears where vector search is used.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. How are vectors stored and searched in Postgres versus SQLite?</div>
+  <ol class="opts">
+    <li>SQLite uses sqlite-vec's native KNN index, while Postgres is the brute-force one with no index</li>
+    <li>Postgres: pgvector's Vector(4096) + the native operator &lt;=&gt;; SQLite: CommonVector(BINARY) + a numpy cosine_distance UDF</li>
+    <li>Both databases use pgvector's Vector column and the native &lt;=&gt;, with SQLite getting the same operator from the sqlite-vec extension</li>
+    <li>Both store vectors as JSON text and, at search time, deserialize in Python to compute cosine</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Storage: Postgres is pgvector's Vector(4096) fixed-length column; SQLite is orm/custom_columns.py::CommonVector — an impl=BINARY TypeDecorator packing with sqlite_vec.serialize_float32 and restoring with np.frombuffer. Search: the column type and the search branch share one if settings.database_engine is POSTGRES (orm/passage.py::BasePassage fixes the column type at import time; sqlalchemy_base.py / agent_manager_helper.py branch at runtime). Postgres uses cls.embedding.cosine_distance(q) → compiles to native &lt;=&gt; and can attach ivfflat / hnsw for ANN; SQLite uses func.cosine_distance(col, q) → the numpy UDF registered by orm/sqlite_functions.py::register_functions, computed row by row over the whole table then ORDER BY ASC. Key correction: SQLite's similarity is not sqlite-vec native — sqlite_vec.load() is commented out; only its serialize_float32 is borrowed to pack bytes. Both are semantically the same (nearest by ascending cosine); one just has ANN, the other brute-forces the whole table.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. Every embedding is np.padded to MAX_EMBEDDING_DIM=4096 (zeros at the tail). Why is this “free” for similarity search?</div>
+  <ol class="opts">
+    <li>Because the padding is tiny random numbers whose effect on a high-dimensional dot product is negligible</li>
+    <li>Equal zero-padding changes neither the dot product nor the L2 norm, so cosine is mathematically identical to the unpadded vector and the ranking is unchanged</li>
+    <li>Because the padding zeros are sliced off again before search, so only the original dims are compared and there's no effect</li>
+    <li>Because cosine first L2-normalizes the vectors, and normalization erases any length difference, so any padding works</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Cosine = dot product / (product of the two L2 norms). The tail padding is all zeros: in the dot product each added term is 0 × x = 0, so the numerator is unchanged; in the L2 norm each added term is 0² = 0, so the denominator is unchanged. With neither moving, the cosine value and the ranking are exactly equal to the unpadded case — an identity, not an approximation. So constants.py::MAX_EMBEDDING_DIM=4096 zero-pads any dimension to a fixed length, letting one Vector(4096)/CommonVector column hold any model's output without affecting retrieval order. Watch the wrong options: there is no “slice the zeros off before search” step (both write and query pad to 4096 before comparing — a shared precondition); the padding is zeros, not random numbers; and although cosine does include normalization, the reason it's “free” is that zero-padding leaves both dot product and norm unchanged, not that normalization erases arbitrary padding. The only cost is storing extra zeros (e.g. 3072 wasted zeros for a 1024-dim model).</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. Storing configs like EmbeddingConfig / LLMConfig as one whole model_dumped JSON column (instead of splitting into many columns) — what does it buy, and what does it cost?</div>
+  <ol class="opts">
+    <li>Buys cross-table foreign keys and JOINs; costs the loss of pydantic's type validation</li>
+    <li>Buys smaller storage and faster queries, with no real cost at all</li>
+    <li>Buys efficient WHERE / indexing on any subfield; costs an alembic migration for every new field</li>
+    <li>Buys a flat schema + schema-on-read evolution (adding a field needs no migration); costs the inability to WHERE / index subfields, plus (de)serialization on every read/write</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. The TypeDecorators in orm/custom_columns.py (EmbeddingConfigColumn / LLMConfigColumn / ToolRulesColumn, impl=JSON, cache_ok=True) store the whole pydantic object in one cell: process_bind_param writes via model_dump(mode=“json”) → dict, and process_result_value reads dict → Model(**data) to restore it (the real conversion delegated to helpers/converters.py). It buys two things: (1) a flat schema + no migration — adding a pydantic field to LLMConfig leaves the table schema untouched, and old rows get defaults filled on read by deserialize_llm_config (schema-on-read); (2) fidelity — nested structure isn't flattened, and it reads back as a strongly-typed object. It costs two things: (1) JSON subfields can't be efficiently put in a WHERE or indexed (no “filter by embedding model name”); (2) every read/write runs a round of (de)serialization, a CPU cost. impl=JSON lands as JSONB on Postgres and text on SQLite, but that's transparent to the upper layers. For Letta — configs that change a lot and are rarely queried by subfield — it pays off.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Using this lesson's “one blueprint, two factories” metaphor, narrate a single archival memory from being written to being searched out by similarity, and think through four things: (1) Why is “which database” not a clever switch in server/db.py but a seam scattered across six places, most declared at import time? On what basis does the settings.database_engine @property decide Postgres / SQLite, and why can't you pick it by hand with LETTA_DATABASE_ENGINE? (2) For the same Passage model, why does Postgres land as pgvector's Vector(4096) and SQLite as CommonVector(BINARY)? Why does that “bake the column type into the model at import time” if mean a process can't switch databases at runtime? (3) How does the same “order by similarity” compile into the native &lt;=&gt; (ANN-capable) on Postgres and into a numpy UDF brute-force over the whole table on SQLite? And why is sqlite_vec still imported even though sqlite_vec.load() is commented out? (4) Why is np.padding any dimension to 4096 “free” for cosine ranking (explain it from the dot product and the L2 norm)? Then weigh the pydantic-in-DB JSON column's “no-migration + fidelity” payoff against its “non-indexable subfields + serialization overhead” cost. Finally, return to the honest asterisk: v0.16.8's server/db.py only builds Postgres — does that contradict “the dual-DB story lives fully in the ORM and alembic”?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="26-crud-and-multitenancy.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">通用 CRUD 与多租户隔离</span><span class="lang-en">Generic CRUD &amp; multi-tenant isolation</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>
