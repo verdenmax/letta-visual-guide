@@ -1173,6 +1173,57 @@ LESSON_30 = {
 """,
     "en": r"""
 <!--ENMORE-->
+<p>Note that <span class="mono">log_step_async</span> passes <span class="mono">usage=(0,0,0)</span>. This is <strong>not a bug</strong>: the row lands with zero tokens first, and the real usage is backfilled by <span class="mono">update_step_success_async</span>. <strong>Row first, numbers later</strong> is the key to this design.</p>
+<p>A word on the token ledger, don't confuse it with Lesson 14. <span class="mono">Step.total_tokens</span> is <strong>this step's single LLM call</strong> usage; a Run's <strong>total</strong> is <strong>accumulated across Steps</strong> (<span class="mono">LettaAgentV2._update_global_usage_stats</span>, exactly Lesson 14's accumulator). For per-step look at the <span class="mono">steps</span> row; for the running total look at the Run.</p>
+<p>While we are here, why split StepMetrics into three timings. <span class="mono">llm_request_ns</span> is the time waiting on the LLM to reply, <span class="mono">tool_execution_ns</span> is the time running this round's tools, and <span class="mono">step_ns</span> is the end-to-end total for the iteration.</p>
+<p>Split into three, and when debugging you see the bottleneck at a glance: is the LLM slow, or did some tool (a DB query, an external API call) drag? Mashed into one number you only know "this step is slow"; split apart you know "slow in which segment".</p>
+<p>It also lines up with that OTel <span class="mono">agent_step</span> span — the span nests finer sub-intervals, while <span class="mono">StepMetrics</span> freezes the three most important segments <strong>into the DB</strong>, queryable without any OTel backend.</p>
+<details class="accordion"><summary><span class="mono">StepProgression</span> fallback: why does even a crashed iteration leave a record?</summary><div class="acc-body">
+<p>The trick is <strong>order</strong>: <span class="mono">log_step_async</span> writes the <span class="mono">steps</span> row <strong>before</strong> calling the LLM (<span class="mono">PENDING</span>/zero tokens). So even if the LLM call throws, or the user cancels midway, that row <strong>already exists</strong>.</p>
+<p>In the <span class="mono">finally</span>, that <span class="mono">StepProgression</span> state machine (<span class="mono">START…FINISHED</span>) checks: if progress never reached <span class="mono">FINISHED</span>, <span class="mono">update_step_error_async</span> flips the row to <span class="mono">FAILED</span>/<span class="mono">CANCELLED</span> instead of leaving a forever-<span class="mono">PENDING</span> orphan.</p>
+<p>Contrast the naive "write a row only when done" design: there a crash leaves <strong>nothing</strong>, and you have no idea which step, or which model, died. Reserving first costs one extra write, and buys you <strong>every iteration being accountable</strong> — even the failed ones are on the books.</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">Remember this counterintuitive order: the <strong>steps row lands <em>before</em> the LLM call</strong> (<span class="mono">PENDING</span>/0 tokens), and real usage is backfilled afterward. This is exactly the root of "a crash still leaves a record" — row first, numbers later.</span></div>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">orm/run.py::Run</span> / <span class="mono">orm/step.py::Step</span> / <span class="mono">orm/job.py::Job</span> — three entities, three tables; <span class="mono">Run.steps</span> 1:N, <span class="mono">Step.metrics</span> 1:1, <span class="mono">Job</span> a sibling.</p>
+<p><span class="mono">letta_agent_v2.py::LettaAgentV2._step_checkpoint_start / _finish</span> — an iteration's "reserve" and "backfill", writing the <span class="mono">steps</span> row + <span class="mono">StepMetrics</span>.</p>
+<p><span class="mono">otel/tracing.py::get_trace_id</span> — grab the current OTel trace id and write it into <span class="mono">Step.trace_id</span>, stitching the product row to the distributed trace.</p>
+<p><span class="mono">services/streaming_service.py::StreamingService</span> — the v3 streaming entry; after creating a Run it wraps the loop into SSE (detailed in the last section).</p>
+</div>
+<h2>How a Step records itself in the loop as it runs</h2>
+<p>Back to that <span class="mono">_step</span> from Lesson 14. An iteration doesn't "book-keep only when done"; it <strong>reserves a slot before running and backfills afterward</strong>. <span class="mono">LettaAgentV3._step</span> breaks into five stages, with the persistence logic carried by two checkpoint methods in <span class="mono">letta_agent_v2.py</span>.</p>
+<p><strong>① <span class="mono">_step_checkpoint_start</span></strong>: build the <span class="mono">StepMetrics</span>, open an OTel span <span class="mono">tracer.start_span("agent_step")</span>, then <span class="mono">StepManager.log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...)</span> — write one <span class="mono">steps</span> row <strong>before the LLM call</strong>, tokens recorded as zero for now.</p>
+<p><strong>② LLM + tools</strong>: actually call the LLM once; <span class="mono">_handle_ai_response</span> runs this round's tool calls.</p>
+<p><strong>③ <span class="mono">_step_checkpoint_finish</span></strong>: compute <span class="mono">step_ns</span>, end the span, <span class="mono">record_step_metrics_async</span>, then <span class="mono">update_step_success_async(real per-step usage, stop_reason)</span> flips that row from <span class="mono">PENDING</span> to <span class="mono">SUCCESS</span> and fills the real usage.</p>
+<p><strong>④ <span class="mono">_checkpoint_messages</span></strong>: stamp this step's Messages with <span class="mono">run_id</span>+<span class="mono">step_id</span> and persist them (the landing point of the previous section's ID chain).</p>
+<p><strong>⑤ <span class="mono">finally</span> fallback</strong>: a <span class="mono">StepProgression</span> state machine (<span class="mono">START…FINISHED</span>) guards it — if it crashes or is cancelled midway, <span class="mono">update_step_error_async</span> runs, and that <span class="mono">steps</span> row still survives.</p>
+<p>Draw the five stages vertically and the rhythm — <strong>reserve first, backfill later, survive a crash</strong> — is plain to see:</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>_step_checkpoint_start (open span + reserve slot)</h4><p>Build <span class="mono">StepMetrics</span>, open span <span class="mono">"agent_step"</span>; <span class="mono">log_step_async(0,0,0, PENDING)</span> writes one <span class="mono">steps</span> row first (zero tokens).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>LLM + tools</h4><p>Call the LLM once; <span class="mono">_handle_ai_response</span> runs this round's tool calls.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>_step_checkpoint_finish (backfill)</h4><p>Compute <span class="mono">step_ns</span>, end the span, <span class="mono">record_step_metrics_async</span>; <span class="mono">update_step_success_async</span> fills real usage + <span class="mono">stop_reason</span> and flips to <span class="mono">SUCCESS</span>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>_checkpoint_messages</h4><p>Persist this step's Messages stamped with <span class="mono">run_id</span>+<span class="mono">step_id</span>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>finally · StepProgression fallback</h4><p>State machine <span class="mono">START…FINISHED</span>; on crash/cancel, <span class="mono">update_step_error_async</span> runs, the row still survives.</p></div></div>
+</div>
+<p>Put "reserve → backfill → fallback" into code, drop the details, and the skeleton is this straight:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v2.py</span><span class="ln">_step: reserve a PENDING/0 row before running, backfill SUCCESS after (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">_step</span>(self, run_id, step_id, ...):
+    <span class="cm"># 1) before running: open a span + write one steps row, tokens zero, status PENDING</span>
+    span = tracer.<span class="fn">start_span</span>(<span class="st">&quot;agent_step&quot;</span>)
+    <span class="kw">await</span> self.step_manager.<span class="fn">log_step_async</span>(
+        usage=UsageStatistics(0, 0, 0), status=StepStatus.PENDING,
+        run_id=run_id, step_id=step_id, model=..., provider_name=...)
+    <span class="kw">try</span>:
+        <span class="cm"># 2) call the LLM once + run this round's tools</span>
+        response = <span class="kw">await</span> self.<span class="fn">_handle_ai_response</span>(...)
+        <span class="cm"># 3) backfill after: real per-step usage + stop_reason, flip to SUCCESS</span>
+        <span class="kw">await</span> self.step_manager.<span class="fn">update_step_success_async</span>(
+            step_id, usage=response.usage, stop_reason=response.stop_reason)
+    <span class="kw">finally</span>:
+        <span class="cm"># 5) crash/cancel still leaves a record: not FINISHED, so mark error</span>
+        <span class="kw">if</span> progression &lt; StepProgression.FINISHED:
+            <span class="kw">await</span> self.step_manager.<span class="fn">update_step_error_async</span>(step_id, ...)
+</pre></div>
 <p>One more question: why are Job and Run two sibling tables, rather than letting Job wrap Run?</p>
 <p>Because they are <strong>two orthogonal kinds of async</strong>. A Run is "one agent conversation execution" — it has an LLM, tools, steps; a Job is "a stretch of background data processing", typically loading/parsing/embedding a file, with <strong>no concept of a step at all</strong>.</p>
 <p>Forcing Run under Job as a child would be like bolting a "how many LLM calls did it make" field onto "loading a file" — a total mismatch. Two tables, each minding its own, is actually cleaner.</p>
