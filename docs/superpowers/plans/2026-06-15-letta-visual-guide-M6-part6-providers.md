@@ -192,9 +192,9 @@ provider 适配总图（`flow`）：
 
 **Files:** `docs/superpowers/plans/2026-06-15-letta-visual-guide-roadmap.md` · （验证）全站
 
-- [ ] 全量构建：`cd src && python build.py && python check_links.py && python check_html.py`，期望 `0 error / 0 warning`、链接全解析、index pill「共 23 课 · 6 个部分」。
-- [ ] 导航链抽查：`20→21→22→23`，每课 `prev/next` 各 1，23 课 `next=../index.html`。
-- [ ] roadmap 把 **M6** 标 `✅ 已完成并合并`（计划文档名填入）。
+- [x] 全量构建：`cd src && python build.py && python check_links.py && python check_html.py`，期望 `0 error / 0 warning`、链接全解析、index pill「共 23 课 · 6 个部分」。✅ 0/0，92 链接全解析。
+- [x] 导航链抽查：`20→21→22→23`，每课 `prev/next` 各 1，23 课 `next=../index.html`。✅ 已核对。
+- [x] roadmap 把 **M6** 标 `✅ 已完成并合并`（计划文档名填入）。✅
 - [ ] 合并：`git checkout master && git merge --no-ff feat/m6-providers`；合并后再跑三件套确认绿。
 - [ ] `git branch -d feat/m6-providers`；`git push origin master`。
 - [ ] 报告 M6 完成，**自动继续 M7**（服务端与持久化，24–27）——用户已要求一路做完全部 M。
