@@ -1380,6 +1380,7 @@ LESSON_27 = {
   </div>
 </div>
 <p>看出门道了吗？两列的<strong>形状一模一样</strong>，被换掉的只是零件：驱动、向量列类型、距离算子、序列化方式、迁移路径，以及"要不要把向量填充到定长"。</p>
+<p>同样别忽略"没被换"的那一长串：表名、列名、关系、约束、<span class="mono">SqlalchemyBase</span> 的隔离与审计、manager 的事务边界——全来自<strong>同一份模型</strong>，两库一字不差。换库只动了贴近存储的薄薄一层。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">一个诚实的星号：上表把"双库"画得很对称，但 v0.16.8 的 <span class="mono">server/db.py</span> 模块级<strong>只建 Postgres async 引擎</strong>。双库的完整故事活在 ORM 列类型与 alembic 迁移里，运行期引擎层已悄悄收敛到 Postgres——为什么这样，本课末尾的"诚实星号"专门讲。</span></div>
 <div class="card analogy"><div class="tag">🏭 生活类比</div>
 <p>把这套设计想成<strong>一张蓝图、两座工厂</strong>。蓝图＝ORM 模型，画的是"有哪些表、哪些列、怎么关联"，<strong>一份不变</strong>。</p>
@@ -1387,6 +1388,7 @@ LESSON_27 = {
 <p>换的零件很具体：向量列用哪种料（pgvector 定长格 vs BINARY 袋子）、距离用哪台机器（原生 <span class="mono">&lt;=&gt;</span> vs numpy 手算）、迁移走哪条流水线。</p>
 <p>妙在工人（写新功能的人）只认蓝图——他不必知道今天在哪座厂开工，照着模型写就行，两套库都装得出来。</p>
 </div>
+<p>这个"蓝图不变、零件可换"的设计，正是接下来每节要逐一拆开的：先看那个开关，再看换列类型、换距离算子、换迁移路径。</p>
 <h2>唯一的开关：database_engine 其实是个 property</h2>
 <p>"两套库"听起来该有个枚举让你挑。可打开 <span class="mono">settings.py</span> 你会愣一下：<span class="mono">database_engine</span> <strong>根本不是字段</strong>，而是个只读 <span class="mono">@property</span>。</p>
 <p>它的逻辑短到一行：<span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>。换句话说，<strong>配没配 Postgres URI</strong>，就是 dev/prod 的全部分界。</p>
@@ -1399,6 +1401,7 @@ LESSON_27 = {
 </div>
 <p>注意这里有个陷阱：<span class="mono">letta_pg_uri</span> <strong>永远</strong>有默认值，所以判定不能看它；真正"URI-或-None"的是 <span class="mono">letta_pg_uri_no_default</span>。</p>
 <p><span class="mono">DatabaseChoice</span> 是个 <span class="mono">(str, Enum)</span>，只有 <span class="mono">POSTGRES</span> / <span class="mono">SQLITE</span> 两值。它是被<strong>读出来的结论</strong>，不是被你写进去的选择。</p>
+<p>那个默认 URI 还透露了驱动：<span class="mono">postgresql+pg8000://…</span>——同步路径用 pg8000，异步引擎再换成 asyncpg。组成它的是一组 <span class="mono">LETTA_PG_HOST / DB / USER / PASSWORD / PORT</span>，或直接给整条 <span class="mono">LETTA_PG_URI</span>。</p>
 <p>引擎本身在哪建？这正是第一处反直觉：</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/db.py · letta/orm/sqlite_functions.py</span><span class="ln">引擎只建 Postgres；给任何 SQLite 连接挂 numpy UDF（节选）</span></div>
 <pre><span class="cm"># server/db.py：模块级只有一条 async 引擎——Postgres-only</span>
@@ -1413,6 +1416,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 </pre></div>
 <p>两段对照着看：左边 <span class="mono">db.py</span> 的引擎是 Postgres-only；右边那个全局 <span class="mono">@event.listens_for</span> 才是 SQLite 的接缝——它给<strong>任何</strong> SQLite 连接注册一个 numpy 写的 <span class="mono">cosine_distance</span>。</p>
 <p>留意最后那行注释：<span class="mono">sqlite_vec.load()</span> 是<strong>被注释掉</strong>的。SQLite 的相似度靠纯 numpy UDF，而不是 sqlite-vec 原生算子——这个纠正后面还会强调。</p>
+<p>这个 <span class="mono">@event.listens_for(Engine, "connect")</span> 是<strong>全局</strong>的：不管哪条 SQLite 连接——开发库、测试库、临时内存库——一建立就挂上这个 UDF。所以"SQLite 能算 cosine"是连接级的既成事实，无需每处显式启用。</p>
 <div class="card detail"><div class="tag">🔬 落到代码</div>
 <p><span class="mono">settings.py::Settings.database_engine</span>——<span class="mono">@property</span>：<span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>；<span class="mono">DatabaseChoice(str, Enum){POSTGRES, SQLITE}</span>。</p>
 <p><span class="mono">orm/passage.py::BasePassage</span>——import 期按 <span class="mono">database_engine</span> 定 embedding 列类型。</p>
@@ -1429,6 +1433,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <h2>向量怎么存：把任意维度塞进定长 4096 的一列</h2>
 <p>记忆里的 archival / recall（第 10、11 课）本质是带 embedding 的 <span class="mono">Passage</span>。可不同模型输出的维度天差地别：有的 1024，有的 1536，有的 3072。一列怎么装得下？</p>
 <p>Letta 的答案简单粗暴：<span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span>——所有 embedding 在写入和查询时都 <span class="mono">np.pad</span> 到 4096 维，<strong>尾部补 0</strong>。于是一个 <span class="mono">Vector(4096)</span> 列就能装下任意模型的输出。</p>
+<p>填充发生在<strong>写入前</strong>：embedding 一生成就被 <span class="mono">np.pad</span> 到 4096，再交给 ORM 落库；查询向量在比对前也走同一步。两端对齐，定长列才装得下、比得了。</p>
 <div class="cute"><div class="row"><span class="emoji">📐</span><span class="lab">定长 4096 格</span><span class="arrow">→</span><span class="emoji">🧮</span><span class="lab">某模型 1536 维</span><span class="arrow">→</span><span class="emoji">0️⃣</span><span class="bubble">尾部补 0 填满</span></div><div class="cap">📐 一列就是 4096 维的固定格子；🧮 某模型只输出 1536 维；0️⃣ 尾部补 0 填满格子——补的全是 0，<strong>cosine 排序一点不变</strong>，所以一列能装下任意模型的输出</div></div>
 <p>等等，补一堆 0 进去，不会把相似度算歪吗？这正是设计的精妙处：<strong>补 0 对 cosine 完全无影响</strong>。</p>
 <div class="cellgroup"><div class="cg-cap"><b>补 0 为什么"免费"：cosine = 点积 /（L2 × L2），两端都不动</b></div><div class="cells"><span class="cell hl">点积 +0×x=0</span><span class="sep">→</span><span class="cell">分子不变</span><span class="sep">·</span><span class="cell">L2 +0²=0</span><span class="sep">→</span><span class="cell">分母不变</span><span class="sep">⇒</span><span class="cell hl">cosine 不变</span></div></div>
@@ -1436,6 +1441,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <div class="note info"><span class="ni">💡</span><span class="nx">所以"定长一列装任意模型"不是近似、不是妥协，而是<strong>数学上严格等价于不填充</strong>，代价只是多存一串 0、占点空间。SQLite 那个 numpy UDF <span class="mono">validate_and_transform_embedding</span> 还会校验维度＝＝4096，对不上就直接返回 <span class="mono">0.0</span>——填充是写路和查询路<strong>共同的前提</strong>。</span></div>
 <p>那"存哪种列"呢？这是六处接缝里的第二处，发生在 <span class="mono">BasePassage</span> 的<strong>类体里、import 期</strong>：Postgres 用 pgvector 的 <span class="mono">Vector(4096)</span>，SQLite 用 <span class="mono">CommonVector</span>（一个 BINARY blob）。具体代码下一节连搜索一起看。</p>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">MAX_EMBEDDING_DIM</span> 的注释明确写着"别改，否则得重置数据库"：它定死了列宽，一旦改动，就和库里已存的定长向量对不上了。这把尺是<strong>全局约定</strong>，不是某张表的局部选择。</span></div>
+<p>定长也不是全无代价：1024 维的模型，每行白存 3072 个 0，磁盘和内存都摊上这份浪费。但换来的是<strong>一列通吃所有模型</strong>、不必为每种维度各建表——对一个要兼容多家 embedding 的系统，这笔账划算。</p>
 <h2>向量怎么搜：原生 &lt;=&gt; vs numpy 暴力</h2>
 <p>存定了，怎么搜？这是六处接缝里的第三处，也是运行时唯一真正"分两路"的地方：同一句"按相似度排序"，在两套库上编译成完全不同的执行。</p>
 <p>先把列类型和搜索分支放进同一张代码里看——它们其实共用一个 <span class="mono">if database_engine is POSTGRES</span>：</p>
@@ -1464,6 +1470,8 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <tr><td>适用规模</td><td>大库也扛得住</td><td>小库 / 开发够用</td></tr>
 </table>
 <p>两边<strong>语义相同</strong>——都按 cosine 升序取最近的若干条；差别只在执行：Postgres 可借索引做近似最近邻（ANN），SQLite 对全表逐行算、再排序。</p>
+<p>有人担心"全表暴力"太慢。在开发与小数据量下其实不慢：几千上万条逐行算 cosine，numpy 是向量化的，眨眼就回。真正需要 ANN 的是生产级海量记忆，那时你本就该上 Postgres。</p>
+<p>这两路分支也不只活在 <span class="mono">sqlalchemy_base.py</span> 的通用查询里：<span class="mono">services/helpers/agent_manager_helper.py</span> 拼 archival 检索时带的是同一个 <span class="mono">if POSTGRES</span>——同一道分叉，在用到向量搜索的地方各写一次。</p>
 <p>这也呼应第 10、11 课：你读过的 archival / recall 检索，底层那句"找最像的记忆"，到这层就分成了这两条路。</p>
 <details class="accordion"><summary>向量在两套库里到底怎么存、怎么搜？性能差在哪？</summary><div class="acc-body">
 <p><strong>存</strong>：Postgres 是 pgvector 的 <span class="mono">Vector(4096)</span> 定长列；SQLite 是 <span class="mono">CommonVector</span>——一个 BINARY blob，用 <span class="mono">sqlite_vec.serialize_float32</span> 打包、<span class="mono">np.frombuffer</span> 还原。</p>
@@ -1501,7 +1509,10 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
         <span class="kw">return</span> <span class="fn">deserialize_vector</span>(value)         <span class="cm"># np.frombuffer</span>
 </pre></div>
 <p>两个类一个模子：<span class="mono">bind</span> 管"进库怎么打包"，<span class="mono">result</span> 管"出库怎么还原"。<span class="mono">EmbeddingConfigColumn</span> 走 JSON，<span class="mono">CommonVector</span> 走 BINARY——后者正是上文 SQLite 那列向量的真身。</p>
+<p>而 <span class="mono">impl=JSON</span> 在两套库上也各有落地：Postgres 用原生 <span class="mono">JSONB</span>，SQLite 把 JSON 存成文本。但这对上层完全透明——你拿到的永远是还原好的 pydantic 对象。</p>
 <p>有意思的是 <span class="mono">CommonVector</span> 只<strong>借用</strong>了 <span class="mono">sqlite_vec.serialize_float32</span> 来打包字节，并没有用它的原生相似度。还记得吗？<span class="mono">sqlite_vec.load()</span> 是注释掉的。</p>
+<p>顺带认全这家族：<span class="mono">impl=JSON</span> 那一脉有 <span class="mono">EmbeddingConfigColumn</span>、<span class="mono">LLMConfigColumn</span>、<span class="mono">ToolRulesColumn</span> 三个，套路一致；<span class="mono">CommonVector</span> 是 <span class="mono">impl=BINARY</span> 的独苗。</p>
+<p>其中 <span class="mono">deserialize_llm_config</span> 多做一步：读出来若缺新字段，就<strong>就地补默认</strong>再构造 pydantic。这正是 schema-on-read——老数据不必迁移，读时顺手"升级"。</p>
 <details class="accordion"><summary>把配置塞进一列 JSON，是聪明还是偷懒？取舍在哪？</summary><div class="acc-body">
 <p>买到两样东西。其一<strong>免迁移</strong>：给 <span class="mono">LLMConfig</span> 加个 pydantic 字段，不用动表结构——老行反序列化时 <span class="mono">deserialize_llm_config</span> 自动补默认（schema-on-read）。</p>
 <p>其二<strong>保真</strong>：整个 pydantic 对象原样进、原样出，嵌套结构不被拍平成一堆列，读回来还是那个强类型对象。</p>
@@ -1514,6 +1525,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p><strong>Postgres</strong> 走一条<strong>增量链</strong>：从 <span class="mono">9a505cc7eca9</span> 起一版版往上叠。早期迁移还带门禁——<span class="mono">if not settings.letta_pg_uri_no_default: return</span>，没配 PG 就跳过。</p>
 <p><strong>SQLite</strong> 则是<strong>单个 baseline 快照</strong> <span class="mono">2c059cad97cc</span>：一个反向门禁 <span class="mono">if settings.letta_pg_uri_no_default: return</span>，用纯 <span class="mono">sa.JSON()</span> 一次性把整套 schema 建出来。</p>
 <p>baseline 之后的迁移<strong>两边都跑</strong>，方言差异在脚本里<strong>内联处理</strong>——比如时间默认值，Postgres 用 <span class="mono">now()</span>，SQLite 用 <span class="mono">CURRENT_TIMESTAMP</span>。</p>
+<p>这套设计的红利是 dev 体验：开发者装好后不配任何 PG，直接拿 SQLite 起一个本地库；要上生产，配上 PG URI，同一套迁移自动走 Postgres 的增量链。<strong>一份代码，两种部署</strong>。</p>
 <details class="accordion"><summary>一套 alembic 怎么同时伺候两套库？baseline 和增量链什么关系？</summary><div class="acc-body">
 <p>靠两道<strong>方向相反的门禁</strong>。Postgres 早期迁移：<span class="mono">if not letta_pg_uri_no_default: return</span>——没配 PG 就整段跳过；SQLite baseline：<span class="mono">if letta_pg_uri_no_default: return</span>——配了 PG 反而跳过。</p>
 <p>于是同一次 <span class="mono">upgrade</span>，Postgres 那侧顺着 <span class="mono">9a505cc7eca9</span> 的增量链一版版建；SQLite 那侧只认 baseline <span class="mono">2c059cad97cc</span>，用纯 <span class="mono">sa.JSON()</span> 一把建全。</p>
@@ -1524,9 +1536,41 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>本课开头就埋了伏笔：双库画得这么对称，可 <span class="mono">server/db.py</span> 模块级<strong>只</strong> <span class="mono">create_async_engine(async_pg_uri)</span>，根本不按 <span class="mono">database_engine</span> 建 SQLite 引擎。这不矛盾吗？</p>
 <p>不矛盾，而是<strong>分层收敛</strong>。双库的故事完整活在<strong>两层</strong>：ORM 的列类型（<span class="mono">Vector</span> vs <span class="mono">CommonVector</span>）、alembic 的两后端建表。这两层至今仍是货真价实的双轨。</p>
 <p>真正悄悄收敛到 Postgres 的，只是<strong>运行期那条 async 引擎</strong>。换句话说，"声明层"还双着，"连接层"先一步统一了。唯一还构造 SQLite URI 的地方，是 <span class="mono">alembic/env.py</span>。</p>
+<p>对你读码的实际影响：想确认"当前进程在用哪套库"，别去翻 <span class="mono">db.py</span>（那里永远 Postgres），而要看 <span class="mono">settings.database_engine</span> 的取值——它才是 ORM 列类型与迁移路径的真正依据。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">这其实是个很好的教学点：<strong>读架构别只盯一个文件</strong>。只看 <span class="mono">db.py</span>，你会以为 Letta 只支持 Postgres；只看 ORM 与 alembic，你又会以为运行期能随意切 SQLite。真相是分层的——不同层处在收敛的不同阶段。</span></div>
-<!--ZHMORE-->
-
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>"同一套代码两套库"最反直觉的一点：<strong>根本没有一个 <span class="mono">db.py</span> 里的聪明 switch</strong>。接缝是<strong>分布式且大多声明式</strong>的。</p>
+<p>数一数就五六处：一个派生的 <span class="mono">database_engine</span> property；一句<strong>类体 <span class="mono">if</span> 把 embedding 列类型在 import 期烤进模型</strong>（所以一个进程被特化到一种后端、运行时不能切库）；查询构造器里两行 <span class="mono">order_by</span> 分支；一个全局 <span class="mono">@event.listens_for</span> 往任何 SQLite 连接注入 numpy <span class="mono">cosine_distance</span>；外加 <span class="mono">alembic/env.py</span> 选 URI。</p>
+<p>pydantic-in-DB 是另一半魔术：配置当 JSON blob、schema-on-read 演化，<strong>保真胜过范式化</strong>。</p>
+<p>而安静的拱顶石是 <span class="mono">MAX_EMBEDDING_DIM=4096</span>：把每个 embedding 零填充到定长，一个 <span class="mono">Vector(4096)</span> 列就能装任意模型的输出；又因等量补 0 不改点积与 L2 范数，<strong>cosine 排序与未填充数学等价</strong>。</p>
+<p>最后一个诚实的星号（也是好教学点）：v0.16.8 引擎层其实已悄悄收敛到 Postgres——双引擎故事在 ORM / alembic 完全活着，但 <span class="mono">server/db.py</span> 只建 Postgres。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p><span class="mono">server/db.py</span> <strong>不</strong>按后端分叉：v0.16.8 它是 <strong>Postgres-only async</strong>，别在这找 SQLite 引擎或 sqlite-vec 加载。</p>
+<p><span class="mono">database_engine</span> 是 <span class="mono">@property</span>，由"<strong>有没有配 PG URI</strong>"决定，<strong>没有 <span class="mono">LETTA_DATABASE_ENGINE</span></strong> 这种环境变量。</p>
+<p>SQLite 的相似度是 <strong>numpy UDF，不是 sqlite-vec 原生</strong>——<span class="mono">sqlite_vec.load()</span> 是注释掉的，只借了它的 <span class="mono">serialize_float32</span>。</p>
+<p>没有 <span class="mono">AgentPassage</span> 这个 ORM 类：只有 <span class="mono">SourcePassage</span> 与 <span class="mono">ArchivalPassage</span>，都继承 <span class="mono">BasePassage</span>。</p>
+<p>列类型在 <strong>import 期定死</strong>，一个进程运行时<strong>不能切库</strong>；还有——填充让不同模型的向量<strong>可存进同一列</strong>，但不等于它们跨模型<strong>可比</strong>。</p>
+</div>
+<h2>回扣与铺垫：一套 ORM 两套库，装下整座记忆</h2>
+<p>把第七部分收个尾。这四课其实是<strong>从骨架到向量</strong>的一条线：</p>
+<div class="cellgroup"><div class="cg-cap"><b>第七部分四课连起来：从骨架到向量</b></div><div class="cells"><span class="cell">24 三层架构</span><span class="sep">→</span><span class="cell">25 服务层 Managers</span><span class="sep">→</span><span class="cell">26 CRUD / 隔离</span><span class="sep">→</span><span class="cell hl">27 双库 / 向量</span></div></div>
+<p>一句话串起来：<strong>分层立骨架（24）→ manager 管事务与转换（25）→ 一个 base 默认安全（26）→ 一套 ORM 两套库装下记忆的向量（27）</strong>。</p>
+<p>回指第 03 课：你追过的消息生命周期，最终"持久化的那一端"就落在这层引擎与列上。</p>
+<p>回指第 10、11 课：archival / recall 的那些向量，存的就是这里的 <span class="mono">Passage</span>——<span class="mono">SourcePassage</span> 与 <span class="mono">ArchivalPassage</span>，搜索就是本课的两条路。</p>
+<p>也回指第 21 课：<span class="mono">LLMConfig</span> / <span class="mono">EmbeddingConfig</span> 经 <span class="mono">custom_columns</span> 的 JSON 列落库——你配的模型参数，就这么躺在一格 JSON 里。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">一句话收束：<strong>一套 ORM、一个 property 开关、两套库</strong>——pgvector 的原生 <span class="mono">&lt;=&gt;</span> 与 SQLite 的 numpy UDF 各搜各的，定长 4096 让任意模型的向量同住一列，pydantic-in-DB 让配置免迁移地演化。记忆的向量，就这样被两套库稳稳装下。</span></div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><strong>一个开关</strong>：<span class="mono">settings.database_engine</span> 是<strong>派生 @property</strong>——配了 PG URI（<span class="mono">letta_pg_uri_no_default</span> 非 None）走 Postgres，否则 SQLite；<strong>没有 <span class="mono">LETTA_DATABASE_ENGINE</span></strong>。</li>
+<li><strong>接缝分布在六处、大多声明式</strong>：property、<span class="mono">BasePassage</span> import 期列类型 <span class="mono">if</span>、查询两路 <span class="mono">order_by</span>、<span class="mono">register_functions</span> 的 numpy UDF、<span class="mono">custom_columns</span>、<span class="mono">alembic/env.py</span>。</li>
+<li><strong>向量两存两搜</strong>：Postgres ＝ <span class="mono">Vector(4096)</span> + 原生 <span class="mono">&lt;=&gt;</span>（可 ANN 索引）；SQLite ＝ <span class="mono">CommonVector</span> BINARY + numpy UDF 全表暴力。所有向量 <span class="mono">np.pad</span> 到 <span class="mono">MAX_EMBEDDING_DIM=4096</span>，<strong>补 0 不改 cosine</strong>。</li>
+<li><strong>pydantic-in-DB</strong>：<span class="mono">TypeDecorator</span> 把 <span class="mono">EmbeddingConfig</span> / <span class="mono">LLMConfig</span> 整块 <span class="mono">model_dump</span> 成 JSON 存一列；schema-on-read 加字段免迁移，代价是子字段不可索引 + 序列化开销。</li>
+<li><strong>诚实星号</strong>：v0.16.8 <span class="mono">server/db.py</span> 只建 Postgres async 引擎；双库故事完整活在 ORM 列类型与 alembic 两后端里。</li>
+</ul>
+</div>
+<p>第七部分到此完整：从三层架构，到 manager、到 secure-by-default 的 base、再到双库与向量。服务端怎么把"一个 agent 的记忆"安全地存下、又精准地取回，你已看穿整条链路。</p>
+<p>接下来是<strong>第八部分</strong>：进阶专题与术语表。我们会挑几个横切全局的主题深挖，再用一份术语表把这一路的关键词收拢成可随时回查的索引。</p>
 """,
     "en": r"""<p>stub</p>""",
 }
