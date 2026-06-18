@@ -354,6 +354,11 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p><strong>③ <span class="mono">Job</span></strong>（<span class="mono">orm/job.py::Job</span>，表 <span class="mono">jobs</span>，带 <span class="mono">UserMixin</span>）＝<strong>后台/批任务</strong>，典型就是第 29 课那种"加载＋解析＋嵌入文件"。类型 <span class="mono">JobType{JOB,RUN,BATCH}</span>、状态 <span class="mono">JobStatus{created,running,completed,failed,pending,cancelled,expired}</span>，由 <span class="mono">services/job_manager.py::JobManager</span> 管。</p>
 <p>最关键的一句：<strong><span class="mono">Job</span> 不是 <span class="mono">Run</span> 的父级</strong>。它是<strong>另起一张表、平级存在</strong>的概念。嵌套链只有 <span class="mono">Run ⊃ Step ⊃ StepMetrics</span> 这一条，Job 站在旁边。</p>
 <div class="cellgroup"><div class="cg-cap"><b>嵌套链：<span class="mono">Run ⊃ Step ⊃ StepMetrics</span>（<span class="mono">Job</span> 平级，不在链上）</b></div><div class="cells"><span class="cell hl">Run · runs · RunStatus</span><span class="lab">1:1 RunMetrics</span><span class="sep">⊃</span><span class="cell">Step · steps · trace_id · StepStatus</span><span class="lab">1:N Message</span><span class="sep">⊃</span><span class="cell">StepMetrics · 三段耗时</span><span class="sep">‖</span><span class="cell q">Job · jobs · JobStatus（平级，非父级）</span></div></div>
+<p>多问一句：为什么 Job 和 Run 要做成<strong>两张平级的表</strong>，而不是让 Job 包住 Run？</p>
+<p>因为它们是<strong>两种正交的异步</strong>。Run 是"一次 agent 对话执行"——有 LLM、有工具、有 step；Job 是"一段后台数据处理"，典型是加载/解析/嵌入文件，<strong>根本没有 step 这个概念</strong>。</p>
+<p>硬把 Run 塞进 Job 当子级，等于给"加载文件"硬安一个"它跑了几次 LLM"的字段——驴唇不对马嘴。两张表各记各的，反而干净。</p>
+<p><span class="mono">JobType</span> 里那个 <span class="mono">BATCH</span> 也佐证这点：它是 LLM batch API 那类批量任务，和"一次对话"是两码事。Job 管"批"与"后台活儿"，Run 管"一次对话执行"。</p>
+<p>所以记法很简单：<strong>要追一次 agent 调用找 Run，要追一个后台文件任务找 Job</strong>。它们的状态机偶尔长得像（都有 <span class="mono">created/running/completed</span>），但语义和归属完全不同。</p>
 <p>三实体认完，看它们的 ID 怎么从一个 HTTP 请求一路串下去。这条链把"调用 → 步 → 消息"缝成可回查的层级：</p>
 <div class="flow">
   <div class="node hl"><div class="nt">POST …/messages</div><div class="nd">一次 agent 调用进来</div></div>
@@ -417,6 +422,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 </pre></div>
 <p>注意 <span class="mono">log_step_async</span> 传的是 <span class="mono">usage=(0,0,0)</span>。这<strong>不是 bug</strong>：行先以零 token 落库，真实用量等 <span class="mono">update_step_success_async</span> 回填。先有行、后有数，是这套设计的关键。</p>
 <p>说一句 token 的账，别和第 14 课混。<span class="mono">Step.total_tokens</span> 是<strong>这一步单次 LLM</strong> 的用量；一个 Run 的<strong>总用量</strong>是<strong>跨 Step 累加</strong>的（<span class="mono">LettaAgentV2._update_global_usage_stats</span>，正是第 14 课那个累加器）。per-step 看 <span class="mono">steps</span> 行，累计看 Run。</p>
+<p>顺便说说 <span class="mono">StepMetrics</span> 那三段耗时为什么要拆开。<span class="mono">llm_request_ns</span> 是等 LLM 回话的时间，<span class="mono">tool_execution_ns</span> 是执行这一轮工具的时间，<span class="mono">step_ns</span> 是这一圈的端到端总耗时。</p>
+<p>拆成三段，排查时一眼看出瓶颈在哪：是 LLM 慢，还是某个工具（查库、调外部 API）拖了后腿？混成一个数你只知道"这步慢"，拆开才知道"慢在哪一截"。</p>
+<p>它也和 OTel 那条 <span class="mono">agent_step</span> span 对得上——span 里嵌着更细的子区间，<span class="mono">StepMetrics</span> 则把最关键的三段<strong>固化进 DB</strong>，不依赖 OTel 后端也能查。</p>
 <details class="accordion"><summary><span class="mono">StepProgression</span> 兜底：为什么连崩溃的迭代也留得下记录？</summary><div class="acc-body">
 <p>秘诀在<strong>顺序</strong>：<span class="mono">log_step_async</span> 在<strong>调 LLM 之前</strong>就把 <span class="mono">steps</span> 行写下（<span class="mono">PENDING</span>/零 token）。所以哪怕 LLM 调用抛异常、或用户中途取消，那行<strong>早已存在</strong>。</p>
 <p><span class="mono">finally</span> 里那台 <span class="mono">StepProgression</span> 状态机（<span class="mono">START…FINISHED</span>）一查：进度没走到 <span class="mono">FINISHED</span>，就 <span class="mono">update_step_error_async</span> 把行翻成 <span class="mono">FAILED</span>/<span class="mono">CANCELLED</span>，而不是留个永远 <span class="mono">PENDING</span> 的孤儿。</p>
@@ -434,6 +442,8 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p><strong>① <span class="mono">steps</span> 行（产品＋计费）</strong>：就是前面那张表，per-step 的 <span class="mono">model</span> / <span class="mono">provider</span> / <span class="mono">tokens</span> / <span class="mono">stop_reason</span> / <span class="mono">feedback</span>。它是给<strong>产品分析和账单</strong>看的——谁用了多少 token、停在哪、用户点没点赞。</p>
 <p><strong>② OTel（<span class="mono">letta/otel/</span>）</strong>：<span class="mono">tracing.py::trace_method</span>（第 25 课那个装饰器）给方法开一个 <span class="mono">"{Class}.{method}"</span> span，<span class="mono">get_trace_id()</span> 把当前 trace id 写进 <span class="mono">Step.trace_id</span>。这套是给<strong>延迟与分布式追踪</strong>看的。</p>
 <p>OTel 还有一摞指标：<span class="mono">metric_registry.py::MetricRegistry</span>（单例）登记 <span class="mono">ttft_ms_histogram</span>、<span class="mono">step_execution_time_ms_histogram</span>、<span class="mono">message_cost</span>、<span class="mono">sse_*</span> 等。它由 <span class="mono">app.py</span> 启动时按 <span class="mono">otel_exporter_otlp_endpoint and not disable_tracing</span> 决定开不开，<strong>pytest 下是 no-op</strong>。</p>
+<p>这几个指标各有所指：<span class="mono">ttft_ms</span> 是 time-to-first-token（首 token 延迟，流式体验的关键），<span class="mono">step_execution_time_ms</span> 是单圈 step 的端到端耗时，<span class="mono">message_cost</span> 估这条消息的花费，<span class="mono">sse_*</span> 盯流式连接的健康。</p>
+<p>它们和 <span class="mono">steps</span> 行<strong>不重复</strong>：steps 行记"这一步用了多少 token"（离散、可计费），OTel 直方图记"延迟分布"（聚合、看趋势）。一个回答"花了多少钱"，一个回答"快不快"。</p>
 <p><strong>③ provider traces（<span class="mono">services/telemetry_manager.py::TelemetryManager</span>）</strong>：按 <span class="mono">step_id</span> 把<strong>原始 LLM 请求/响应</strong>整包存到 postgres/clickhouse/socket。这是给<strong>调试与复盘</strong>看的——想看那次到底发了什么 payload。默认是 <span class="mono">NoopTelemetryManager</span>，返回 <span class="mono">None</span>，<strong>不存</strong>。</p>
 <p>缝合三者的就是那一个字段：<strong><span class="mono">Step.trace_id = get_trace_id()</span></strong>。从一行产品记录，能跳到对应的分布式 trace，再顺着 <span class="mono">step_id</span> 翻到那次原始 LLM payload——三套账，一根线串起来。</p>
 <div class="cols">
@@ -476,6 +486,11 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <tr><td>流式 stream</td><td class="mono">messages（streaming=true）</td><td>SSE 实时推 <span class="mono">data: {json}\n\n</span></td></tr>
 <tr><td>后台 async</td><td class="mono">messages/async</td><td>立即返回 background Run，轮询 <span class="mono">GET /runs/{id}</span></td></tr>
 </table>
+<p>为什么要三种壳，一种不够吗？因为"一次 agent 调用"的时长跨度太大——可能 1 秒，也可能跑十几圈、好几分钟。</p>
+<p>同步最简单，但长任务会把 HTTP 连接<strong>一直卡住</strong>，一超时就前功尽弃。它只适合"快进快出"的短调用。</p>
+<p>流式把"卡住"变成"边跑边吐"——首 token 一出来用户就看到反应，体验好；代价是连接得<strong>全程开着</strong>，断了就得想办法接回。</p>
+<p>后台异步则彻底<strong>解开连接</strong>：立即返回一个 run id，活儿在后台慢慢跑，你回头轮询。代价是要自己查状态，流式恢复还得靠 Redis。</p>
+<p>三种壳对应三种取舍：<strong>要简单用同步、要体验用流式、要扛长任务用异步</strong>。但记住——壳变了，里头那个 <span class="mono">for</span> 循环和它记的三套账，一点没变。</p>
 <p>先看同步那条路由怎么把 Run 的生命周期兜全。重点是那个 <span class="mono">finally</span>：无论成败，都得把 Run 状态写定。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message：建 Run → 跑 loop → finally 收尾 Run 状态（简化）</span></div>
 <pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, ...):
@@ -523,7 +538,33 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p><strong>是否落 <span class="mono">steps</span> 行看 manager</strong>：sleeptime 子 agent、旧 agent 走单例 <span class="mono">NoopStepManager</span>——<strong>不写行</strong>（第 28 课）。看不到 step 记录先查是不是 Noop。</p>
 <p><strong>流式认 v3</strong>：走 <span class="mono">StreamingService</span>；<span class="mono">StreamingServerInterface</span> 是 legacy。<strong>token 别混</strong>：<span class="mono">Step.total_tokens</span> 是 per-step，Run 总量是跨 Step 累加。</p>
 </div>
-<!--ZHMORE-->
+<h2>顺着一个 run_id，把三套账都翻出来</h2>
+<p>前面拆的全是机制，落到实战就一句话：<strong>手里有个 <span class="mono">run_id</span>，你能把这次调用的方方面面都查出来</strong>。把它当排查的总入口。</p>
+<p><strong>先看全局</strong>：<span class="mono">GET /v1/runs/{run_id}</span> 给你 Run 状态（<span class="mono">created…completed/failed/cancelled</span>）＋ <span class="mono">RunMetrics</span>（<span class="mono">run_start_ns</span>、<span class="mono">num_steps</span>）。一眼知道这次跑没跑完、跑了几圈。</p>
+<p><strong>再钻每一圈</strong>：<span class="mono">GET /v1/runs/{run_id}/steps</span> 列出每个 <span class="mono">Step</span> 行——哪一步用了哪个 <span class="mono">model</span>、烧了多少 token、<span class="mono">stop_reason</span> 是什么、<span class="mono">status</span> 成没成。这是产品＋计费视角。</p>
+<p><strong>想看延迟</strong>：拿某个 <span class="mono">Step.trace_id</span> 去 OTel 后端，翻那条 <span class="mono">agent_step</span> span 树——LLM 等了多久、工具花了多久，一目了然。</p>
+<p><strong>想看那次到底发了什么</strong>：拿 <span class="mono">step_id</span> 去 provider trace（若接了 <span class="mono">TelemetryManager</span>）翻原始 LLM 请求/响应；想看累计用量则 <span class="mono">GET …/usage</span>（跨 step 累加）。</p>
+<p>还有个常被忽略的 <span class="mono">feedback</span> 字段：用户对某条回复点赞/点踩，会落到对应的 <span class="mono">Step</span> 上。日后按 <span class="mono">feedback</span> 过滤，就能分析"哪类 step 表现好、哪类该改"——这是产品迭代的一手数据，也是 <span class="mono">steps</span> 行除计费之外的另一重价值。</p>
+<p>串起来就是：<strong><span class="mono">run_id</span> 是总入口，<span class="mono">step_id</span> 是分入口，<span class="mono">trace_id</span> 是跨系统的那枚缝合钉</strong>。三套账、一根线，排查 agent 行为不再靠猜。</p>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>三实体三张表：<span class="mono">Run</span>(一次 agent 调用，表 <span class="mono">runs</span>) ⊃ <span class="mono">Step</span>(一次 LLM＋一轮工具，表 <span class="mono">steps</span>) ⊃ <span class="mono">StepMetrics</span>(三段耗时)，外加 <span class="mono">Run</span>–<span class="mono">RunMetrics</span> 一对一；<span class="mono">Job</span>(表 <span class="mono">jobs</span>) 是<strong>平级</strong>的后台/批任务，<strong>不是</strong> Run 的父级。</li>
+<li>Step 在 loop 里<strong>先占坑后回填</strong>：<span class="mono">_step_checkpoint_start</span> 在 LLM 调用前写 <span class="mono">PENDING</span>/0 行＋开 span，<span class="mono">_step_checkpoint_finish</span> 用 <span class="mono">update_step_success_async</span> 回填真实用量翻 <span class="mono">SUCCESS</span>，<span class="mono">finally</span> 靠 <span class="mono">StepProgression</span> 兜底——崩溃/取消也留可归因记录。</li>
+<li>三套可观测、粒度与开关都不同：<span class="mono">steps</span> 行(产品/计费，默认写)、OTel span(延迟/追踪，看 <span class="mono">app.py</span> 配置，pytest no-op)、provider trace(原始 payload，默认 <span class="mono">NoopTelemetryManager</span> 不存)，靠 <span class="mono">Step.trace_id = get_trace_id()</span> 缝合。</li>
+<li>三种外壳同一个 loop：同步 <span class="mono">LettaResponse</span> / 流式 SSE(<span class="mono">StreamingService</span>，线格式 <span class="mono">data: {json}\n\n</span>) / 后台异步 Run(<span class="mono">messages/async</span> 立即返回，轮询 <span class="mono">GET /runs/{id}</span>，流式恢复靠 Redis)。</li>
+<li>两个易混点：per-step token(<span class="mono">Step.total_tokens</span>) vs Run 累计(<span class="mono">_update_global_usage_stats</span>)；是否落 <span class="mono">steps</span> 行<strong>看 manager</strong>——sleeptime/旧 agent 用 <span class="mono">NoopStepManager</span> 不写。</li>
+</ul>
+</div>
+<h2>回扣与小结：一个 loop，三套账，三种壳</h2>
+<p>收个尾。本课没造任何新机器，它通篇都在把你<strong>早就学过</strong>的零件，接成一条"可追踪、可计费、可恢复"的链。</p>
+<p>回扣第 13、14 课：那个朴素的 <span class="mono">for</span> 循环就是 <span class="mono">Step</span> 的源头——每圈 <span class="mono">_step</span> 产出一行 <span class="mono">steps</span>、一条 span、一份（可选的）原始 payload。</p>
+<p>回扣第 24 课：建 Run 的就是那层路由（<span class="mono">send_message</span>）——最外层建 Run、跑 loop、<span class="mono">finally</span> 收尾 Run 状态。</p>
+<p>回扣第 25 课：OTel span 的来源正是 <span class="mono">trace_method</span> 装饰器；<span class="mono">get_trace_id()</span> 把 span id 写进 <span class="mono">Step.trace_id</span>，那枚缝合钉就是这么来的。</p>
+<p>回扣第 3 课：每条 Message 盖 <span class="mono">run_id</span>＋<span class="mono">step_id</span>，正是 <span class="mono">_checkpoint_messages</span> 干的活——那条 ID 链的终点。</p>
+<p>回扣第 28 课：sleeptime 子 agent 走 <span class="mono">NoopStepManager</span>——同一套 loop，却<strong>故意不写</strong> <span class="mono">steps</span> 行，省掉后台子 agent 的噪声。这也是"看不到 step 记录先查 manager"的由来。</p>
+<p>一句话带走：看到 <span class="mono">Run</span>/<span class="mono">Step</span>/<span class="mono">Job</span>，先分清<strong>嵌套的是 <span class="mono">Run ⊃ Step</span>、平级的是 <span class="mono">Job</span></strong>；看到追踪，先问<strong>这是 <span class="mono">steps</span> 行、OTel、还是 provider trace</strong>。</p>
+<p>把这条肌肉记忆带走，你再读 Letta 的执行与可观测代码，就不会在"任务到底记在哪"上绕圈子了——它一直都在那个 <span class="mono">for</span> 循环边跑边记的三套账里。</p>
+<p>第八部分的进阶专题到此告一段落：从多 agent、数据源，到这一课的执行可观测，你已经把 Letta 跑起来之后"看得见、追得到、收得住"的那一面摸清了。</p>
 </div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="29-data-sources-rag.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">数据源与 RAG</span><span class="lang-en">Data sources &amp; RAG</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
