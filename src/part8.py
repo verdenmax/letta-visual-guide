@@ -1173,6 +1173,71 @@ LESSON_30 = {
 """,
     "en": r"""
 <!--ENMORE-->
+<p>For the streaming shell, v3 actually goes through <span class="mono">services/streaming_service.py::StreamingService.create_agent_stream</span>. It likewise creates a Run first, then has <span class="mono">AgentLoop.load(...).stream(...)</span> emit already-formatted <span class="mono">data: {json}\n\n</span> chunk by chunk.</p>
+<p>Two more layers wrap it: <span class="mono">_create_error_aware_stream</span> handles the <span class="mono">[DONE]</span> terminal frame and error frames, plus a keepalive (<span class="mono">LettaPing</span>) against connection timeouts; finally <span class="mono">streaming_response.py::StreamingResponseWithStatusCode(media_type="text/event-stream")</span> sends it out.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/streaming_service.py</span><span class="ln">create_agent_stream: yield the loop's output as SSE, chunk by chunk (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">create_agent_stream</span>(self, agent_id, request, ...):
+    run = <span class="kw">await</span> self.run_manager.<span class="fn">create_run</span>(agent_id=agent_id, ...)
+    agent_loop = AgentLoop.<span class="fn">load</span>(agent, ...)
+    <span class="kw">async def</span> <span class="fn">_stream</span>():
+        <span class="cm"># loop.stream(...) already yields data: {json}\n\n (see sse_formatter)</span>
+        <span class="kw">async for</span> chunk <span class="kw">in</span> agent_loop.<span class="fn">stream</span>(..., run_id=run.id):
+            <span class="kw">yield</span> chunk
+        <span class="kw">yield</span> <span class="st">&quot;data: [DONE]\n\n&quot;</span>            <span class="cm"># a terminal frame</span>
+    <span class="kw">return</span> <span class="fn">StreamingResponseWithStatusCode</span>(
+        _stream(), media_type=<span class="st">&quot;text/event-stream&quot;</span>)
+</pre></div>
+<p>The SSE wire format is plain: <span class="mono">utils.py::sse_formatter</span> serializes each event into <span class="mono">data: {json}\n\n</span>, sends <span class="mono">data: [DONE]</span> on normal termination, and <span class="mono">event: error</span> on error.</p>
+<p>The event types streaming through are exactly Lesson 3's <span class="mono">LettaMessage</span> family: <span class="mono">ReasoningMessage</span> / <span class="mono">AssistantMessage</span> / <span class="mono">ToolCallMessage</span> / <span class="mono">ToolReturnMessage</span>, plus control frames like <span class="mono">LettaPing</span> / <span class="mono">LettaUsageStatistics</span> / <span class="mono">LettaStopReason</span>.</p>
+<details class="accordion"><summary>Streaming v3 (<span class="mono">StreamingService</span>) vs legacy (<span class="mono">StreamingServerInterface</span>) + how to track an async Run</summary><div class="acc-body">
+<p><strong>The real v3 path</strong>: <span class="mono">services/streaming_service.py::StreamingService.create_agent_stream</span> — create a Run, have <span class="mono">AgentLoop.stream(...)</span> emit <span class="mono">data: {json}\n\n</span> chunk by chunk, wrapped with <span class="mono">[DONE]</span>/error and keepalive. This is what the lesson covers.</p>
+<p><strong>Legacy (don't copy it)</strong>: <span class="mono">server/rest_api/interface.py::StreamingServerInterface</span> — a deque buffer, whose <span class="mono">step_complete</span> gives the <strong>authoritative definition</strong> "step = LLM response + tool execution", but it backs the old <span class="mono">agent.py</span>/OpenAI-proxy path, <strong>not v3</strong>. Just recognize it as historical baggage.</p>
+<p><strong>How to track an async Run</strong>: <span class="mono">messages/async</span> returns a background Run immediately, after which you <strong>poll</strong> <span class="mono">GET /v1/runs/{run_id}</span> (and <span class="mono">/steps</span>/<span class="mono">/messages</span>/<span class="mono">/usage</span>/<span class="mono">/metrics</span>). Resuming a background <strong>stream</strong> needs Redis, reconnectable via <span class="mono">POST /v1/runs/{run_id}/stream</span>.</p>
+</div></details>
+<div class="note info"><span class="ni">💡</span><span class="nx">For streaming in v0.16.8, lock onto the <span class="mono">StreamingService</span> v3 path. The <span class="mono">StreamingServerInterface</span> singled out in the outline is <strong>legacy</strong> — its definition of "step" is still worth referencing, but its code path is no longer the mainline, so don't write new code against it.</span></div>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p><strong><span class="mono">Job</span> ≠ <span class="mono">Run</span></strong>: sending an agent message asynchronously (<span class="mono">messages/async</span>) creates a background <strong>Run</strong>, <strong>not a Job</strong>. A Job is a background batch task like loading a file.</p>
+<p><strong>Don't reverse the nesting</strong>: it is <span class="mono">Run ⊃ Step</span>, not <span class="mono">Job ⊃ Run ⊃ Step</span>. Job is a sibling, not on the chain.</p>
+<p><strong>Step granularity</strong> = one iteration = one LLM call + one round of tool execution, not "one message" and not "one tool".</p>
+<p><strong>Whether a steps row is written depends on the manager</strong>: sleeptime sub-agents and the old agent go through the singleton <span class="mono">NoopStepManager</span> — <strong>no row written</strong> (Lesson 28). If you see no step records, first check whether it's Noop.</p>
+<p><strong>For streaming, recognize v3</strong>: it goes through <span class="mono">StreamingService</span>; <span class="mono">StreamingServerInterface</span> is legacy. <strong>Don't mix tokens</strong>: <span class="mono">Step.total_tokens</span> is per-step, while the Run total is accumulated across Steps.</p>
+</div>
+<h2>Three shells: blocking sync, streaming SSE, background async</h2>
+<p>The same loop can be wrapped in three shells. To the user they are <strong>three ways to send a message</strong>; inside, the very same <span class="mono">for</span> loop runs.</p>
+<p><strong>① Sync</strong>: <span class="mono">messages</span>(streaming=false) → create a Run → block through the whole loop → return <span class="mono">LettaResponse</span>. In the <span class="mono">finally</span>, <span class="mono">update_run_by_id_async</span> sets the Run to <span class="mono">completed</span>/<span class="mono">failed</span>.</p>
+<p><strong>② Streaming</strong>: <span class="mono">messages</span>(streaming=true) → create a Run the same way, but spit the loop's output out <strong>live</strong> over SSE, chunk by chunk.</p>
+<p><strong>③ Background async</strong>: <span class="mono">messages/async</span> → <span class="mono">send_message_async</span> <strong>returns immediately</strong> with a background Run, and the real work is thrown into a shielded background task. You <strong>poll</strong> <span class="mono">GET /v1/runs/{run_id}</span> for progress.</p>
+<p>That background Run lets you trace out further: <span class="mono">/steps</span>, <span class="mono">/messages</span>, <span class="mono">/usage</span>, <span class="mono">/metrics</span>, even the trace; to abort, use <span class="mono">messages/cancel</span> or <span class="mono">RunManager.cancel_run</span>. Resuming a background <strong>stream</strong> needs Redis, reconnectable via <span class="mono">POST /v1/runs/{run_id}/stream</span>.</p>
+<p>Lay the three states side by side in a table, and the entry point and observation method are clear at a glance:</p>
+<table class="t">
+<tr><th>Form</th><th>Entry point</th><th>Return / how to observe</th></tr>
+<tr><td>sync</td><td class="mono">messages (streaming=false)</td><td>blocks to completion, returns <span class="mono">LettaResponse</span></td></tr>
+<tr><td>stream</td><td class="mono">messages (streaming=true)</td><td>SSE pushes <span class="mono">data: {json}\n\n</span> live</td></tr>
+<tr><td>async</td><td class="mono">messages/async</td><td>returns a background Run at once, poll <span class="mono">GET /runs/{id}</span></td></tr>
+</table>
+<p>Why three shells, isn't one enough? Because "one agent invocation" spans a huge range of durations — maybe 1 second, maybe a dozen iterations over several minutes.</p>
+<p>Sync is simplest, but a long task <strong>holds the HTTP connection</strong> the whole time, and one timeout wastes all the work. It only suits "in-and-out" short calls.</p>
+<p>Streaming turns "stuck" into "emit as it runs" — the moment the first token appears the user sees a response, which feels good; the cost is the connection must stay open throughout, and if it drops you have to reconnect somehow.</p>
+<p>Background async fully <strong>detaches the connection</strong>: it returns a run id immediately, the work grinds on in the background, and you poll later. The cost is you must check status yourself, and stream recovery still needs Redis.</p>
+<p>Three shells, three trade-offs: <strong>sync for simplicity, streaming for experience, async for long tasks</strong>. But remember — the shell changes, while the <span class="mono">for</span> loop inside and the three ledgers it keeps don't change one bit.</p>
+<p>First, see how the sync route covers the Run's whole lifecycle. The key is that <span class="mono">finally</span>: success or failure, the Run status must be written down.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message: create Run → run loop → finally settle Run status (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, ...):
+    <span class="cm"># 1) create a Run (issues a run-… id, also writes RunMetrics)</span>
+    run = <span class="kw">await</span> run_manager.<span class="fn">create_run</span>(agent_id=agent_id, ...)
+    <span class="kw">try</span>:
+        <span class="cm"># 2) run the loop, threading run_id into every step</span>
+        result = <span class="kw">await</span> AgentLoop.<span class="fn">load</span>(agent, ...).<span class="fn">step</span>(
+            input_messages, run_id=run.id, max_steps=...)
+        status = RunStatus.completed
+        <span class="kw">return</span> result                      <span class="cm"># LettaResponse</span>
+    <span class="kw">except</span> Exception:
+        status = RunStatus.failed
+        <span class="kw">raise</span>
+    <span class="kw">finally</span>:
+        <span class="cm"># 3) success or failure, settle the Run status</span>
+        <span class="kw">await</span> run_manager.<span class="fn">update_run_by_id_async</span>(run.id, status=status)
+</pre></div>
 <p>Draw "one step, three stamps" as a cute figure and the stitching line is obvious at a glance:</p>
 <div class="cute"><div class="row"><span class="emoji">🧾</span><span class="lab">one step</span><span class="arrow">→</span><span class="emoji">💰</span><span class="lab">billing stamp</span><span class="arrow">→</span><span class="emoji">⏱️</span><span class="lab">latency stamp</span><span class="arrow">→</span><span class="emoji">🔬</span><span class="bubble">raw payload stamp</span></div><div class="cap">🧾 every finished step gets three stamps at once — 💰 billing (the <span class="mono">steps</span> row), ⏱️ latency (the OTel span), 🔬 raw payload (the provider trace); one <span class="mono">trace_id</span> threads the three stamps into a single line, from the bill all the way to what that LLM call actually sent</div></div>
 <details class="accordion"><summary>What does each of the three ledgers own, and is it on or off by default?</summary><div class="acc-body">
