@@ -442,6 +442,29 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 <p><strong>跨调用方复用</strong>：同一个方法，REST 路由能调、agent 循环能调、别的 manager 也能调；<span class="mono">AgentManager.__init__</span> 甚至直接组合 <span class="mono">BlockManager / ToolManager / MessageManager / PassageManager</span>。</p>
 <p><strong>横切免费</strong>：装饰器一叠，typing、tracing、id 校验对每个方法一视同仁，不必手写。</p>
 </div></details>
+<h2>schema ↔ ORM：进出柜台都要换装</h2>
+<p>"统一形状"里其实有两处换装：出门时 ORM 行 → pydantic，进门时 pydantic → ORM 行。两个方向用的是<strong>两个不同的入口</strong>，别记混。</p>
+<p>先看出门（读）那一程。转换方法挂在 <strong>ORM 类</strong>上，而不是写在 manager 里：</p>
+<div class="cols">
+  <div class="col"><h4>📤 出门 · ORM → pydantic</h4><p><span class="mono">SqlalchemyBase.to_pydantic</span> ＝ <span class="mono">self.__pydantic_model__.model_validate(self, from_attributes=True)</span>。每个 ORM 模型声明自己的 <span class="mono">__pydantic_model__</span>（如 <span class="mono">orm/agent.py → PydanticAgentState</span>）。</p></div>
+  <div class="col"><h4>📥 进门 · pydantic → ORM</h4><p><span class="mono">model_dump(to_orm=True)</span>（<span class="mono">schemas/letta_base.py::LettaBase.model_dump</span>）把字段拆成字典，顺手把 <span class="mono">metadata</span> 改名成 <span class="mono">metadata_</span>，再喂给 ORM 构造器。</p></div>
+</div>
+<p>两个方向都<strong>没有</strong> <span class="mono">to_record()</span> / <span class="mono">to_orm()</span> 这种方法——出门靠 <span class="mono">to_pydantic</span>，进门靠 <span class="mono">model_dump(to_orm=True)</span>，就这两把钥匙。</p>
+<p>为什么 <span class="mono">metadata</span> 要改名？因为 SQLAlchemy 把 <span class="mono">metadata</span> 占作保留属性，ORM 列只能叫 <span class="mono">metadata_</span>；而对外 schema 仍想叫 <span class="mono">metadata</span>，于是换装时顺手对调。</p>
+<p>简单模型一句 <span class="mono">to_pydantic()</span> 就够；可像 agent 这种<strong>带一堆关系</strong>的，得手工把 block、tool、source 等关系拼齐，于是它重写了 <span class="mono">to_pydantic_async</span>：</p>
+<table class="t">
+<tr><th>方法</th><th>挂在哪</th><th>做什么</th><th>用于</th></tr>
+<tr><td class="mono">to_pydantic()</td><td>SqlalchemyBase</td><td class="mono">model_validate(from_attributes=True)</td><td>简单模型（如 organization）</td></tr>
+<tr><td class="mono">to_pydantic_async()</td><td>复杂 ORM 类重写</td><td>手搭关系，可能再发查询</td><td class="mono">orm/agent.py::Agent</td></tr>
+<tr><td class="mono">model_dump(to_orm=True)</td><td>LettaBase（pydantic 侧）</td><td>拆字段 + metadata→metadata_</td><td>构造 ORM 行（写路径）</td></tr>
+</table>
+<p>为什么 agent 要用 async 版？因为拼关系可能<strong>再发查询</strong>，而查询要 await。简单模型字段都在手上，同步 <span class="mono">to_pydantic()</span> 足矣。一句话：<strong>关系越多，转换越可能 async</strong>。</p>
+<details class="accordion"><summary>为什么转换必须在 session 内完成？</summary><div class="acc-body">
+<p>因为一旦出了 <span class="mono">async with</span> 块，session 已 <span class="mono">close</span>、ORM 行也被 <span class="mono">expunge_all</span> 解了绑——这时再读它的字段，多半直接 <span class="mono">DetachedInstanceError</span>。</p>
+<p>有人会问：不是有 <span class="mono">expire_on_commit=False</span> 吗，对象不该过期啊？没错，已加载的字段确实还在；可一旦碰到<strong>尚未加载</strong>的关系或惰性属性，脱离 session 的对象就没法补查，照样炸。</p>
+<p>所以规矩很硬：<strong>趁门还开着，把要用的都读出来、定形成 pydantic</strong>。复印件一旦成形，就和柜台、和那道门彻底无关了。</p>
+<p>这也解释了 <span class="mono">get_agent_by_id_async</span> 一个"反直觉"的细节：它故意<strong>先不解密就转 pydantic、放掉 DB 连接之后</strong>，再去跑昂贵的 PBKDF2 解密——schema 边界顺手成了连接池优化。</p>
+</div></details>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
