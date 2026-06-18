@@ -2271,6 +2271,121 @@ QUIZZES = {
             },
         ],
     },
+    "25-service-managers.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，一个典型 manager 方法（如 OrganizationManager.get_organization_by_id_async）的“标准骨架”是什么？",
+                    "en": "In letta v0.16.8, what is the “standard skeleton” of a typical manager method (e.g. OrganizationManager.get_organization_by_id_async)?",
+                },
+                "opts": [
+                    {"zh": "async with db_registry.async_session() 开 session → 按 actor 做范围 CRUD → 仍在 session 内 to_pydantic() → 返回 pydantic",
+                     "en": "async with db_registry.async_session() → actor-scoped CRUD → to_pydantic() still inside the session → return pydantic"},
+                    {"zh": "直接 select(Model) 查询，把拿到的 ORM 行原样 return，让路由层自己转成 schema",
+                     "en": "Run a plain select(Model) and return the ORM row as-is, letting the router layer turn it into a schema"},
+                    {"zh": "先 to_pydantic() 复制成纯对象、退出 session 之后，再在门外补做访问控制过滤",
+                     "en": "Convert via to_pydantic() first, exit the session, then apply access-control filtering outside the door"},
+                    {"zh": "由 SyncServer 开一个共享 session，manager 只拼查询、统一在 server 层提交事务",
+                     "en": "SyncServer opens one shared session; the manager only builds the query while the server layer commits the transaction"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "标准骨架五步雷打不动：装饰器 → async with db_registry.async_session() 开 session（同时定事务边界与 actor/org 范围）→ 门内做 actor 范围 CRUD（read_async/create_async）→ 仍在 session 内 to_pydantic() 把 ORM 行换成纯 pydantic → 返回。最简样板是 organization_manager.py::OrganizationManager.get_organization_by_id_async。绝不把 ORM 行漏出门外：访问控制（apply_access_predicate）由 ORM 焊进 SQL、不是门外补做；session 也只在 manager 里开，SyncServer 只持有与编排、不开共享 session。",
+                    "en": "The five-step skeleton never budges: decorators → async with db_registry.async_session() opens the session (fixing both the transaction boundary and the actor/org scope) → actor-scoped CRUD inside the door (read_async/create_async) → to_pydantic() while still inside the session turns the ORM row into pure pydantic → return. The simplest exemplar is organization_manager.py::OrganizationManager.get_organization_by_id_async. An ORM row never slips out the door: access control (apply_access_predicate) is welded into the SQL by the ORM, not applied outside; and the session is opened only in the manager — SyncServer merely holds and orchestrates, it never opens a shared session.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "db.py 里的 db_registry 到底是个什么东西？",
+                    "en": "What exactly is db_registry in db.py?",
+                },
+                "opts": [
+                    {"zh": "一个进程级单例 DatabaseRegistry，docstring 自称“Dummy registry”，v0.16.8 只暴露 async_session()",
+                     "en": "A process-wide singleton DatabaseRegistry, self-described “Dummy registry”, exposing only async_session()"},
+                    {"zh": "一个按 DATABASE_URL 在 SQLite 与 Postgres 引擎间动态选择、并抹平方言差异的注册表",
+                     "en": "A registry that dynamically picks between SQLite and Postgres engines by DATABASE_URL and smooths over dialect differences"},
+                    {"zh": "一个依赖注入容器，启动时把所有 manager 注册进去、供路由按名解析",
+                     "en": "A dependency-injection container that registers all managers at startup for routers to resolve by name"},
+                    {"zh": "每个请求新建一个的对象，同时提供同步 session() 和异步 async_session() 两种入口",
+                     "en": "An object created fresh per request, offering both a sync session() and an async async_session()"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "db.py::DatabaseRegistry 是进程级单例 db_registry，类 docstring 只有一句自嘲——“Dummy registry to maintain the existing interface.”：它不再做花哨的注册或选择，只为维持旧接口而留，于是上百处 db_registry.async_session() 调用点一字未改。模块级是一个 create_async_engine(async_pg_uri) + async_session_factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)。v0.16.8 只有 async_session()、没有同步 session()；db.py 是 Postgres-only，不在这层分 SQLite/Postgres——方言透明属于 ORM 层（第 27 课）。它也不是 DI 容器：manager 是 SyncServer.__init__ 里普通 new 出来的。",
+                    "en": "db.py::DatabaseRegistry is the process-wide singleton db_registry, and its class docstring is a single self-deprecating line — “Dummy registry to maintain the existing interface.”: it no longer does fancy registration or selection, staying only to keep the old interface, so hundreds of db_registry.async_session() call sites went unchanged. At module level it's one create_async_engine(async_pg_uri) + async_session_factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False). v0.16.8 has only async_session(), no sync session(); db.py is Postgres-only and doesn't split SQLite/Postgres here — dialect transparency lives in the ORM layer (Lesson 27). It's also not a DI container: managers are plainly newed up in SyncServer.__init__.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "@enforce_types 和 @trace_method 各自做什么、又分别定义在哪？",
+                    "en": "What do @enforce_types and @trace_method each do, and where is each defined?",
+                },
+                "opts": [
+                    {"zh": "enforce_types（letta/utils.py）运行时校验入参类型；trace_method（letta/otel/tracing.py）开一个 OTel span",
+                     "en": "enforce_types (letta/utils.py) runtime-checks argument types; trace_method (letta/otel/tracing.py) opens an OTel span"},
+                    {"zh": "两个都定义在 letta/utils.py：一个校验类型，一个把返回值序列化成 pydantic",
+                     "en": "Both live in letta/utils.py: one checks types, the other serializes the return value into pydantic"},
+                    {"zh": "enforce_types 把同步方法包成 async；trace_method 负责开 session 并提交事务",
+                     "en": "enforce_types wraps sync methods into async; trace_method opens the session and commits the transaction"},
+                    {"zh": "enforce_types 校验 id 前缀；trace_method 在 OTel 未初始化时改为抛错",
+                     "en": "enforce_types validates the id prefix; trace_method raises when OTel is uninitialized"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "enforce_types 定义在 letta/utils.py：它的 wrapper 是同步 def，用 get_type_hints 逐个比对入参、不符就 raise ValueError；对 async 方法它同步校验后把协程原样返回，并不自己 await。trace_method 定义在 letta/otel/tracing.py：开一个名为“{ClassName}.{method}”的 OTel span，记参时跳过 messages/embeddings 等大对象；当 _is_tracing_initialized 为 False 时纯透传（no-op、零开销），绝不抛错。两者并非都在 utils；id 前缀校验是另一个装饰器 raise_on_invalid_id（letta/validators.py）。典型叠放：@enforce_types（最外）→ @raise_on_invalid_id → @trace_method（最内）→ 方法。",
+                    "en": "enforce_types is defined in letta/utils.py: its wrapper is a sync def that compares each argument against get_type_hints and raises ValueError on a mismatch; for an async method it validates synchronously then returns the coroutine as-is, never awaiting itself. trace_method is defined in letta/otel/tracing.py: it opens an OTel span named “{ClassName}.{method}” and skips big objects like messages/embeddings when recording; when _is_tracing_initialized is False it's a pure pass-through (no-op, zero overhead) and never raises. They are not both in utils; id-prefix checking is a separate decorator, raise_on_invalid_id (letta/validators.py). Typical stacking: @enforce_types (outermost) → @raise_on_invalid_id → @trace_method (innermost) → method.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "ORM 行与 pydantic schema 之间，两个方向各靠什么方法转换？",
+                    "en": "Between an ORM row and a pydantic schema, what method handles each direction of conversion?",
+                },
+                "opts": [
+                    {"zh": "出门 ORM→pydantic 靠 to_pydantic / to_pydantic_async；进门 pydantic→ORM 靠 model_dump(to_orm=True)",
+                     "en": "Outbound ORM→pydantic via to_pydantic / to_pydantic_async; inbound pydantic→ORM via model_dump(to_orm=True)"},
+                    {"zh": "两个方向都用 ORM 类上的 to_record()：传 to_orm=True 出 ORM 行、不传则出 pydantic",
+                     "en": "Both directions use to_record() on the ORM class: pass to_orm=True for an ORM row, omit it for pydantic"},
+                    {"zh": "出门 to_orm()、进门 from_orm()，两者都定义在 SqlalchemyBase 上",
+                     "en": "Outbound to_orm(), inbound from_orm(), both defined on SqlalchemyBase"},
+                    {"zh": "manager 在方法体里手写字段映射，没有统一的转换入口",
+                     "en": "The manager hand-writes the field mapping in the method body; there's no unified conversion entry point"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "出门（读）：SqlalchemyBase.to_pydantic ＝ self.__pydantic_model__.model_validate(self, from_attributes=True)，每个 ORM 模型声明自己的 __pydantic_model__（如 orm/agent.py → PydanticAgentState）；带一堆关系的复杂模型（如 agent）重写 to_pydantic_async，因为拼关系可能再发查询、要 await。进门（写）：model_dump(to_orm=True)（schemas/letta_base.py::LettaBase.model_dump）把字段拆成字典，顺手把 metadata 改名成 metadata_，再喂给 ORM 构造器。根本没有 to_record() / to_orm() / from_orm() 这种方法——就 to_pydantic 和 model_dump(to_orm=True) 这两把钥匙。",
+                    "en": "Outbound (read): SqlalchemyBase.to_pydantic = self.__pydantic_model__.model_validate(self, from_attributes=True), and each ORM model declares its own __pydantic_model__ (e.g. orm/agent.py → PydanticAgentState); a complex model with many relations (like agent) overrides to_pydantic_async because assembling relations may issue more queries and needs await. Inbound (write): model_dump(to_orm=True) (schemas/letta_base.py::LettaBase.model_dump) breaks the fields into a dict, renames metadata to metadata_ along the way, then feeds the ORM constructor. There is no to_record() / to_orm() / from_orm() at all — just the two keys to_pydantic and model_dump(to_orm=True).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "为什么 manager 必须在 async with 块内（session 还开着）就 to_pydantic()，而不是返回之后再转？",
+                    "en": "Why must the manager call to_pydantic() inside the async with block (while the session is still open), rather than after returning?",
+                },
+                "opts": [
+                    {"zh": "退出块后 session 已 expunge_all + close、ORM 行被解绑，再读字段多半 DetachedInstanceError",
+                     "en": "After the block exits, the session has run expunge_all + close and the row is detached, so reading a field usually raises DetachedInstanceError"},
+                    {"zh": "因为 to_pydantic() 本身需要一个打开的事务来 commit，否则转换不生效",
+                     "en": "Because to_pydantic() itself needs an open transaction to commit, or the conversion won't take effect"},
+                    {"zh": "因为 expire_on_commit=False 会让对象在退出后立即过期、字段全部清空",
+                     "en": "Because expire_on_commit=False makes the object expire immediately on exit, wiping all its fields"},
+                    {"zh": "纯属代码风格约定，返回后在路由层转换功能上完全等价、没有风险",
+                     "en": "It's purely a style convention; converting in the router after returning is functionally equivalent and risk-free"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "async_session 的 finally 一定跑 expunge_all() + close()：一旦出了 async with 块，ORM 行已被解绑、session 已关，这时再读它的字段多半直接 DetachedInstanceError。expire_on_commit=False 只保证“已加载”的字段在 commit 后不过期（省一次 DB 往返），但碰到尚未加载的关系/惰性属性，脱离 session 的对象没法补查、照样炸——所以它不是“对象立即过期”，方向正好相反。规矩很硬：趁门开着把要用的都读出、定形成 pydantic；复印件一旦成形就和 session 无关。get_agent_by_id_async 甚至故意先转 pydantic、放掉 DB 连接后再跑昂贵的 PBKDF2 解密，把 schema 边界顺手变成连接池优化。",
+                    "en": "async_session's finally always runs expunge_all() + close(): once you leave the async with block the ORM row is detached and the session closed, so reading its fields then usually raises DetachedInstanceError outright. expire_on_commit=False only keeps already-loaded fields from expiring after commit (saving a DB round trip), but for an unloaded relationship/lazy attribute an object cut off from its session can't re-query and blows up all the same — so it does not make the object “expire immediately”; it's the opposite. The rule is hard: while the door is open, read out everything you need and set it into pydantic; once formed, the copy is independent of the session. get_agent_by_id_async even deliberately converts to pydantic first and releases the DB connection before running the expensive PBKDF2 decryption, turning the schema boundary into a connection-pool optimization.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“银行柜台”的比喻，把一次 server.organization_manager.get_organization_by_id_async(...) 从进门到返回完整讲一遍，并想透四件事：(1) 那一行 async with db_registry.async_session() 为什么能“一行定两件事”——既是事务的 BEGIN/commit 边界，又是 actor/org 范围（apply_access_predicate）的注入点？(2) 为什么 ORM 行绝不出柜台、递出去的永远是 to_pydantic() 的复印件？这跟 finally 里的 expunge_all + close、以及 expire_on_commit=False 各自扣在哪？(3) 三个装饰器（enforce_types / raise_on_invalid_id / trace_method）分别定义在哪、按什么顺序叠、又“免费”换来了什么？(4) 既然 db_registry 自称“Dummy registry”、v0.16.8 还是 Postgres-only，那 SQLite/Postgres 的方言差异到底在哪一层被吃掉、为什么不该记到 db_registry 头上？",
+                "en": "Use this lesson's “bank counter” metaphor to tell a single server.organization_manager.get_organization_by_id_async(...) as a whole — from the front door to the return — and think through four things: (1) Why can that one line async with db_registry.async_session() “fix two things at once” — being both the transaction's BEGIN/commit boundary and the injection point for the actor/org scope (apply_access_predicate)? (2) Why does an ORM row never leave the counter, with only the to_pydantic() copy handed out, and how does that clasp onto the finally's expunge_all + close and onto expire_on_commit=False? (3) Where is each of the three decorators (enforce_types / raise_on_invalid_id / trace_method) defined, in what order are they stacked, and what do they buy “for free”? (4) Given that db_registry calls itself a “Dummy registry” and v0.16.8 is Postgres-only, in which layer are the SQLite/Postgres dialect differences actually absorbed, and why shouldn't that be pinned on db_registry?",
+            },
+        ],
+    },
 }
 
 
