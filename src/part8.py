@@ -1436,6 +1436,27 @@ LESSON_31 = {
 <tr><td>对话历史 <span class="mono">conversation history</span></td><td>所有来往消息的完整记录，正是 recall memory 的本体。</td><td><a href="11-recall-memory.html">第 11 课</a></td></tr>
 </table>
 <div class="note tip"><span class="ni">📌</span><span class="nx">同一个词在多课都露过面时，跳链指向<strong>讲它最透的那一课</strong>；想看它跟别处怎么串起来，那一课结尾的"回顾"段落里通常还埋着更多线索。</span></div>
+<h2>③ Agent 执行：那个 for 循环</h2>
+<table class="t">
+<tr><th>术语</th><th>一句话</th><th>所在课</th></tr>
+<tr><td><span class="mono">AgentState</span></td><td>agent 的完整状态快照：记忆 / 工具 / 消息 / 配置，每轮据它现重建。</td><td><a href="13-agent-state-and-loop.html">第 13 课</a></td></tr>
+<tr><td><span class="mono">AgentLoop</span></td><td>驱动 agent 一步步往前跑的循环抽象，决定何时调 LLM、何时收手。</td><td><a href="13-agent-state-and-loop.html">第 13 课</a></td></tr>
+<tr><td><span class="mono">LettaAgentV3</span> / V3 步进循环</td><td>当前主力 agent 实现，把一次回合拆成可中断、可续跑的 step 串。</td><td><a href="14-v3-step-loop.html">第 14 课</a></td></tr>
+<tr><td><span class="mono">_step</span></td><td>一个 step：调一次 LLM ＋ 执行它点名的工具，是循环的最小一格。</td><td><a href="14-v3-step-loop.html">第 14 课</a></td></tr>
+<tr><td><span class="mono">heartbeat</span></td><td>工具跑完自动再续一圈的信号，让 agent 连走多步不必等用户开口。</td><td><a href="15-heartbeat-to-no-heartbeat.html">第 15 课</a></td></tr>
+<tr><td>无 heartbeat <span class="mono">no-heartbeat</span></td><td>新设计改用 tool rule 显式控制续跑，拆掉了那根隐式的心跳线。</td><td><a href="15-heartbeat-to-no-heartbeat.html">第 15 课</a></td></tr>
+<tr><td>工具规则 <span class="mono">tool rule</span> / ToolRule</td><td>给工具加的状态机约束：谁能接在谁后面、到哪一步必须停。</td><td><a href="16-tool-rules.html">第 16 课</a></td></tr>
+</table>
+
+<h2>④ 工具系统：一把把锤子</h2>
+<table class="t">
+<tr><th>术语</th><th>一句话</th><th>所在课</th></tr>
+<tr><td>工具 = Python 函数 ＋ docstring</td><td>一个工具就是带类型注解和 docstring 的普通 Python 函数，没有魔法。</td><td><a href="17-tool-as-function.html">第 17 课</a></td></tr>
+<tr><td>schema 派生 <span class="mono">derivation</span></td><td>从函数签名和 docstring 自动生成 JSON schema，<strong>不必真去执行它</strong>。</td><td><a href="18-schema-without-executing.html">第 18 课</a></td></tr>
+<tr><td>工具分发 <span class="mono">dispatch</span></td><td>拿到 LLM 的工具调用后，按名字找到对应实现并真正跑起来。</td><td><a href="19-tool-dispatch-and-mcp.html">第 19 课</a></td></tr>
+<tr><td><span class="mono">MCP</span></td><td>Model Context Protocol：把外部服务器暴露的工具接进来，统一分发。</td><td><a href="19-tool-dispatch-and-mcp.html">第 19 课</a></td></tr>
+<tr><td>沙箱 <span class="mono">sandbox</span></td><td>工具代码在隔离环境（e2b / 本地子进程）里跑，防它乱动主机。</td><td><a href="20-tool-sandbox-security.html">第 20 课</a></td></tr>
+</table>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
