@@ -701,6 +701,70 @@ LESSON_29 = {
 <p>第八部分的进阶专题继续往下走。下一课我们换个视角，看 Letta 怎么把这些执行步骤变得<strong>可观测、可追踪</strong>。</p>
 """,
     "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Lesson 27 cracked open the <span class="mono">Vector(4096)</span> column behind vector storage — how the memory an agent writes for itself lands in the database, and how it is recalled by <span class="mono">cosine_distance</span>. This lesson asks the natural next question: the documents <strong>you upload from outside</strong>, how do they burrow into that same vector machinery and become semantically searchable? The answer is three letters: RAG.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Let's put a counterintuitive fact on the table first: Letta <strong>did not build a separate "RAG engine."</strong> It reuses Lesson 27's archival-memory vector machinery <strong>verbatim</strong>, swapping only the table, the foreign key, and the tool name. "RAG" and "long-term memory" are, at the physical layer, the very same thing.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>One sentence to grasp this lesson: <strong>RAG and archival memory are "same foundation, different source"</strong> — the same vector column, the same recall; the only real difference is "who wrote it in."</p>
+<p>The foundation: <span class="mono">SourcePassage</span> (the documents you upload) and <span class="mono">ArchivalPassage</span> (the memory the agent writes for itself) are <strong>two sibling subclasses of the same <span class="mono">BasePassage</span></strong>, riding the same <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column.</p>
+<p>Ingestion: a file goes through a <strong>parse → chunk → embed</strong> pipeline and is scattered into a row of <span class="mono">SourcePassage</span> records, searchable from then on.</p>
+<p>Retrieval: sources use <span class="mono">semantic_search_files</span>, archival uses <span class="mono">archival_memory_search</span> — <strong>two different tools, the same pgvector cosine</strong>.</p>
+</div>
+<p>Why single this out for a whole lesson? Because many people assume RAG is "another system" and go hunting for a config, an engine, an index service. Once you see that "it is just archival memory with a different source," you save a lot of time looking in the wrong place.</p>
+<p>There's a practical payoff too: once you grasp the shared foundation, you know <strong>tuning RAG and tuning memory are one and the same job</strong> — swap the embedding model, adjust the chunk size, change the distance metric, and it takes effect for <strong>both</strong> source and archival at once, because they share that one column.</p>
+<p>Hold onto this through-line: from start to finish, this lesson keeps re-proving four words — "<strong>same foundation, different source</strong>." First we meet the foundation, then walk the ingestion, and finally look at retrieval.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Footnote: the two kinds of passage <strong>share</strong> Lesson 27's <span class="mono">Vector(MAX_EMBEDDING_DIM)</span> column, the same 4096 padding, and the same <span class="mono">cosine_distance</span> ordering. The difference is <strong>not</strong> in the vector machinery, only in the <strong>source</strong> and the <strong>foreign key</strong>.</span></div>
+<h2>One BasePassage, two sibling subclasses</h2>
+<p>Meet the foundation first. <span class="mono">orm/passage.py::BasePassage</span> is an <span class="mono">__abstract__</span> base class — it <strong>builds no table of its own</strong>, it only dictates "what a passage looks like": primary key, text, metadata, and most crucially that one <strong>embedding vector column</strong>.</p>
+<p>That column is precisely Lesson 27's protagonist: on Postgres it is <span class="mono">embedding = Vector(MAX_EMBEDDING_DIM)</span> (pgvector), on SQLite it is <span class="mono">CommonVector</span>. <strong>Same column, same 4096 padding, same <span class="mono">cosine_distance</span></strong> — the two subclasses <strong>inherit it verbatim</strong>, not a line changed.</p>
+<p>The two subclasses part ways on one thing only — <strong>"whom they attach to"</strong>:</p>
+<p><strong>① <span class="mono">SourcePassage(BasePassage, FileMixin, SourceMixin)</span></strong>: table <span class="mono">source_passages</span>, carrying <span class="mono">source_id</span> (required) + <span class="mono">file_id</span> (optional) + <span class="mono">file_name</span>. It belongs to "a particular file inside a particular source."</p>
+<p><strong>② <span class="mono">ArchivalPassage(BasePassage, ArchiveMixin)</span></strong>: table <span class="mono">archival_passages</span>, carrying <span class="mono">archive_id</span>, plus one extra <span class="mono">passage_tags</span> tag junction. It belongs to "a particular archive."</p>
+<p>Where do those foreign keys come from? All from three mixins in <span class="mono">orm/mixins.py</span>: <span class="mono">FileMixin</span> (gives file_id/file_name), <span class="mono">SourceMixin</span> (gives source_id), <span class="mono">ArchiveMixin</span> (gives archive_id). A subclass merely <strong>assembles mixins</strong> to obtain its own ownership foreign keys.</p>
+<p>Why make the foundation <span class="mono">__abstract__</span>? Because that 4096-dim vector column, the <span class="mono">cosine_distance</span> algorithm, and the padding convention are <strong>meant to be written once</strong>. With both subclasses inheriting one definition, the disaster of "source and archival living in different vector spaces" becomes <strong>structurally impossible</strong>.</p>
+<p>Why does <span class="mono">SourcePassage</span> need both <span class="mono">source_id</span> and <span class="mono">file_id</span>? Because one source can hold <strong>many files</strong>: <span class="mono">source_id</span> marks "which source it belongs to," <span class="mono">file_id</span> marks "which file inside the source it came from," and <span class="mono">file_name</span> makes the provenance easy to echo back.</p>
+<p>The extra <span class="mono">passage_tags</span> junction on <span class="mono">ArchivalPassage</span> is <strong>archival-only</strong>: it lets the agent tag memory fragments and filter by tag at retrieval time (a callback to Lesson 11). Source passages have <strong>no</strong> such tag layer.</p>
+<p>Remember this split: <strong>the mixin decides "ownership," the base decides "capability."</strong> Capability (vector, retrieval) is shared, ownership (source / archive, file) is separated — exactly the ORM-layer projection of "same foundation, different source."</p>
+<p>Flip it around for clarity: to add a third kind of passage (say some "tool-produced cache"), you only write a new mixin + new table; inheriting <span class="mono">BasePassage</span> hands you the whole vector-retrieval stack <strong>for free</strong>. The foundation's reusability shows up exactly in this "adding a kind costs almost nothing."</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py</span><span class="ln">one abstract base, two sibling subclasses (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">BasePassage</span>(Base):
+    __abstract__ = <span class="kw">True</span>                       <span class="cm"># no table; only defines "what a passage looks like"</span>
+    text: Mapped[str]
+    <span class="cm"># Lesson 27's column: Postgres uses pgvector, SQLite uses CommonVector</span>
+    <span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+        embedding = <span class="fn">mapped_column</span>(<span class="fn">Vector</span>(MAX_EMBEDDING_DIM))   <span class="cm"># fixed 4096 dims</span>
+    <span class="kw">else</span>:
+        embedding = <span class="fn">mapped_column</span>(CommonVector)
+
+<span class="kw">class</span> <span class="fn">SourcePassage</span>(BasePassage, FileMixin, SourceMixin):   <span class="cm"># documents you upload</span>
+    __tablename__ = <span class="st">&quot;source_passages&quot;</span>      <span class="cm"># source_id(req) + file_id(opt) + file_name</span>
+
+<span class="kw">class</span> <span class="fn">ArchivalPassage</span>(BasePassage, ArchiveMixin):            <span class="cm"># memory the agent writes itself</span>
+    __tablename__ = <span class="st">&quot;archival_passages&quot;</span>    <span class="cm"># archive_id; plus passage_tags tags</span>
+</pre></div>
+<p>Lay "two subclasses, one foundation" out as two side-by-side columns and the difference is obvious — apart from source and foreign key, everything else is shared:</p>
+<div class="cols">
+  <div class="col"><h4>🧠 ArchivalPassage · agent-written</h4>
+  <p>Table <span class="mono">archival_passages</span> · FK <span class="mono">archive_id</span> · tool <span class="mono">archival_memory_search</span> · join <span class="mono">ArchivesAgents</span> · carries <span class="mono">passage_tags</span>.</p>
+  <p>Source: the agent writes it via <span class="mono">archival_memory_insert</span> (Lessons 10, 11).</p>
+  </div>
+  <div class="col"><h4>📄 SourcePassage · you-uploaded</h4>
+  <p>Table <span class="mono">source_passages</span> · FK <span class="mono">source_id</span>+<span class="mono">file_id</span> · tool <span class="mono">semantic_search_files</span> · join <span class="mono">SourcesAgents</span>.</p>
+  <p>Source: an uploaded file, built by the ingestion pipeline's parse+embed (next section).</p>
+  </div>
+</div>
+<div class="cellgroup"><div class="cg-cap"><b>Both subclasses share: <span class="mono">BasePassage</span>'s one vector column (Lesson 27)</b></div><div class="cells"><span class="cell">archival_passages</span><span class="sep">·</span><span class="cell">source_passages</span><span class="sep">→</span><span class="cell hl">BasePassage.embedding = Vector(MAX_EMBEDDING_DIM)</span><span class="sep">·</span><span class="cell hl">cosine_distance</span></div></div>
+<details class="accordion"><summary>Are source and archival really "kept entirely apart"?</summary><div class="acc-body">
+<p><strong>Mutually exclusive writes (DB-layer guard)</strong>: <span class="mono">PassageManager.create_source_passage_async</span> <strong>requires</strong> <span class="mono">source_id</span> and <strong>forbids</strong> <span class="mono">archive_id</span>; <span class="mono">create_agent_passage_async</span> is the reverse. Pass the wrong one and it errors out immediately.</p>
+<p><strong>Retrieval never crosses over</strong>: sources go through <span class="mono">build_source_passage_query</span> (scanning <span class="mono">source_passages</span>), archival through <span class="mono">build_agent_passage_query</span> (scanning <span class="mono">archival_passages</span>). Each query <strong>scans its own table</strong> and never mixes the other's rows into the result.</p>
+<p>So "same foundation" means the <strong>physical column and algorithm</strong> are identical, not that "the data is commingled." The two kinds of passage are <strong>separate</strong> at all four levels: table, foreign key, tool, and query.</p>
+</div></details>
+<div class="card analogy"><div class="tag">📝 Real-world analogy</div>
+<p>Picture the vector store as a <strong>library</strong> holding <strong>two kinds of books</strong>.</p>
+<p>One kind is <strong>books you donate</strong> (<span class="mono">SourcePassage</span> / RAG): documents brought in from outside, which the librarian tears into pages, numbers, and shelves.</p>
+<p>The other is <strong>the librarian's own handwritten reading notes</strong> (<span class="mono">ArchivalPassage</span> / archival): jottings the agent makes as it works.</p>
+<p>Both kinds go into <strong>the same "search by meaning" index</strong> (that one vector column) — at query time both are ranked by "closeness of meaning."</p>
+<p>They just sit on <strong>two different shelves</strong> (two tables), and borrowing means filling out <strong>different request slips</strong> (two tools): use <span class="mono">semantic_search_files</span> for donated books, <span class="mono">archival_memory_search</span> to flip through the notes.</p>
+</div>
 <!--ENMORE-->
 """,
 }
