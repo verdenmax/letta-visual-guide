@@ -1776,6 +1776,24 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>There's no <span class="mono">AgentPassage</span> ORM class: only <span class="mono">SourcePassage</span> and <span class="mono">ArchivalPassage</span>, both inheriting <span class="mono">BasePassage</span>.</p>
 <p>The column type is fixed <strong>at import time</strong>, so a process <strong>can't switch databases at runtime</strong>; and — padding lets different models' vectors <strong>be stored in one column</strong>, but that doesn't make them <strong>comparable across models</strong>.</p>
 </div>
-<!--ENMORE-->
+<h2>Callbacks and setup: one ORM, two databases, holding the whole memory</h2>
+<p>Let's wrap up Part 7. These four lessons are really one line <strong>from skeleton to vector</strong>:</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 7's four lessons strung together: from skeleton to vector</b></div><div class="cells"><span class="cell">24 three layers</span><span class="sep">→</span><span class="cell">25 service-layer Managers</span><span class="sep">→</span><span class="cell">26 CRUD / isolation</span><span class="sep">→</span><span class="cell hl">27 dual DB / vectors</span></div></div>
+<p>Strung into one line: <strong>layers raise the skeleton (24) → managers handle transactions and conversion (25) → one base is secure by default (26) → one ORM on two databases holds memory's vectors (27)</strong>.</p>
+<p>Pointing back to Lesson 03: the message lifecycle you traced — its "persistence end" finally lands on this layer of engine and columns.</p>
+<p>Pointing back to Lessons 10, 11: those archival / recall vectors are stored as this layer's <span class="mono">Passage</span> — <span class="mono">SourcePassage</span> and <span class="mono">ArchivalPassage</span> — and the search is this lesson's two paths.</p>
+<p>And pointing back to Lesson 21: <span class="mono">LLMConfig</span> / <span class="mono">EmbeddingConfig</span> persist through <span class="mono">custom_columns</span>' JSON column — the model parameters you set lie right there in one JSON cell.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">To close in one line: <strong>one ORM, one property switch, two databases</strong> — pgvector's native <span class="mono">&lt;=&gt;</span> and SQLite's numpy UDF each search their own way, a fixed-length 4096 lets any model's vector share one column, and pydantic-in-DB lets configs evolve without migration. Memory's vectors are held steadily by both databases, just like this.</span></div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><strong>One switch</strong>: <span class="mono">settings.database_engine</span> is a <strong>derived @property</strong> — a configured PG URI (<span class="mono">letta_pg_uri_no_default</span> not None) goes Postgres, else SQLite; <strong>no <span class="mono">LETTA_DATABASE_ENGINE</span></strong>.</li>
+<li><strong>The seam is distributed across six places, mostly declarative</strong>: the property, <span class="mono">BasePassage</span>'s import-time column-type <span class="mono">if</span>, the two-way query <span class="mono">order_by</span>, <span class="mono">register_functions</span>' numpy UDF, <span class="mono">custom_columns</span>, <span class="mono">alembic/env.py</span>.</li>
+<li><strong>Vectors stored two ways, searched two ways</strong>: Postgres = <span class="mono">Vector(4096)</span> + native <span class="mono">&lt;=&gt;</span> (ANN-index capable); SQLite = <span class="mono">CommonVector</span> BINARY + a numpy UDF brute-forcing the whole table. All vectors <span class="mono">np.pad</span> to <span class="mono">MAX_EMBEDDING_DIM=4096</span>; <strong>zero-padding doesn't change cosine</strong>.</li>
+<li><strong>pydantic-in-DB</strong>: a <span class="mono">TypeDecorator</span> <span class="mono">model_dump</span>s the whole <span class="mono">EmbeddingConfig</span> / <span class="mono">LLMConfig</span> to JSON in one column; schema-on-read makes adding a field migration-free, at the cost of non-indexable subfields + serialization overhead.</li>
+<li><strong>Honest asterisk</strong>: v0.16.8's <span class="mono">server/db.py</span> only builds a Postgres async engine; the dual-DB story lives fully in the ORM column types and alembic's two backends.</li>
+</ul>
+</div>
+<p>Part 7 is now complete: from the three-layer architecture, to managers, to the secure-by-default base, to dual DB and vectors. How the server safely stores and precisely retrieves "an agent's memory" — you've now seen through the whole chain.</p>
+<p>Next is <strong>Part 8</strong>: advanced topics and a glossary. We'll dig into a few cross-cutting themes, then pull this whole journey's keywords into a glossary you can look up any time.</p>
 """,
 }
