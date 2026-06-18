@@ -385,6 +385,35 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <tr><td><span class="mono">MCP</span></td><td>Model Context Protocol：把外部服务器暴露的工具接进来，统一分发。</td><td><a href="19-tool-dispatch-and-mcp.html">第 19 课</a></td></tr>
 <tr><td>沙箱 <span class="mono">sandbox</span></td><td>工具代码在隔离环境（e2b / 本地子进程）里跑，防它乱动主机。</td><td><a href="20-tool-sandbox-security.html">第 20 课</a></td></tr>
 </table>
+<h2>⑤ LLM Provider：抹平各家脾气</h2>
+<table class="t">
+<tr><th>术语</th><th>一句话</th><th>所在课</th></tr>
+<tr><td><span class="mono">LLMClient</span></td><td>每家模型 provider 的统一客户端基类，把各家 API 差异挡在身后。</td><td><a href="21-provider-contract.html">第 21 课</a></td></tr>
+<tr><td>三方法契约 <span class="mono">provider contract</span></td><td>build_request_data → request → convert 三步走的统一接口约定。</td><td><a href="21-provider-contract.html">第 21 课</a></td></tr>
+<tr><td><span class="mono">ChatCompletionResponse</span></td><td>各家响应都归一成这个内部结构，下游只认它、不管原始格式。</td><td><a href="21-provider-contract.html">第 21 课</a></td></tr>
+<tr><td>provider 怪癖 <span class="mono">quirks</span></td><td>各家 API 的脾气差异：参数名、流式格式、工具调用形态各不相同。</td><td><a href="22-provider-quirks.html">第 22 课</a></td></tr>
+<tr><td><span class="mono">inner_thoughts</span> 内心独白</td><td>把 agent 的推理塞进一个参数 / 字段，绕过不支持原生思考的模型。</td><td><a href="22-provider-quirks.html">第 22 课</a></td></tr>
+<tr><td><span class="mono">GBNF</span></td><td>一种语法约束格式，强制本地模型只能吐出合法的工具调用 JSON。</td><td><a href="23-local-models-gbnf.html">第 23 课</a></td></tr>
+<tr><td>本地模型 <span class="mono">local models</span></td><td>经 llama.cpp 等跑的本地模型，靠 GBNF 补齐它缺的工具调用能力。</td><td><a href="23-local-models-gbnf.html">第 23 课</a></td></tr>
+</table>
+
+<h2>⑥ 服务端与持久化：三层往下穿</h2>
+<table class="t">
+<tr><th>术语</th><th>一句话</th><th>所在课</th></tr>
+<tr><td>三层架构 <span class="mono">three-layer</span></td><td>API 路由 → 服务管理层 → ORM 数据层，请求自上而下穿过三层。</td><td><a href="24-three-layer-architecture.html">第 24 课</a></td></tr>
+<tr><td><span class="mono">SyncServer</span></td><td>把各个 Manager 攒在一起的总服务对象，是路由层的总入口。</td><td><a href="24-three-layer-architecture.html">第 24 课</a></td></tr>
+<tr><td><span class="mono">actor</span></td><td>发起请求的用户身份，一路带到 DB 层做权限校验与归属判断。</td><td><a href="24-three-layer-architecture.html">第 24 课</a></td></tr>
+<tr><td>服务层 <span class="mono">Manager</span></td><td>每类资源一个 Manager（AgentManager…），承载业务逻辑与事务边界。</td><td><a href="25-service-managers.html">第 25 课</a></td></tr>
+<tr><td><span class="mono">db_registry</span></td><td>集中管理数据库引擎与会话的注册表，谁要连库都来找它。</td><td><a href="25-service-managers.html">第 25 课</a></td></tr>
+<tr><td><span class="mono">SqlalchemyBase</span></td><td>所有 ORM 模型的基类，统一塞进 CRUD、权限、软删除等通用能力。</td><td><a href="26-crud-and-multitenancy.html">第 26 课</a></td></tr>
+<tr><td><span class="mono">apply_access_predicate</span></td><td>查询时自动按 actor 加 org 过滤，是多租户隔离的总闸门。</td><td><a href="26-crud-and-multitenancy.html">第 26 课</a></td></tr>
+<tr><td>多租户 <span class="mono">multi-tenancy</span></td><td>同一套库按 organization 分租户，租户之间数据互不可见。</td><td><a href="26-crud-and-multitenancy.html">第 26 课</a></td></tr>
+<tr><td>软删除 <span class="mono">soft delete</span></td><td>删除只是把 is_deleted 标真：记录还在，可审计、可恢复。</td><td><a href="26-crud-and-multitenancy.html">第 26 课</a></td></tr>
+<tr><td>审计字段 <span class="mono">audit fields</span></td><td>created_at / updated_at / created_by_id 等通用列，谁何时动过都留痕。</td><td><a href="26-crud-and-multitenancy.html">第 26 课</a></td></tr>
+<tr><td><span class="mono">database_engine</span></td><td>按 SQLite / Postgres 选不同引擎，决定向量列这类能力可不可用。</td><td><a href="27-dual-db-and-vectors.html">第 27 课</a></td></tr>
+<tr><td><span class="mono">pgvector</span> / 向量存储</td><td>Postgres 的向量扩展，让 embedding 直接进表、可做近邻检索。</td><td><a href="27-dual-db-and-vectors.html">第 27 课</a></td></tr>
+<tr><td>pydantic 入库自定义列 <span class="mono">custom columns</span></td><td>用自定义 SQLAlchemy 列类型，把 pydantic 对象透明地存进一列。</td><td><a href="27-dual-db-and-vectors.html">第 27 课</a></td></tr>
+</table>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
