@@ -96,6 +96,8 @@ PAGES = [
      "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
     ("25-service-managers.html", "服务层 Managers", "The service-layer Managers",
      "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
+    ("26-crud-and-multitenancy.html", "通用 CRUD 与多租户隔离", "Generic CRUD & multi-tenant isolation",
+     "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
 ]
 
 
@@ -584,6 +586,8 @@ SUBTITLES = {
                                          "thin routers → SyncServer/Managers → ORM → DB; one global server"),
     "25-service-managers.html": ("db_registry.async_session 统一事务 · schema↔ORM · enforce_types/trace_method",
                                  "db_registry.async_session transactions; schema↔ORM; enforce_types/trace_method"),
+    "26-crud-and-multitenancy.html": ("SqlalchemyBase 泛型 CRUD · apply_access_predicate 行级隔离 · 软删除 · 审计字段",
+                                      "SqlalchemyBase generic CRUD; row-level access predicate; soft delete; audit fields"),
 }
 
 

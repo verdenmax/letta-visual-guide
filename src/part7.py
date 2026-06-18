@@ -921,3 +921,10 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 <p>The next two lessons drill into the back half of this assembly line: Lesson 26 takes apart the ORM's CRUD and <span class="mono">apply_access_predicate</span> multi-tenant isolation, Lesson 27 covers the DB engine, where the session comes from, and dialect transparency. Below the counter, two more floors remain to see.</p>
 """,
 }
+
+LESSON_26 = {
+    "zh": r"""
+<!--ZHMORE-->
+""",
+    "en": r"""<p>stub</p>""",
+}
