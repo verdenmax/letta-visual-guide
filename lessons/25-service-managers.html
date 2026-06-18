@@ -893,7 +893,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
     <li>Convert via to_pydantic() first, exit the session, then apply access-control filtering outside the door</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The five-step skeleton never budges: decorators → async with db_registry.async_session() opens the session (fixing both the transaction boundary and the actor/org scope) → actor-scoped CRUD inside the door (read_async/create_async) → to_pydantic() while still inside the session turns the ORM row into pure pydantic → return. The simplest exemplar is organization_manager.py::OrganizationManager.get_organization_by_id_async. An ORM row never slips out the door: access control (apply_access_predicate) is welded into the SQL by the ORM, not applied outside; and the session is opened only in the manager — SyncServer merely holds and orchestrates, it never opens a shared session.</div></div></div>
   </details>
 </div>
@@ -906,7 +906,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
     <li>A process-wide singleton DatabaseRegistry, self-described “Dummy registry”, exposing only async_session()</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. db.py::DatabaseRegistry is the process-wide singleton db_registry, and its class docstring is a single self-deprecating line — “Dummy registry to maintain the existing interface.”: it no longer does fancy registration or selection, staying only to keep the old interface, so hundreds of db_registry.async_session() call sites went unchanged. At module level it's one create_async_engine(async_pg_uri) + async_session_factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False). v0.16.8 has only async_session(), no sync session(); db.py is Postgres-only and doesn't split SQLite/Postgres here — dialect transparency lives in the ORM layer (Lesson 27). It's also not a DI container: managers are plainly newed up in SyncServer.__init__.</div></div></div>
   </details>
 </div>
@@ -919,7 +919,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
     <li>Both live in letta/utils.py: one checks types, the other serializes the return value into pydantic</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. enforce_types is defined in letta/utils.py: its wrapper is a sync def that compares each argument against get_type_hints and raises ValueError on a mismatch; for an async method it validates synchronously then returns the coroutine as-is, never awaiting itself. trace_method is defined in letta/otel/tracing.py: it opens an OTel span named “{ClassName}.{method}” and skips big objects like messages/embeddings when recording; when _is_tracing_initialized is False it's a pure pass-through (no-op, zero overhead) and never raises. They are not both in utils; id-prefix checking is a separate decorator, raise_on_invalid_id (letta/validators.py). Typical stacking: @enforce_types (outermost) → @raise_on_invalid_id → @trace_method (innermost) → method.</div></div></div>
   </details>
 </div>
@@ -932,7 +932,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
     <li>Outbound ORM→pydantic via to_pydantic / to_pydantic_async; inbound pydantic→ORM via model_dump(to_orm=True)</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Outbound (read): SqlalchemyBase.to_pydantic = self.__pydantic_model__.model_validate(self, from_attributes=True), and each ORM model declares its own __pydantic_model__ (e.g. orm/agent.py → PydanticAgentState); a complex model with many relations (like agent) overrides to_pydantic_async because assembling relations may issue more queries and needs await. Inbound (write): model_dump(to_orm=True) (schemas/letta_base.py::LettaBase.model_dump) breaks the fields into a dict, renames metadata to metadata_ along the way, then feeds the ORM constructor. There is no to_record() / to_orm() / from_orm() at all — just the two keys to_pydantic and model_dump(to_orm=True).</div></div></div>
   </details>
 </div>
@@ -945,7 +945,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
     <li>After the block exits, the session has run expunge_all + close and the row is detached, so reading a field usually raises DetachedInstanceError</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. async_session's finally always runs expunge_all() + close(): once you leave the async with block the ORM row is detached and the session closed, so reading its fields then usually raises DetachedInstanceError outright. expire_on_commit=False only keeps already-loaded fields from expiring after commit (saving a DB round trip), but for an unloaded relationship/lazy attribute an object cut off from its session can't re-query and blows up all the same — so it does not make the object “expire immediately”; it's the opposite. The rule is hard: while the door is open, read out everything you need and set it into pydantic; once formed, the copy is independent of the session. get_agent_by_id_async even deliberately converts to pydantic first and releases the DB connection before running the expensive PBKDF2 decryption, turning the schema boundary into a connection-pool optimization.</div></div></div>
   </details>
 </div>

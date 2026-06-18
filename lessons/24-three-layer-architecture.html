@@ -843,7 +843,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <li>Inside lifespan, created on the first await server.init_async(...)</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. It's the module-level global app.py::server, constructed synchronously the moment the module is imported. The create_application factory does contain a SyncServer(...) line, but it's commented out — the server isn't built in the factory. lifespan only does async bootstrapping: await server.init_async(...) creates the default org/user and upserts base tools, an initialization that needs await after the object already exists, not construction. get_letta_server merely lazy-imports that module global and returns it, so every router that asks via Depends(get_letta_server) gets the same instance and none builds a new one. In one line: synchronous wiring at import, async init at startup.</div></div></div>
   </details>
 </div>
@@ -856,7 +856,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <li>It posts the request onto an internal message queue consumed by a manager worker</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. The vast majority of the time, the endpoint calls the matching manager directly through the server object: things like server.agent_manager.get_agent_by_id_async(...). In agents.py this “direct manager call” appears about 131 times, while calling SyncServer's own methods appears only about 16 — and the latter is reserved for orchestration across several managers (e.g. create_agent_async resolves the LLM/embedding config, transforms blocks, then delegates the write to agent_manager). So SyncServer is a service locator plus cross-manager coordinator, not “the one door to the DB”. The router never opens a session itself (sessions are opened and closed inside the manager), and there's no message queue between layers: every manager is a plain attribute of SyncServer, so a call is just an ordinary async method call.</div></div></div>
   </details>
 </div>
@@ -869,7 +869,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <li>In a global auth middleware that runs before every endpoint</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The actor is resolved inside the handler body (the thin router's step ①): await server.user_manager.get_actor_or_default_async(actor_id=headers.actor_id), which is what opens session #1 to actually look up the user. dependencies.py::get_headers only parses/validates the user_id header into HeaderParams.actor_id (checking the user-&lt;uuid4&gt; format, touching no DB); it neither queries the DB nor returns an actor. It is not a global auth middleware — it relies on each handler's own Depends plus the function body. And apply_access_predicate is the organization-level isolation welded into session #2's agent query; it governs “whose data you may see”, a separate concern from “resolving who the actor is”. When user_id is missing, OSS mode falls back to the default user.</div></div></div>
   </details>
 </div>
@@ -882,7 +882,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <li>The manager, via db_registry.async_session(); the router never does — one request spans multiple independent transactions</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Transaction boundaries are drawn inside manager methods: each method opens its own session with async with db_registry.async_session() and commits/closes once done. So the single retrieve_agent request spans two independent transactions — session #1 to look up the user, session #2 for select(AgentModel)+apply_access_predicate+where(id==...) — rather than wrapping the whole request in a request-level UoW. The router layer never opens a session (thin: no business, no DB), and SyncServer doesn't open a shared one for everybody either. The cost is that the two reads aren't the same snapshot; and because there's no big transaction, a failure in a later step won't auto-roll-back a write already committed earlier, so compensation/idempotency falls back on the orchestrator. Lesson 27 covers where the session comes from.</div></div></div>
   </details>
 </div>
@@ -895,7 +895,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <li>It spawns one OS thread per request, which is exactly what “Sync” means</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The docstring “Simple single-threaded / blocking server process” is a legacy remnant: there really was an early vision of “synchronous, single-threaded, blocking”, and the name was fixed back then. But in v0.16.8 the methods routers call are almost all async def, with concurrency from cooperative async on a single event loop — not multithreading, not blocking, not one-at-a-time, and not “one thread per request”. The name hasn't changed because it's long been a stable symbol at countless call sites, and renaming's payoff is far outweighed by the repo-wide risk — when reading the code, just treat “Sync” as a historical label. A reminder: this is unrelated to the optional server-password middleware (CheckPasswordMiddleware, secure mode only), which governs “whether the whole server lets you in” and is orthogonal to actor/tenant identity.</div></div></div>
   </details>
 </div>

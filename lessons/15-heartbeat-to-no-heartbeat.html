@@ -931,7 +931,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>A read-only field auto-filled by the framework that the model cannot set</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. request_heartbeat is a boolean the old mechanism injects dynamically in tool_parser_helper.py::runtime_override_tool_json_schema: it's added only to non-terminal tools (terminal tools like send_message are excluded) and put into required. So on every ordinary tool call the model must declare — set true to continue, false (the default) to wrap up. It is not optional, not a string, not a step counter, and not read-only; on the contrary, it hands the “continue or not” decision explicitly to the model.</div></div></div>
   </details>
 </div>
@@ -944,7 +944,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>Injects a user-hidden role=user “heartbeat” message to continue; on a tool error it auto-continues a lap even without a requested heartbeat</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Parsing is in agent.py::_handle_ai_response (pop the flag, normalize the string "true" to a bool); chaining is in agent.py::step: if function_failed → inject FUNC_FAILED_HEARTBEAT_MESSAGE and continue; elif heartbeat_request → inject REQ_HEARTBEAT_MESSAGE and continue; else break. Both messages carry the NON_USER_MSG_PREFIX prefix and have role=user but are hidden from the user. The “failure” branch sits before the heartbeat check, so even without a requested heartbeat a failure auto-continues one lap for recovery. The framework does not pass the heartbeat flag through to the tool (it pops it out first), nor does it restart the loop from scratch.</div></div></div>
   </details>
 </div>
@@ -957,7 +957,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>It blindly continues every step until it hits the token cap</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. V3's _get_valid_tools passes request_heartbeat=False to runtime_override_tool_json_schema (comment "NOTE: difference for v3"), so the tool schema has no such param. Continuation falls back to lesson 14's _decide_continuation: called a tool → continue (a tool call is two-stage, the result must be fed back to the model); didn't → stop. Even if some old prompt jams in a heartbeat param, _handle_ai_response drops it with args.pop(REQUEST_HEARTBEAT_PARAM, None), never letting a leftover disturb the criterion. It neither relies on a true default, nor scans text for a keyword, nor blindly continues to the token cap.</div></div></div>
   </details>
 </div>
@@ -970,7 +970,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>Eliminates the “model forgot the heartbeat → the agent freezes silent” bug-class; the old mechanism patched it with insert_heartbeat for local models</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Pinning “continue or not” on the model's conscientiousness is fragile: the moment the model forgets to set request_heartbeat=true, the tool finishes, nobody steps again, and the agent freezes silent right after the user speaks. That is exactly why insert_heartbeat (local_llm/function_parser.py) exists — local models often forget (issue #601), so when “the previous message is a real user message” and “this is a non-send_message tool call,” it forces in request_heartbeat=True. V3 swaps the criterion to “called a tool → continue,” so the whole “model forgot to set it” bug-class vanishes and the patch needn't exist. Context overflow, tool timeouts, and parallel conflicts are separate issues, unrelated to deleting heartbeats.</div></div></div>
   </details>
 </div>
@@ -983,7 +983,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>All three generations use heartbeats; V3 merely renamed a constant</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Don't treat “heartbeats” as a rejected old design — the same-era V2 still uses them. letta_agent_v2.py::_get_valid_tools passes request_heartbeat=True, and continue_stepping = request_heartbeat in its _decide_continuation, so continuation is still driven by the model's heartbeat flag. Only V3 (letta_v1_agent, comment "no heartbeats or forced tool calls") removes the whole heartbeat machinery — it overrides _decide_continuation to drop that param and default to continue. So it's not “neither V2 nor V3,” not “only Agent,” and not “all three with just a rename.” One param's difference (_get_valid_tools passing True vs False) is the watershed between V2 and V3.</div></div></div>
   </details>
 </div>

@@ -821,7 +821,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>The factory ToolExecutorFactory.get_executor both picks the executor and runs the tool directly, so the loop just calls it</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Lesson 19's key layering: ToolExecutorFactory (tool_execution_manager.py) only “picks the person” — it looks up _executor_map by tool.tool_type and returns an executor instance; the entry the loop actually calls is ToolExecutionManager.execute_tool_async in the same file, which first gets the executor from the factory, then uniformly times the call, truncates by return_char_limit, and wraps exceptions into a ToolExecutionResult. So “factory = entry” is a common trap: the factory doesn't run the tool; the manager is the entry.</div></div></div>
   </details>
 </div>
@@ -834,7 +834,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>LettaCoreToolExecutor, since any tool not specially categorized runs in-process as a “core tool”</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. At the schema layer tool_type defaults to CUSTOM (custom is not name-sorted by upsert_base_tools_async). The factory ToolExecutorFactory._executor_map wires 7 entries explicitly onto 5 executor classes (LETTA_CORE/LETTA_MEMORY_CORE/LETTA_SLEEPTIME_CORE→LettaCore, LETTA_MULTI_AGENT_CORE→Sandbox, LETTA_BUILTIN→LettaBuiltin, LETTA_FILES_CORE→LettaFile, EXTERNAL_MCP→ExternalMCP), and custom is not among them; get_executor falls back via _executor_map.get(tool_type, SandboxToolExecutor), so a custom tool goes to the sandbox by default. It does not fail — the fallback exists precisely for this case.</div></div></div>
   </details>
 </div>
@@ -847,7 +847,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It runs in the sandbox. All “external code” is treated as untrusted and uniformly thrown into SandboxToolExecutor for isolated execution</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. MCP has two counterintuitive points: (1) no sandbox — ExternalMCPToolExecutor (mcp_tool_executor.py) connects to an external MCP server and runs no tool code locally; (2) a fresh connection each time — MCPManager.execute_mcp_server_tool goes connect → execute → cleanup with no connection reuse. The real transport clients live in services/mcp/ (stdio/sse/streamable_http); functions/mcp_client/ holds only config types. The sandbox exists to isolate “unfamiliar code running on your machine,” but MCP's code never runs on your machine at all.</div></div></div>
   </details>
 </div>
@@ -860,7 +860,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>LettaBuiltinToolExecutor, treating memory edits as a built-in utility</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The factory's _executor_map maps LETTA_CORE and LETTA_MEMORY_CORE (and LETTA_SLEEPTIME_CORE) all to the same LettaCoreToolExecutor (core_tool_executor.py), which runs core, memory, and sleeptime tools all in-process — so core_memory_append executes in-process at the lowest latency, with no sandbox detour. There is no separate “Memory” executor, and memory tools are not sandboxed for “writing state.”</div></div></div>
   </details>
 </div>
@@ -873,7 +873,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>They all fall back to SandboxToolExecutor: any type not in the table lands in the sandbox — “secure by default”</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. This is the lesson's biggest trap: _executor_map wires 7 entries explicitly (LETTA_CORE, LETTA_MEMORY_CORE, LETTA_SLEEPTIME_CORE → LettaCore; LETTA_MULTI_AGENT_CORE → Sandbox; LETTA_BUILTIN, LETTA_FILES_CORE, EXTERNAL_MCP) onto just 5 executor classes. The other 4 unlisted types (custom, letta_voice_sleeptime_core, external_langchain, external_composio) fall through to the sandbox via get_executor's .get(tool_type, SandboxToolExecutor). Note letta_multi_agent_core also runs in the sandbox, but by an explicit mapping, not the fallback. Easter egg: the class ExternalComposioToolExecutor exists but is never wired up (external_composio is deprecated and falls back to the sandbox) — dead code that can never be selected. There is no KeyError and no “dynamic load by name.”</div></div></div>
   </details>
 </div>

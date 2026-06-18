@@ -849,9 +849,9 @@ formatted_prompt = system_prompt.replace(memory_variable_string, full_memory_str
 
 <p>Why call it the "soul"? Because "self-editing memory" is the MemGPT paper's most counterintuitive — and most crucial — move: letting an LLM <strong>manage its own context with tools</strong>. Once "read, write, edit your own system" holds, the agent turns from "a passive responder" into "a subject that curates its own memory" — every other tier and tool orbits this core.</p>
 
-<p><strong>Lesson 10</strong> covers archival's "write & search" — how <span class="mono">archival_memory_insert / search</span> embed long-term knowledge into vectors and pull it back by similarity; <strong>Lesson 11</strong> covers recall and conversation history — how messages are persisted and searched as typed JSON events; <strong>Lesson 12</strong> returns to Lesson 5's wall with <strong>context compaction</strong> — exactly the "force-rebuild #0 after compaction" path this lesson mentioned.</p>
+<p><strong>Lesson 10</strong> covers archival's "write &amp; search" — how <span class="mono">archival_memory_insert / search</span> embed long-term knowledge into vectors and pull it back by similarity; <strong>Lesson 11</strong> covers recall and conversation history — how messages are persisted and searched as typed JSON events; <strong>Lesson 12</strong> returns to Lesson 5's wall with <strong>context compaction</strong> — exactly the "force-rebuild #0 after compaction" path this lesson mentioned.</p>
 
-<p>One last recitation of the loop: <strong>edit block → persist → compile & fill the hole → swap #0 in place → live next turn</strong>; and <strong>don't rebuild unless you must</strong>, purely to protect the prefix cache. These five steps plus a "rebuild on demand" discipline — keep this chain and you hold the beating heart of Letta's memory system, and you've understood the one thing MemGPT most wants to say.</p>
+<p>One last recitation of the loop: <strong>edit block → persist → compile &amp; fill the hole → swap #0 in place → live next turn</strong>; and <strong>don't rebuild unless you must</strong>, purely to protect the prefix cache. These five steps plus a "rebuild on demand" discipline — keep this chain and you hold the beating heart of Letta's memory system, and you've understood the one thing MemGPT most wants to say.</p>
 
 <div class="card key">
   <div class="tag">✅ Key points</div>
@@ -875,7 +875,7 @@ formatted_prompt = system_prompt.replace(memory_variable_string, full_memory_str
     <li>The persisted message #0 (the system message) — because core memory is part of the system prompt</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. core memory isn't "memory stored elsewhere" — every turn Memory.compile() splices it into the system prompt, and the system prompt is the persisted message #0 (message_ids[0]). So core_memory_append/replace edit a block, trigger rebuild_system_prompt_async, and ultimately land on "rewrite message #0 in place." A user_facts table is the bolted-on-RAG approach; an archival passage belongs to another tier.</div></div></div>
   </details>
 </div>
@@ -888,7 +888,7 @@ formatted_prompt = system_prompt.replace(memory_variable_string, full_memory_str
     <li>Immediately inserts the change as a message into the current turn</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. rebuild_system_prompt_async takes message_ids[0] and recompiles memory; if the new memory is already in the current system and not forced, it returns early (no rebuild). When it does rebuild, the new message reuses the old id (temp.id = curr.id) and update_message_by_id_async updates it in place — so history always holds exactly one system message. The change isn't inserted into the current turn; it settles into #0 and is read next turn; nor is it rebuilt every step (that would smash the prefix cache).</div></div></div>
   </details>
 </div>
@@ -901,7 +901,7 @@ formatted_prompt = system_prompt.replace(memory_variable_string, full_memory_str
     <li>Because rebuilding also wipes the conversation history</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. The system prompt is the leading, stablest prefix; hitting the KV cache saves heavy repeated prefill (Lesson 5). _step in letta_agent_v3.py only refreshes messages at step start and skips the system rebuild, with the comment "preserve prefix caching"; it rebuilds the system message only on a real memory change (core_memory_*) or after compaction (only the compaction path passing force=True). Rebuilding doesn't wipe history; core is writable by default; the model reads system every turn.</div></div></div>
   </details>
 </div>

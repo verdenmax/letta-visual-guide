@@ -645,7 +645,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
-    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。缩小工具集只看 child + parent 两类。源码里 relevant = self.child_based_tool_rules + self.parent_tool_rules（child_based 桶含 Child/Conditional/MaxCount），对每条调 get_valid_tools 求交，再 & available。terminal / continue / required_before_exit / requires_approval 这几桶不参与交集——solver 文档字符串明说它们“在 agent 循环里生效，不用来限制工具”，它们的作用体现在 _decide_continuation 的续步/停止判断里。init 规则则走另一条岔路（首步强制），不在这步的交集里。所以“全部 9 种求交”或“terminal 参与缩集”都是典型记反。</div></div></div>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。缩小工具集只看 child + parent 两类。源码里 relevant = self.child_based_tool_rules + self.parent_tool_rules（child_based 桶含 Child/Conditional/MaxCount），对每条调 get_valid_tools 求交，再 &amp; available。terminal / continue / required_before_exit / requires_approval 这几桶不参与交集——solver 文档字符串明说它们“在 agent 循环里生效，不用来限制工具”，它们的作用体现在 _decide_continuation 的续步/停止判断里。init 规则则走另一条岔路（首步强制），不在这步的交集里。所以“全部 9 种求交”或“terminal 参与缩集”都是典型记反。</div></div></div>
   </details>
 </div>
 <div class="quiz">
@@ -967,7 +967,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
     <li>required_before_exit (RequiredBeforeExitToolRule); it requires the first step to be a settlement-type tool</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. run_first maps to the subclass InitToolRule, the only “force the first step” rule. get_allowed_tool_names's first fork is exactly: if not self.tool_call_history and self.init_tool_rules → return [r.tool_name for r in self.init_tool_rules], locking the first step onto the init tools and excluding every other rule. exit_loop governs “called → stop” (the end, not the start), constrain_child_tools constrains “the next step after a given parent tool” (a parent call must come first), and required_before_exit only demands “at least one call before exit,” not that it be the first step. Don't be misled by the subclass name: the enum value is run_first, not Init.</div></div></div>
   </details>
 </div>
@@ -980,7 +980,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
     <li>It runs the tool anyway, just appending a warning after the result to remind the model not to do it next time</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. A violating tool is never executed. The decision is in letta_agent_v3.py::_handle_ai_response: tool_rule_violated = name not in valid_tool_names; if true it skips execution and instead has agents/helpers.py::_build_rule_violation_result synthesize a ToolExecutionResult(status="error", func_return="[ToolConstraintError] Cannot call X, valid tools include: [...]") fed back as that tool's “return value.” It's neither “run then warn,” nor a bare raise that crashes the step (which would only show the user a baffling error), nor a silent drop — it turns the violation into a “lesson,” continuing the loop and giving the model a chance to re-pick. The error string is assembled in the agent layer; the solver only supplies a one-line hint via guess_rule_violation.</div></div></div>
   </details>
 </div>
@@ -993,8 +993,8 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
     <li>init + requires_approval are intersected, with the rest handled elsewhere</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
-    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Shrinking the tool set looks only at the child + parent families. In source, relevant = self.child_based_tool_rules + self.parent_tool_rules (the child_based bucket holds Child/Conditional/MaxCount); each rule's get_valid_tools is intersected, then & available. The terminal / continue / required_before_exit / requires_approval buckets don't join the intersection — the solver's docstring states they “apply in the agent loop, not to restrict tools,” and their effect shows up in _decide_continuation's continue/stop decision. The init rules take the other fork (first-step forcing), not this step's intersection. So “intersect all 9” or “terminal shrinks the set” are classic reversals.</div></div></div>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Shrinking the tool set looks only at the child + parent families. In source, relevant = self.child_based_tool_rules + self.parent_tool_rules (the child_based bucket holds Child/Conditional/MaxCount); each rule's get_valid_tools is intersected, then &amp; available. The terminal / continue / required_before_exit / requires_approval buckets don't join the intersection — the solver's docstring states they “apply in the agent loop, not to restrict tools,” and their effect shows up in _decide_continuation's continue/stop decision. The init rules take the other fork (first-step forcing), not this step's intersection. So “intersect all 9” or “terminal shrinks the set” are classic reversals.</div></div></div>
   </details>
 </div>
 <div class="quiz">
@@ -1006,7 +1006,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
     <li>The stop reason is max_steps: approval is treated as “steps exhausted”</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. When is_requires_approval_tool hits, the loop stops at StopReasonType.requires_approval (not tool_rule, not max_steps). It doesn't execute the tool but persists an “approval request” message generated by create_approval_request_message_from_llm_response(...), handing control to a human. After approval, the next request enters as an is_approval_response that bypasses the violation check and proceeds — matching lesson 14's stop-reason table and connecting to lesson 15's “tool rules can override default behavior.” Note the distinction: a terminal tool (exit_loop) stops at tool_rule, while requires_approval stops at requires_approval — different stop reasons.</div></div></div>
   </details>
 </div>
@@ -1019,7 +1019,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
     <li>The enum value and the subclass name are the same string; the framework doesn't distinguish them</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. This is the easiest naming trap. The enum schemas/enums.py::ToolRuleType uses legacy names: run_first / exit_loop / continue_loop / conditional / constrain_child_tools / max_count_per_step / parent_last_tool / required_before_exit / requires_approval. The subclasses (schemas/tool_rule.py) are InitToolRule / TerminalToolRule / ChildToolRule…, each pinning a Literal type string (e.g. InitToolRule.type == "run_first"). So the enum values are not Init/Terminal/Child; the type string and the subclass name aren't the same string; and it's not “no type” — on the contrary, that very type field forms pydantic's discriminated union, letting a string of JSON with a type field resolve to the right subclass.</div></div></div>
   </details>
 </div>

@@ -749,7 +749,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
     <li>All three contract methods, plus the factory's match/case branch</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Quirks are caged in just the two end steps: build_request_data (edit request) and convert_response_to_chat_completion (edit response). XAIClient drops two penalty fields, GroqClient down-converts an object-form tool_choice to the string required — each just patches a dict after super(). request_async / stream_async are the shared “send” pipe, not where differences live; _prepare_client_kwargs already sets base_url on OpenAIClient, so these field-tweaking subclasses never touch it; and there is certainly no need to rewrite the whole contract or the factory branch. Remember the discipline: differences go into these two subclass methods, while above the loop it is always the same ChatCompletionResponse.</div></div></div>
   </details>
 </div>
@@ -762,7 +762,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
     <li>In a separate top-level field next to the tool call, not inside the parameters at all</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. Order is everything. An LLM generates parameters left to right in schema order, so making thinking the first required field forces the model to “write a chunk of reasoning, then fill the structured parameters” — think-before-act is nailed down. helpers.py::add_inner_thoughts_to_functions uses both hands: an OrderedDict makes thinking the first property, and required.insert(0, key) puts it first among required too. It is not an optional tail, nor a field outside parameters. Note Google is the counterexample — it appends thinking last — but the default/forced-simulation path always puts it first.</div></div></div>
   </details>
 </div>
@@ -775,7 +775,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
     <li>is_reasoning_model — a per-request boolean the loop recomputes each step</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The decision rests on the single switch put_inner_thoughts_in_kwargs: True injects a simulated monologue (the model can't think on its own), False steps aside and uses the model's real reasoning (o1/o3/gpt-5, Claude 3.7/4, ZAI GLM, etc.). The name is the answer — “put inner thoughts in kwargs (the tool parameters)”, true only when injection is needed. INNER_THOUGHTS_KWARG is merely the key-name string “thinking”, not a switch; is_reasoning_model is a different abstract method; and the factory dispatches on endpoint type, not on whether a model reasons. The same injection code, via this one boolean, gives two kinds of model exactly opposite treatment.</div></div></div>
   </details>
 </div>
@@ -788,7 +788,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
     <li>Google doesn't use a thinking field at all; it relies purely on native reasoning</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Google is the named counterexample: it appends thinking last, via the constant INNER_THOUGHTS_KWARG_VERTEX, rather than first like the others. This family works against the OpenAI shape at every turn — tools are wrapped as [{“functionDeclarations”:[...]}], the tool call is called functionCall (with .name / .args), and the assistant role is named “model” — all caged inside GoogleVertexClient so the loop feels nothing. The classic pitfall is assuming “everyone puts it first”; to write a new client for real, the first thing to do is confirm exactly where it puts thinking. It does use thinking, and it doesn't bury it in the middle.</div></div></div>
   </details>
 </div>
@@ -801,7 +801,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
     <li>It maintains an internal registry mapping every provider name to a hand-written request/response translator</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The trick is absurdly small: _prepare_client_kwargs only sets base_url to model_endpoint — the same OpenAI SDK, a new URL, a new provider connected. Because these endpoints mostly already expose an “OpenAI-compatible” interface, their request/response shapes line up with OpenAI and the only real difference is the server address, so the factory's case _ simply falls back to OpenAIClient. Only 6 ProviderTypes (anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax) need a non-OpenAI client. The 8 explicit subclasses are the “almost compatible but one breath short” exceptions, not “one subclass per name”; there is no hand-written translator registry, and it certainly doesn't guess from the model name prefix.</div></div></div>
   </details>
 </div>

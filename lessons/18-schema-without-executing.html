@@ -770,7 +770,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It imports the source as a module, then calls inspect.signature on the resulting function object</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The whole point of lesson 18 is deriving a schema without running the code. derive_openai_json_schema (letta/functions/functions.py) calls _parse_function_from_source, which uses ast.parse — purely static — picks the function node, rebuilds an inspect.Signature, and returns a MockFunction; that mock is then fed to the same generate_schema from lesson 17. import + inspect would execute top-level code (an RCE on a multi-tenant server), and neither running the function nor asking the model is involved. Reading, not running.</div></div></div>
   </details>
 </div>
@@ -783,7 +783,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It stores the raw source string, and generate_schema re-parses that string each time it needs a field</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. inspect checks no pedigree — it reads attributes. MockFunction.__init__ (letta/functions/functions.py) sets __name__, __doc__, and __signature__; once __signature__ is set explicitly, inspect.signature(mock) returns it and docstring parsing reads __doc__, so the same generate_schema works on never-run code (duck typing). Notably MockFunction.__call__ raises NotImplementedError — it is never meant to execute. Nothing is compiled, sandbox-run, or re-parsed per field.</div></div></div>
   </details>
 </div>
@@ -796,7 +796,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>The last FunctionDef in the parsed tree, chosen purely by walking the AST node list — nothing is executed</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. _parse_function_from_source collects ast.FunctionDef nodes via ast.walk and takes the last one ([-1]) — the convention is “the tool is the last function defined in the file.” This is a static read of the AST nodes; nothing runs. It is explicitly NOT the first function, and not “the one with a docstring” (a docstring is required on the chosen function, but selection is by position), and nothing is imported to match names.</div></div></div>
   </details>
 </div>
@@ -809,7 +809,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It transpiles the TypeScript to Python first, then runs the normal AST derivation</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. TS tools are the exception to auto-derivation. ToolCreate.validate_typescript_requires_schema rejects a typescript source with no json_schema (ValueError), so the convenient auto-derive path mainly serves Python. derive_typescript_json_schema does exist, but it is regex-based and coarse (union/any → string), not AST, and there is no TS→Python transpile step. The schema is not silently emptied; creation simply fails until you pass an explicit json_schema.</div></div></div>
   </details>
 </div>
@@ -822,7 +822,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>letta/functions/functions.py — alongside derive_openai_json_schema and _parse_function_from_source</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. MockFunction lives in letta/functions/functions.py, together with the deriver trio derive_openai_json_schema and _parse_function_from_source. ast_parsers.py is a common trap — it holds AST helpers like get_function_name_and_docstring and resolve_type (whitelist, allow_unsafe_eval=False), but NOT MockFunction. typescript_parser.py handles regex-based TS derivation; tool_schema_generator.py holds generate_schema_for_tool_creation (the creation-time dispatch), not MockFunction.</div></div></div>
   </details>
 </div>

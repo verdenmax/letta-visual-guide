@@ -1025,6 +1025,17 @@ LESSON_06 = {
 <p>第二部分（前置基础）三课走到这里收尾。回头看这条线：第 4 课讲清了"agent = LLM + 工具 + 循环"以及 tool calling 在消息层怎么工作；第 5 课讲清了"上下文是一笔有限且按 token 计费的预算"，记忆管理是被经济规律逼出来的刚需；这一课则把"状态"本身翻开——<strong>agent 是一条可序列化、有稳定 prefixed 身份、靠 schema/orm 两套模型落库、在数据与短命运行时之间往返的数据</strong>。三课合起来，你已经握牢了三把钥匙：<strong>工具（agent 怎么动手）、上下文（为什么必须管理记忆）、状态（agent 物理上是什么）</strong>。</p>
 <p>这三把钥匙，恰好同时指向同一扇门——<strong>记忆系统</strong>，也就是第三部分的主题。第 5 课留下的问题是"换出去的东西放哪、怎么取回、agent 怎么自己管"；这一课则告诉你"那些被管理的记忆，本身就是带 id 的、可编辑的数据（<span class="mono">block</span> 等）"。把两者接上，第三部分就要正式展开 Letta 的分层记忆：始终在窗的<strong>核心记忆</strong>、可检索的<strong>recall</strong>历史、可检索的<strong>archival</strong>长期事实，以及 agent 用记忆工具<strong>自我编辑</strong>的闭环。带着"agent 是数据"这个心智模型往下读，你会发现记忆系统的每一处设计，都是本课这条原则的自然延伸。</p>
 
+<div class="card detail">
+  <div class="tag">🔬 落到代码</div>
+  <p>这一课的源码地图，一处看全：</p>
+  <ul>
+    <li><strong>状态实体</strong>：<span class="mono">letta/schemas/agent.py::AgentState</span>——一个 agent 就是它的字段（<span class="mono">memory</span> / <span class="mono">message_ids</span> / <span class="mono">system</span> / <span class="mono">tools</span> / <span class="mono">tool_rules</span> / <span class="mono">llm_config</span> / <span class="mono">embedding_config</span>）。</li>
+    <li><strong>身份生成</strong>：<span class="mono">letta/schemas/letta_base.py::LettaBase.generate_id</span> = <span class="mono">f"{__id_prefix__}-{uuid4()}"</span>，前缀由各 schema 的 <span class="mono">__id_prefix__</span> 给。</li>
+    <li><strong>两套模型</strong>：API 契约在 <span class="mono">letta/schemas/</span>、存储在 <span class="mono">letta/orm/</span>；把 pydantic 配置整块以 JSON 存进一列的胶水在 <span class="mono">letta/orm/custom_columns.py</span>，转换在 manager（<span class="mono">to_pydantic_async</span>）。</li>
+    <li><strong>往返运行时</strong>：<span class="mono">letta/agents/agent_loop.py::AgentLoop.load(agent_state=...)</span> 把那条数据现搭成运行时跑一步、再写回——运行时只是数据的短命投影。</li>
+  </ul>
+</div>
+
 <div class="card key">
   <div class="tag">✅ 本课要点</div>
   <ul>
@@ -1233,6 +1244,17 @@ We've leaned on two words for several lessons — "stateful" and "stateless" —
 <h2>Part 2 ends here: next stop, the memory system</h2>
 <p>Part 2 (Foundations), three lessons, wraps up here. Looking back over the arc: Lesson 4 made clear that "agent = LLM + tools + loop" and how tool calling works at the message layer; Lesson 5 made clear that "context is a finite, per-token-billed budget," so memory management is a necessity forced by economics; and this lesson opened "state" itself — <strong>an agent is data that is serializable, has a stable prefixed identity, persists via two models (schema/orm), and round-trips between data and a short-lived runtime</strong>. Together, the three lessons hand you three keys: <strong>tools (how an agent acts), context (why memory must be managed), and state (what an agent physically is)</strong>.</p>
 <p>These three keys all point to the same door — <strong>the memory system</strong>, the subject of Part 3. Lesson 5 left the question "where does swapped-out content go, how is it fetched back, how does the agent manage it itself"; this lesson tells you "those managed memories are themselves id-bearing, editable data (<span class="mono">block</span> and friends)." Join them and Part 3 will formally unfold Letta's tiered memory: always-in-window <strong>core memory</strong>, searchable <strong>recall</strong> history, searchable <strong>archival</strong> long-term facts, and the loop where an agent <strong>self-edits</strong> via memory tools. Read on with "an agent is data" as your mental model, and you'll find every design choice in the memory system is a natural extension of this lesson's principle.</p>
+
+<div class="card detail">
+  <div class="tag">🔬 Down to the code</div>
+  <p>The whole lesson's source map, in one place:</p>
+  <ul>
+    <li><strong>The state entity</strong>: <span class="mono">letta/schemas/agent.py::AgentState</span> — an agent <em>is</em> its fields (<span class="mono">memory</span> / <span class="mono">message_ids</span> / <span class="mono">system</span> / <span class="mono">tools</span> / <span class="mono">tool_rules</span> / <span class="mono">llm_config</span> / <span class="mono">embedding_config</span>).</li>
+    <li><strong>Identity</strong>: <span class="mono">letta/schemas/letta_base.py::LettaBase.generate_id</span> = <span class="mono">f"{__id_prefix__}-{uuid4()}"</span>; the prefix comes from each schema's <span class="mono">__id_prefix__</span>.</li>
+    <li><strong>Two models</strong>: the API contract lives in <span class="mono">letta/schemas/</span>, storage in <span class="mono">letta/orm/</span>; the glue that stores a whole pydantic config as one JSON column is <span class="mono">letta/orm/custom_columns.py</span>, with conversion in the managers (<span class="mono">to_pydantic_async</span>).</li>
+    <li><strong>Round-trip to a runtime</strong>: <span class="mono">letta/agents/agent_loop.py::AgentLoop.load(agent_state=...)</span> reconstitutes that data into a runtime for one step, then writes it back — the runtime is just a short-lived projection of the data.</li>
+  </ul>
+</div>
 
 <div class="card key">
   <div class="tag">✅ Key points</div>

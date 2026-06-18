@@ -885,7 +885,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>The same BasePassage: one vector column, the same 4096 padding, one cosine_distance ordering</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. orm/passage.py::BasePassage is an __abstract__ base (it builds no table of its own) that defines the embedding column: on Postgres embedding = Vector(MAX_EMBEDDING_DIM) (pgvector), on SQLite CommonVector, plus the same 4096 padding and cosine_distance. SourcePassage(BasePassage, FileMixin, SourceMixin) and ArchivalPassage(BasePassage, ArchiveMixin) inherit that column verbatim, not a line changed — exactly Lesson 27's substrate. So what they share is the "physical column + algorithm," not one table (they are source_passages / archival_passages), not one row (attaching never copies or shares a passage row), and not "separate engines" (it is one and the same).</div></div></div>
   </details>
 </div>
@@ -898,7 +898,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>Only the names differ; table, FK, and tool are actually identical</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The vector machinery is identical (same BasePassage, same cosine_distance, same 4096 padding); the only difference is ownership and provenance. SourcePassage goes to source_passages with source_id(req)+file_id(opt), retrieved via build_source_passage_query joining SourcesAgents, tool semantic_search_files; ArchivalPassage goes to archival_passages with archive_id (plus passage_tags), retrieved via build_agent_passage_query joining ArchivesAgents, tool archival_memory_search. So "different distance metrics" and "different dimensions" are wrong (they are the same), and "actually identical" is wrong too — table/FK/tool really do diverge. Two different tools, one pgvector cosine.</div></div></div>
   </details>
 </div>
@@ -911,7 +911,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It writes one sources_agents junction row — no copy or re-embed; sources are org-scoped and shareable</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. agent_manager.py::AgentManager.attach_source_async writes a single orm/sources_agents.py::SourcesAgents junction row (composite PK (agent_id, source_id), so it links only once); not one passage is copied or re-embedded. The Source is built at the org level by services/source_manager.py::SourceManager.create_source and shared across agents via the junction (a 50-page manual attached to 10 agents is still embedded once). At retrieval, build_source_passage_query joins exactly this SourcesAgents to know which sources the agent may search. So "copy + re-embed," "stuff into context," and "create new ArchivalPassage" are all wrong — attaching just draws a line.</div></div></div>
   </details>
 </div>
@@ -924,7 +924,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>Chunk → write to source_passages → embed lazily at retrieval time</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. services/file_processor/file_processor.py::FileProcessor.process: create_file (status PARSING) → extract_text (PDF/image via OCR, to markdown) → upsert_file_content (full text into file_contents) → insert_file_into_context_windows (builds FileAgent) → LlamaIndexChunker.chunk_text (chunk_size from EmbeddingConfig, Lesson 21) → generate_embedded_passages (batched by EmbeddingConfig.batch_size) → create_many_source_passages_async (writes source_passages, padded to MAX_EMBEDDING_DIM on pgvector, skipped for TPUF). So it must be extract, then chunk, then embed, then land. "Embed whole file first" and "lazy embedding" break the order; legacy connectors.load_data calls the deprecated create_many_passages_async, not the v0.16.8 mainline.</div></div></div>
   </details>
 </div>
@@ -937,7 +937,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>A SourcePassage plus an identical ArchivalPassage backup</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. One ingestion pass yields two forms: (A) chunked and embedded into a SourcePassage, recalled by cosine (tool semantic_search_files); (B) insert_file_into_context_windows builds orm/files_agents.py::FileAgent (the files_agents junction, with is_open/visible_content), rendered via to_pydantic_block into an in-context FileBlock(read_only=True), operated by open_files/grep_files and capped at 5 open by default. The two are complementary: semantic for fuzzy locating, open_files for verbatim reading. So it is not "an extra ArchivalPassage backup" (archival is agent-written, a different source), not "only a SourcePassage," and FileBlock is read-only, not a writable core-memory block.</div></div></div>
   </details>
 </div>

@@ -793,7 +793,7 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
     <li>It rewrites the function's source code</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Function calling happens at the message layer: the model only emits a tool_call (name + JSON args). The runtime actually executes it (letta_agent_v3.py::_execute_tool → ToolExecutionManager.execute_tool_async, sandboxed if needed) - the security boundary: model output is untrusted, your code decides whether to run it.</div></div></div>
   </details>
 </div>
@@ -806,7 +806,7 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
     <li>Because the model weights have no room to store thinking</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. Not every provider has a native thinking channel, and formats differ. add_inner_thoughts_to_functions makes thinking required and first (put_inner_thoughts_first), and the description (..._GO_FIRST) orders it generated first - turning a soft 'hopefully it thinks' into a hard 'the call format must contain the thought first,' uniformly across vendors.</div></div></div>
   </details>
 </div>
@@ -819,7 +819,7 @@ tools    = <span class="fn">add_inner_thoughts</span>(<span class="fn">to_schema
     <li>Think through all steps at once, then execute them together</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. ReAct = interleaved Reasoning + Acting: think→act→observe→think again. The model hasn't seen the result when it issues a call, so the result must be fed back and it's called again. Letta drives this with _decide_continuation ('called a tool → continue, else stop') - the very core of Lesson 3's step loop.</div></div></div>
   </details>
 </div>

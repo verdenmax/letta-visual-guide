@@ -837,7 +837,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>Pull the whole table back, then filter out other tenants by actor.id in Python inside the manager</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Isolation is welded into the lowest layer: orm/sqlalchemy_base.py::SqlalchemyBase.apply_access_predicate is the single injection point for row-level filtering — the ORGANIZATION scope (default) appends where(organization_id == actor.organization_id), the USER scope (jobs / runs only) appends where(user_id == actor.id). Around 40 models share this one SqlalchemyBase, and read_async / list_async / size_async / bulk_hard_delete_async all auto-apply it, so there's no per-endpoint WHERE for any handler to remember — that's the “secure by default” inversion. It's injected onto the query object before the SQL runs and completed DB-side, not by pulling the whole table back and filtering in Python. CheckPasswordMiddleware governs “can you enter this server” (a single shared secret), is orthogonal to tenancy, and does no per-org row filtering.</div></div></div>
   </details>
 </div>
@@ -850,7 +850,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>The gate detects the violation and raises a 403 / permission error (PermissionError) outright</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. A violation = not found, not an error. apply_access_predicate injects where(organization_id == actor.organization_id) onto the query before the SQL runs, so another org's row never enters the result set: read_async's scalar_one_or_none() gets None → raises NoResultFound; list_async gets []. This is by design — it leaks nothing about “that row exists,” so it's not a 403 and not a PermissionError. The only ValueError comes from an actor lacking even the org / id accessor (a misconfig), not from cross-tenant access. Isolation isn't “write-path only” either — the four read methods (when an actor is present) all apply the predicate, while write / delete ride the boundary the read established. When debugging, don't be fooled by NoResultFound: first check that the actor's org is right.</div></div></div>
   </details>
 </div>
@@ -863,7 +863,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>A soft delete: it only flips is_deleted to True; the row stays in the table, and the read path still finds it by default (check_is_deleted=False)</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. delete_async is a soft delete: internally it goes through update_async to flip is_deleted to True (stamping audit too if there's an actor); not a byte of the row moves and foreign-key relations stay intact. The key counterintuitive point: read-side filtering is opt-in — read_async / list_async default check_is_deleted to False and don't append where(is_deleted == False), so soft-deleted rows are still returned by default; to keep them out you must pass check_is_deleted=True explicitly (as in provider_manager's read path). Physical deletion is the other two methods: hard_delete_async (session.delete(self) + deadlock retry) and bulk_hard_delete_async (delete(cls).where(id.in_(...)) + apply_access_predicate, the only delete that enforces tenancy at the SQL level). delete_async itself does not cascade-physically-delete.</div></div></div>
   </details>
 </div>
@@ -876,7 +876,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>Database triggers generate them all on INSERT / UPDATE; the app layer isn't involved</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Audit fields aren't stamped by event listeners or DB triggers but by an explicit call in the CRUD path to orm/base.py::CommonSqlalchemyMetaMixins's _set_created_and_updated_by_fields(actor_id) — create_async / update_async touch it manually. The key precondition: it stamps the “who” only when an actor is passed; a write without an actor (a system-internal path) records no *_by_id, only the time columns as usual. The time columns are indeed left to the DB: created_at uses server_default=func.now(), and updated_at adds server_onupdate (not relying on the app clock). The physical columns carry an underscore, _created_by_id / _last_updated_by_id; the outward attributes drop it, and the setter asserts the id prefix = “user.” created_by_id is set only on the first write and never changes; last_updated_by_id refreshes on every write.</div></div></div>
   </details>
 </div>
@@ -889,7 +889,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It silently returns an empty result ([] / None), treating it as “no rows visible”</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. When actor=None the base does not hard-fail: in read_async the predicate is gated on if actor: — with no actor it skips apply_access_predicate and, for an org-scoped model, logs a loud logger.warning(“SECURITY: ... bypasses organization filtering”), then runs unscoped (returning unrestricted rows across the table, not empty). This is a deliberate trade-off: Letta has legitimate system-internal queries with no user, so it chose “central enforcement + a loud log” over brittle hard failure. Don't conflate this with the entrance: the thing that can actually “force identity” is user_manager.py::get_actor_or_default_async — it raises NoResultFound when settings.no_default_actor and no id, otherwise it falls back to DEFAULT_USER_ID; that's the actor-resolution entry logic, not what SqlalchemyBase itself does when actor=None.</div></div></div>
   </details>
 </div>

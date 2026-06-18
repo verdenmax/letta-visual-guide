@@ -861,7 +861,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
     <li>Whether letta_pg_uri is None — if None it falls back to SQLite</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. The decision lives in settings.py::Settings.database_engine, a read-only @property whose logic is one line: POSTGRES if self.letta_pg_uri_no_default else SQLITE. So “is a PG URI configured” is the only dev/prod divider; DatabaseChoice(str, Enum) has just POSTGRES / SQLITE and is a conclusion read out, not a writable field. There is no LETTA_DATABASE_ENGINE switch — set any LETTA_PG_* (host/db/user/password/port/uri) and it silently flips to Postgres. The trap: letta_pg_uri always has a default (postgresql+pg8000://letta:letta@localhost:5432/letta), so the check can't read it — the real “URI-or-None” is letta_pg_uri_no_default. It isn't driver probing either: server/db.py at module level only does create_async_engine(async_pg_uri) and detects no backend.</div></div></div>
   </details>
 </div>
@@ -874,7 +874,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
     <li>Distributed across several places, mostly declarative: column type, query branch, connect event, custom columns, alembic — not in any single switch</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. The dual DB isn't a clever switch in server/db.py — in v0.16.8 that file is Postgres-only async (module level only create_async_engine(async_pg_uri), no branch on database_engine, no sqlite-vec loaded). The real seam is distributed across ~six places, most declared at import time: (1) the derived settings.database_engine property; (2) orm/passage.py::BasePassage's class-body, import-time if POSTGRES: Vector(MAX_EMBEDDING_DIM) else CommonVector; (3) the two-way order_by in the query builder (sqlalchemy_base.py and services/helpers/agent_manager_helper.py); (4) orm/sqlite_functions.py::register_functions using @event.listens_for(Engine, “connect”) to register a numpy cosine_distance on any SQLite connection; (5) orm/custom_columns.py's TypeDecorators; (6) alembic/env.py picking the URI and building tables for two backends. The only place that still builds a SQLite URI is alembic/env.py. It isn't per-manager branches either — the fork only appears where vector search is used.</div></div></div>
   </details>
 </div>
@@ -887,7 +887,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
     <li>Both store vectors as JSON text and, at search time, deserialize in Python to compute cosine</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Storage: Postgres is pgvector's Vector(4096) fixed-length column; SQLite is orm/custom_columns.py::CommonVector — an impl=BINARY TypeDecorator packing with sqlite_vec.serialize_float32 and restoring with np.frombuffer. Search: the column type and the search branch share one if settings.database_engine is POSTGRES (orm/passage.py::BasePassage fixes the column type at import time; sqlalchemy_base.py / agent_manager_helper.py branch at runtime). Postgres uses cls.embedding.cosine_distance(q) → compiles to native &lt;=&gt; and can attach ivfflat / hnsw for ANN; SQLite uses func.cosine_distance(col, q) → the numpy UDF registered by orm/sqlite_functions.py::register_functions, computed row by row over the whole table then ORDER BY ASC. Key correction: SQLite's similarity is not sqlite-vec native — sqlite_vec.load() is commented out; only its serialize_float32 is borrowed to pack bytes. Both are semantically the same (nearest by ascending cosine); one just has ANN, the other brute-forces the whole table.</div></div></div>
   </details>
 </div>
@@ -900,7 +900,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
     <li>Because cosine first L2-normalizes the vectors, and normalization erases any length difference, so any padding works</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Cosine = dot product / (product of the two L2 norms). The tail padding is all zeros: in the dot product each added term is 0 × x = 0, so the numerator is unchanged; in the L2 norm each added term is 0² = 0, so the denominator is unchanged. With neither moving, the cosine value and the ranking are exactly equal to the unpadded case — an identity, not an approximation. So constants.py::MAX_EMBEDDING_DIM=4096 zero-pads any dimension to a fixed length, letting one Vector(4096)/CommonVector column hold any model's output without affecting retrieval order. Watch the wrong options: there is no “slice the zeros off before search” step (both write and query pad to 4096 before comparing — a shared precondition); the padding is zeros, not random numbers; and although cosine does include normalization, the reason it's “free” is that zero-padding leaves both dot product and norm unchanged, not that normalization erases arbitrary padding. The only cost is storing extra zeros (e.g. 3072 wasted zeros for a 1024-dim model).</div></div></div>
   </details>
 </div>
@@ -913,7 +913,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
     <li>Buys a flat schema + schema-on-read evolution (adding a field needs no migration); costs the inability to WHERE / index subfields, plus (de)serialization on every read/write</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. The TypeDecorators in orm/custom_columns.py (EmbeddingConfigColumn / LLMConfigColumn / ToolRulesColumn, impl=JSON, cache_ok=True) store the whole pydantic object in one cell: process_bind_param writes via model_dump(mode=“json”) → dict, and process_result_value reads dict → Model(**data) to restore it (the real conversion delegated to helpers/converters.py). It buys two things: (1) a flat schema + no migration — adding a pydantic field to LLMConfig leaves the table schema untouched, and old rows get defaults filled on read by deserialize_llm_config (schema-on-read); (2) fidelity — nested structure isn't flattened, and it reads back as a strongly-typed object. It costs two things: (1) JSON subfields can't be efficiently put in a WHERE or indexed (no “filter by embedding model name”); (2) every read/write runs a round of (de)serialization, a CPU cost. impl=JSON lands as JSONB on Postgres and text on SQLite, but that's transparent to the upper layers. For Letta — configs that change a lot and are rarely queried by subfield — it pays off.</div></div></div>
   </details>
 </div>

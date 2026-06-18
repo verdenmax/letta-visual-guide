@@ -887,7 +887,7 @@ Just three keywords: <strong>Message</strong> (one message = one durable, search
     <li>recall has limited capacity and fills up, archival is unlimited</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Both are out-of-window and both searchable, so “in or out of context” isn't the difference. Both retrieve with semantics too: recall's conversation_search is hybrid (text+meaning), archival is pure semantic — so “literal vs semantic” is the common mix-up. The real split is “what's stored / who writes”: recall auto-logs every raw message (you call no tool), while archival is written only when the agent judges something worth keeping long-term and actively inserts a distilled note. One passively records all, one actively curates.</div></div></div>
   </details>
 </div>
@@ -900,7 +900,7 @@ Just three keywords: <strong>Message</strong> (one message = one durable, search
     <li>conversation_search is hybrid (text + semantic); the semantic path matches old messages that mean the same thing but are worded differently</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. conversation_search's tool description literally says “hybrid search (text + semantic similarity)”: it computes text and meaning together, so a reworded-but-related old message still hits — exactly what pure keyword matching can't do. That message had already slid out of the window (not in message_ids), so it wasn't “still in-window”; nor was it ever inserted into archival (that's recall's job). It's still a Message row in the store, pulled back by hybrid on meaning.</div></div></div>
   </details>
 </div>
@@ -913,7 +913,7 @@ Just three keywords: <strong>Message</strong> (one message = one durable, search
     <li>message_ids is a list of pointers marking only the recent in-window slice; [0] is always the system message; dropped ≠ deleted, and old messages are searchable-not-visible</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. message_ids (AgentState) is a list of id pointers, not the messages themselves; index 0 is always the system message (the basis for Lesson 9's “rebuild message #0”). Slimming uses trim_older_in_context_messages, which only drops older entries from the pointer list; the real Message rows stay in the store via MessageManager — dropped from the window ≠ deleted. So old messages are “searchable but not visible”: out of sight, but conversation_search brings them right back.</div></div></div>
   </details>
 </div>

@@ -867,7 +867,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
     <li>One LLM call, tool execution, and persisting the result</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. The source pins _step as “one LLM call and tool execution” — an async generator: get valid tools and check whether to force a call → _refresh_messages (no system-prompt rebuild, preserving the prefix cache) → invoke_llm (wrapped in “overflow → compact → retry”) → _handle_ai_response validates and executes tools and computes the continuation triple → _checkpoint_messages persists (“persistence needs to happen before streaming”) → yield. Tool execution and persistence both live inside _step, not handed to step(); running all 50 steps is the outer step()'s for loop, not one _step; rebuilding the system prompt only happens after compaction / reset, not on every _step.</div></div></div>
   </details>
 </div>
@@ -880,7 +880,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
     <li>It only looks at whether the model called a tool this round: called → continue; didn't → end (end_turn). Plus a few hard overrides</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. _decide_continuation's docstring states the rule in two lines: no tool call → loop ends; tool call → loop continues. It doesn't read whether the model “wants to continue,” only the objective signal “did it issue a tool call” — because a tool call is two-stage, the result must be fed back to the model, so one more lap is required. Hard overrides: no call but a required_before_exit tool remains → continue; terminal tool → stop tool_rule; step 50 → stop max_steps. Continuing via request_heartbeat is the previous-gen V2 approach — exactly the “heartbeat” V3 dropped (lesson 15); scanning text for a keyword or watching token usage are not its criteria.</div></div></div>
   </details>
 </div>
@@ -893,7 +893,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
     <li>10 — hard-coded in the body of step in letta_agent_v3.py</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. DEFAULT_MAX_STEPS = 50 is defined in constants.py, and step(input_messages, max_steps=DEFAULT_MAX_STEPS) uses it as the default. This “budget” is the loop's safety rope: run a full 50 laps without a natural finish and step() actively stamps StopReasonType.max_steps and exits. It's a constant, not derived from the context-window size; nor must it be passed explicitly — omit it and you get 50.</div></div></div>
   </details>
 </div>
@@ -906,7 +906,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
     <li>max_steps, but it maps to failed (hitting the cap counts as an error)</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. In step(), when i == max_steps - 1 and no stop reason is set yet, it actively stamps StopReasonType.max_steps. The counterintuitive key: LettaStopReason.run_status puts max_steps in the completed pile (alongside end_turn / tool_rule / requires_approval), not failed — hitting the cap is “clocking out on schedule” protection, not a crash. end_turn is the “no-tool-call normal finish,” not the cap; max_tokens_exceeded maps to failed only for a length-truncated round (finish_reason=length), unrelated to the 50-step cap.</div></div></div>
   </details>
 </div>
@@ -919,7 +919,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
     <li>It streams: step() forwards each step's messages straight to the client as it finishes</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. step() is not a streaming interface: internally it drains each _step generator, appends to a list, and after the loop returns one complete LettaResponse. The async for ... yield inside _step is just an “internal relay” — handing messages to step() to append, not forwarding to the client. The real “live broadcast” is a separate method, stream(...); don't conflate it with step(). Returning LettaUsageStatistics is the synchronous elder Agent.step (lesson 13); V2 / V3's step returns a LettaResponse.</div></div></div>
   </details>
 </div>
