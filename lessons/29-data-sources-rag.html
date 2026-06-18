@@ -390,6 +390,95 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>两种书都进<strong>同一套"按语义检索"的索引</strong>（那根向量列）——查的时候都按"意思相近"排序。</p>
 <p>只是它们分放<strong>两个书架</strong>（两张表），借阅要填<strong>不同的检索单</strong>（两个工具）：找捐书用 <span class="mono">semantic_search_files</span>，翻笔记用 <span class="mono">archival_memory_search</span>。</p>
 </div>
+<h2>摄取管线：一份文件怎么变成一排可搜索的 passage</h2>
+<p>认完底座，看"文件怎么进来"。现代摄取的主入口是 <span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>，它把一份原始文件一步步加工成一排 <span class="mono">SourcePassage</span>。</p>
+<p>整条管线可拆成八步，从上传一路走到落库。先看全景，再逐段解释：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Upload → 进入某个 source</h4><p>文件被上传，归到一个已建好的 <span class="mono">Source</span>（org 级，下一节细说）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>create_file（PARSING）</h4><p><span class="mono">FileManager.create_file</span> 登记一行 <span class="mono">FileMetadata</span>，状态置 <span class="mono">PARSING</span>。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>extract_text（OCR）</h4><p><span class="mono">FileParser.extract_text</span> 抽全文：PDF/图片走 OCR，文档转 markdown。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>upsert_file_content（全文）</h4><p>全文落进 <span class="mono">file_contents</span> 表——原文留底，独立于切块。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>insert_file_into_context_windows</h4><p>把文件"打开"成 <span class="mono">FileAgent</span>（上下文里的只读原文，末节专讲）。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>chunk_text（按 EmbeddingConfig）</h4><p><span class="mono">LlamaIndexChunker.chunk_text</span> 切块，<span class="mono">chunk_size</span> 来自 <span class="mono">EmbeddingConfig</span>（第 21 课）。</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>generate_embedded_passages（batch 200）</h4><p><span class="mono">Embedder</span> 每 200 条一批算嵌入向量。</p></div></div>
+  <div class="step"><div class="num">8</div><div class="sc"><h4>create_many_source_passages_async</h4><p>批量写进 <span class="mono">source_passages</span>，每条 pad 到 4096 → 一排 <span class="mono">SourcePassage</span> 行。</p></div></div>
+</div>
+<p>把这八步落成代码，省去错误处理与状态机，骨架就这么直：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/file_processor/file_processor.py</span><span class="ln">FileProcessor.process：存原文 → 切块 → 嵌入 → 落库（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">process</span>(self, source_id, content, ...):
+    <span class="cm"># 1) 登记文件行，状态置 PARSING</span>
+    file = <span class="kw">await</span> self.file_manager.<span class="fn">create_file</span>(..., status=FileProcessingStatus.PARSING)
+    <span class="cm"># 2) 抽全文（OCR / markdown），存进 file_contents 表</span>
+    text = <span class="kw">await</span> self.file_parser.<span class="fn">extract_text</span>(content)
+    <span class="kw">await</span> self.file_manager.<span class="fn">upsert_file_content</span>(file.id, text)
+    <span class="cm"># 3) 把文件"打开"进上下文（FileAgent，见末节）</span>
+    <span class="kw">await</span> self.agent_manager.<span class="fn">insert_file_into_context_windows</span>(source_id, file, ...)
+    <span class="cm"># 4) 切块 → 嵌入（chunk_size 来自 EmbeddingConfig）</span>
+    chunks = self.chunker.<span class="fn">chunk_text</span>(text)
+    passages = <span class="kw">await</span> self.embedder.<span class="fn">generate_embedded_passages</span>(chunks, batch_size=<span class="nb">200</span>)
+    <span class="cm"># 5) 批量写入 source_passages（每条 pad 到 4096）</span>
+    <span class="kw">await</span> self.passage_manager.<span class="fn">create_many_source_passages_async</span>(passages, source_id=source_id)
+</pre></div>
+<p>逐段读这条管线。<strong>前三步是"存原文"</strong>：<span class="mono">create_file</span> 把文件登记成一行 <span class="mono">FileMetadata</span>（状态 <span class="mono">PARSING</span>）；<span class="mono">extract_text</span> 经 OCR/markdown 抽出纯文本；<span class="mono">upsert_file_content</span> 把全文存进 <span class="mono">file_contents</span> 表。</p>
+<p><strong>第四步是岔路</strong>：<span class="mono">insert_file_into_context_windows</span> 把文件"打开"进 agent 上下文（建 <span class="mono">FileAgent</span>）——这条支线留到最后一节专讲。</p>
+<p><strong>后三步才是"建 RAG"</strong>：<span class="mono">chunk_text</span> 按 <span class="mono">EmbeddingConfig</span> 切块，<span class="mono">generate_embedded_passages</span> 每 200 条一批算嵌入，<span class="mono">create_many_source_passages_async</span> 落进 <span class="mono">source_passages</span>。</p>
+<details class="accordion"><summary>摄取有两条路：现代 file_processor 与 legacy connectors</summary><div class="acc-body">
+<p><strong>现代（主线）</strong>：<span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>——带 OCR/markdown 解析、<span class="mono">LlamaIndexChunker</span> 切块、<span class="mono">generate_embedded_passages</span> 批量嵌入，末了 <span class="mono">create_many_source_passages_async</span>。本课讲的就是它。</p>
+<p><strong>legacy（旧路）</strong>：<span class="mono">data_sources/connectors.py::load_data</span>——用 <span class="mono">DirectoryConnector</span> ＋ llama_index 的 <span class="mono">TokenTextSplitter</span>，调的是<strong>已弃用</strong>的 <span class="mono">create_many_passages_async</span>。</p>
+<p>看 v0.16.8 认准 <span class="mono">file_processor</span> 这条；遇到 <span class="mono">connectors.load_data</span> 知道它是旧路即可，别照它写新代码。</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">切块的 <span class="mono">chunk_size</span> 不是拍脑袋定的，它来自 agent 的 <span class="mono">EmbeddingConfig</span>（第 21 课）——<strong>嵌入模型窗口多大，块就切多大</strong>。摄取与召回必须用<strong>同一套嵌入配置</strong>，否则两边向量根本不在一个空间里。</span></div>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">一份文档</span><span class="arrow">→</span><span class="emoji">📚</span><span class="lab">切成小卡片</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="bubble">每张盖个向量戳</span></div><div class="cap">📄 一份上传的文档被拆成 📚 一摞小卡片（chunk），每张盖上一枚 🔢 向量戳（embedding），再统一排进那座 4096 维货架——从此"按意思"就能一把抓出最相近的几张</div></div>
+<h2>检索：同一套向量搜索，换个工具与表</h2>
+<p>passage 建好了，怎么查？关键还是那句"同底座、不同来源"——<strong>检索用的也是同一套向量搜索</strong>，只是查询 builder 与工具名各换一个。</p>
+<p>源的检索 builder 是 <span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span>，它和归档那条 <span class="mono">build_agent_passage_query</span> <strong>形状几乎一样</strong>，差别只在 join 哪张 junction、扫哪张表。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/agent_manager_helper.py</span><span class="ln">build_source_passage_query：嵌入查询 → join → cosine 排序（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">build_source_passage_query</span>(agent_id, query_text, embed_config, ...):
+    <span class="cm"># 1) 查询文本嵌成向量，pad 到 4096（与落库同一套配置）</span>
+    q = <span class="fn">embed_query</span>(query_text, embed_config)
+    q = np.<span class="fn">pad</span>(q, (<span class="nb">0</span>, MAX_EMBEDDING_DIM - <span class="fn">len</span>(q)))
+    <span class="cm"># 2) 只取"这个 agent 挂载的源"里的 passage：join SourcesAgents</span>
+    query = (
+        <span class="fn">select</span>(SourcePassage)
+        .<span class="fn">join</span>(SourcesAgents, SourcesAgents.source_id == SourcePassage.source_id)
+        .<span class="fn">where</span>(SourcesAgents.agent_id == agent_id)
+    )
+    <span class="cm"># 3) 按 cosine 距离升序（Postgres pgvector；SQLite 走 numpy）</span>
+    <span class="kw">return</span> query.<span class="fn">order_by</span>(SourcePassage.embedding.<span class="fn">cosine_distance</span>(q).<span class="fn">asc</span>())
+</pre></div>
+<p>三步看懂这条查询。<strong>① 嵌入 + pad</strong>：把查询文本用<strong>同一套 <span class="mono">EmbeddingConfig</span></strong> 嵌成向量，再 <span class="mono">np.pad</span> 到 4096，好和库里 padding 过的向量对齐。</p>
+<p><strong>② join 限定范围</strong>：<span class="mono">select(SourcePassage)</span> join <span class="mono">SourcesAgents</span> on <span class="mono">source_id</span>、where <span class="mono">agent_id</span>——只搜"<strong>这个 agent 挂载的源</strong>"里的 passage，不越界。</p>
+<p><strong>③ 排序</strong>：Postgres 用 <span class="mono">embedding.cosine_distance(q).asc()</span>（pgvector），SQLite 落回 numpy 算距离；文本兜底则用 <span class="mono">func.lower(text).contains</span>。</p>
+<p>对照归档那条 <span class="mono">build_agent_passage_query</span>：同样的嵌入 + pad + cosine，只是 join 的是 <span class="mono">ArchivesAgents</span>(on <span class="mono">archive_id</span>)，还能按标签过滤。<strong>同一套机器，换个接头。</strong></p>
+<div class="note info"><span class="ni">🔧</span><span class="nx">小心"函数声明"与"真实现"分家：<span class="mono">function_sets/files.py</span>、<span class="mono">function_sets/base.py</span> 里的 <span class="mono">semantic_search_files</span> / <span class="mono">archival_memory_search</span> 只是 <span class="mono">raise NotImplementedError</span> 的 <strong>schema 占位</strong>；真正干活的在 <span class="mono">tool_executor/files_tool_executor.py</span> 与 <span class="mono">core_tool_executor.py</span>。</span></div>
+<p>把源检索这条链画直，五个节点一目了然：</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">查询文本</div><div class="nd">找关于 X 的段落</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">嵌入 + pad</div><div class="nd">embed(q) → np.pad 4096</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">select(SourcePassage)</div><div class="nd">join SourcesAgents · source_id</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">cosine_distance.asc()</div><div class="nd">按相近度排序</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">top-k 段落</div><div class="nd">回灌给工具调用方</div></div>
+</div>
+<p>最后用一张表把"源 vs 归档"在六个维度上并排清楚，便于随时回查：</p>
+<table class="t">
+<tr><th>维度</th><th>SourcePassage（源 / RAG）</th><th>ArchivalPassage（归档）</th></tr>
+<tr><td>表</td><td class="mono">source_passages</td><td class="mono">archival_passages</td></tr>
+<tr><td>来源外键</td><td class="mono">source_id（必）+ file_id（选）</td><td class="mono">archive_id</td></tr>
+<tr><td>谁写进去</td><td>你上传文档，摄取管线建</td><td>agent 调 archival_memory_insert</td></tr>
+<tr><td>查询 builder</td><td class="mono">build_source_passage_query</td><td class="mono">build_agent_passage_query</td></tr>
+<tr><td>检索工具</td><td class="mono">semantic_search_files</td><td class="mono">archival_memory_search</td></tr>
+<tr><td>标签</td><td>无</td><td class="mono">passage_tags junction</td></tr>
+</table>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">orm/passage.py::SourcePassage / ArchivalPassage</span>——同一个 <span class="mono">BasePassage</span> 的两个子类，分表 <span class="mono">source_passages / archival_passages</span>。</p>
+<p><span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>——现代摄取管线：解析 → 切块 → 嵌入 → <span class="mono">create_many_source_passages_async</span>。</p>
+<p><span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span>——源向量搜索：嵌入查询 ＋ pad ＋ join <span class="mono">SourcesAgents</span> ＋ <span class="mono">cosine_distance</span>。</p>
+<p><span class="mono">orm/files_agents.py::FileAgent</span>——文件的另一形态：上下文里的只读 <span class="mono">FileBlock</span>（下一节）。</p>
+</div>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
