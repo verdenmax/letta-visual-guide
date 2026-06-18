@@ -228,6 +228,82 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>走完这三课，你就能把一条请求从 HTTP 一路到磁盘的每一步，都说得清清楚楚。</p>
 """,
     "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">For six parts we've been soaking in the agent's "brain": how memory is layered, how the loop turns, how tools get called, how every provider converges onto one shape. But where does this brain actually run? Who takes an HTTP request in, carries it all the way to the database, and brings the result back?</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">The answer is the <strong>server</strong>. This lesson formally opens Part 7: we follow one request through three floors — the <strong>thin routers</strong> only register and hand off, <strong>SyncServer and its Managers</strong> are the business hub, and the <strong>ORM</strong> guards access control as the work lands in the <strong>DB</strong>. Holding all of this up is the <strong>single global <span class="mono">SyncServer</span></strong> in the process.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Grab this lesson in one line: <strong>an HTTP request must cross three floors before it lands in the database</strong>.</p>
+<p>The first floor is the <strong>thin routers</strong>: a REST endpoint writes almost no business logic — it parses identity and parameters, then hands off.</p>
+<p>The second floor is <span class="mono">SyncServer</span> and the crowd of <strong>Managers</strong> under it: business orchestration and the database session both land here.</p>
+<p>The third floor is the <strong>ORM</strong> (<span class="mono">sqlalchemy_base.py::SqlalchemyBase</span>): it handles CRUD and, along the way, welds access control (multi-tenant isolation) into every SQL statement.</p>
+<p>It finally lands in the <strong>DB</strong> (<span class="mono">db.py::db_registry.async_session</span>). And what holds the whole building up is the <strong>single global <span class="mono">SyncServer</span></strong> in the process.</p>
+</div>
+<p>These three floors aren't an arbitrary taxonomy — they're a request's real path downward. Let's draw that line first; every later section takes apart one stretch of it.</p>
+<p>As you read, picture yourself as that request: you're first checked in at the front desk, then handed to a manager, who opens a transaction door to the archive room to fetch your file, and finally passes the result back to you along the same path.</p>
+<h2>Three floors: a request's path down</h2>
+<p>Standing the building upright is the clearest view: HTTP comes in the front door, falls floor by floor, finally reads and writes in the database, then carries the result back the same way.</p>
+<div class="layers">
+  <div class="layer l-core"><div class="lh"><span class="badge">Floor 1</span><span class="name">Thin routers · REST routers</span></div>
+    <div class="ld">Such as <span class="mono">routers/v1/agents.py::retrieve_agent</span>. Almost no business logic: resolve the actor, handle light parameters, then hand off.</div></div>
+  <div class="layer l-main"><div class="lh"><span class="badge">Floor 2</span><span class="name">SyncServer + Managers</span></div>
+    <div class="ld">The business hub and the DB session both live here. Thin endpoints often <strong>bypass</strong> SyncServer and go straight to <span class="mono">server.agent_manager.…</span>; only orchestration across several managers calls SyncServer's own methods.</div></div>
+  <div class="layer l-part"><div class="lh"><span class="badge">Floor 3</span><span class="name">ORM · SqlalchemyBase</span></div>
+    <div class="ld"><span class="mono">sqlalchemy_base.py::SqlalchemyBase</span> provides CRUD and welds access control like <span class="mono">apply_access_predicate</span> into every query.</div></div>
+  <div class="layer l-app"><div class="lh"><span class="badge">Landing</span><span class="name">DB · async_session</span></div>
+    <div class="ld">The real reads and writes happen in a session opened by <span class="mono">db.py::db_registry.async_session</span> — one request often opens several.</div></div>
+</div>
+<p>Note the fine print on Floor 2: thin endpoints mostly <strong>call the manager directly</strong> and don't go through SyncServer's methods. This is counterintuitive; later we'll let the numbers speak.</p>
+<p>Also remember one boundary: the DB session is opened and closed only on Floor 2 (inside the manager); <strong>Floor-1 routers never touch the database</strong>. This boundary foreshadows the later "multiple transactions" section.</p>
+<p>Don't forget the request also <strong>returns the same way</strong>: the row fetched from the DB is lifted floor by floor — turned into an object by the ORM, handed back to the router by the manager, and finally serialized by the router into a JSON response. Calls go down, returns come up; only the round trip counts as finished.</p>
+<p>While we're here, get oriented: lower in the diagram means closer to data and more "stateful"; higher means closer to the protocol and more "stateless". The tidiness of the three-layer architecture comes exactly from this up/down division of labor.</p>
+<p>In other words, this diagram is both a "call stack" and a "trust boundary": each floor down can do more and carries more responsibility, so access control must sit at the very bottom, not the top.</p>
+<div class="card analogy"><div class="tag">🏢 An everyday analogy</div>
+<p>Picture the whole server as a <strong>three-story company</strong>, and you (the HTTP request) walk in the front door to get one thing done.</p>
+<p>The <strong>first-floor front desk</strong> (thin routers) only does check-in: confirm who you are, collect the forms, then say "this belongs to the second floor" and pass the slip up. The desk never digs through the archives itself.</p>
+<p>Only the <strong>second-floor manager</strong> (Manager) has the right to touch data. Crucially — for each file touched, the manager personally opens a door called a "<strong>transaction</strong>" and closes it once done.</p>
+<p>The <strong>third-floor archive room</strong> (ORM / DB) keeps all the records, but who may see which one is decided by the gate (access control); even the manager can't overstep.</p>
+<p>There's also a boss (<span class="mono">SyncServer</span>) presiding: he doesn't handle every little thing himself, stepping in only when "one task needs several managers to coordinate"; otherwise everyone goes straight to the relevant manager.</p>
+<p>One point in this analogy deserves precision: the boss isn't a "must-approve-everything" bottleneck. For everyday small tasks people go straight to the manager; only the big "spans several departments" tasks need the boss to coordinate.</p>
+</div>
+<h2>One process, one global SyncServer</h2>
+<p>The whole building stands only because of that one global <span class="mono">SyncServer</span> in the foundation. Where does it come from? The answer is a bit surprising.</p>
+<p>It's a <strong>module-level global</strong> in <span class="mono">app.py::server</span>, built the moment the module is <strong>imported</strong>.</p>
+<p>Interestingly, the factory <span class="mono">app.py::create_application</span> does contain a <span class="mono">SyncServer(...)</span> line, but it's <strong>commented out</strong> — the server is not built inside the factory.</p>
+<p>So startup is cut into two clean phases: <strong>synchronous wiring at import time</strong> (building the server and all its managers), then <strong>asynchronous initialization at startup</strong>.</p>
+<p>The second phase is what <span class="mono">app.py::lifespan</span> does: only async bootstrapping — <span class="mono">await server.init_async(...)</span> creates the default org/user and upserts the base tools into the DB.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/app.py</span><span class="ln">global server + two-phase startup (simplified)</span></div>
+<pre><span class="cm"># module-level global: a SyncServer is built when this module is imported</span>
+server = <span class="fn">SyncServer</span>(default_interface_factory=<span class="kw">lambda</span>: <span class="fn">interface</span>())
+
+<span class="kw">def</span> <span class="fn">create_application</span>() -&gt; FastAPI:
+    app = <span class="fn">FastAPI</span>(..., lifespan=lifespan)
+    <span class="cm"># server = SyncServer(...)   # commented out in the source: server isn't built in the factory</span>
+    <span class="kw">return</span> app
+
+<span class="nb">@asynccontextmanager</span>
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">lifespan</span>(app: FastAPI):
+    <span class="cm"># startup only does async bootstrap: create default org/user, upsert base tools</span>
+    <span class="kw">await</span> server.<span class="fn">init_async</span>(init_with_default_org_and_user=<span class="kw">True</span>)
+    <span class="kw">yield</span>
+
+<span class="cm"># ---- letta/server/rest_api/dependencies.py ----</span>
+<span class="kw">def</span> <span class="fn">get_letta_server</span>() -&gt; SyncServer:
+    <span class="kw">from</span> letta.server.rest_api.app <span class="kw">import</span> server   <span class="cm"># lazy-import that module global</span>
+    <span class="kw">return</span> server                                  <span class="cm"># not in app.state; every router gets the same one</span>
+</pre></div>
+<p>How do routers get this same server? Dependency injection. <span class="mono">dependencies.py::get_letta_server</span> lazy-imports that module global and returns it directly, <strong>not</strong> stuffing it into <span class="mono">app.state</span>.</p>
+<p>One contrast is easy to confuse here: <span class="mono">create_application</span> builds the FastAPI <strong>application</strong> object, while <span class="mono">server</span> is that global <strong>business</strong> object — one handles routes and middleware, the other handles managers and data; the two are kept well apart.</p>
+<p>Each router asks for one via <span class="mono">Depends(get_letta_server)</span>, and they all get <strong>the same instance</strong>. This is how "one process, one global server" is realized in code.</p>
+<p>Why insist on building it at import time? Because then any module can <span class="mono">from app import server</span> to get the same instance — no passing it through layer after layer, and no reliance on FastAPI's <span class="mono">app.state</span>.</p>
+<p>So what does <span class="mono">init_async</span> add? It does the "bootstrapping that needs <span class="mono">await</span> after the object exists": writing the default org and user, upserting a batch of base tools into the DB — all work that must hit the DB and therefore be async.</p>
+<p>Separating the two phases buys something real: construction (synchronous, pure memory) and bootstrapping (asynchronous, hits the DB) each stay in their lane, the startup order is crystal clear, and tests can construct without bootstrapping.</p>
+<p>One more detail: <span class="mono">init_async</span> is basically <strong>re-entrant</strong> — it creates the default org/user only if absent, and base tools go through upsert rather than insert, so running it again on restart won't mess up the data.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Remember this two-phase shape: <strong>synchronous wiring at import + async init at startup</strong>. The former is pure object construction, touching neither network nor DB; the latter (<span class="mono">init_async</span>) does the <span class="mono">await</span>-requiring bootstrap, fitting FastAPI's <span class="mono">lifespan</span> hook exactly.</span></div>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">server/rest_api/app.py::server</span> — module-level global; the <span class="mono">SyncServer(...)</span> line in <span class="mono">create_application</span> is commented out.</p>
+<p><span class="mono">app.py::lifespan</span> — only does <span class="mono">await server.init_async(init_with_default_org_and_user=...)</span>.</p>
+<p><span class="mono">dependencies.py::get_letta_server</span> — lazy-imports and returns the global; <span class="mono">get_headers</span> parses the <span class="mono">user_id</span> header into <span class="mono">HeaderParams.actor_id</span>.</p>
+<p><span class="mono">server.py::SyncServer</span> holds all the managers; <span class="mono">routers/v1/agents.py::retrieve_agent</span> is a typical thin endpoint.</p>
+</div>
 <!--ENMORE-->
 """,
 }
