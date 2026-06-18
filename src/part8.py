@@ -1493,7 +1493,7 @@ LESSON_31 = {
 <tr><td><span class="mono">sleeptime</span></td><td>趁前台空档，后台 agent 悄悄整理共享记忆块的机制。</td><td><a href="28-multi-agent-sleeptime.html">第 28 课</a></td></tr>
 <tr><td>共享块 <span class="mono">shared block</span></td><td>一个记忆块被多个 agent 同时挂载，改一处、其余 agent 都看见。</td><td><a href="28-multi-agent-sleeptime.html">第 28 课</a></td></tr>
 <tr><td>数据源 <span class="mono">source</span> / RAG</td><td>上传的文档被切块、嵌入、存成可检索的外部知识来源。</td><td><a href="29-data-sources-rag.html">第 29 课</a></td></tr>
-<tr><td><span class="mono">SourcePassage</span> / <span class="mono">ArchivalPassage</span></td><td>同一张向量表上的两种 passage：一种来自文件，一种来自归档记忆。</td><td><a href="29-data-sources-rag.html">第 29 课</a></td></tr>
+<tr><td><span class="mono">SourcePassage</span> / <span class="mono">ArchivalPassage</span></td><td>同一个 <span class="mono">BasePassage</span> 基类派生（共用那根向量列）、分表存储的两种 passage：一种来自文件，一种来自归档记忆。</td><td><a href="29-data-sources-rag.html">第 29 课</a></td></tr>
 <tr><td><span class="mono">FileAgent</span> / <span class="mono">FileBlock</span></td><td>把打开的文件原文只读地塞进上下文的那块（默认最多开 5 个）。</td><td><a href="29-data-sources-rag.html">第 29 课</a></td></tr>
 <tr><td><span class="mono">Run</span></td><td>一次完整的 agent 调用，里面包着若干 step，是计费 / 追踪的顶层单位。</td><td><a href="30-jobs-runs-steps.html">第 30 课</a></td></tr>
 <tr><td><span class="mono">Step</span></td><td>Run 里的一圈：一次 LLM ＋ 一轮工具，对应 steps 表的一行。</td><td><a href="30-jobs-runs-steps.html">第 30 课</a></td></tr>
@@ -1592,7 +1592,7 @@ LESSON_31 = {
 <tr><td><span class="mono">sleeptime</span></td><td>The mechanism where a background agent quietly tidies shared memory blocks while the foreground is idle.</td><td><a href="28-multi-agent-sleeptime.html">Lesson 28</a></td></tr>
 <tr><td><span class="mono">shared block</span></td><td>One memory block mounted by several agents at once — edit it in one place and every other agent sees it.</td><td><a href="28-multi-agent-sleeptime.html">Lesson 28</a></td></tr>
 <tr><td>data <span class="mono">source</span> / RAG</td><td>Uploaded documents chunked, embedded, and stored as a searchable external knowledge source.</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
-<tr><td><span class="mono">SourcePassage</span> / <span class="mono">ArchivalPassage</span></td><td>Two kinds of passage on the same vector table: one from files, one from archival memory.</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
+<tr><td><span class="mono">SourcePassage</span> / <span class="mono">ArchivalPassage</span></td><td>Two kinds of passage from the same <span class="mono">BasePassage</span> base class (sharing one vector column), stored in separate tables: one from files, one from archival memory.</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
 <tr><td><span class="mono">FileAgent</span> / <span class="mono">FileBlock</span></td><td>The block that drops an opened file's raw text read-only into context (up to 5 open by default).</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
 <tr><td><span class="mono">Run</span></td><td>One full agent invocation, wrapping several steps inside — the top-level unit for billing and tracing.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
 <tr><td><span class="mono">Step</span></td><td>One lap inside a Run: a single LLM call plus a round of tools, mapping to one row in the steps table.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
