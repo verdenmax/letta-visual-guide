@@ -2896,8 +2896,8 @@ QUIZZES = {
                     "en": "Sending an agent a message asynchronously via messages/async creates what underneath?",
                 },
                 "opts": [
-                    {"zh": "一个后台 Run：send_message_async 立即返回，之后轮询 GET /v1/runs/{run_id}",
-                     "en": "A background Run: send_message_async returns immediately, then you poll GET /v1/runs/{run_id}"},
+                    {"zh": "一个后台 Run：send_message_async 立即返回，之后轮询查状态",
+                     "en": "A background Run: send_message_async returns immediately, then you poll for status"},
                     {"zh": "一个 Job：异步路径专门建 Job 来追踪进度",
                      "en": "A Job: the async path creates a Job to track progress"},
                     {"zh": "一个 Step：异步消息直接落成一行 steps",
@@ -2917,8 +2917,8 @@ QUIZZES = {
                     "en": "How does _step record a steps row in the loop so that even a crashed iteration leaves a record?",
                 },
                 "opts": [
-                    {"zh": "调 LLM 之前就以 PENDING/0 token 写行（log_step_async），跑完再回填真实用量翻 SUCCESS；finally＋StepProgression 兜底",
-                     "en": "It writes a PENDING/0-token row before the LLM call (log_step_async), backfills real usage to SUCCESS after; finally + StepProgression covers crashes"},
+                    {"zh": "调 LLM 之前就以 PENDING/0 token 写行，跑完再回填真实用量翻 SUCCESS",
+                     "en": "It writes a PENDING/0-token row before the LLM call, then backfills real usage to SUCCESS after"},
                     {"zh": "跑完整步、拿到真实 token 后才写一行 steps，状态直接是 SUCCESS",
                      "en": "It writes the steps row only after the whole step, with real tokens and status straight to SUCCESS"},
                     {"zh": "先写 SUCCESS，崩了再回滚删掉那一行",
