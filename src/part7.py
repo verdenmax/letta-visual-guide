@@ -1613,6 +1613,59 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>The beauty: the workers (people writing new features) only read the blueprint — they needn't know which plant runs today; coding against the models is enough, and both databases can build it.</p>
 </div>
 <p>This "blueprint fixed, parts swappable" design is exactly what the following sections take apart one by one: first the switch, then swapping the column type, the distance operator, the migration path.</p>
+<h2>The only switch: database_engine is really a property</h2>
+<p>"Two databases" sounds like it should come with an enum to pick from. But open <span class="mono">settings.py</span> and you'll do a double take: <span class="mono">database_engine</span> <strong>isn't a field at all</strong> — it's a read-only <span class="mono">@property</span>.</p>
+<p>Its logic fits on one line: <span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>. In other words, <strong>whether a Postgres URI is configured</strong> is the entire dev/prod dividing line.</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">settings.database_engine</div><div class="nd">a @property, not a field</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">check letta_pg_uri_no_default</div><div class="nd">a URI or None</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">not None → POSTGRES</div><div class="nd">else → SQLITE</div></div>
+</div>
+<p>Note the trap here: <span class="mono">letta_pg_uri</span> <strong>always</strong> has a default, so the decision can't read it; the real "URI-or-None" is <span class="mono">letta_pg_uri_no_default</span>.</p>
+<p><span class="mono">DatabaseChoice</span> is a <span class="mono">(str, Enum)</span> with only two values, <span class="mono">POSTGRES</span> / <span class="mono">SQLITE</span>. It's a conclusion <strong>read out</strong>, not a choice you write in.</p>
+<p>That default URI also reveals the driver: <span class="mono">postgresql+pg8000://…</span> — the sync path uses pg8000, while the async engine switches to asyncpg. It's assembled from a set of <span class="mono">LETTA_PG_HOST / DB / USER / PASSWORD / PORT</span>, or you give the whole <span class="mono">LETTA_PG_URI</span> directly.</p>
+<p>Where is the engine itself built? This is the first counterintuitive spot:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/db.py · letta/orm/sqlite_functions.py</span><span class="ln">engine only builds Postgres; attach a numpy UDF to any SQLite connection (excerpt)</span></div>
+<pre><span class="cm"># server/db.py: at module level there's only one async engine — Postgres-only</span>
+engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span class="cm"># no branch on database_engine, no sqlite-vec loaded here</span>
+
+<span class="cm"># orm/sqlite_functions.py: the moment any SQLite connection is made, attach the numpy distance function</span>
+<span class="nb">@event.listens_for(Engine, &quot;connect&quot;)</span>
+<span class="kw">def</span> <span class="fn">register_functions</span>(dbapi_conn, _):
+    <span class="kw">if</span> <span class="fn">isinstance</span>(dbapi_conn, sqlite3.Connection):
+        dbapi_conn.<span class="fn">create_function</span>(<span class="st">&quot;cosine_distance&quot;</span>, 2, cosine_distance)  <span class="cm"># pure numpy impl</span>
+        <span class="cm"># sqlite_vec.load(dbapi_conn)  ← commented out: no sqlite-vec native similarity</span>
+</pre></div>
+<p>Read the two snippets together: on the left, <span class="mono">db.py</span>'s engine is Postgres-only; on the right, that global <span class="mono">@event.listens_for</span> is the actual SQLite seam — it registers a numpy <span class="mono">cosine_distance</span> for <strong>any</strong> SQLite connection.</p>
+<p>Note the last comment line: <span class="mono">sqlite_vec.load()</span> is <strong>commented out</strong>. SQLite's similarity rides on a pure numpy UDF, not a sqlite-vec native operator — a correction we'll stress again later.</p>
+<p>This <span class="mono">@event.listens_for(Engine, "connect")</span> is <strong>global</strong>: whichever SQLite connection it is — dev DB, test DB, a throwaway in-memory one — the UDF attaches the moment it's made. So "SQLite can compute cosine" is a connection-level fait accompli, with no per-site opt-in needed.</p>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">settings.py::Settings.database_engine</span> — a <span class="mono">@property</span>: <span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>; <span class="mono">DatabaseChoice(str, Enum){POSTGRES, SQLITE}</span>.</p>
+<p><span class="mono">orm/passage.py::BasePassage</span> — at import time, the embedding column type is fixed by <span class="mono">database_engine</span>.</p>
+<p><span class="mono">orm/custom_columns.py</span> — a batch of pydantic-in-DB <span class="mono">TypeDecorator</span>s; <span class="mono">orm/sqlite_functions.py::register_functions</span> — SQLite's numpy <span class="mono">cosine_distance</span>.</p>
+<p><span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span> — the ruler for fixed-length padding; <span class="mono">alembic/env.py</span> — picks the URI and builds tables for two backends.</p>
+</div>
+<details class="accordion"><summary>How exactly is <span class="mono">database_engine</span> decided? Can you pick SQLite by hand with an env var?</summary><div class="acc-body">
+<p>You can't pick it directly. <span class="mono">database_engine</span> is a <strong>derived <span class="mono">@property</span></strong>, not a writable field: it only looks at whether <span class="mono">letta_pg_uri_no_default</span> is None.</p>
+<p><span class="mono">letta_pg_uri</span> always has a default (<span class="mono">postgresql+pg8000://letta:letta@localhost:5432/letta</span>); the real "URI-or-None" is <span class="mono">letta_pg_uri_no_default</span>. Set it = Postgres, leave it = SQLite.</p>
+<p>There's <strong>no <span class="mono">LETTA_DATABASE_ENGINE=sqlite</span></strong> switch. Set any <span class="mono">LETTA_PG_*</span> (host / db / user / password / port / uri) and it <strong>silently</strong> flips to Postgres.</p>
+<p>So "SQLite in dev, Postgres in prod" isn't a manual toggle — it's a side effect of the single fact of <strong>whether you handed it PG connection info</strong>.</p>
+</div></details>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Want to force SQLite? Don't hunt for a switch — <strong>clear every <span class="mono">LETTA_PG_*</span> env var</strong>. As long as <span class="mono">letta_pg_uri_no_default</span> is None, <span class="mono">database_engine</span> falls back to SQLITE on its own. Conversely, if production "somehow isn't on Postgres," first check whether the PG URI was left unconfigured.</span></div>
+<h2>How vectors are stored: cramming any dimension into one fixed-length 4096 column</h2>
+<p>The archival / recall memory you met (Lessons 10, 11) is essentially a <span class="mono">Passage</span> carrying an embedding. But different models output wildly different dimensions: some 1024, some 1536, some 3072. How can one column hold them all?</p>
+<p>Letta's answer is blunt: <span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span> — every embedding is <span class="mono">np.pad</span>ded to 4096 dims on write and on query, <strong>zero-padded at the tail</strong>. So one <span class="mono">Vector(4096)</span> column holds any model's output.</p>
+<p>Padding happens <strong>before the write</strong>: an embedding is <span class="mono">np.pad</span>ded to 4096 the moment it's generated, then handed to the ORM to persist; the query vector takes the same step before comparison. Both ends aligned, the fixed-length column can hold and compare them.</p>
+<div class="cute"><div class="row"><span class="emoji">📐</span><span class="lab">fixed 4096-slot</span><span class="arrow">→</span><span class="emoji">🧮</span><span class="lab">a model's 1536 dims</span><span class="arrow">→</span><span class="emoji">0️⃣</span><span class="bubble">zero-pad the tail</span></div><div class="cap">📐 one column is a fixed 4096-dim slot; 🧮 a model outputs only 1536 dims; 0️⃣ zero-pad the tail to fill the slot — the padding is all zeros, so <strong>cosine ranking doesn't change at all</strong>, which is why one column holds any model's output</div></div>
+<p>Wait — stuffing in a pile of zeros, won't it skew the similarity? That's exactly the clever part: <strong>zero-padding has no effect on cosine at all</strong>.</p>
+<div class="cellgroup"><div class="cg-cap"><b>Why zero-padding is "free": cosine = dot / (L2 × L2), neither end moves</b></div><div class="cells"><span class="cell hl">dot +0×x=0</span><span class="sep">→</span><span class="cell">numerator unchanged</span><span class="sep">·</span><span class="cell">L2 +0²=0</span><span class="sep">→</span><span class="cell">denominator unchanged</span><span class="sep">⇒</span><span class="cell hl">cosine unchanged</span></div></div>
+<p>The reasoning is plain. Cosine = dot product ÷ (the product of the two vectors' L2 norms). What's added is zeros: in the dot product <span class="mono">0 × anything = 0</span>, so the numerator is unchanged; in the L2 norm <span class="mono">0² = 0</span>, so the denominator is unchanged too. <strong>Neither numerator nor denominator moves, so the ranking is naturally identical</strong>.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">So "one fixed column fits any model" is not an approximation or a compromise — it's <strong>mathematically exactly equivalent to no padding</strong>, costing only an extra run of zeros and a little space. SQLite's numpy UDF <span class="mono">validate_and_transform_embedding</span> even checks the dimension == 4096 and returns <span class="mono">0.0</span> outright on a mismatch — padding is a <strong>shared precondition</strong> of both the write and query paths.</span></div>
+<p>And "which column type"? This is the second of the six seams, happening in <span class="mono">BasePassage</span>'s <strong>class body, at import time</strong>: Postgres uses pgvector's <span class="mono">Vector(4096)</span>, SQLite uses <span class="mono">CommonVector</span> (a BINARY blob). The next section shows the code together with search.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">MAX_EMBEDDING_DIM</span>'s comment spells it out — "don't change it, or you'll have to reset the database": it pins the column width, and once changed it no longer matches the fixed-length vectors already stored. This ruler is a <strong>global convention</strong>, not some table's local choice.</span></div>
+<p>Fixed length isn't free of cost either: for a 1024-dim model, every row wastes 3072 stored zeros, a waste borne by both disk and memory. But what you get is <strong>one column for every model</strong>, with no per-dimension table — for a system that must support many embedding vendors, the math pays off.</p>
 <!--ENMORE-->
 """,
 }
