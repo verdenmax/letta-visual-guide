@@ -1573,6 +1573,46 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>接下来是<strong>第八部分</strong>：进阶专题与术语表。我们会挑几个横切全局的主题深挖，再用一份术语表把这一路的关键词收拢成可随时回查的索引。</p>
 """,
     "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Last lesson, in the third-floor archive, we saw how <span class="mono">SqlalchemyBase</span> welds isolation, soft delete and audit into every SQL statement. But which database that SQL finally lands in, and which engine runs it, we waved past with a single phrase — "down to the engine room at the bottom."</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson pushes that engine-room door open: how does one set of ORM models run on both SQLite and Postgres? And how are vectors stored and searched in each? The answer isn't some clever <span class="mono">db.py</span> — it's a seam <strong>scattered across six places, most of it declarative</strong>.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Catch this lesson in one line: <strong>one set of ORM models runs on two databases by one switch; vectors are stored two ways and searched two ways; configs get stuffed whole into a column as a JSON blob</strong>.</p>
+<p>The switch = <span class="mono">settings.database_engine</span>: configure a Postgres URI and you're on Postgres, otherwise SQLite.</p>
+<p>Two vector paths: Postgres uses pgvector's <span class="mono">Vector(4096)</span> + the native operator <span class="mono">&lt;=&gt;</span>; SQLite uses a BINARY blob + a numpy <span class="mono">cosine_distance</span> brute-forced over the whole table.</p>
+<p>pydantic-in-DB: configs like <span class="mono">EmbeddingConfig</span> / <span class="mono">LLMConfig</span> aren't split into columns — the whole thing is <span class="mono">model_dump</span>ed to JSON and stored in one cell.</p>
+<p>One honest caveat: v0.16.8's <span class="mono">server/db.py</span> actually only builds Postgres — the dual-DB story lives fully in the ORM and alembic layers.</p>
+</div>
+<p>This is not one big "if backend == sqlite" switch. The real seam is <strong>distributed across six places</strong>, most of it declared at import time rather than decided on the fly at runtime.</p>
+<p>Pull the camera back first: Lesson 24 looked at the three-layer architecture, Lesson 25 at managers opening transactions, Lesson 26 at how each row is isolated. This lesson goes to the very bottom — which database these rows <strong>land in, and how vectors get searched out</strong>.</p>
+<p>A quick inoculation too: this lesson cures a few "taking it for granted" assumptions. For instance, <span class="mono">db.py</span> doesn't branch by backend, <span class="mono">database_engine</span> isn't a field you can set by hand, and SQLite's similarity isn't sqlite-vec native — we puncture each below.</p>
+<h2>One ORM, two engines: swap the parts, not the blueprint</h2>
+<p>Start with the panorama. The ~40 models under <span class="mono">letta/orm/</span> are written <strong>once</strong>; which database they land in is decided by one switch, <span class="mono">settings.database_engine</span>. Two tracks side by side make it clearest:</p>
+<div class="cols">
+  <div class="col"><h4>🪶 SQLite · dev default</h4>
+  <p>Driver: <span class="mono">aiosqlite</span> (async).</p>
+  <p>Vector column: <span class="mono">CommonVector</span>, a BINARY blob.</p>
+  <p>Distance: <span class="mono">func.cosine_distance</span>, via a numpy UDF.</p>
+  <p>Search: <span class="mono">ORDER BY</span> brute-force over the whole table, no ANN.</p>
+  <p>Migration: a single baseline snapshot <span class="mono">2c059cad97cc</span>.</p>
+  </div>
+  <div class="col"><h4>🐘 Postgres · production</h4>
+  <p>Driver: <span class="mono">asyncpg</span> (async).</p>
+  <p>Vector column: pgvector's <span class="mono">Vector(4096)</span>.</p>
+  <p>Distance: <span class="mono">cosine_distance()</span> → SQL <span class="mono">&lt;=&gt;</span>.</p>
+  <p>Search: can attach an <span class="mono">ivfflat</span> / <span class="mono">hnsw</span> index.</p>
+  <p>Migration: an incremental chain from <span class="mono">9a505cc7eca9</span>.</p>
+  </div>
+</div>
+<p>See the trick? The two tracks are <strong>identically shaped</strong>; only the parts get swapped: driver, vector column type, distance operator, serialization, migration path, and "whether to pad vectors to a fixed length."</p>
+<p>Don't overlook the long list that <strong>isn't</strong> swapped either: table names, column names, relationships, constraints, <span class="mono">SqlalchemyBase</span>'s isolation and audit, the managers' transaction boundaries — all from <strong>one set of models</strong>, identical on both databases. Switching DBs only moves a thin layer next to storage.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">An honest asterisk: the table above paints the "dual DB" very symmetrically, but v0.16.8's <span class="mono">server/db.py</span> only builds a <strong>Postgres async engine</strong> at module level. The full dual-DB story lives in the ORM column types and the alembic migrations; the runtime engine layer has quietly converged on Postgres — the "honest asterisk" at the end of this lesson explains why.</span></div>
+<div class="card analogy"><div class="tag">🏭 An everyday analogy</div>
+<p>Picture this design as <strong>one blueprint, two factories</strong>. The blueprint = the ORM models, drawing "which tables, which columns, how they relate" — <strong>one copy, unchanging</strong>.</p>
+<p>The two factories = the SQLite plant and the Postgres plant. The same blueprint goes to both; following the switch on the wall (<span class="mono">database_engine</span>), the assembly line swaps in different parts.</p>
+<p>The swapped parts are concrete: which material the vector column uses (pgvector's fixed-length slot vs a BINARY bag), which machine computes distance (the native <span class="mono">&lt;=&gt;</span> vs numpy by hand), which line the migration runs down.</p>
+<p>The beauty: the workers (people writing new features) only read the blueprint — they needn't know which plant runs today; coding against the models is enough, and both databases can build it.</p>
+</div>
+<p>This "blueprint fixed, parts swappable" design is exactly what the following sections take apart one by one: first the switch, then swapping the column type, the distance operator, the migration path.</p>
 <!--ENMORE-->
 """,
 }
