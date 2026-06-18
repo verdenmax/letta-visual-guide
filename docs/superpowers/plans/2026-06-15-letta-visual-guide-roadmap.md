@@ -14,7 +14,7 @@
 | **M4** | 第四部分 · Agent 执行循环 | 4 | `2026-06-15-letta-visual-guide-M4-part4-agent-loop.md` ✅ 已完成并合并 |
 | **M5** | 第五部分 · 工具系统 | 4 | `2026-06-15-letta-visual-guide-M5-part5-tools.md` ✅ 已完成并合并 |
 | **M6** | 第六部分 · LLM Provider 抽象 | 3 | `2026-06-15-letta-visual-guide-M6-part6-providers.md` ✅ 已完成并合并 |
-| **M7** | 第七部分 · 服务端与持久化 | 4 | 待写 |
+| **M7** | 第七部分 · 服务端与持久化 | 4 | `2026-06-15-letta-visual-guide-M7-part7-server.md` ✅ 已完成并合并 |
 | **M8** | 第八部分 · 进阶专题 + 术语表 | 4 | 待写 |
 | **M9** | 配套收尾：quizzes 全量 + 双语 PDF + CI + README + LICENSE | — | 待写 |
 

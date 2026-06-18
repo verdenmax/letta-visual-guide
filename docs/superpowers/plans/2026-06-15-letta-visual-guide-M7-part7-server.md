@@ -216,9 +216,9 @@ cd src && python build.py && python check_links.py && python check_html.py
 
 **Files:** `docs/superpowers/plans/2026-06-15-letta-visual-guide-roadmap.md` · （验证）全站
 
-- [ ] 全量构建：`cd src && python build.py && python check_links.py && python check_html.py`，期望 `0 error / 0 warning`、链接全解析、index pill「共 27 课 · 7 个部分」。
-- [ ] 导航链抽查：`23→24→25→26→27`，每课 `prev/next` 各 1，27 课 `next=../index.html`。
-- [ ] roadmap 把 **M7** 标 `✅ 已完成并合并`（计划文档名填入）。
+- [x] 全量构建：`cd src && python build.py && python check_links.py && python check_html.py`，期望 `0 error / 0 warning`、链接全解析、index pill「共 27 课 · 7 个部分」。✅ 0/0，108 链接全解析。
+- [x] 导航链抽查：`23→24→25→26→27`，每课 `prev/next` 各 1，27 课 `next=../index.html`。✅ 已核对。
+- [x] roadmap 把 **M7** 标 `✅ 已完成并合并`（计划文档名填入）。✅
 - [ ] 合并：`git checkout master && git merge --no-ff feat/m7-server`；合并后再跑三件套确认绿。
 - [ ] `git branch -d feat/m7-server`；`git push origin master`。
 - [ ] 报告 M7 完成，**自动继续 M8**（进阶专题 + 术语表，28–31）——用户已要求一路做完全部 M。
