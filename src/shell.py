@@ -104,6 +104,8 @@ PAGES = [
      "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
     ("29-data-sources-rag.html", "数据源与 RAG", "Data sources & RAG",
      "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
+    ("30-jobs-runs-steps.html", "jobs / runs / steps 与可观测性", "Jobs, runs, steps & observability",
+     "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
 ]
 
 
@@ -600,6 +602,8 @@ SUBTITLES = {
                                       "groups; send_message_to_agent_*; sleeptime background memory edits; shared blocks"),
     "29-data-sources-rag.html": ("files → source passages · 摄取+嵌入 · 与归档记忆的区别",
                                  "files → source passages; ingestion + embeddings; vs archival memory"),
+    "30-jobs-runs-steps.html": ("异步执行追踪 · otel/telemetry · 流式 SSE",
+                                "async execution tracking; otel/telemetry; streaming SSE"),
 }
 
 

@@ -43,4 +43,5 @@ CONTENT = {
     "27-dual-db-and-vectors.html": part7.LESSON_27,
     "28-multi-agent-sleeptime.html": part8.LESSON_28,
     "29-data-sources-rag.html": part8.LESSON_29,
+    "30-jobs-runs-steps.html": part8.LESSON_30,
 }

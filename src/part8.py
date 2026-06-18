@@ -935,3 +935,10 @@ LESSON_29 = {
 <p>Part 8's advanced topics roll on. Next lesson we switch perspective and see how Letta makes these execution steps <strong>observable and traceable</strong>.</p>
 """,
 }
+
+LESSON_30 = {
+    "zh": r"""
+<!--ZHMORE-->
+""",
+    "en": r"""<p>stub</p>""",
+}
