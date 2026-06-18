@@ -2616,6 +2616,121 @@ QUIZZES = {
             },
         ],
     },
+    "28-multi-agent-sleeptime.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，真正能经 live API 跑起来的多智能体机制是哪些？",
+                    "en": "In letta v0.16.8, which multi-agent mechanisms can actually run over a live API?",
+                },
+                "opts": [
+                    {"zh": "只有两条：sleeptime 后台改记忆，以及 send_message_to_agent_* 工具（agent 直接调 agent）",
+                     "en": "Only two: sleeptime editing memory in the background, and the send_message_to_agent_* tools (agent calls agent directly)"},
+                    {"zh": "round_robin / supervisor / dynamic 三种群管理器都能用，由 ManagerType 路由",
+                     "en": "All three group managers — round_robin / supervisor / dynamic — work, routed by ManagerType"},
+                    {"zh": "有一个中央调度器按 ManagerType 编排所有成员轮流发言",
+                     "en": "A central scheduler orchestrates all members to speak in turn by ManagerType"},
+                    {"zh": "只有 send_message_to_agent_* 一条；sleeptime 只是 schema、没接线",
+                     "en": "Only send_message_to_agent_*; sleeptime is merely schema and isn't wired"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "v0.16.8 只有两条活路：① sleeptime（agents/agent_loop.py::AgentLoop.load → groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4）；② functions/function_sets/multi_agent.py 里的 send_message_to_agent_* 工具。经典群管理器 round_robin / supervisor / dynamic 只剩 schema＋枚举＋类骨架：执行器 groups/helpers.py::load_multi_agent 在 live 路径从未被调用，/v1/groups 路由整段 deprecated=True 且没有发消息端点，连 SupervisorMultiAgent.step 方法体都被整段注释掉。所以“三种群管理器都能用”和“有中央调度器”都错；而 sleeptime 恰恰是唯一真正活着的“群”行为，说它“只是 schema”也错。",
+                    "en": "v0.16.8 has exactly two live paths: (1) sleeptime (agents/agent_loop.py::AgentLoop.load → groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4); (2) the send_message_to_agent_* tools in functions/function_sets/multi_agent.py. The classic group managers round_robin / supervisor / dynamic are only schema + enum + class skeleton: the executor groups/helpers.py::load_multi_agent is never called on the live path, the /v1/groups routes are entirely deprecated=True with no send-message endpoint, and even SupervisorMultiAgent.step has its whole body commented out. So both “all three group managers work” and “there's a central scheduler” are wrong; and sleeptime is in fact the only truly live “group” behavior, so calling it “merely schema” is wrong too.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "标准 sleeptime agent 用来改记忆的那组工具，正确的名字是哪一组？",
+                    "en": "What is the correct set of names for the tools a standard sleeptime agent uses to edit memory?",
+                },
+                "opts": [
+                    {"zh": "memory_replace / memory_insert / memory_rethink / memory_finish_edits",
+                     "en": "memory_replace / memory_insert / memory_rethink / memory_finish_edits"},
+                    {"zh": "rethink_memory / finish_rethinking_memory（自编辑记忆那套旧名）",
+                     "en": "rethink_memory / finish_rethinking_memory (the old self-editing-memory names)"},
+                    {"zh": "core_memory_append / core_memory_replace（前台主 agent 的核心记忆工具）",
+                     "en": "core_memory_append / core_memory_replace (the foreground primary agent's core-memory tools)"},
+                    {"zh": "send_message_to_agent_and_wait_for_reply 等多智能体工具",
+                     "en": "Multi-agent tools like send_message_to_agent_and_wait_for_reply"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "标准 sleeptime 配的是 constants.py::BASE_SLEEPTIME_TOOLS ＝ memory_replace / memory_insert / memory_rethink / memory_finish_edits，实现都在 services/tool_executor/core_tool_executor.py::CoreToolExecutor。关键纠正：是 memory_rethink，不是 rethink_memory——后者是 legacy 自编辑记忆的旧名；finish_rethinking_memory 则是 voice_sleeptime 专用，和标准 sleeptime 的 memory_finish_edits 不是一回事。core_memory_append / replace 是前台普通 core memory 工具、不是 sleeptime 那套；send_message_* 是路径一的工具、跟改记忆无关。看 v0.16.8 认准 BASE_SLEEPTIME_TOOLS 那四个即可。",
+                    "en": "Standard sleeptime is equipped with constants.py::BASE_SLEEPTIME_TOOLS = memory_replace / memory_insert / memory_rethink / memory_finish_edits, all implemented in services/tool_executor/core_tool_executor.py::CoreToolExecutor. Key correction: it's memory_rethink, not rethink_memory — the latter is the legacy self-editing-memory name; finish_rethinking_memory is voice_sleeptime-only and not the same as standard sleeptime's memory_finish_edits. core_memory_append / replace are the foreground's ordinary core-memory tools, not the sleeptime set; send_message_* are the path-one tools, unrelated to editing memory. For v0.16.8, just lock onto those four in BASE_SLEEPTIME_TOOLS.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "sleeptime 里前台与后台两个 agent，到底“共享”的是什么？",
+                    "en": "What exactly do the foreground and background agents in sleeptime “share”?",
+                },
+                "opts": [
+                    {"zh": "同一行 Block——经 blocks_agents 多对多挂到两个 agent，是共享可变的一行，不是副本",
+                     "en": "The same Block row — attached to both agents via the blocks_agents M2M; a shared mutable row, not a copy"},
+                    {"zh": "各自一份 Block 副本，后台改完再同步/合并回前台",
+                     "en": "A separate copy of the Block each, which the background syncs/merges back after editing"},
+                    {"zh": "一个内存里的消息队列，后台把更新 push 给前台",
+                     "en": "An in-memory message queue through which the background pushes updates to the foreground"},
+                    {"zh": "一个共享的 Python 对象，靠锁服务协调并发读写",
+                     "en": "A shared Python object coordinated by a lock service for concurrent reads/writes"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "协调基元朴素到只是数据库里同一条记录：orm/blocks_agents.py::BlocksAgents（复合主键 (agent_id, block_id, block_label)）让一行 Block 经多对多挂到多个 agent（Block.agents ↔ Agent.core_memory，secondary=“blocks_agents”）。server.py::create_sleeptime_agent_async 建后台 agent 时传 block_ids=[b.id for b in main_agent.memory.blocks]——同一批 Block 行、不是副本。sleeptime 用 memory_rethink → update_memory_if_changed_async 只改那一行的值（Block.version 乐观锁防并发覆盖），前台在“下一回合重建 system prompt”时重新编译这行才读到新值。所以没有副本合并、没有消息队列、没有锁服务，也不是共享 Python 对象——就是一行共享可变的 Block，可见性边界是“下次重建 prompt”。",
+                    "en": "The coordination primitive is plain to the point of being just one DB record: orm/blocks_agents.py::BlocksAgents (composite PK (agent_id, block_id, block_label)) attaches one Block row to many agents via the M2M (Block.agents ↔ Agent.core_memory, secondary=“blocks_agents”). server.py::create_sleeptime_agent_async builds the background agent passing block_ids=[b.id for b in main_agent.memory.blocks] — the same Block rows, not copies. Sleeptime's memory_rethink → update_memory_if_changed_async changes only that row's value (Block.version is an optimistic lock against concurrent overwrite), and the foreground reads the new value only when it recompiles the row on its next system-prompt rebuild. So there's no copy-merge, no message queue, no lock service, and no shared Python object — just one shared mutable Block row, with visibility bounded by “the next prompt rebuild.”",
+                },
+            },
+            {
+                "q": {
+                    "zh": "sleeptime 的 group 里，manager_agent_id 指向的是哪个 agent？",
+                    "en": "In a sleeptime group, which agent does manager_agent_id point to?",
+                },
+                "opts": [
+                    {"zh": "前台主 agent（跑用户对话的那个）；后台记忆编辑者反而躺在 group.agent_ids 里",
+                     "en": "The foreground primary agent (the one running the user conversation); the background memory editors lie in group.agent_ids instead"},
+                    {"zh": "后台 sleeptime agent（专职整理记忆的那个）",
+                     "en": "The background sleeptime agent (the one dedicated to tidying memory)"},
+                    {"zh": "一个独立的协调器 agent，专门排队调度成员发言",
+                     "en": "A separate coordinator agent that queues and schedules members' turns"},
+                    {"zh": "group 里第一个被创建的 agent，与前台/后台角色无关",
+                     "en": "Whichever agent was created first in the group, regardless of foreground/background role"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这是 v0.16.8 最反直觉的一处命名。读 orm/group.py::Group：manager_agent_id 其实是前台主 agent（跑用户对话、step 跑完顺手触发计数器的那个），而 group.agent_ids 才是后台记忆编辑者（那些 sleeptime agents）。原因是 sleeptime 的“主语”始终是前台那次对话：是它的 SleeptimeMultiAgentV4.step 先 super().step() 跑完前台，再 run_sleeptime_agents 去“使唤”后台。所以把前台记成 manager、后台塞进 agent_ids，从实现视角自洽，但与“manager＝协调者”的直觉正好相反。没有独立协调器 agent；角色也不是按创建顺序定的。",
+                    "en": "This is v0.16.8's most counterintuitive piece of naming. Read orm/group.py::Group: manager_agent_id is actually the foreground primary agent (the one running the user conversation, whose finished step trips the counter), while group.agent_ids holds the background memory editors (those sleeptime agents). The reason: sleeptime's “subject” is always the foreground conversation — its SleeptimeMultiAgentV4.step first does super().step() for the foreground, then run_sleeptime_agents to “dispatch” the background. So recording the foreground as manager and stuffing the background into agent_ids is self-consistent from the implementation's view, but exactly opposite to the “manager = coordinator” intuition. There's no separate coordinator agent, and roles aren't assigned by creation order.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "调用 send_message_to_agent_and_wait_for_reply 时，调用方 agent 会发生什么？",
+                    "en": "When send_message_to_agent_and_wait_for_reply is called, what happens to the caller agent?",
+                },
+                "opts": [
+                    {"zh": "同步阻塞——卡住等被叫 agent 整轮跑完、把回复回灌后才继续",
+                     "en": "It blocks synchronously — stalling until the callee finishes its whole turn and the reply is fed back"},
+                    {"zh": "发了就走——不等回复，立刻继续自己的 loop",
+                     "en": "Fire-and-forget — it doesn't wait for a reply and immediately continues its own loop"},
+                    {"zh": "和 sleeptime 一样，被包成非阻塞后台任务异步执行",
+                     "en": "Like sleeptime, it's wrapped as a non-blocking background task and runs asynchronously"},
+                    {"zh": "并行群发给所有匹配的 agent，再聚合所有回复",
+                     "en": "It fans out in parallel to all matching agents and then aggregates every reply"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "..._and_wait_for_reply 是同步阻塞、双向：工具体内建 letta_client.Letta → client.agents.messages.create(B) 经 REST 重入、跑 B 自己完整的 loop（AgentLoop.load(B).step），再把 B 的 assistant 回复抽出来作为工具返回值交回 A——这一步 A 真的卡住，直到 B 整轮跑完（B 若再调 C、C 调 D，阻塞会层层叠加）。“发了就走”的是另一个变体 send_message_to_agent_async（异步单向），且它在生产环境被禁用。“并行群发”也不对：send_message_to_agents_matching_tags 是按标签筛一批后逐个 wait 的同步串行广播，不是真并行。把它和 sleeptime 的非阻塞后台任务搞混，正是本课提醒的“阻塞语义相反”。",
+                    "en": "..._and_wait_for_reply is synchronous, blocking, and two-way: the tool body builds a letta_client.Letta → client.agents.messages.create(B), re-entering over REST to run B's own full loop (AgentLoop.load(B).step), then pulls out B's assistant reply as the tool's return value back to A — and A genuinely stalls at this step until B's whole turn finishes (if B then calls C and C calls D, the blocking stacks layer by layer). The “fire-and-forget” one is the other variant, send_message_to_agent_async (asynchronous, one-way), which is disabled in production. “Parallel fan-out” is also wrong: send_message_to_agents_matching_tags filters a batch by tags then waits on each in turn — synchronous and serial, not truly parallel. Confusing it with sleeptime's non-blocking background task is exactly the “opposite blocking semantics” trap this lesson warns about.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“两条活路 ＋ 一行共享 Block”的框架，把“两个 agent 协作完成一件事”从头到尾讲一遍，并想透五件事：(1) 为什么说 v0.16.8 根本没有“多智能体运行时”？round_robin / supervisor / dynamic 各自卡在哪一层（load_multi_agent 从未被调、/v1/groups deprecated 无发消息端点、SupervisorMultiAgent.step 注释掉），又为什么留着这些睡着的枚举？(2) 当 agent A 调 send_message_to_agent_and_wait_for_reply(B) 时，为什么要绕一圈 REST 重入、而不在进程内直接调 B？这跟第 20 课的沙箱、第 24 课的“三层楼”有什么关系？B 跑的为什么是“自己完整的 loop”？(3) sleeptime 为什么“第一回合就触发”？请从 turns_counter=-1、默认 frequency=5、bump_turns_counter 的 (c+1) % frequency 把这条算清楚。(4) 前台与后台共享的是同一行 Block，可后台改完前台并非“立刻”看到——可见性边界到底在哪？为什么说这是“零额外机制”换来“弱实时”？(5) 把 manager_agent_id＝前台、group.agent_ids＝后台 这处反直觉接线讲清楚：为什么从实现视角它反而自洽？最后回到那句话：如果“多智能体”是从“一个 agent 调另一个的 API”和“两个 agent 指向同一行 block”里涌现的，你会怎样在其上自己搭一个 round_robin？",
+                "en": "Using this lesson's “two live paths plus one shared Block” framework, narrate “two agents collaborating to get one thing done” end to end, and think through five things: (1) Why does v0.16.8 have no “multi-agent runtime” at all? At which layer is each of round_robin / supervisor / dynamic stuck (load_multi_agent never called, /v1/groups deprecated with no send endpoint, SupervisorMultiAgent.step commented out), and why keep these sleeping enums around? (2) When agent A calls send_message_to_agent_and_wait_for_reply(B), why loop through a REST re-entry instead of calling B in-process? How does that relate to Lesson 20's sandbox and Lesson 24's “three floors”? Why does B run its “own full loop”? (3) Why does sleeptime trigger “on the very first turn”? Work it out from turns_counter=-1, the default frequency=5, and bump_turns_counter's (c+1) % frequency. (4) The foreground and background share the same Block row, yet the foreground doesn't see the edit “instantly” — where exactly is the visibility boundary, and why is this “zero extra machinery” traded for “weak real-time”? (5) Explain the counterintuitive wiring manager_agent_id = foreground and group.agent_ids = background: why is it self-consistent from the implementation's view? Finally, return to the line: if “multi-agent” emerges from “one agent calling another's API” and “two agents pointing at the same block row,” how would you build a round_robin on top of these primitives yourself?",
+            },
+        ],
+    },
 }
 
 
