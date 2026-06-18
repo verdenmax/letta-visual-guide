@@ -371,6 +371,55 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>换的零件很具体：向量列用哪种料（pgvector 定长格 vs BINARY 袋子）、距离用哪台机器（原生 <span class="mono">&lt;=&gt;</span> vs numpy 手算）、迁移走哪条流水线。</p>
 <p>妙在工人（写新功能的人）只认蓝图——他不必知道今天在哪座厂开工，照着模型写就行，两套库都装得出来。</p>
 </div>
+<h2>唯一的开关：database_engine 其实是个 property</h2>
+<p>"两套库"听起来该有个枚举让你挑。可打开 <span class="mono">settings.py</span> 你会愣一下：<span class="mono">database_engine</span> <strong>根本不是字段</strong>，而是个只读 <span class="mono">@property</span>。</p>
+<p>它的逻辑短到一行：<span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>。换句话说，<strong>配没配 Postgres URI</strong>，就是 dev/prod 的全部分界。</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">settings.database_engine</div><div class="nd">@property，不是字段</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">看 letta_pg_uri_no_default</div><div class="nd">URI 或 None</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">非 None → POSTGRES</div><div class="nd">否则 → SQLITE</div></div>
+</div>
+<p>注意这里有个陷阱：<span class="mono">letta_pg_uri</span> <strong>永远</strong>有默认值，所以判定不能看它；真正"URI-或-None"的是 <span class="mono">letta_pg_uri_no_default</span>。</p>
+<p><span class="mono">DatabaseChoice</span> 是个 <span class="mono">(str, Enum)</span>，只有 <span class="mono">POSTGRES</span> / <span class="mono">SQLITE</span> 两值。它是被<strong>读出来的结论</strong>，不是被你写进去的选择。</p>
+<p>引擎本身在哪建？这正是第一处反直觉：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/db.py · letta/orm/sqlite_functions.py</span><span class="ln">引擎只建 Postgres；给任何 SQLite 连接挂 numpy UDF（节选）</span></div>
+<pre><span class="cm"># server/db.py：模块级只有一条 async 引擎——Postgres-only</span>
+engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span class="cm"># 不按 database_engine 分叉、不在此加载 sqlite-vec</span>
+
+<span class="cm"># orm/sqlite_functions.py：任何 SQLite 连接一建立，就挂上 numpy 写的距离函数</span>
+<span class="nb">@event.listens_for(Engine, &quot;connect&quot;)</span>
+<span class="kw">def</span> <span class="fn">register_functions</span>(dbapi_conn, _):
+    <span class="kw">if</span> <span class="fn">isinstance</span>(dbapi_conn, sqlite3.Connection):
+        dbapi_conn.<span class="fn">create_function</span>(<span class="st">&quot;cosine_distance&quot;</span>, 2, cosine_distance)  <span class="cm"># 纯 numpy 实现</span>
+        <span class="cm"># sqlite_vec.load(dbapi_conn)  ← 注释掉了：不用 sqlite-vec 原生相似度</span>
+</pre></div>
+<p>两段对照着看：左边 <span class="mono">db.py</span> 的引擎是 Postgres-only；右边那个全局 <span class="mono">@event.listens_for</span> 才是 SQLite 的接缝——它给<strong>任何</strong> SQLite 连接注册一个 numpy 写的 <span class="mono">cosine_distance</span>。</p>
+<p>留意最后那行注释：<span class="mono">sqlite_vec.load()</span> 是<strong>被注释掉</strong>的。SQLite 的相似度靠纯 numpy UDF，而不是 sqlite-vec 原生算子——这个纠正后面还会强调。</p>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">settings.py::Settings.database_engine</span>——<span class="mono">@property</span>：<span class="mono">POSTGRES if self.letta_pg_uri_no_default else SQLITE</span>；<span class="mono">DatabaseChoice(str, Enum){POSTGRES, SQLITE}</span>。</p>
+<p><span class="mono">orm/passage.py::BasePassage</span>——import 期按 <span class="mono">database_engine</span> 定 embedding 列类型。</p>
+<p><span class="mono">orm/custom_columns.py</span>——pydantic-in-DB 的一批 <span class="mono">TypeDecorator</span>；<span class="mono">orm/sqlite_functions.py::register_functions</span>——SQLite 的 numpy <span class="mono">cosine_distance</span>。</p>
+<p><span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span>——定长填充的那把尺；<span class="mono">alembic/env.py</span>——选 URI、分两后端建表。</p>
+</div>
+<details class="accordion"><summary><span class="mono">database_engine</span> 到底怎么定？能用环境变量手动选 SQLite 吗？</summary><div class="acc-body">
+<p>不能直接选。<span class="mono">database_engine</span> 是个<strong>派生 <span class="mono">@property</span></strong>，不是可写字段：它只看 <span class="mono">letta_pg_uri_no_default</span> 是不是 None。</p>
+<p><span class="mono">letta_pg_uri</span> 永远有默认值（<span class="mono">postgresql+pg8000://letta:letta@localhost:5432/letta</span>）；真正"URI-或-None"的是 <span class="mono">letta_pg_uri_no_default</span>。配了它＝Postgres，没配＝SQLite。</p>
+<p><strong>没有 <span class="mono">LETTA_DATABASE_ENGINE=sqlite</span> 这种开关</strong>。你只要设了任意 <span class="mono">LETTA_PG_*</span>（host / db / user / password / port / uri），就会<strong>静默</strong>翻成 Postgres。</p>
+<p>所以"dev 用 SQLite、prod 用 Postgres"不是手动切换，而是<strong>有没有给它 PG 连接信息</strong>这一件事的副作用。</p>
+</div></details>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">想强制 SQLite？别找开关，<strong>清掉所有 <span class="mono">LETTA_PG_*</span> 环境变量</strong>即可——只要 <span class="mono">letta_pg_uri_no_default</span> 为 None，<span class="mono">database_engine</span> 自然回到 SQLITE。反过来，生产里"怎么没走 Postgres"，先查是不是漏配了 PG URI。</span></div>
+<h2>向量怎么存：把任意维度塞进定长 4096 的一列</h2>
+<p>记忆里的 archival / recall（第 10、11 课）本质是带 embedding 的 <span class="mono">Passage</span>。可不同模型输出的维度天差地别：有的 1024，有的 1536，有的 3072。一列怎么装得下？</p>
+<p>Letta 的答案简单粗暴：<span class="mono">constants.py::MAX_EMBEDDING_DIM = 4096</span>——所有 embedding 在写入和查询时都 <span class="mono">np.pad</span> 到 4096 维，<strong>尾部补 0</strong>。于是一个 <span class="mono">Vector(4096)</span> 列就能装下任意模型的输出。</p>
+<div class="cute"><div class="row"><span class="emoji">📐</span><span class="lab">定长 4096 格</span><span class="arrow">→</span><span class="emoji">🧮</span><span class="lab">某模型 1536 维</span><span class="arrow">→</span><span class="emoji">0️⃣</span><span class="bubble">尾部补 0 填满</span></div><div class="cap">📐 一列就是 4096 维的固定格子；🧮 某模型只输出 1536 维；0️⃣ 尾部补 0 填满格子——补的全是 0，<strong>cosine 排序一点不变</strong>，所以一列能装下任意模型的输出</div></div>
+<p>等等，补一堆 0 进去，不会把相似度算歪吗？这正是设计的精妙处：<strong>补 0 对 cosine 完全无影响</strong>。</p>
+<div class="cellgroup"><div class="cg-cap"><b>补 0 为什么"免费"：cosine = 点积 /（L2 × L2），两端都不动</b></div><div class="cells"><span class="cell hl">点积 +0×x=0</span><span class="sep">→</span><span class="cell">分子不变</span><span class="sep">·</span><span class="cell">L2 +0²=0</span><span class="sep">→</span><span class="cell">分母不变</span><span class="sep">⇒</span><span class="cell hl">cosine 不变</span></div></div>
+<p>道理很直白。cosine ＝点积 ÷（两个向量的 L2 范数之积）。补的是 0：点积里 <span class="mono">0 × 任何 = 0</span>，分子不变；L2 里 <span class="mono">0² = 0</span>，分母也不变。<strong>分子分母都不动，排序自然一模一样</strong>。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">所以"定长一列装任意模型"不是近似、不是妥协，而是<strong>数学上严格等价于不填充</strong>，代价只是多存一串 0、占点空间。SQLite 那个 numpy UDF <span class="mono">validate_and_transform_embedding</span> 还会校验维度＝＝4096，对不上就直接返回 <span class="mono">0.0</span>——填充是写路和查询路<strong>共同的前提</strong>。</span></div>
+<p>那"存哪种列"呢？这是六处接缝里的第二处，发生在 <span class="mono">BasePassage</span> 的<strong>类体里、import 期</strong>：Postgres 用 pgvector 的 <span class="mono">Vector(4096)</span>，SQLite 用 <span class="mono">CommonVector</span>（一个 BINARY blob）。具体代码下一节连搜索一起看。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">MAX_EMBEDDING_DIM</span> 的注释明确写着"别改，否则得重置数据库"：它定死了列宽，一旦改动，就和库里已存的定长向量对不上了。这把尺是<strong>全局约定</strong>，不是某张表的局部选择。</span></div>
 <!--ZHMORE-->
 
 </div>
