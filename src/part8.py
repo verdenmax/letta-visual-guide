@@ -986,6 +986,54 @@ LESSON_30 = {
 <p>而仓库那边的<strong>后台理货任务</strong>（<span class="mono">Job</span>）是<strong>另一条线</strong>：它不在你这单的轨迹里，自己跑自己的。</p>
 <p>你想知道包裹到哪了，有两种看法：要么盯着<strong>实时轨迹推送</strong>（SSE 流），要么事后拿<strong>单号查物流</strong>（轮询 <span class="mono">GET /runs/{id}</span>）。同一单，两种观察方式。</p>
 </div>
+<h2>Step 怎么在 loop 里边跑边落库</h2>
+<p>回到第 14 课那个 <span class="mono">_step</span>。一圈迭代不是"跑完才记账"，而是<strong>开跑前就先占个坑、跑完再回填</strong>。<span class="mono">LettaAgentV3._step</span> 内部分五段，落库逻辑由 <span class="mono">letta_agent_v2.py</span> 的两个 checkpoint 方法承担。</p>
+<p><strong>① <span class="mono">_step_checkpoint_start</span></strong>：建好 <span class="mono">StepMetrics</span>、开一个 OTel span <span class="mono">tracer.start_span("agent_step")</span>，然后 <span class="mono">StepManager.log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...)</span>——<strong>在 LLM 调用之前</strong>就写下一行 <span class="mono">steps</span>，token 先记零。</p>
+<p><strong>② LLM ＋ 工具</strong>：真正调一次 LLM，<span class="mono">_handle_ai_response</span> 执行这一轮的工具调用。</p>
+<p><strong>③ <span class="mono">_step_checkpoint_finish</span></strong>：算出 <span class="mono">step_ns</span>、结束 span、<span class="mono">record_step_metrics_async</span>，再 <span class="mono">update_step_success_async(真实 per-step usage, stop_reason)</span> 把那行从 <span class="mono">PENDING</span> 翻成 <span class="mono">SUCCESS</span> 并填真实用量。</p>
+<p><strong>④ <span class="mono">_checkpoint_messages</span></strong>：把这一步产出的 Message 盖上 <span class="mono">run_id</span>＋<span class="mono">step_id</span> 持久化（就是上一节那条 ID 链的落点）。</p>
+<p><strong>⑤ <span class="mono">finally</span> 兜底</strong>：用 <span class="mono">StepProgression</span> 状态机（<span class="mono">START…FINISHED</span>）守住——中途崩了/被取消，就 <span class="mono">update_step_error_async</span>，那行 <span class="mono">steps</span> 仍旧留底。</p>
+<p>把这五段竖着画出来，"先占坑、后回填、崩了也留底"的节奏就一目了然：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>_step_checkpoint_start（开 span ＋ 占坑）</h4><p>建 <span class="mono">StepMetrics</span>、开 span <span class="mono">"agent_step"</span>；<span class="mono">log_step_async(0,0,0, PENDING)</span> 先写一行 <span class="mono">steps</span>（零 token）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>LLM ＋ 工具</h4><p>调一次 LLM，<span class="mono">_handle_ai_response</span> 执行这一轮工具调用。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>_step_checkpoint_finish（回填）</h4><p>算 <span class="mono">step_ns</span>、结束 span、<span class="mono">record_step_metrics_async</span>；<span class="mono">update_step_success_async</span> 填真实用量＋<span class="mono">stop_reason</span>，翻 <span class="mono">SUCCESS</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>_checkpoint_messages</h4><p>这一步的 Message 盖上 <span class="mono">run_id</span>＋<span class="mono">step_id</span> 持久化。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>finally · StepProgression 兜底</h4><p>状态机 <span class="mono">START…FINISHED</span>；崩了/取消就 <span class="mono">update_step_error_async</span>，行仍留底。</p></div></div>
+</div>
+<p>把"占坑 → 回填 → 兜底"落成代码，省去细节，骨架就这么直：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/agents/letta_agent_v2.py</span><span class="ln">_step：开跑前占坑 PENDING/0，跑完回填 SUCCESS（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">_step</span>(self, run_id, step_id, ...):
+    <span class="cm"># ① 开跑前：开 span + 写一行 steps，token 先记零、状态 PENDING</span>
+    span = tracer.<span class="fn">start_span</span>(<span class="st">&quot;agent_step&quot;</span>)
+    <span class="kw">await</span> self.step_manager.<span class="fn">log_step_async</span>(
+        usage=UsageStatistics(0, 0, 0), status=StepStatus.PENDING,
+        run_id=run_id, step_id=step_id, model=..., provider_name=...)
+    <span class="kw">try</span>:
+        <span class="cm"># ② 调一次 LLM + 执行这一轮工具</span>
+        response = <span class="kw">await</span> self.<span class="fn">_handle_ai_response</span>(...)
+        <span class="cm"># ③ 跑完回填：真实 per-step 用量 + stop_reason，翻 SUCCESS</span>
+        <span class="kw">await</span> self.step_manager.<span class="fn">update_step_success_async</span>(
+            step_id, usage=response.usage, stop_reason=response.stop_reason)
+    <span class="kw">finally</span>:
+        <span class="cm"># ⑤ 崩了/取消也留底：进度没到 FINISHED 就兜成 error</span>
+        <span class="kw">if</span> progression &lt; StepProgression.FINISHED:
+            <span class="kw">await</span> self.step_manager.<span class="fn">update_step_error_async</span>(step_id, ...)
+</pre></div>
+<p>注意 <span class="mono">log_step_async</span> 传的是 <span class="mono">usage=(0,0,0)</span>。这<strong>不是 bug</strong>：行先以零 token 落库，真实用量等 <span class="mono">update_step_success_async</span> 回填。先有行、后有数，是这套设计的关键。</p>
+<p>说一句 token 的账，别和第 14 课混。<span class="mono">Step.total_tokens</span> 是<strong>这一步单次 LLM</strong> 的用量；一个 Run 的<strong>总用量</strong>是<strong>跨 Step 累加</strong>的（<span class="mono">LettaAgentV2._update_global_usage_stats</span>，正是第 14 课那个累加器）。per-step 看 <span class="mono">steps</span> 行，累计看 Run。</p>
+<details class="accordion"><summary><span class="mono">StepProgression</span> 兜底：为什么连崩溃的迭代也留得下记录？</summary><div class="acc-body">
+<p>秘诀在<strong>顺序</strong>：<span class="mono">log_step_async</span> 在<strong>调 LLM 之前</strong>就把 <span class="mono">steps</span> 行写下（<span class="mono">PENDING</span>/零 token）。所以哪怕 LLM 调用抛异常、或用户中途取消，那行<strong>早已存在</strong>。</p>
+<p><span class="mono">finally</span> 里那台 <span class="mono">StepProgression</span> 状态机（<span class="mono">START…FINISHED</span>）一查：进度没走到 <span class="mono">FINISHED</span>，就 <span class="mono">update_step_error_async</span> 把行翻成 <span class="mono">FAILED</span>/<span class="mono">CANCELLED</span>，而不是留个永远 <span class="mono">PENDING</span> 的孤儿。</p>
+<p>对比"跑完才写一行"的朴素设计：那种一崩就<strong>什么都没有</strong>，你根本不知道它在哪一步、用了哪个 model 挂掉。先占坑的代价是多一次写，换来的是<strong>每一圈迭代都可归因</strong>——连失败的也算账。</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">记住这个反直觉的顺序：<strong>steps 行在 LLM 调用<em>之前</em>就落库</strong>（<span class="mono">PENDING</span>/0 token），事后才回填真实用量。这正是"崩溃也留记录"的根因——先有行，后有数。</span></div>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">orm/run.py::Run</span> / <span class="mono">orm/step.py::Step</span> / <span class="mono">orm/job.py::Job</span>——三实体三张表，<span class="mono">Run.steps</span> 1:N、<span class="mono">Step.metrics</span> 1:1、<span class="mono">Job</span> 平级。</p>
+<p><span class="mono">letta_agent_v2.py::LettaAgentV2._step_checkpoint_start / _finish</span>——一圈迭代的"占坑"与"回填"，写 <span class="mono">steps</span> 行＋ <span class="mono">StepMetrics</span>。</p>
+<p><span class="mono">otel/tracing.py::get_trace_id</span>——取当前 OTel trace id，写进 <span class="mono">Step.trace_id</span>，把产品行缝到分布式追踪。</p>
+<p><span class="mono">services/streaming_service.py::StreamingService</span>——v3 的流式入口，建 Run 后把 loop 包成 SSE（末节细说）。</p>
+</div>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
