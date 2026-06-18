@@ -463,6 +463,66 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>更妙的是：step 行<strong>在 LLM 调用之前</strong>就以 <span class="mono">PENDING</span>/零 token 落库、事后才翻 <span class="mono">SUCCESS</span> 填真实用量（靠 <span class="mono">StepProgression</span> 状态机 ＋ <span class="mono">finally</span> 兜底），所以连崩溃/取消的迭代都留下<strong>可归因</strong>的持久记录。</p>
 <p>而同一个 loop 被<strong>三种外壳</strong>一包——同步 <span class="mono">LettaResponse</span>、SSE 流、Redis 可恢复的后台 Run——只有壳不同。一个进程内的 <span class="mono">for</span> 循环，就此变成可追踪、可取消、可恢复的<strong>异步资源</strong>。</p>
 </div>
+<h2>三种外壳：同步阻塞、流式 SSE、后台异步</h2>
+<p>同一个 loop，外面能包三种壳。对用户来说就是<strong>三种发消息的姿势</strong>，里头跑的都是那同一段 <span class="mono">for</span> 循环。</p>
+<p><strong>① 同步</strong>：<span class="mono">messages</span>(streaming=false) → 建 Run → 阻塞跑完整个 loop → 返回 <span class="mono">LettaResponse</span>。<span class="mono">finally</span> 里 <span class="mono">update_run_by_id_async</span> 把 Run 置 <span class="mono">completed</span>/<span class="mono">failed</span>。</p>
+<p><strong>② 流式</strong>：<span class="mono">messages</span>(streaming=true) → 同样建 Run，但把 loop 的产出<strong>实时</strong>经 SSE 一段段吐出来。</p>
+<p><strong>③ 后台异步</strong>：<span class="mono">messages/async</span> → <span class="mono">send_message_async</span> <strong>立即返回</strong>一个 background Run，真正的活儿丢进 shielded 后台任务跑。你<strong>轮询</strong> <span class="mono">GET /v1/runs/{run_id}</span> 看进度。</p>
+<p>那个 background Run 还能顺藤摸瓜查更多：<span class="mono">/steps</span>、<span class="mono">/messages</span>、<span class="mono">/usage</span>、<span class="mono">/metrics</span> 乃至 trace；想中止就 <span class="mono">messages/cancel</span> 或 <span class="mono">RunManager.cancel_run</span>。后台<strong>流式</strong>要恢复得靠 Redis，可经 <span class="mono">POST /v1/runs/{run_id}/stream</span> 重连。</p>
+<p>把三态并排成一张表，入口与观察方式一眼分清：</p>
+<table class="t">
+<tr><th>形态</th><th>入口</th><th>返回 / 观察方式</th></tr>
+<tr><td>同步 sync</td><td class="mono">messages（streaming=false）</td><td>阻塞跑完，返回 <span class="mono">LettaResponse</span></td></tr>
+<tr><td>流式 stream</td><td class="mono">messages（streaming=true）</td><td>SSE 实时推 <span class="mono">data: {json}\n\n</span></td></tr>
+<tr><td>后台 async</td><td class="mono">messages/async</td><td>立即返回 background Run，轮询 <span class="mono">GET /runs/{id}</span></td></tr>
+</table>
+<p>先看同步那条路由怎么把 Run 的生命周期兜全。重点是那个 <span class="mono">finally</span>：无论成败，都得把 Run 状态写定。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">send_message：建 Run → 跑 loop → finally 收尾 Run 状态（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">send_message</span>(agent_id, request, ...):
+    <span class="cm"># 1) 建一个 Run（发 run-… id，同时落 RunMetrics）</span>
+    run = <span class="kw">await</span> run_manager.<span class="fn">create_run</span>(agent_id=agent_id, ...)
+    <span class="kw">try</span>:
+        <span class="cm"># 2) 把 loop 跑起来，run_id 串进每一步</span>
+        result = <span class="kw">await</span> AgentLoop.<span class="fn">load</span>(agent, ...).<span class="fn">step</span>(
+            input_messages, run_id=run.id, max_steps=...)
+        status = RunStatus.completed
+        <span class="kw">return</span> result                      <span class="cm"># LettaResponse</span>
+    <span class="kw">except</span> Exception:
+        status = RunStatus.failed
+        <span class="kw">raise</span>
+    <span class="kw">finally</span>:
+        <span class="cm"># 3) 无论成败，收尾把 Run 状态写定</span>
+        <span class="kw">await</span> run_manager.<span class="fn">update_run_by_id_async</span>(run.id, status=status)
+</pre></div>
+<p>流式那条壳，v3 实际走的是 <span class="mono">services/streaming_service.py::StreamingService.create_agent_stream</span>。它同样先建 Run，再让 <span class="mono">AgentLoop.load(...).stream(...)</span> 逐段产出已经格式化好的 <span class="mono">data: {json}\n\n</span>。</p>
+<p>外面再裹两层：<span class="mono">_create_error_aware_stream</span> 兜 <span class="mono">[DONE]</span> 终止帧与 error 帧，加上 keepalive（<span class="mono">LettaPing</span>）防连接超时；最后用 <span class="mono">streaming_response.py::StreamingResponseWithStatusCode(media_type="text/event-stream")</span> 发出去。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/streaming_service.py</span><span class="ln">create_agent_stream：把 loop 产出一段段 yield 成 SSE（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">create_agent_stream</span>(self, agent_id, request, ...):
+    run = <span class="kw">await</span> self.run_manager.<span class="fn">create_run</span>(agent_id=agent_id, ...)
+    agent_loop = AgentLoop.<span class="fn">load</span>(agent, ...)
+    <span class="kw">async def</span> <span class="fn">_stream</span>():
+        <span class="cm"># loop.stream(...) 已逐段产出 data: {json}\n\n（见 sse_formatter）</span>
+        <span class="kw">async for</span> chunk <span class="kw">in</span> agent_loop.<span class="fn">stream</span>(..., run_id=run.id):
+            <span class="kw">yield</span> chunk
+        <span class="kw">yield</span> <span class="st">&quot;data: [DONE]\n\n&quot;</span>            <span class="cm"># 兜一个终止帧</span>
+    <span class="kw">return</span> <span class="fn">StreamingResponseWithStatusCode</span>(
+        _stream(), media_type=<span class="st">&quot;text/event-stream&quot;</span>)
+</pre></div>
+<p>SSE 的线格式很朴素：<span class="mono">utils.py::sse_formatter</span> 把每个事件序列化成 <span class="mono">data: {json}\n\n</span>，正常终止发 <span class="mono">data: [DONE]</span>，出错发 <span class="mono">event: error</span>。</p>
+<p>流过来的事件类型，正是第 3 课那套 <span class="mono">LettaMessage</span> 家族：<span class="mono">ReasoningMessage</span> / <span class="mono">AssistantMessage</span> / <span class="mono">ToolCallMessage</span> / <span class="mono">ToolReturnMessage</span>，外加 <span class="mono">LettaPing</span> / <span class="mono">LettaUsageStatistics</span> / <span class="mono">LettaStopReason</span> 等控制帧。</p>
+<details class="accordion"><summary>流式 v3（<span class="mono">StreamingService</span>）vs legacy（<span class="mono">StreamingServerInterface</span>）＋ 异步 Run 怎么追</summary><div class="acc-body">
+<p><strong>v3 真路</strong>：<span class="mono">services/streaming_service.py::StreamingService.create_agent_stream</span>——建 Run、让 <span class="mono">AgentLoop.stream(...)</span> 逐段吐 <span class="mono">data: {json}\n\n</span>，外裹 <span class="mono">[DONE]</span>/error 与 keepalive。本课讲的就是它。</p>
+<p><strong>legacy（别照抄）</strong>：<span class="mono">server/rest_api/interface.py::StreamingServerInterface</span>——用 deque 缓冲，它的 <span class="mono">step_complete</span> 给出了"step＝LLM 响应＋工具执行"这个<strong>权威定义</strong>，但背后是旧 <span class="mono">agent.py</span>/OpenAI-proxy 那条路，<strong>不是 v3</strong>。读到它知道是历史包袱即可。</p>
+<p><strong>异步 Run 怎么追</strong>：<span class="mono">messages/async</span> 立即返回 background Run，之后<strong>轮询</strong> <span class="mono">GET /v1/runs/{run_id}</span>（及 <span class="mono">/steps</span>/<span class="mono">/messages</span>/<span class="mono">/usage</span>/<span class="mono">/metrics</span>）。后台<strong>流式</strong>恢复要 Redis，可经 <span class="mono">POST /v1/runs/{run_id}/stream</span> 重连。</p>
+</div></details>
+<div class="note info"><span class="ni">💡</span><span class="nx">看 v0.16.8 的流式，认准 <span class="mono">StreamingService</span> 这条 v3 路。outline 里点名的 <span class="mono">StreamingServerInterface</span> 是 <strong>legacy</strong>——它对"step"的定义仍有参考价值，但代码路径已不是主线，别照它写新东西。</span></div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p><strong><span class="mono">Job</span> ≠ <span class="mono">Run</span></strong>：异步发 agent 消息（<span class="mono">messages/async</span>）建的是 background <strong>Run</strong>，<strong>不是 Job</strong>。Job 是加载文件那类后台批任务。</p>
+<p><strong>嵌套别记反</strong>：是 <span class="mono">Run ⊃ Step</span>，不是 <span class="mono">Job ⊃ Run ⊃ Step</span>。Job 平级、不在链上。</p>
+<p><strong>Step 粒度</strong>＝一圈迭代＝<strong>一次 LLM 调用＋一轮工具执行</strong>，不是"一条消息"也不是"一个工具"。</p>
+<p><strong>是否落 <span class="mono">steps</span> 行看 manager</strong>：sleeptime 子 agent、旧 agent 走单例 <span class="mono">NoopStepManager</span>——<strong>不写行</strong>（第 28 课）。看不到 step 记录先查是不是 Noop。</p>
+<p><strong>流式认 v3</strong>：走 <span class="mono">StreamingService</span>；<span class="mono">StreamingServerInterface</span> 是 legacy。<strong>token 别混</strong>：<span class="mono">Step.total_tokens</span> 是 per-step，Run 总量是跨 Step 累加。</p>
+</div>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
