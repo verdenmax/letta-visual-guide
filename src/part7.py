@@ -983,6 +983,59 @@ LESSON_26 = {
 <p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span>——审计五件套；<span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> 提供 <span class="mono">organization_id / user_id</span> 列。</p>
 <p><span class="mono">services/user_manager.py::UserManager.get_actor_or_default_async</span>——把 header 里的 id 解析成 <span class="mono">PydanticUser</span>（带 org）。</p>
 </div>
+<h2>apply_access_predicate：把隔离焊进每次读</h2>
+<p>表看完了，现在钻进那句"自动追加的 <span class="mono">WHERE</span>"。它就一个类方法，短得出奇，却是整套多租户隔离的<strong>全部秘密</strong>。</p>
+<p>先看它本体。注意第一行 <span class="mono">del access</span>：<span class="mono">read / write / admin</span> 三种 access <strong>目前是 no-op</strong>，纯占位，给将来的行级权限留座。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">apply_access_predicate：隔离的全部秘密（简化）</span></div>
+<pre><span class="nb">@classmethod</span>
+<span class="kw">def</span> <span class="fn">apply_access_predicate</span>(cls, query, actor, access, access_type=AccessType.ORGANIZATION):
+    <span class="kw">del</span> access                      <span class="cm"># read/write/admin 目前是 no-op：将来行级权限的占位</span>
+    <span class="kw">if</span> access_type == AccessType.ORGANIZATION:
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.organization_id == actor.organization_id)  <span class="cm"># 同 org 共享</span>
+    <span class="kw">elif</span> access_type == AccessType.USER:
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.user_id == actor.id)                  <span class="cm"># 仅 jobs / runs 用</span>
+    <span class="kw">raise</span> <span class="fn">ValueError</span>(...)             <span class="cm"># actor 没有 org/id accessor＝配置错</span>
+</pre></div>
+<p>两个分支，对应两种范围。<span class="mono">ORGANIZATION</span> 是默认：按 <span class="mono">actor.organization_id</span> 限定，同 org 的所有用户<strong>共享</strong>同一批行（Block、Passage、Agent、Tool… 都走这条）。</p>
+<p><span class="mono">USER</span> 范围<strong>只有 jobs / runs</strong> 两类用：按 <span class="mono">actor.id</span> 限定，做成用户私有。<span class="mono">organization_id</span> 与 <span class="mono">user_id</span> 这两列，分别由 <span class="mono">OrganizationMixin</span>、<span class="mono">UserMixin</span> 混进模型。</p>
+<p>唯一会抛 <span class="mono">ValueError</span> 的，是 actor 连 org/id 这种 accessor 都没有——那是<strong>配置错</strong>，而非越权。越权长什么样？下面 <span class="mono">read_async</span> 里见分晓。</p>
+<p>光有 predicate 还不够，得看它在 <span class="mono">read_async</span> 里被"谁、何时"调。把读路骨架展开，统共四步：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">read_async：拼查询 → 焊隔离 → 可选过滤软删 → 取一行（简化）</span></div>
+<pre><span class="nb">@classmethod</span>
+<span class="kw">async def</span> <span class="fn">read_async</span>(cls, db_session, identifier=<span class="kw">None</span>, actor=<span class="kw">None</span>,
+                     access=[<span class="st">&quot;read&quot;</span>], access_type=AccessType.ORGANIZATION,
+                     check_is_deleted=<span class="kw">False</span>, **kwargs):
+    query = <span class="fn">select</span>(cls).<span class="fn">where</span>(cls.id == identifier)
+    <span class="kw">if</span> actor:                                <span class="cm"># 有身份 -&gt; 焊 org/user 隔离</span>
+        query = cls.<span class="fn">apply_access_predicate</span>(query, actor, access, access_type)
+    <span class="kw">elif</span> <span class="fn">is_org_scoped</span>(cls):                 <span class="cm"># 无 actor 但本是 org 级：不拦，只响亮警告</span>
+        logger.<span class="fn">warning</span>(<span class="st">&quot;SECURITY: ... without actor ... bypasses organization filtering&quot;</span>)
+    <span class="kw">if</span> check_is_deleted:                      <span class="cm"># opt-in：默认不过滤软删</span>
+        query = query.<span class="fn">where</span>(cls.is_deleted == <span class="kw">False</span>)
+    row = (<span class="kw">await</span> db_session.<span class="fn">execute</span>(query)).<span class="fn">scalar_one_or_none</span>()
+    <span class="kw">if</span> row <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)            <span class="cm"># 越权的行＝查不到，而非报错</span>
+    <span class="kw">return</span> row
+</pre></div>
+<p>四步看透：先 <span class="mono">select(cls).where(id)</span>，再据 <span class="mono">actor</span> 焊隔离（或在缺 actor 时记 <span class="mono">SECURITY</span> 警告），可选地过滤软删，最后 <span class="mono">scalar_one_or_none</span> 取一行。</p>
+<p><span class="mono">read_multiple_async</span> 共用同一套预处理（<span class="mono">_read_multiple_preprocess</span>）：照样拼 query、套 predicate、按需过滤软删，只是把 <span class="mono">where(id==)</span> 换成 <span class="mono">where(id.in_(...))</span>。换汤不换药。</p>
+<p>现在回答"越权长什么样"：跨租户的那行，被第 2 步的 <span class="mono">WHERE</span> 直接排除在结果集之外。于是 <span class="mono">read_async</span> 拿到 <span class="mono">None</span> → 抛 <span class="mono">NoResultFound</span>；<span class="mono">list_async</span> 则返回 <span class="mono">[]</span>。</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">越权的行</div><div class="nd">别的 org 的数据</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">被 WHERE 排除</div><div class="nd">predicate 自动追加</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">scalar_one_or_none()</div><div class="nd">＝ None</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">NoResultFound / []</div><div class="nd">查不到，非 403</div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">越权不报 403、而是"查不到"，这是<strong>有意为之</strong>：它不向调用方泄露"那行存在、但你无权"的信息——连<strong>存在性</strong>本身都被隔离了。这也意味着调试时别被 <span class="mono">NoResultFound</span> 骗了，先确认 <span class="mono">actor</span> 的 org 对不对。</span></div>
+<details class="accordion"><summary><span class="mono">apply_access_predicate</span> 到底注了什么？那三个 access 又去哪了？</summary><div class="acc-body">
+<p>注的就是<strong>一句行级 <span class="mono">WHERE</span></strong>，仅此而已：<span class="mono">ORGANIZATION</span> → <span class="mono">where(organization_id == actor.organization_id)</span>，<span class="mono">USER</span> → <span class="mono">where(user_id == actor.id)</span>。</p>
+<p>它"注"在 query 对象上，发生在 SQL <strong>真正执行之前</strong>，所以隔离在 DB 侧完成——不是把全表拉回来再在 Python 里筛。</p>
+<p>违规＝查不到，而非报错：被排除的行根本不进结果集，<span class="mono">read</span> 得 <span class="mono">None</span>→<span class="mono">NoResultFound</span>，<span class="mono">list</span> 得 <span class="mono">[]</span>。唯一的 <span class="mono">ValueError</span> 来自 actor 配置错（没有 org/id accessor）。</p>
+<p>那三个 <span class="mono">access</span>（read/write/admin）呢？开头 <span class="mono">del access</span> 把它丢了——<strong>目前纯 no-op</strong>，是给将来行级权限预留的形参，现在传什么都不影响结果。</p>
+</div></details>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",

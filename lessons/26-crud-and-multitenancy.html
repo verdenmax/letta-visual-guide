@@ -333,6 +333,118 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <h1><span class="lang-zh">通用 CRUD 与多租户隔离</span><span class="lang-en">Generic CRUD &amp; multi-tenant isolation</span></h1>
   </div>
   <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">上一课我们站在二楼柜台前，看清了每个 manager 方法那副"开门取数、门内换装"的统一形状。其中第 3 步那句 <span class="mono">apply_access_predicate</span> 把租户隔离"焊进每条 SQL"，当时只被一笔带过。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课推开三楼档案室的门，看清那道门禁到底怎么运作：约 40 个模型共用一个 <span class="mono">SqlalchemyBase</span>，一套泛型 async CRUD，把"只看你那一格"焊在最低层。<strong>secure by default</strong>——不是"记得加"，而是想漏都难。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>每条查询，默认就只看得到"你这租户、还没删"的行</strong>。</p>
+<p>读路（<span class="mono">read / list / size</span>）只要传了 <span class="mono">actor</span>，门禁自动追加一句 <span class="mono">WHERE organization_id == actor.org</span>。</p>
+<p>写路（<span class="mono">create / update</span>）顺手盖上审计字段：谁建的、谁最后改的、何时。</p>
+<p>"删"默认是<strong>软删</strong>：<span class="mono">delete_async</span> 只把 <span class="mono">is_deleted</span> 翻成 <span class="mono">True</span>，行还躺在库里。</p>
+<p>这套东西全长在一个抽象基类 <span class="mono">SqlalchemyBase</span> 上，约 40 个模型继承即得，无需各写一遍。</p>
+</div>
+<p>这不是某个模型的个性，而是<strong>所有模型的公共底座</strong>。下面先把"secure by default"画成一张总流程，再逐段拆开。</p>
+<p>也先点破一处反直觉：<span class="mono">actor</span> 缺席时，这道门禁<strong>不硬失败</strong>，而是打一条响亮的 <span class="mono">SECURITY</span> 警告、无范围地照跑——为什么这么设计，本课后半专门讲。</p>
+<p>再把镜头摆正：第 24 课看"整栋三层楼"，第 25 课看"二楼柜台"，这一课只盯<strong>三楼那道门禁</strong>——一条查询从拼装到落库，每一步加了什么过滤。</p>
+<h2>一条查询的安检流水线（secure by default）</h2>
+<p>把"默认安全"摊开成一条流水线，你会看到：身份在<strong>最外层</strong>被认出来，隔离在<strong>最里层</strong>被焊进 SQL，中间几棒只负责把 <span class="mono">actor</span> 老实串下去。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>口令中间件（可选）</h4><p><span class="mono">CheckPasswordMiddleware</span>：整服务器级的一道闸，<span class="mono">--secure</span> 模式才挂；与租户正交。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>get_headers · 认身份</h4><p>从 <span class="mono">user_id</span> header 取值，校验形如 <span class="mono">user-&lt;uuid4&gt;</span>；只校验格式，<strong>不碰 DB</strong>。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>解析 actor</h4><p><span class="mono">get_actor_or_default_async</span>：查到 → <span class="mono">User</span>（带 org）；<span class="mono">no_default_actor</span> 且无 id → 拒。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>manager 串 actor</h4><p>路由把 <span class="mono">actor</span> 一路串进 manager 方法——"串 actor"是阻力最小的写法。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>进泛型 CRUD</h4><p><span class="mono">&lt;crud&gt;_async(actor=...)</span>：落到 <span class="mono">SqlalchemyBase</span> 那套统一动词。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>焊隔离</h4><p><span class="mono">apply_access_predicate</span> 自动追加 <span class="mono">WHERE org==actor.org</span>（<span class="mono">+ is_deleted==False</span> 仅当 <span class="mono">check_is_deleted</span>）。</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>只剩你那一格</h4><p>SQL 落库，回来的只有<strong>这租户、未删</strong>的行；越权的行根本没进结果集。</p></div></div>
+</div>
+<p>七步里，真正"决定你看到谁"的是第 6 步那句自动追加的 <span class="mono">WHERE</span>；前五步都在做同一件事——把"你是谁"安全地送到门禁面前。</p>
+<p>注意第 1 步打了括号：服务器口令是整服务器级的闸，<strong>与租户隔离正交</strong>——口令管"能不能进这台服务器"，<span class="mono">actor</span> 管"进来后看得到哪一格"。这层正交后面单讲。</p>
+<p>也盯住第 6 步括号里那半句：<span class="mono">is_deleted==False</span> 只有在 <span class="mono">check_is_deleted</span> 为真时才追加——换句话说，<strong>软删行默认仍会被读回来</strong>。这条最反直觉，软删那节细说。</p>
+<div class="card analogy"><div class="tag">🏦 生活类比</div>
+<p>把整个数据库想成一座<strong>带门禁的共享档案库</strong>，你（调用方）报上工牌（<span class="mono">actor</span>）才能进。</p>
+<p>每次开柜，门禁自动只让你看你们<strong>部门（org）</strong>那一格；别的部门的柜子，你连看都看不到。</p>
+<p>"删"不是真烧掉，而是给文件贴一张<strong>"作废"贴纸</strong>（软删）——原件还在架上，需要时还能撕掉贴纸恢复。</p>
+<p>每次取放，库管都自动替你盖一个<strong>"谁、何时"</strong>的章（审计），不必你开口。</p>
+<p>妙在：这些规矩不写在每张借阅单上，而是焊死在<strong>门禁本身</strong>——换一百个借阅人，规矩一字不改。</p>
+</div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">门禁·每查必套</span><span class="arrow">→</span><span class="emoji">🏷️</span><span class="lab">作废贴纸·软删</span><span class="arrow">→</span><span class="emoji">🧾</span><span class="bubble">谁/何时·审计</span></div><div class="cap">🔐 门禁自动盖在每条查询上（只放行你这格），🏷️ "作废"贴纸＝软删（原件留架、可恢复），🧾 每次取放自动盖"谁/何时"的章（审计）</div></div>
+<p>这张萌图里的三件事——隔离、软删、审计——其实<strong>全长在同一个抽象类上</strong>。接下来三节，就按这个顺序逐一拆开。</p>
+<h2>SqlalchemyBase：一套动词，约 40 个模型共用</h2>
+<p>先认清这套 CRUD 的"面"有多大：它不是某个 manager 的私有方法，而是 ORM 抽象基类 <span class="mono">SqlalchemyBase</span>（<span class="mono">__abstract__</span>）上的一组 async 类方法，约 40 个模型继承即得。</p>
+<p>这套动词分三类：<strong>读、写、删</strong>。读路才有访问控制，写路负责盖审计，删又分软删与硬删。先用一张表把全貌摆出来：</p>
+<table class="t">
+<tr><th>方法</th><th>类型</th><th>访问控制？</th><th>软删感知？</th></tr>
+<tr><td class="mono">read_async</td><td>读</td><td>有 <span class="mono">actor</span> 才套（org 级）</td><td>仅当 <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">list_async</td><td>读</td><td>有 <span class="mono">actor</span> 才套</td><td>仅当 <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">read_multiple_async</td><td>读</td><td>有 <span class="mono">actor</span> 才套</td><td>仅当 <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">size_async</td><td>读</td><td>有 <span class="mono">actor</span> 才套</td><td>仅当 <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">create_async</td><td>写</td><td>骑在读建立的边界上</td><td>盖审计字段</td></tr>
+<tr><td class="mono">update_async</td><td>写</td><td>骑在读建立的边界上</td><td>盖审计字段</td></tr>
+<tr><td class="mono">delete_async</td><td>软删</td><td>有 <span class="mono">actor</span> 则盖审计</td><td>翻 <span class="mono">is_deleted=True</span></td></tr>
+<tr><td class="mono">hard_delete_async</td><td>物理删</td><td><span class="mono">actor</span> 仅日志</td><td>整行消失</td></tr>
+<tr><td class="mono">bulk_hard_delete_async</td><td>批量物理删</td><td><strong>SQL 层套 predicate</strong></td><td>整行消失</td></tr>
+</table>
+<p>看这张表，记住两条主线。其一：访问控制只在<strong>读路</strong>生效（且"有 <span class="mono">actor</span> 才走"）；写、删并不各自再套一遍 <span class="mono">WHERE</span>，而是骑在读时已建立的边界上。</p>
+<p>其二：唯一在"删"这侧也强制租户的，是 <span class="mono">bulk_hard_delete_async</span>——它在 SQL 层把 predicate 套进 <span class="mono">DELETE</span>。这是个重要例外，软删那节再说。</p>
+<p>还有个细节值得记：读路四个方法都收同一组参数——<span class="mono">actor</span>、<span class="mono">access=["read"]</span>、<span class="mono">access_type=ORGANIZATION</span>、<span class="mono">check_is_deleted=False</span>。参数一致，行为就一致。</p>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">orm/sqlalchemy_base.py::SqlalchemyBase</span>——抽象基类，<span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">create_async</span> / <span class="mono">delete_async</span> / <span class="mono">apply_access_predicate</span> 都在这。</p>
+<p><span class="mono">SqlalchemyBase.apply_access_predicate</span> + <span class="mono">AccessType(str, Enum){ORGANIZATION, USER}</span>——行级过滤的注入点与两种范围。</p>
+<p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span>——审计五件套；<span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> 提供 <span class="mono">organization_id / user_id</span> 列。</p>
+<p><span class="mono">services/user_manager.py::UserManager.get_actor_or_default_async</span>——把 header 里的 id 解析成 <span class="mono">PydanticUser</span>（带 org）。</p>
+</div>
+<h2>apply_access_predicate：把隔离焊进每次读</h2>
+<p>表看完了，现在钻进那句"自动追加的 <span class="mono">WHERE</span>"。它就一个类方法，短得出奇，却是整套多租户隔离的<strong>全部秘密</strong>。</p>
+<p>先看它本体。注意第一行 <span class="mono">del access</span>：<span class="mono">read / write / admin</span> 三种 access <strong>目前是 no-op</strong>，纯占位，给将来的行级权限留座。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">apply_access_predicate：隔离的全部秘密（简化）</span></div>
+<pre><span class="nb">@classmethod</span>
+<span class="kw">def</span> <span class="fn">apply_access_predicate</span>(cls, query, actor, access, access_type=AccessType.ORGANIZATION):
+    <span class="kw">del</span> access                      <span class="cm"># read/write/admin 目前是 no-op：将来行级权限的占位</span>
+    <span class="kw">if</span> access_type == AccessType.ORGANIZATION:
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.organization_id == actor.organization_id)  <span class="cm"># 同 org 共享</span>
+    <span class="kw">elif</span> access_type == AccessType.USER:
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.user_id == actor.id)                  <span class="cm"># 仅 jobs / runs 用</span>
+    <span class="kw">raise</span> <span class="fn">ValueError</span>(...)             <span class="cm"># actor 没有 org/id accessor＝配置错</span>
+</pre></div>
+<p>两个分支，对应两种范围。<span class="mono">ORGANIZATION</span> 是默认：按 <span class="mono">actor.organization_id</span> 限定，同 org 的所有用户<strong>共享</strong>同一批行（Block、Passage、Agent、Tool… 都走这条）。</p>
+<p><span class="mono">USER</span> 范围<strong>只有 jobs / runs</strong> 两类用：按 <span class="mono">actor.id</span> 限定，做成用户私有。<span class="mono">organization_id</span> 与 <span class="mono">user_id</span> 这两列，分别由 <span class="mono">OrganizationMixin</span>、<span class="mono">UserMixin</span> 混进模型。</p>
+<p>唯一会抛 <span class="mono">ValueError</span> 的，是 actor 连 org/id 这种 accessor 都没有——那是<strong>配置错</strong>，而非越权。越权长什么样？下面 <span class="mono">read_async</span> 里见分晓。</p>
+<p>光有 predicate 还不够，得看它在 <span class="mono">read_async</span> 里被"谁、何时"调。把读路骨架展开，统共四步：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">read_async：拼查询 → 焊隔离 → 可选过滤软删 → 取一行（简化）</span></div>
+<pre><span class="nb">@classmethod</span>
+<span class="kw">async def</span> <span class="fn">read_async</span>(cls, db_session, identifier=<span class="kw">None</span>, actor=<span class="kw">None</span>,
+                     access=[<span class="st">&quot;read&quot;</span>], access_type=AccessType.ORGANIZATION,
+                     check_is_deleted=<span class="kw">False</span>, **kwargs):
+    query = <span class="fn">select</span>(cls).<span class="fn">where</span>(cls.id == identifier)
+    <span class="kw">if</span> actor:                                <span class="cm"># 有身份 -&gt; 焊 org/user 隔离</span>
+        query = cls.<span class="fn">apply_access_predicate</span>(query, actor, access, access_type)
+    <span class="kw">elif</span> <span class="fn">is_org_scoped</span>(cls):                 <span class="cm"># 无 actor 但本是 org 级：不拦，只响亮警告</span>
+        logger.<span class="fn">warning</span>(<span class="st">&quot;SECURITY: ... without actor ... bypasses organization filtering&quot;</span>)
+    <span class="kw">if</span> check_is_deleted:                      <span class="cm"># opt-in：默认不过滤软删</span>
+        query = query.<span class="fn">where</span>(cls.is_deleted == <span class="kw">False</span>)
+    row = (<span class="kw">await</span> db_session.<span class="fn">execute</span>(query)).<span class="fn">scalar_one_or_none</span>()
+    <span class="kw">if</span> row <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)            <span class="cm"># 越权的行＝查不到，而非报错</span>
+    <span class="kw">return</span> row
+</pre></div>
+<p>四步看透：先 <span class="mono">select(cls).where(id)</span>，再据 <span class="mono">actor</span> 焊隔离（或在缺 actor 时记 <span class="mono">SECURITY</span> 警告），可选地过滤软删，最后 <span class="mono">scalar_one_or_none</span> 取一行。</p>
+<p><span class="mono">read_multiple_async</span> 共用同一套预处理（<span class="mono">_read_multiple_preprocess</span>）：照样拼 query、套 predicate、按需过滤软删，只是把 <span class="mono">where(id==)</span> 换成 <span class="mono">where(id.in_(...))</span>。换汤不换药。</p>
+<p>现在回答"越权长什么样"：跨租户的那行，被第 2 步的 <span class="mono">WHERE</span> 直接排除在结果集之外。于是 <span class="mono">read_async</span> 拿到 <span class="mono">None</span> → 抛 <span class="mono">NoResultFound</span>；<span class="mono">list_async</span> 则返回 <span class="mono">[]</span>。</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">越权的行</div><div class="nd">别的 org 的数据</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">被 WHERE 排除</div><div class="nd">predicate 自动追加</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">scalar_one_or_none()</div><div class="nd">＝ None</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">NoResultFound / []</div><div class="nd">查不到，非 403</div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">越权不报 403、而是"查不到"，这是<strong>有意为之</strong>：它不向调用方泄露"那行存在、但你无权"的信息——连<strong>存在性</strong>本身都被隔离了。这也意味着调试时别被 <span class="mono">NoResultFound</span> 骗了，先确认 <span class="mono">actor</span> 的 org 对不对。</span></div>
+<details class="accordion"><summary><span class="mono">apply_access_predicate</span> 到底注了什么？那三个 access 又去哪了？</summary><div class="acc-body">
+<p>注的就是<strong>一句行级 <span class="mono">WHERE</span></strong>，仅此而已：<span class="mono">ORGANIZATION</span> → <span class="mono">where(organization_id == actor.organization_id)</span>，<span class="mono">USER</span> → <span class="mono">where(user_id == actor.id)</span>。</p>
+<p>它"注"在 query 对象上，发生在 SQL <strong>真正执行之前</strong>，所以隔离在 DB 侧完成——不是把全表拉回来再在 Python 里筛。</p>
+<p>违规＝查不到，而非报错：被排除的行根本不进结果集，<span class="mono">read</span> 得 <span class="mono">None</span>→<span class="mono">NoResultFound</span>，<span class="mono">list</span> 得 <span class="mono">[]</span>。唯一的 <span class="mono">ValueError</span> 来自 actor 配置错（没有 org/id accessor）。</p>
+<p>那三个 <span class="mono">access</span>（read/write/admin）呢？开头 <span class="mono">del access</span> 把它丢了——<strong>目前纯 no-op</strong>，是给将来行级权限预留的形参，现在传什么都不影响结果。</p>
+</div></details>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
