@@ -429,6 +429,40 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p><span class="mono">otel/tracing.py::get_trace_id</span>——取当前 OTel trace id，写进 <span class="mono">Step.trace_id</span>，把产品行缝到分布式追踪。</p>
 <p><span class="mono">services/streaming_service.py::StreamingService</span>——v3 的流式入口，建 Run 后把 loop 包成 SSE（末节细说）。</p>
 </div>
+<h2>三套可观测：同一步，三种粒度的账</h2>
+<p>上一节那行 <span class="mono">steps</span> 只是三套账里的一套。每跑一圈，Letta 其实<strong>同时</strong>往三个互不相同的系统里各记一笔——别把它们混成一回事。</p>
+<p><strong>① <span class="mono">steps</span> 行（产品＋计费）</strong>：就是前面那张表，per-step 的 <span class="mono">model</span> / <span class="mono">provider</span> / <span class="mono">tokens</span> / <span class="mono">stop_reason</span> / <span class="mono">feedback</span>。它是给<strong>产品分析和账单</strong>看的——谁用了多少 token、停在哪、用户点没点赞。</p>
+<p><strong>② OTel（<span class="mono">letta/otel/</span>）</strong>：<span class="mono">tracing.py::trace_method</span>（第 25 课那个装饰器）给方法开一个 <span class="mono">"{Class}.{method}"</span> span，<span class="mono">get_trace_id()</span> 把当前 trace id 写进 <span class="mono">Step.trace_id</span>。这套是给<strong>延迟与分布式追踪</strong>看的。</p>
+<p>OTel 还有一摞指标：<span class="mono">metric_registry.py::MetricRegistry</span>（单例）登记 <span class="mono">ttft_ms_histogram</span>、<span class="mono">step_execution_time_ms_histogram</span>、<span class="mono">message_cost</span>、<span class="mono">sse_*</span> 等。它由 <span class="mono">app.py</span> 启动时按 <span class="mono">otel_exporter_otlp_endpoint and not disable_tracing</span> 决定开不开，<strong>pytest 下是 no-op</strong>。</p>
+<p><strong>③ provider traces（<span class="mono">services/telemetry_manager.py::TelemetryManager</span>）</strong>：按 <span class="mono">step_id</span> 把<strong>原始 LLM 请求/响应</strong>整包存到 postgres/clickhouse/socket。这是给<strong>调试与复盘</strong>看的——想看那次到底发了什么 payload。默认是 <span class="mono">NoopTelemetryManager</span>，返回 <span class="mono">None</span>，<strong>不存</strong>。</p>
+<p>缝合三者的就是那一个字段：<strong><span class="mono">Step.trace_id = get_trace_id()</span></strong>。从一行产品记录，能跳到对应的分布式 trace，再顺着 <span class="mono">step_id</span> 翻到那次原始 LLM payload——三套账，一根线串起来。</p>
+<div class="cols">
+  <div class="col"><h4>🧾 steps 行 · 计费</h4>
+  <p>表 <span class="mono">steps</span>。per-step <span class="mono">model</span>/<span class="mono">provider</span>/<span class="mono">tokens</span>/<span class="mono">stop_reason</span>/<span class="mono">feedback</span>。给产品与账单。<strong>默认就写</strong>（除非用 Noop manager）。</p>
+  </div>
+  <div class="col"><h4>📈 OTel span · 延迟</h4>
+  <p><span class="mono">"{Class}.{method}"</span> span ＋ <span class="mono">MetricRegistry</span> 直方图。给延迟与分布式追踪。<strong>需配 endpoint</strong>，pytest 下 no-op。</p>
+  </div>
+  <div class="col"><h4>🔬 provider trace · 原始 payload</h4>
+  <p>按 <span class="mono">step_id</span> 存原始 LLM 请求/响应。给调试复盘。<strong>默认 Noop（不存）</strong>，需显式接上。</p>
+  </div>
+</div>
+<p>把"一步盖三个章"画成萌图，那根缝合线一眼就懂：</p>
+<div class="cute"><div class="row"><span class="emoji">🧾</span><span class="lab">一圈 step</span><span class="arrow">→</span><span class="emoji">💰</span><span class="lab">计费章</span><span class="arrow">→</span><span class="emoji">⏱️</span><span class="lab">延迟章</span><span class="arrow">→</span><span class="emoji">🔬</span><span class="bubble">原始 payload 章</span></div><div class="cap">🧾 每跑完一圈 step，同时盖下三个章——💰 计费（<span class="mono">steps</span> 行）、⏱️ 延迟（OTel span）、🔬 原始 payload（provider trace）；一根 <span class="mono">trace_id</span> 把三个章串成一条线，从账单一路查到那次 LLM 到底发了什么</div></div>
+<details class="accordion"><summary>三套可观测各管什么、默认开还是关？</summary><div class="acc-body">
+<p><strong><span class="mono">steps</span> 行</strong>：由 <span class="mono">StepManager</span> 写，<strong>默认就记</strong>（产品＋计费）。只有用单例 <span class="mono">NoopStepManager</span> 的路径才不写行（下文细说）。</p>
+<p><strong>OTel</strong>：默认<strong>看配置</strong>。<span class="mono">app.py</span> 启动时按 <span class="mono">otel_exporter_otlp_endpoint and not disable_tracing</span> 决定开不开；没配 endpoint 或在 pytest 下，<span class="mono">trace_method</span> 与指标都是 no-op，几乎零开销。</p>
+<p><strong>provider traces</strong>：默认<strong>关</strong>。<span class="mono">TelemetryManager</span> 默认是 <span class="mono">NoopTelemetryManager</span>（存什么都返回 <span class="mono">None</span>）；要留原始 payload，得显式接上 postgres/clickhouse/socket 后端。</p>
+<p>一句话：<strong>计费默认有、延迟看配置、原始 payload 默认无</strong>。三套粒度不同、开关不同、用途不同，排查时先想清楚自己要哪一套。</p>
+</div></details>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">三套账别混：<strong><span class="mono">steps</span> 行</strong>是产品/计费（per-step token），<strong>OTel span</strong>是延迟/追踪，<strong>provider trace</strong>是原始 payload。它们记的<strong>不是同一种东西</strong>，只是被 <span class="mono">Step.trace_id</span> 缝到一起。查计费别去翻 OTel，查 payload 别指望 <span class="mono">steps</span> 行。</span></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>第 14 课那个朴素的 <span class="mono">for</span> 循环，每跑一个 <span class="mono">_step</span> 就<strong>同时甩出三份互相关联的视图</strong>。</p>
+<p>一条 <span class="mono">steps</span> DB 行（<span class="mono">model</span>/<span class="mono">provider</span>/per-step token/<span class="mono">stop_reason</span>——产品＋计费）、一个 OTel <span class="mono">agent_step</span> span（延迟/分布式追踪）、以及可选的一条 provider trace（原始 LLM payload）。</p>
+<p>它们被 <span class="mono">Step.trace_id = get_trace_id()</span> 缝在一起——从一行产品记录能直接跳到分布式 trace，再跳到那次原始 LLM 调用。</p>
+<p>更妙的是：step 行<strong>在 LLM 调用之前</strong>就以 <span class="mono">PENDING</span>/零 token 落库、事后才翻 <span class="mono">SUCCESS</span> 填真实用量（靠 <span class="mono">StepProgression</span> 状态机 ＋ <span class="mono">finally</span> 兜底），所以连崩溃/取消的迭代都留下<strong>可归因</strong>的持久记录。</p>
+<p>而同一个 loop 被<strong>三种外壳</strong>一包——同步 <span class="mono">LettaResponse</span>、SSE 流、Redis 可恢复的后台 Run——只有壳不同。一个进程内的 <span class="mono">for</span> 循环，就此变成可追踪、可取消、可恢复的<strong>异步资源</strong>。</p>
+</div>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
