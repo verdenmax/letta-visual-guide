@@ -443,6 +443,62 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 
 LESSON_25 = {
     "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">上一课我们把整栋服务端大楼竖了起来：薄路由只登记转交，ORM 守着访问控制，DB 在最底下落地。夹在中间的二楼——<span class="mono">SyncServer</span> 名下那一众 <strong>Manager</strong>——只被一句"业务枢纽"轻轻带过。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就走进二楼，看清每位经理办事时手上那套<strong>一模一样的动作</strong>：开一道 session、按身份取数、<strong>还在 session 里</strong>把行换成 pydantic、再把复印件递出去。认得这副骨架，整层代码就读通了大半。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>每个 manager 方法，都是同一条流水线</strong>。</p>
+<p>先过三个装饰器：<span class="mono">@enforce_types</span> 校验类型、<span class="mono">@raise_on_invalid_id</span> 校验 id、<span class="mono">@trace_method</span> 开一个 span。</p>
+<p>再 <span class="mono">async with db_registry.async_session()</span> 开一道事务门——这一行同时定了事务边界与 actor 范围。</p>
+<p>门里做 actor 范围的 CRUD，访问控制（<span class="mono">apply_access_predicate</span>）由 ORM 焊进每条 SQL。</p>
+<p>临走前<strong>仍在 session 内</strong>把 ORM 行 <span class="mono">to_pydantic()</span> 成纯对象，再把它返回。</p>
+<p><strong>绝不把 ORM 行漏出门外</strong>——出柜台的，永远只是复印件。</p>
+</div>
+<p>这条流水线不是某位经理的个性，而是<strong>所有 manager 的公共形状</strong>。下面先把它画成一张解剖图，再逐段拆开。</p>
+<p>读这一课时，不妨继续用上一课的"三层楼"做底图：我们这回把镜头怼到二楼柜台前，一帧帧看经理怎么动手。</p>
+<h2>一个 manager 方法，长成同一副样子</h2>
+<p>先看最小的一个真实例子——查一个 organization。它把"统一形状"压到了最短：开 session、读一行、转 pydantic、返回，四步收工。</p>
+<p>把这四步展开成方法解剖图，你能看到装饰器、事务、查询、转换是怎么一节接一节咬合的：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>装饰器三连</h4><p><span class="mono">@enforce_types</span> → <span class="mono">@raise_on_invalid_id</span> → <span class="mono">@trace_method</span>：方法体还没跑，类型、id、span 已经就位。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>开 session · BEGIN</h4><p><span class="mono">async with db_registry.async_session()</span>：事务从这里开始，actor/org 范围也从这里注入。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>拼查询 · 焊隔离</h4><p><span class="mono">select(Model)</span> + <span class="mono">apply_access_predicate(actor)</span> + <span class="mono">where(id==...)</span>，组织级隔离焊进 SQL。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>ORM CRUD</h4><p><span class="mono">read_async</span> / <span class="mono">create_async</span> 等方法落到 DB，拿回一行 ORM 对象。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>转 pydantic · 还在门内</h4><p><strong>仍在 session 内</strong>调 <span class="mono">to_pydantic()</span>，把 ORM 行变成一个纯粹的 pydantic 对象。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>退出 · 收尾三件套</h4><p><span class="mono">async with</span> 块结束：干净退出就 commit，再 <span class="mono">expunge_all</span> + <span class="mono">close</span>。</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>返回 schema</h4><p>交回调用方的是 pydantic，<strong>调用方再也碰不到 session</strong>，也碰不到 ORM 行。</p></div></div>
+</div>
+<p>七步里，真正"有业务"的其实只有第 3、4 步；其余五步——装饰器、开关 session、转换——<strong>每个 manager 方法都一样</strong>。这正是"统一形状"的含义。</p>
+<p>请把第 2 步和第 6 步配成一对：<span class="mono">async with</span> 的进入与退出，就是事务的 BEGIN 与 commit。一个方法体，恰好是一道事务。</p>
+<p>也盯住第 5 步那句"仍在 session 内"——它是本课最容易踩错、也最值钱的一条规矩，后面会专门用一个抽屉讲透。</p>
+<div class="card analogy"><div class="tag">🏦 生活类比</div>
+<p>把每位 manager 想成<strong>银行柜员</strong>，而你（路由）只能站在柜台外，进不了金库。</p>
+<p>你报上身份，柜员替你开一笔<strong>"事务"</strong>——拉开柜台那道小门，办完即关。</p>
+<p>他只按你的身份取<strong>你那一格</strong>的资料，别人的格子碰都不碰，这就是访问控制。</p>
+<p>原始账本（ORM 行）<strong>始终留在柜台内</strong>，柜员递给你的，永远是一份<strong>复印件</strong>（pydantic）。</p>
+<p>妙在：复印件离了柜台照样能看，而原件连同那道门，早在你转身时就一并关好了。</p>
+</div>
+<div class="cute"><div class="row"><span class="emoji">🏦</span><span class="lab">柜员·manager</span><span class="arrow">→</span><span class="emoji">📒</span><span class="lab">账本·ORM</span><span class="arrow">→</span><span class="emoji">🧾</span><span class="bubble">复印件·pydantic</span></div><div class="cap">🏦 柜员开一道"事务"小门，📒 原始账本（ORM 行）留在柜内，🧾 只把复印件（pydantic）递出柜台</div></div>
+<p>把这张解剖图对回真实代码，最干净的样板就是 <span class="mono">organization_manager.py::OrganizationManager</span>：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/organization_manager.py</span><span class="ln">最简 manager：读与写都套同一副骨架（简化）</span></div>
+<pre><span class="kw">class</span> <span class="fn">OrganizationManager</span>:
+    <span class="nb">@enforce_types</span>          <span class="cm"># 同步校验入参类型</span>
+    <span class="nb">@trace_method</span>          <span class="cm"># 开一个 "OrganizationManager.get_..." span</span>
+    <span class="kw">async def</span> <span class="fn">get_organization_by_id_async</span>(self, org_id: str) -&gt; PydanticOrganization:
+        <span class="kw">async with</span> db_registry.<span class="fn">async_session</span>() <span class="kw">as</span> session:   <span class="cm"># 唯一开 session 的地方</span>
+            org = <span class="kw">await</span> OrganizationModel.<span class="fn">read_async</span>(db_session=session, identifier=org_id)
+            <span class="kw">return</span> org.<span class="fn">to_pydantic</span>()                        <span class="cm"># 仍在 session 内：行 -&gt; pydantic</span>
+
+    <span class="nb">@enforce_types</span>
+    <span class="nb">@trace_method</span>
+    <span class="kw">async def</span> <span class="fn">create_organization_async</span>(self, pydantic_org: PydanticOrganization) -&gt; PydanticOrganization:
+        <span class="kw">async with</span> db_registry.<span class="fn">async_session</span>() <span class="kw">as</span> session:
+            org = <span class="fn">OrganizationModel</span>(**pydantic_org.<span class="fn">model_dump</span>(to_orm=<span class="kw">True</span>))  <span class="cm"># pydantic -&gt; ORM</span>
+            <span class="kw">await</span> org.<span class="fn">create_async</span>(session)                  <span class="cm"># 落库</span>
+            <span class="kw">return</span> org.<span class="fn">to_pydantic</span>()                        <span class="cm"># 出门即复印件</span>
+</pre></div>
+<p>读和写，两副身子骨一模一样：开 session → 动 ORM → <span class="mono">to_pydantic()</span> → 返回。差别只在中间——一个 <span class="mono">read_async</span>，一个 <span class="mono">create_async</span>。</p>
+<p>留意写那一支的入口：<span class="mono">model_dump(to_orm=True)</span> 把 pydantic 拆成构造 ORM 用的字段字典，再喂给 <span class="mono">OrganizationModel(...)</span>。这趟是<strong>反方向</strong>换装，后面单开一节细说。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">organization 是租户树的<strong>根</strong>，所以它的读没有 <span class="mono">actor</span> 参数。换成 agent、message 这些<strong>租户内</strong>的对象，方法签名就会多一个 <span class="mono">actor</span>，ORM 据此把 <span class="mono">apply_access_predicate</span> 焊进查询——形状不变，只多了一道身份。</span></div>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
