@@ -227,5 +227,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>接下来三课会把第二、三层逐一拆开：第 25 课讲 manager 到底怎么写业务，第 26 课讲 ORM 的 CRUD 与多租户隔离，第 27 课讲 DB session 与 <span class="mono">async_session</span> 的来历。三层楼，一层层往下走。</p>
 <p>走完这三课，你就能把一条请求从 HTTP 一路到磁盘的每一步，都说得清清楚楚。</p>
 """,
-    "en": r"""<p>stub</p>""",
+    "en": r"""
+<!--ENMORE-->
+""",
 }
