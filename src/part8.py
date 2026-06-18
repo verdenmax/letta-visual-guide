@@ -382,6 +382,48 @@ LESSON_28 = {
 <p><span class="mono">orm/blocks_agents.py::BlocksAgents</span> — composite PK <span class="mono">(agent_id, block_id, block_label)</span>, attaching one <span class="mono">Block</span> row to many agents.</p>
 <p><span class="mono">services/tool_executor/core_tool_executor.py::CoreToolExecutor.memory_rethink</span> — where sleeptime's memory edit lands.</p>
 </div>
+<h2>The only coordination primitive: one shared Block row</h2>
+<p>How do two agents “confer”? The answer is surprisingly plain: they <strong>point at the same <span class="mono">Block</span> row</strong>. No message queue, no shared in-memory object — just the same record in the database.</p>
+<p>What attaches one Block row to many agents is the association table <span class="mono">orm/blocks_agents.py::BlocksAgents</span>: composite PK <span class="mono">(agent_id, block_id, block_label)</span>. <span class="mono">Block.agents</span> ↔ <span class="mono">Agent.core_memory</span> are linked many-to-many via <span class="mono">secondary="blocks_agents"</span>.</p>
+<p>The composite PK is the triple <span class="mono">(agent_id, block_id, block_label)</span>: the link is recorded by “which agent, which block row, attached as what label.” So one Block row can stably appear under some label in many agents' core memory — sharing the value while each knows which prompt section to compile it into.</p>
+<p>Who wires them together? When <span class="mono">server.py::SyncServer.create_sleeptime_agent_async</span> builds the sleeptime agent, it passes <span class="mono">block_ids=[b.id for b in main_agent.memory.blocks]</span> — <strong>the same Block rows</strong>, not copies.</p>
+<div class="cellgroup"><div class="cg-cap"><b>One Block row on many agents: <span class="mono">blocks_agents.py::BlocksAgents</span> composite PK</b></div><div class="cells"><span class="cell hl">agent_id</span><span class="sep">·</span><span class="cell hl">block_id</span><span class="sep">·</span><span class="cell hl">block_label</span><span class="sep">→</span><span class="cell">Block.version (optimistic lock)</span></div></div>
+<p>Let's draw “two agents sharing one row” — note the middle <span class="mono">Block</span> row has only one <span class="mono">block_id</span>:</p>
+<div class="flow">
+  <div class="node"><div class="nt">Foreground primary agent</div><div class="nd">core_memory</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">blocks_agents</div><div class="nd">(agent_id, block_id, label)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">The same Block row</div><div class="nd">unique block_id · version</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">blocks_agents</div><div class="nd">(agent_id, block_id, label)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Background sleeptime agent</div><div class="nd">core_memory</div></div>
+</div>
+<p>How to read it: the two ends are the two agents' core memory, each linked through <span class="mono">blocks_agents</span> to the same Block row in the middle. Sleeptime writes on the right, the foreground reads on the left — what's shared is that middle row.</p>
+<p>The write detail: sleeptime's edit ultimately lands in <span class="mono">block_manager.update_block_async</span> / <span class="mono">update_memory_if_changed_async</span> — changing only that one Block row's value. The foreground agent's <span class="mono">core_memory</span> points, via <span class="mono">blocks_agents</span>, at this very row, so it sees the update “automatically,” with no sync code at all.</p>
+<p>Which tools does sleeptime use to edit this row? Standard sleeptime is equipped with <span class="mono">constants.py::BASE_SLEEPTIME_TOOLS</span> = <span class="mono">memory_replace / memory_insert / memory_rethink / memory_finish_edits</span>, all implemented in <span class="mono">CoreToolExecutor</span>. Look at <span class="mono">memory_rethink</span>:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">memory_rethink: rewrite that one shared Block row (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">memory_rethink</span>(self, agent_state, label: str, new_memory: str):
+    block = agent_state.memory.<span class="fn">get_block</span>(label)
+    <span class="kw">if</span> block.read_only:                       <span class="cm"># read-only block: refuse the edit</span>
+        <span class="kw">raise</span> <span class="fn">ValueError</span>(<span class="st">&quot;cannot rethink a read-only block&quot;</span>)
+    <span class="cm"># replace the whole content for this label</span>
+    agent_state.memory.<span class="fn">update_block_value</span>(label=label, value=new_memory)
+    <span class="cm"># write only when content changed: lands in that one shared Block (version++)</span>
+    <span class="kw">await</span> agent_manager.<span class="fn">update_memory_if_changed_async</span>(agent_state)
+    <span class="kw">return</span> <span class="kw">None</span>                              <span class="cm"># memory_finish_edits likewise returns None to wrap up</span>
+</pre></div>
+<p>Three steps: refuse read-only blocks → <span class="mono">update_block_value(label, new_memory)</span> replaces the whole block → <span class="mono">update_memory_if_changed_async</span> writes the new value into that one shared Block. <span class="mono">memory_finish_edits</span> just does <span class="mono">return None</span> to wrap up.</p>
+<p>While we're here, distinguish <span class="mono">voice_sleeptime</span>: it's a voice-scenario variant using a different tool set (including <span class="mono">finish_rethinking_memory</span>), not the same as standard sleeptime's <span class="mono">memory_finish_edits</span>. This lesson covers only standard sleeptime; when you hit the voice line, remember it has <strong>its own set</strong>.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">Common-mistake correction: standard sleeptime's “rethink memory” is <span class="mono">memory_rethink</span>, <strong>not</strong> <span class="mono">rethink_memory</span> (legacy) or <span class="mono">finish_rethinking_memory</span> (voice-only). When reading v0.16.8, lock onto those four in <span class="mono">BASE_SLEEPTIME_TOOLS</span>.</span></div>
+<details class="accordion"><summary>Once sleeptime edits memory, <strong>when</strong> does the foreground see it?</summary><div class="acc-body">
+<p>Not instantly. Sleeptime calls <span class="mono">memory_rethink</span> → <span class="mono">update_memory_if_changed_async</span> to write the new value into that one <span class="mono">Block</span> row, and that's all — it doesn't “notify” the foreground.</p>
+<p>The foreground only reads the new value when, on its <strong>next turn rebuilding the system prompt</strong>, it recompiles this Block row into core memory (callback to Lessons 8 and 9: core memory is compiled fresh from blocks each turn).</p>
+<p><span class="mono">Block</span> carries an optimistic-lock <span class="mono">version</span>: concurrent writes detect conflicts by version number, preventing the background and foreground from overwriting each other.</p>
+<p>So what's “shared” is that row's current value, and the visibility boundary is “the next prompt rebuild,” not “an immediate push.”</p>
+</div></details>
+<p>This “share one row” coordination has the benefit of <strong>zero extra machinery</strong>: no message bus, no lock service — just reusing the Block plus optimistic lock you already learned. The cost is <strong>weak real-time</strong>: a peer's update takes effect only at “the next prompt rebuild,” unfit for scenarios needing millisecond-level sync.</p>
 <!--ENMORE-->
 """,
 }
