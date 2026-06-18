@@ -414,7 +414,22 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <tr><td><span class="mono">pgvector</span> / 向量存储</td><td>Postgres 的向量扩展，让 embedding 直接进表、可做近邻检索。</td><td><a href="27-dual-db-and-vectors.html">第 27 课</a></td></tr>
 <tr><td>pydantic 入库自定义列 <span class="mono">custom columns</span></td><td>用自定义 SQLAlchemy 列类型，把 pydantic 对象透明地存进一列。</td><td><a href="27-dual-db-and-vectors.html">第 27 课</a></td></tr>
 </table>
-<!--ZHMORE-->
+<h2>⑦ 进阶专题：跑起来之后</h2>
+<table class="t">
+<tr><th>术语</th><th>一句话</th><th>所在课</th></tr>
+<tr><td>多智能体 <span class="mono">multi-agent</span> / group</td><td>多个 agent 编成一个 group 协作，目前真能跑的是 sleeptime 那一类。</td><td><a href="28-multi-agent-sleeptime.html">第 28 课</a></td></tr>
+<tr><td><span class="mono">sleeptime</span></td><td>趁前台空档，后台 agent 悄悄整理共享记忆块的机制。</td><td><a href="28-multi-agent-sleeptime.html">第 28 课</a></td></tr>
+<tr><td>共享块 <span class="mono">shared block</span></td><td>一个记忆块被多个 agent 同时挂载，改一处、其余 agent 都看见。</td><td><a href="28-multi-agent-sleeptime.html">第 28 课</a></td></tr>
+<tr><td>数据源 <span class="mono">source</span> / RAG</td><td>上传的文档被切块、嵌入、存成可检索的外部知识来源。</td><td><a href="29-data-sources-rag.html">第 29 课</a></td></tr>
+<tr><td><span class="mono">SourcePassage</span> / <span class="mono">ArchivalPassage</span></td><td>同一张向量表上的两种 passage：一种来自文件，一种来自归档记忆。</td><td><a href="29-data-sources-rag.html">第 29 课</a></td></tr>
+<tr><td><span class="mono">FileAgent</span> / <span class="mono">FileBlock</span></td><td>把打开的文件原文只读地塞进上下文的那块（默认最多开 5 个）。</td><td><a href="29-data-sources-rag.html">第 29 课</a></td></tr>
+<tr><td><span class="mono">Run</span></td><td>一次完整的 agent 调用，里面包着若干 step，是计费 / 追踪的顶层单位。</td><td><a href="30-jobs-runs-steps.html">第 30 课</a></td></tr>
+<tr><td><span class="mono">Step</span></td><td>Run 里的一圈：一次 LLM ＋ 一轮工具，对应 steps 表的一行。</td><td><a href="30-jobs-runs-steps.html">第 30 课</a></td></tr>
+<tr><td><span class="mono">Job</span></td><td>和 Run <strong>平级</strong>的后台 / 批任务，不是 Run 的父级——别记反。</td><td><a href="30-jobs-runs-steps.html">第 30 课</a></td></tr>
+<tr><td>可观测性 <span class="mono">observability</span></td><td>steps 行 / OTel span / provider trace 三套账本，各记一面。</td><td><a href="30-jobs-runs-steps.html">第 30 课</a></td></tr>
+<tr><td><span class="mono">SSE</span> 流式</td><td>用 data: {json} 一块块往外推，让前端边生成边看到输出。</td><td><a href="30-jobs-runs-steps.html">第 30 课</a></td></tr>
+</table>
+<p>正文到此为止——三十课正文 ＋ 这张术语表，就是这趟 Letta 源码之旅的全部地图。配套的全量 quizzes、双语 PDF、CI 与 README，都收在仓库的收尾里，随时回来翻查。</p>
 </div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="30-jobs-runs-steps.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">jobs / runs / steps 与可观测性</span><span class="lang-en">Jobs, runs, steps &amp; observability</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
