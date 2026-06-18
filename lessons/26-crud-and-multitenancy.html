@@ -345,6 +345,8 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>这不是某个模型的个性，而是<strong>所有模型的公共底座</strong>。下面先把"secure by default"画成一张总流程，再逐段拆开。</p>
 <p>也先点破一处反直觉：<span class="mono">actor</span> 缺席时，这道门禁<strong>不硬失败</strong>，而是打一条响亮的 <span class="mono">SECURITY</span> 警告、无范围地照跑——为什么这么设计，本课后半专门讲。</p>
 <p>再把镜头摆正：第 24 课看"整栋三层楼"，第 25 课看"二楼柜台"，这一课只盯<strong>三楼那道门禁</strong>——一条查询从拼装到落库，每一步加了什么过滤。</p>
+<p>也提醒一句粒度：本课所有代码都标了"简化 / 节选"。真实方法常带分页、过滤、批量等额外参数，但"焊隔离、盖审计、软删"这三处骨架雷打不动——我们要的正是骨架。</p>
+<p>还有个词先说清：本课的"租户"＝organization（org）。一个 org 下可以有多个 user，他们默认共享同一批行；真正按 user 私有的对象极少，下文会一一点名。</p>
 <h2>一条查询的安检流水线（secure by default）</h2>
 <p>把"默认安全"摊开成一条流水线，你会看到：身份在<strong>最外层</strong>被认出来，隔离在<strong>最里层</strong>被焊进 SQL，中间几棒只负责把 <span class="mono">actor</span> 老实串下去。</p>
 <div class="vflow">
@@ -386,6 +388,8 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>看这张表，记住两条主线。其一：访问控制只在<strong>读路</strong>生效（且"有 <span class="mono">actor</span> 才走"）；写、删并不各自再套一遍 <span class="mono">WHERE</span>，而是骑在读时已建立的边界上。</p>
 <p>其二：唯一在"删"这侧也强制租户的，是 <span class="mono">bulk_hard_delete_async</span>——它在 SQL 层把 predicate 套进 <span class="mono">DELETE</span>。这是个重要例外，软删那节再说。</p>
 <p>还有个细节值得记：读路四个方法都收同一组参数——<span class="mono">actor</span>、<span class="mono">access=["read"]</span>、<span class="mono">access_type=ORGANIZATION</span>、<span class="mono">check_is_deleted=False</span>。参数一致，行为就一致。</p>
+<p>为什么值得做成"泛型"？因为这套动词对每个模型几乎一字不差。若让约 40 个模型各写一遍 read / create，隔离与审计就有约 40 处可能写歪；收进基类，等于把"对的写法"只维护一份。</p>
+<p>这也是读这层代码的省力法：认准 <span class="mono">SqlalchemyBase</span> 上的动词，再看具体模型，你只需关心它<strong>覆盖了哪一个</strong>——比如 agent 这种带关系的会重写读路，多数模型则原样继承。</p>
 <div class="card detail"><div class="tag">🔬 落到代码</div>
 <p><span class="mono">orm/sqlalchemy_base.py::SqlalchemyBase</span>——抽象基类，<span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">create_async</span> / <span class="mono">delete_async</span> / <span class="mono">apply_access_predicate</span> 都在这。</p>
 <p><span class="mono">SqlalchemyBase.apply_access_predicate</span> + <span class="mono">AccessType(str, Enum){ORGANIZATION, USER}</span>——行级过滤的注入点与两种范围。</p>
@@ -408,6 +412,8 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>两个分支，对应两种范围。<span class="mono">ORGANIZATION</span> 是默认：按 <span class="mono">actor.organization_id</span> 限定，同 org 的所有用户<strong>共享</strong>同一批行（Block、Passage、Agent、Tool… 都走这条）。</p>
 <p><span class="mono">USER</span> 范围<strong>只有 jobs / runs</strong> 两类用：按 <span class="mono">actor.id</span> 限定，做成用户私有。<span class="mono">organization_id</span> 与 <span class="mono">user_id</span> 这两列，分别由 <span class="mono">OrganizationMixin</span>、<span class="mono">UserMixin</span> 混进模型。</p>
 <p>唯一会抛 <span class="mono">ValueError</span> 的，是 actor 连 org/id 这种 accessor 都没有——那是<strong>配置错</strong>，而非越权。越权长什么样？下面 <span class="mono">read_async</span> 里见分晓。</p>
+<p>也别小看这短短两行的覆盖面：Block、Passage、Agent、Tool 等都带 <span class="mono">OrganizationMixin</span>，它们的每次读都从这<strong>同一个分支</strong>穿过。你第 08、10、11 课读过的记忆隔离，底层就是这里这一句 <span class="mono">where</span>。</p>
+<p>再点一个易混：predicate 按 <span class="mono">actor.organization_id</span> 过滤，而<strong>不是</strong>按 <span class="mono">actor.id</span>——所以同一个 org 下换个 user，看到的行完全一样。真正按用户私有的，只有 jobs / runs 两类。</p>
 <p>光有 predicate 还不够，得看它在 <span class="mono">read_async</span> 里被"谁、何时"调。把读路骨架展开，统共四步：</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">read_async：拼查询 → 焊隔离 → 可选过滤软删 → 取一行（简化）</span></div>
 <pre><span class="nb">@classmethod</span>
@@ -455,6 +461,8 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>三者里只有 <span class="mono">bulk_hard_delete_async</span> 在删除时也套了 predicate；其余两种删，安全边界都<strong>"骑"在它们之前那次读上</strong>：你得先 <span class="mono">read_async</span> 拿到这行（已被隔离），才删得了它。</p>
 <p>默认走软删。实战里 <span class="mono">services/provider_manager.py</span> 删 provider 时调软删，读 / 列时再带 <span class="mono">check_is_deleted=True</span> 把软删行挡掉——删与读两侧，过滤是<strong>分开 opt-in</strong> 的。</p>
 <p>这就解释了那条最反直觉的默认：读路 <span class="mono">check_is_deleted</span> 默认 <span class="mono">False</span>，<strong>软删行默认仍被返回</strong>。想让它"看起来真的删了"，读时得显式传 <span class="mono">check_is_deleted=True</span>。</p>
+<p>软删买到的，是一份"后悔药"：误删能恢复、历史能回溯、级联清理能慢慢来。代价则是读路要<strong>时时记得过滤</strong>，否则"已删"的行会悄悄混进结果——这正是上面那条坑的来源。</p>
+<p>还有个工程上的好处：软删让"删除"变成一次普通的 <span class="mono">update</span>，省去了级联外键的即时清理；真要回收空间，再用 <span class="mono">hard_delete</span> 系列择机物理删。读写路径因此都更简单。</p>
 <details class="accordion"><summary>软删为什么"还在库里"？什么时候才过滤掉？</summary><div class="acc-body">
 <p>软删只翻一个布尔位 <span class="mono">is_deleted=True</span>，行的字节一个没动，外键、关联照旧——所以<strong>历史、审计、恢复</strong>都还在手上。</p>
 <p>过滤是<strong>读侧的 opt-in</strong>：<span class="mono">read / list</span> 默认 <span class="mono">check_is_deleted=False</span>，不追加 <span class="mono">is_deleted==False</span>，于是软删行照样查得到。</p>
@@ -467,13 +475,73 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p><span class="mono">created_at</span> / <span class="mono">updated_at</span> 由 <strong>DB 侧默认值</strong>盖：<span class="mono">created_at</span> 用 <span class="mono">server_default=func.now()</span>，<span class="mono">updated_at</span> 再加 <span class="mono">server_onupdate</span>，每次写自动刷新。</p>
 <p>两个 <span class="mono">*_by_id</span> 才是"谁"：注意<strong>物理列名带下划线</strong>——<span class="mono">_created_by_id</span>、<span class="mono">_last_updated_by_id</span>；对外属性去掉下划线，setter 还断言 id 前缀＝<span class="mono">"user"</span>。</p>
 <p><span class="mono">created_by_id</span> 只在<strong>首次写</strong>时设、此后不变；<span class="mono">last_updated_by_id</span> 每次写都更新。于是一行的"出身"与"最近经手人"分得清清楚楚。</p>
+<p>把审计和隔离摆在一起看更有意思：隔离决定"谁<strong>能看到</strong>这行"，审计记录"谁<strong>动过</strong>这行"。同一个 actor，一边当过滤条件、一边当签名落款——身份在这层被用到了两次。</p>
+<p>时间字段交给 DB 默认值还有一层好处：<span class="mono">created_at</span> / <span class="mono">updated_at</span> 由 <span class="mono">server_default</span> / <span class="mono">server_onupdate</span> 在库侧生成，不依赖应用时钟，多实例并发写也不会各记各的。</p>
 <details class="accordion"><summary>审计字段是怎么盖上去的？为什么列名带下划线？</summary><div class="acc-body">
 <p>不是 SQLAlchemy 的事件监听，而是 CRUD 里<strong>显式调</strong> <span class="mono">_set_created_and_updated_by_fields(actor_id)</span> 盖的——create / update 路径上手动点一下。</p>
 <p>关键前提：<strong>只有传了 actor 才盖</strong>。没 actor 的写（少见的系统内部路径）就不落"谁"，只有 DB 侧的时间默认值照常生效。</p>
 <p>物理列叫 <span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>（带下划线），是为了和对外属性解耦：属性 setter 会断言传入 id 以 <span class="mono">"user"</span> 开头，挡住乱填。</p>
 <p><span class="mono">created_by_id</span> 首次设定后不再变，<span class="mono">last_updated_by_id</span> 每次写刷新——一个记"谁生的"，一个记"谁最后碰的"。</p>
 </div></details>
-<!--ZHMORE-->
+<h2>actor 从哪来：secure by default 的入口</h2>
+<p>隔离的全部前提，是那个 <span class="mono">actor</span>。它从哪来？答案朴素得意外：一个 <strong>HTTP header</strong>。</p>
+<p><span class="mono">rest_api/dependencies.py::get_headers</span> 用 <span class="mono">Header(None, alias="user_id")</span> 取 <span class="mono">user_id</span> 头，校验它形如 <span class="mono">user-&lt;uuid4&gt;</span>——<strong>只校格式，不碰 DB</strong>。</p>
+<p>真正把这个 id 换成 <span class="mono">User</span> 的，是 <span class="mono">get_actor_or_default_async</span>：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/user_manager.py</span><span class="ln">get_actor_or_default_async：把 header 里的 id 解析成 actor（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">get_actor_or_default_async</span>(self, actor_id=<span class="kw">None</span>):
+    <span class="kw">if</span> settings.no_default_actor <span class="kw">and</span> actor_id <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)               <span class="cm"># 安全模式：必须显式带身份</span>
+    actor_id = actor_id <span class="kw">or</span> DEFAULT_USER_ID     <span class="cm"># 否则回退到默认 user</span>
+    <span class="kw">try</span>:
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">get_user_by_id_async</span>(actor_id)   <span class="cm"># PydanticUser（带 org）</span>
+    <span class="kw">except</span> NoResultFound:
+        <span class="kw">return</span> <span class="kw">await</span> self.<span class="fn">create_default_user_async</span>()    <span class="cm"># 首次启动：懒建默认 user/org</span>
+</pre></div>
+<p>三步：<span class="mono">no_default_actor</span> 守卫挡住"裸奔"请求；否则把空 id 回退成 <span class="mono">DEFAULT_USER_ID</span>；最后查这个 user，查不到就懒建一个默认 user（带 <span class="mono">DEFAULT_ORG_ID</span>）。</p>
+<p>返回的是 <span class="mono">PydanticUser</span>，身上带着 <span class="mono">organization_id</span>——正是 <span class="mono">apply_access_predicate</span> 用来限定 org 的那个字段。身份链到这里闭合：<strong>header → actor → org → 每条查询的 WHERE</strong>。</p>
+<p>注意 <span class="mono">get_headers</span> "不碰 DB" 是有意为之：它只做廉价的格式校验，把"这个 user 到底存不存在"留给真正用到它的那次查询。<strong>鉴权与取数解耦</strong>，入口因此极轻。</p>
+<p>这也划出了 secure by default 的边界：身份校验只保证"格式对"，真正的隔离发生在底层那句 <span class="mono">where</span>。两道关卡，一轻一重，缺一不可。</p>
+<p>留意这个回退：不开 <span class="mono">no_default_actor</span> 时，缺 <span class="mono">user_id</span> 的请求会落到<strong>共享的 default 租户</strong>。开发顺手，但生产要当心——别让多个真实租户共用了默认 org。</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">secure by default 的 "default" 其实有两层意思：<strong>默认隔离</strong>（每查必套 predicate），和<strong>缺身份时的默认 actor</strong>。前者永远在；后者可被 <span class="mono">no_default_actor</span> 关掉，以强制每个请求都显式带身份。</span></div>
+<details class="accordion"><summary>服务器口令 vs 租户隔离——这俩是一回事吗？</summary><div class="acc-body">
+<p>不是，<strong>完全正交</strong>。服务器口令由 <span class="mono">middleware/check_password.py::CheckPasswordMiddleware</span> 处理，仅在 <span class="mono">LETTA_SERVER_SECURE=true</span>（或 <span class="mono">--secure</span>）时才挂载。</p>
+<p>它认的是<strong>单一共享密钥</strong>：<span class="mono">X-BARE-PASSWORD: password &lt;pw&gt;</span> 或 <span class="mono">Authorization: Bearer &lt;pw&gt;</span>，对就放行、错就 <span class="mono">401</span>，健康探针豁免。</p>
+<p>关键：这道闸<strong>与租户无关</strong>——它只管"能不能进这台服务器"；进来之后你是哪个 org、看得到哪一格，全由 <span class="mono">actor</span> 决定。</p>
+<p>所以两层叠着用：口令是<strong>大门门禁</strong>（整服务器级），actor 隔离是<strong>柜内分格</strong>（租户级）。一个把外人挡在楼外，一个把同楼的部门彼此隔开。</p>
+</div></details>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>多租户隔离的反转：它不在 handler 里"记得加 <span class="mono">WHERE</span>"，而是<strong>焊在最低层的查询构造器里</strong>。约 40 个模型共用一个 <span class="mono">SqlalchemyBase</span>，"按调用者 org 限定每次读"只写一次，自动套在 <span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">size_async</span> / <span class="mono">bulk_hard_delete_async</span> 上。</p>
+<p>于是新功能作者写<strong>零租户 SQL</strong>——只要把 <span class="mono">actor</span> 串下去（"路由 → manager"让串 actor 成了阻力最小的写法），跨租户泄漏在结构上就很难发生：没有任何一处 per-endpoint 的 <span class="mono">WHERE</span> 可被遗忘。</p>
+<p>更耐人寻味的取舍：actor 缺失时 base <strong>不硬失败</strong>，而是打一条 <span class="mono">SECURITY: ...bypasses organization filtering</span> 警告照跑——因为 Letta 有合法的、系统内部无 user 的查询。于是它选了<strong>中央强制 + 响亮日志</strong>，而非脆弱的硬失败。</p>
+<p>再叠两层同长在这个 base 上的可恢复性：软删让删除可逆（<span class="mono">delete_async</span> 只翻 <span class="mono">is_deleted</span>），审计四件套让每行天生能回答"谁、何时"。于是<strong>多租户 + 可恢复 + 可审计，全是一个抽象类的属性</strong>。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>predicate 虽在 base，却 <strong>gated on <span class="mono">if actor:</span></strong>：<span class="mono">actor=None</span> 时只记 <span class="mono">SECURITY</span> 警告、<strong>不拦</strong>，无范围照跑。别以为"焊在底层"就一定拦得住。</p>
+<p><strong>软删行默认仍被返回</strong>：<span class="mono">check_is_deleted</span> 默认 <span class="mono">False</span>，是 opt-in。以为 <span class="mono">delete_async</span> 后就查不到，是最常见的坑。</p>
+<p>默认是 <strong>org 级</strong>（同 org 的用户共享行）；只有 <span class="mono">jobs / runs</span> 才用 <strong>user 级</strong>私有。别把 Block/Agent 当成用户私有的。</p>
+<p><span class="mono">access</span>（read/write/admin）<strong>目前是 no-op</strong>（开头 <span class="mono">del access</span>）：传它不改变任何结果，只是给将来留座。</p>
+<p>不开 <span class="mono">no_default_actor</span> 时，缺 <span class="mono">user_id</span> 的请求会落到<strong>共享 default 租户</strong>——开发方便，生产务必显式带身份或开守卫。</p>
+</div>
+<h2>回扣与铺垫：一个基类的复利</h2>
+<p>把这一课收个尾。多租户、可恢复、可审计这三样，之所以能"免费"地遍布全库，是因为它们都长在同一个 <span class="mono">SqlalchemyBase</span> 上——<strong>继承一次，复利三份</strong>。</p>
+<p>回扣第 25 课：manager 那套统一流水线里，第 3、4 步调的正是这套泛型 CRUD。manager 负责开 session、串 actor，CRUD 负责焊隔离、盖审计——两层各司其职。</p>
+<p>回扣第 24 课：<span class="mono">actor</span> 的源头在路由入口那个 <span class="mono">user_id</span> header。三层楼从上到下，身份一路下沉，到这层才被翻译成一句 <span class="mono">WHERE</span>。</p>
+<p>回扣第 08 / 10 / 11 课：你早见过的 Block、Passage、记忆三件套，全带 <span class="mono">OrganizationMixin</span>、全走这条 <span class="mono">apply_access_predicate</span>——同一道门禁，这次隔离的是记忆。</p>
+<p>铺垫第 27 课：这些被隔离、被审计的行，最终落在哪个库、靠哪个引擎、怎么抹平方言差异？下一课推开最底层那扇门。</p>
+<p>一句话串起第七部分的后三课：第 25 课"谁开事务"、第 26 课"每行怎么被隔离与记账"、第 27 课"这些行落在哪"。三课合起来，才凑成完整的服务端持久化。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">一个抽象基类同时给出隔离、软删、审计——这正是"继承一次、复利三份"。读这套代码时，先认 <span class="mono">SqlalchemyBase</span>，再看各模型，剩下的就只是"多了哪列、改了哪个动词"。</span></div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><strong>secure by default</strong>：读路只要传了 <span class="mono">actor</span>，<span class="mono">apply_access_predicate</span> 自动追加 <span class="mono">WHERE org==actor.org</span>（USER 范围仅 jobs/runs）；越权＝查不到（<span class="mono">NoResultFound</span> / <span class="mono">[]</span>），非报错。</li>
+<li>一个抽象基类 <span class="mono">SqlalchemyBase</span> 给约 40 个模型一套泛型 async CRUD：<strong>读控访问、写盖审计、删分软硬</strong>；隔离只写一次，焊在最低层。</li>
+<li>软删默认<strong>可逆</strong>：<span class="mono">delete_async</span> 只翻 <span class="mono">is_deleted</span>；读侧过滤是 opt-in（<span class="mono">check_is_deleted</span> 默认 <span class="mono">False</span>），所以软删行默认仍被返回。</li>
+<li>审计五件套由 CRUD 显式 <span class="mono">_set_created_and_updated_by_fields</span> 盖，<strong>且只有传 actor 才盖</strong>；物理列带下划线（<span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>）。</li>
+<li>关键 gate：predicate <strong>gated on <span class="mono">if actor:</span></strong>，<span class="mono">actor=None</span> 只警告不拦；<span class="mono">access</span> 目前 no-op；服务器口令与租户隔离<strong>正交</strong>。</li>
+</ul>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">一句话收束：<span class="mono">SqlalchemyBase</span> ＝<strong>"secure by default 的底座"</strong>——每条查询自动按 org/user 限定、删除默认可逆、每行自带"谁/何时"。多租户、可恢复、可审计，全是一个抽象类的属性。</span></div>
+<p>把这条肌肉记忆带走：看到一个新模型，先问它<strong>继承了谁</strong>——只要根上是 <span class="mono">SqlalchemyBase</span>，隔离、软删、审计就都默认到位，你要找的只是它"多了哪一列"。</p>
+<p>三楼这道门禁看透了。下一课，我们走到楼底的引擎房，看这些行究竟落在哪个库、靠什么把 SQLite 与 Postgres 的差异抹平。</p>
 </div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="25-service-managers.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">服务层 Managers</span><span class="lang-en">The service-layer Managers</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
