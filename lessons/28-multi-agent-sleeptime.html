@@ -354,6 +354,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   </div>
 </div>
 <div class="note info"><span class="ni">💡</span><span class="nx">底注：经典群管理器（<span class="mono">round_robin / supervisor / dynamic</span>）只停在 <strong>schema 级</strong>——枚举、ORM、类骨架都在，但<strong>没接线</strong>，无法经 live API 跑起来。本课只认那两条活路。</span></div>
+<p>开讲前先校准期待：若你冲着"像编排框架那样的多智能体调度"而来，v0.16.8 会让你略感意外——它给的不是一个编排层，而是<strong>两条更底层的原语</strong>。理解了这两条，你反而能在其上自己搭出编排。</p>
 <h2>先数清楚：v0.16.8 里"活着"的多智能体有几条</h2>
 <p>很多人一上来就找"群聊调度器"——以为有个对象负责排队、让 A、B、C 轮流说话。v0.16.8 里这个对象<strong>基本是睡着的</strong>。</p>
 <p>群管理器的执行入口 <span class="mono">groups/helpers.py::load_multi_agent</span> 在整个 live 路径里<strong>从未被调用</strong>；<span class="mono">/v1/groups</span> 路由整段 <span class="mono">deprecated=True</span> 且<strong>没有发消息端点</strong>；连 <span class="mono">SupervisorMultiAgent.step</span> 都<strong>整段被注释掉</strong>。</p>
@@ -368,7 +369,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <tr><td class="mono">swarm</td><td>OpenAI swarm 式交接</td><td>未实现</td></tr>
 </table>
 <p>记住这张表的主线：<strong>真正能经 live API 跑起来的群行为，只有 <span class="mono">sleeptime</span> 那一行</strong>。其余几行是历史遗留或半成品，看代码时别被它们的存在骗了。</p>
+<p>为什么留着这些睡着的枚举？因为它们是<strong>设计意图的化石</strong>：曾设想过 round_robin/supervisor 式编排，schema 也铺好了，但重心转向了"单 agent ＋ sleeptime 记忆"，执行层便一直没接。读它们能看懂方向，但别当能用的功能。</p>
 <p>那"agent 直接调 agent"（路径一）呢？它<strong>根本不在这张表里</strong>——它不是某种 group manager，而是一组<strong>工具</strong>，下一节专讲。</p>
+<p>所以脑子里要分两层：<strong>group / ManagerType</strong> 是"一群 agent 的配置对象"，目前只有 sleeptime 那类真在用；而 <strong>send_message 工具</strong>是"agent 手里的一把锤子"，谁都能拿起来敲另一个 agent，跟 group 毫无关系。</p>
 <div class="card analogy"><div class="tag">📝 生活类比</div>
 <p>把团队想成一家<strong>小店</strong>，柜台后挂着一块<strong>共享留言板</strong>（共享 <span class="mono">Block</span>）。</p>
 <p>白班店员（前台 agent）一整天接客，随手在留言板上记几笔潦草的便条。</p>
@@ -398,6 +401,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="node hl"><div class="nt">回复回灌 A</div><div class="nd">取 B 的 assistant 消息</div></div>
 </div>
 <p>注意发送方身份是<strong>自动注入</strong>的：B 收到的消息会被打上 <span class="mono">[Incoming message from agent with ID '...']</span> 前缀，所以 B 知道"这条是另一个 agent 发来的"。</p>
+<p>B 跑完后，A 怎么"听见"回复？工具把 <span class="mono">response.messages</span> 里 B 的 assistant 消息抽出来，作为这次工具调用的<strong>返回值</strong>交回 A 的 loop——于是在 A 看来，"问另一个 agent"和"调一个普通工具拿到字符串"没有区别。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/multi_agent.py</span><span class="ln">send_message_to_agent_and_wait_for_reply：经 REST 重入、跑 B 的 loop（简化）</span></div>
 <pre><span class="kw">def</span> <span class="fn">send_message_to_agent_and_wait_for_reply</span>(self, message: str, other_agent_id: str) -&gt; str:
     <span class="cm"># 工具在沙箱里执行：建一个面向本服务器的客户端</span>
@@ -410,12 +414,16 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <span class="cm"># 同步阻塞：把 B 的 assistant 回复抽出来，回灌给调用方 A</span>
     <span class="kw">return</span> <span class="fn">extract_assistant_reply</span>(response.messages)
 </pre></div>
+<p>为什么要绕一圈 REST，而不在进程内直接调 B？因为工具在<strong>沙箱</strong>里跑（回扣第 20 课），它能拿到的只是一个普通客户端句柄；于是 A 调 B，和一个外部脚本调 B <strong>走同一条公开 API</strong>，隔离与鉴权一视同仁。</p>
+<p>这也解释了为什么 B 跑的是"自己<strong>完整的</strong> loop"：服务器收到 <span class="mono">messages.create(B)</span> 就照常 <span class="mono">AgentLoop.load(B).step</span>，B 该调工具调工具、该写记忆写记忆，A 只在最后拿回它的 assistant 回复。</p>
 <details class="accordion"><summary><span class="mono">send_message_to_agent_*</span> 的三个变体差在哪？</summary><div class="acc-body">
 <p><strong>① <span class="mono">..._and_wait_for_reply(message, other_agent_id)</span></strong>：<strong>同步阻塞</strong>、双向——发给一个 agent，<strong>等</strong>它把回复写回来再继续。最常用。</p>
 <p><strong>② <span class="mono">..._to_agents_matching_tags(message, match_all, match_some)</span></strong>：<strong>同步广播</strong>——按标签筛出一批 agent，<strong>逐个</strong>发送并等待。一对多。</p>
 <p><strong>③ <span class="mono">..._to_agent_async(message, other_agent_id)</span></strong>：<strong>异步单向</strong>——发了就走、不等回复；注意它在<strong>生产环境被禁用</strong>。</p>
 <p>三者共用同一机制（建 client → <span class="mono">messages.create</span> → 跑对方 loop），区别只在<strong>等不等回复</strong>、<strong>一个还是一批</strong>。</p>
 </div></details>
+<p>标签广播（<span class="mono">..._matching_tags</span>）值得单独说一句：它按 <span class="mono">match_all</span> / <span class="mono">match_some</span> 在库里筛出一批 agent，再<strong>逐个 wait</strong>。所以它本质是"循环版的 wait_for_reply"，不是真正并行群发——一对多，但仍同步串行。</p>
+<p>还有个工程提醒：<span class="mono">..._and_wait_for_reply</span> 会让 A 这一步<strong>真的卡住</strong>，直到 B 整轮跑完。若 B 又调 C、C 再调 D，阻塞会一层层叠加——设计 agent 协作时，别让同步等待链拉太长。</p>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">别把这条路径和 sleeptime 搞混：<span class="mono">..._and_wait_for_reply</span> 是<strong>同步阻塞</strong>——A 会卡住等 B 跑完。后面 sleeptime 恰恰相反，是<strong>非阻塞</strong>后台任务。两种"多 agent"在阻塞语义上完全相反。</span></div>
 <h2>第二条活路：sleeptime（后台 agent 悄悄改记忆）</h2>
 <p>sleeptime 才是 v0.16.8 唯一<strong>真正活着</strong>的"群"行为。接线点在 <span class="mono">agents/agent_loop.py::AgentLoop.load</span>：当 agent 是 <span class="mono">letta_v1_agent / sleeptime_agent</span>、开了 <span class="mono">enable_sleeptime</span>、且挂在一个 group 上，就交给 <span class="mono">SleeptimeMultiAgentV4</span>。</p>
@@ -440,6 +448,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>逐句读：<span class="mono">bump_turns_counter_async</span> 把计数器推进 <span class="mono">(c+1) % frequency</span>；只有<strong>整除（<span class="mono">% frequency == 0</span>）</strong>才命中。</p>
 <p>命中后，对 <span class="mono">group.agent_ids</span> 里的<strong>每个后台 sleeptime agent</strong> 做 <span class="mono">_issue_background_task</span>：建一个 <span class="mono">Run</span>，再 <span class="mono">safe_create_task(_participant_agent_step)</span>——一个<strong>非阻塞的 asyncio 后台任务</strong>。前台<strong>不等</strong>它。</p>
 <p>那后台任务做什么？<span class="mono">_participant_agent_step</span> 把 <span class="mono">prior + response_messages</span> 拼成 transcript，包进一段 <span class="mono">&lt;system-reminder&gt;</span>——"你是后台 sleeptime agent，职责是记忆管理，用记忆工具更新相关 block"，再以<strong>完整的 <span class="mono">LettaAgentV3</span></strong> 跑 <span class="mono">step</span>。</p>
+<p>注意它喂给后台的是 <span class="mono">prior + response_messages</span>——也就是<strong>前台刚发生的这轮对话</strong>。后台 agent 不是凭空整理，而是基于"刚说了什么"来决定哪些该写进长期记忆块。它读的是对话，改的是记忆。</p>
+<p>这里有个细节别漏：<span class="mono">_issue_background_task</span> 会先建一个 <span class="mono">Run</span> 记录，再 <span class="mono">safe_create_task</span>。<span class="mono">Run</span> 让这次后台整理<strong>可观测、可追踪</strong>——不是"开个任务就忘"，而是和前台一样留下一条可查的执行记录。</p>
+<p>那段 <span class="mono">&lt;system-reminder&gt;</span> 也是关键：它把 sleeptime agent 的<strong>身份与职责</strong>临时注入——"你是后台记忆管理者，请用记忆工具更新相关 block"。同一个 loop，靠这段提示语 ＋ <span class="mono">sleeptime_memory_persona</span>，就被"切换"成记忆整理器。</p>
 <div class="vflow">
   <div class="step"><div class="num">1</div><div class="sc"><h4>User → 前台 step</h4><p>用户消息进来，<span class="mono">SleeptimeMultiAgentV4.step</span> 先 <span class="mono">await super().step()</span> 跑前台主 agent。</p></div></div>
   <div class="step"><div class="num">2</div><div class="sc"><h4>bump_turns_counter</h4><p>计数器推进 <span class="mono">(c+1) % frequency</span>；问一句：<span class="mono">% frequency == 0</span> 吗？</p></div></div>
@@ -454,6 +465,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>玄机在初值：<span class="mono">GroupManager.create_group_async</span> 给 sleeptime 把 <span class="mono">turns_counter</span> 设成 <strong><span class="mono">-1</span></strong>。第一回合 <span class="mono">(-1+1)=0</span>，<span class="mono">0 % 5 == 0</span> → <strong>首回合就命中</strong>。</p>
 <p>于是新建的 sleeptime agent 不必干等 5 回合，第一轮对话后台就开始整理记忆了。</p>
 </div></details>
+<p>"sleeptime"这名字也有讲究：它对应人睡觉时大脑的"记忆巩固"——把白天的短期经历整理进长期记忆。Letta 把这隐喻落成工程：前台对话像"清醒"，后台整理像"睡眠"，两者错峰进行、互不抢占。</p>
 <div class="note tip"><span class="ni">🧠</span><span class="nx">记住这条因果链：<strong>sleeptime ＝ 同一个 <span class="mono">LettaAgentV3</span> loop ＋ 一行共享记忆 ＋ 一个回合计数器</strong>。没有"特殊的记忆整理子系统"——只是把普通 agent 丢进一段 transcript、给它记忆工具、告诉它"你的活儿是整理记忆"。</span></div>
 <div class="card detail"><div class="tag">🔬 落到代码</div>
 <p><span class="mono">functions/function_sets/multi_agent.py</span>——三个 <span class="mono">send_message_to_agent_*</span> 工具，<span class="mono">LETTA_MULTI_AGENT_CORE</span>，沙箱执行。</p>
@@ -464,6 +476,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <h2>唯一的协调基元：共享的一行 Block</h2>
 <p>两个 agent 怎么"商量"？答案朴素到让人意外：它们<strong>指向同一行 <span class="mono">Block</span></strong>。没有消息队列、没有共享内存对象，就是数据库里<strong>同一条记录</strong>。</p>
 <p>让一行 Block 挂到多个 agent 的，是关联表 <span class="mono">orm/blocks_agents.py::BlocksAgents</span>：复合主键 <span class="mono">(agent_id, block_id, block_label)</span>。<span class="mono">Block.agents</span> ↔ <span class="mono">Agent.core_memory</span> 经 <span class="mono">secondary="blocks_agents"</span> 多对多相连。</p>
+<p>复合主键是 <span class="mono">(agent_id, block_id, block_label)</span> 三元组：关联按"哪个 agent、哪行 block、挂成什么 label"登记。于是同一行 Block 能稳定地以某个 label 出现在多个 agent 的 core memory 里，既共享值、又各自知道该把它编进 prompt 的哪一段。</p>
 <p>谁把它们接到一起？<span class="mono">server.py::SyncServer.create_sleeptime_agent_async</span> 建 sleeptime agent 时，传 <span class="mono">block_ids=[b.id for b in main_agent.memory.blocks]</span>——<strong>同一批 Block 行</strong>，不是副本。</p>
 <div class="cellgroup"><div class="cg-cap"><b>一行 Block 挂多个 agent：<span class="mono">blocks_agents.py::BlocksAgents</span> 复合主键</b></div><div class="cells"><span class="cell hl">agent_id</span><span class="sep">·</span><span class="cell hl">block_id</span><span class="sep">·</span><span class="cell hl">block_label</span><span class="sep">→</span><span class="cell">Block.version（乐观锁）</span></div></div>
 <p>把"两个 agent 共享同一行"画出来——注意中间那行 <span class="mono">Block</span> 只有一个 <span class="mono">block_id</span>：</p>
@@ -479,6 +492,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="node"><div class="nt">后台 sleeptime agent</div><div class="nd">core_memory</div></div>
 </div>
 <p>读法：两端是两个 agent 的 core memory，中间经 <span class="mono">blocks_agents</span> 各自连到<strong>同一行 Block</strong>。sleeptime 在右边写，前台在左边读——共享的就是中间那一行。</p>
+<p>写库的细节：sleeptime 的改写最终落到 <span class="mono">block_manager.update_block_async</span> / <span class="mono">update_memory_if_changed_async</span>——只改<strong>那一行</strong> Block 的值。前台 agent 的 <span class="mono">core_memory</span> 经 <span class="mono">blocks_agents</span> 指的正是这同一行，于是它"自动"看到更新，无需任何同步代码。</p>
 <p>sleeptime 用什么工具改这行？标准 sleeptime 配 <span class="mono">constants.py::BASE_SLEEPTIME_TOOLS</span> ＝ <span class="mono">memory_replace / memory_insert / memory_rethink / memory_finish_edits</span>，实现都在 <span class="mono">CoreToolExecutor</span>。看其中的 <span class="mono">memory_rethink</span>：</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">memory_rethink：改写共享 Block 那一行（简化）</span></div>
 <pre><span class="kw">async def</span> <span class="fn">memory_rethink</span>(self, agent_state, label: str, new_memory: str):
@@ -492,6 +506,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <span class="kw">return</span> <span class="kw">None</span>                              <span class="cm"># memory_finish_edits 同样返回 None，收尾</span>
 </pre></div>
 <p>三步：拒只读块 → <span class="mono">update_block_value(label, new_memory)</span> 整块替换 → <span class="mono">update_memory_if_changed_async</span> 把新值写进那一行共享 Block。<span class="mono">memory_finish_edits</span> 则只 <span class="mono">return None</span> 收尾。</p>
+<p>顺带分清 <span class="mono">voice_sleeptime</span>：它是语音场景的变体，走另一套工具（含 <span class="mono">finish_rethinking_memory</span>），和标准 sleeptime 的 <span class="mono">memory_finish_edits</span> 不是一回事。本课只讲标准 sleeptime，遇到 voice 那条线记得它<strong>另有一套</strong>。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">易错纠正：标准 sleeptime 的"重想记忆"是 <span class="mono">memory_rethink</span>，<strong>不是</strong> <span class="mono">rethink_memory</span>（legacy）或 <span class="mono">finish_rethinking_memory</span>（voice 专用）。看 v0.16.8 时认准 <span class="mono">BASE_SLEEPTIME_TOOLS</span> 那四个。</span></div>
 <details class="accordion"><summary>sleeptime 改了记忆，前台<strong>什么时候</strong>才看得见？</summary><div class="acc-body">
 <p>不是即时的。sleeptime 调 <span class="mono">memory_rethink</span> → <span class="mono">update_memory_if_changed_async</span> 把新值写进那一行 <span class="mono">Block</span>，仅此而已——它没去"通知"前台。</p>
@@ -499,10 +514,12 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p><span class="mono">Block</span> 带乐观锁 <span class="mono">version</span>：并发写按版本号检测冲突，避免后台与前台互相覆盖。</p>
 <p>所以"共享"共享的是<strong>那一行的当前值</strong>，可见性边界是"下次重建 prompt"，不是"立刻推送"。</p>
 </div></details>
+<p>这种"共享一行"的协调，好处是<strong>零额外机制</strong>：不需要消息总线、不需要锁服务，复用的就是你早学过的 Block ＋ 乐观锁。代价则是<strong>弱实时</strong>：peer 的更新要等"下次重建 prompt"才生效，不适合需要毫秒级同步的场景。</p>
 <h2>一处最反直觉的接线：谁才是"管理者"？</h2>
 <p>sleeptime 的 group 里有两个字段最容易认反。<span class="mono">manager_agent_id</span> 听着像"协调者"，其实是<strong>前台主 agent</strong>；<span class="mono">group.agent_ids</span> 听着像"普通成员"，其实是<strong>后台编辑者</strong>（那些 sleeptime agents）。</p>
 <p>换句话说：跑用户对话的"主角"被记成 <span class="mono">manager</span>，真正干"整理记忆"脏活的后台 agent 反而躺在 <span class="mono">agent_ids</span> 里。命名与直觉正好相反，读 <span class="mono">orm/group.py::Group</span> 时务必盯紧。</p>
 <p><span class="mono">Group</span> 这行还带着 <span class="mono">manager_type / manager_agent_id / sleeptime_agent_frequency / turns_counter / agent_ids</span>，并经 M2M 表 <span class="mono">groups_agents</span> 连到 <span class="mono">agents</span>——一张表把"谁是主角、谁是夜班、多久叫一次"全记下了。</p>
+<p>为什么这么记？因为 sleeptime 的"主语"始终是<strong>前台那次对话</strong>：是它跑完触发了计数器、是它的 <span class="mono">step</span> 顺手叫起后台。后台编辑者只是被它"使唤"的工具人，所以把前台记成 <span class="mono">manager</span>、把后台塞进 <span class="mono">agent_ids</span>，从实现视角反而自洽。</p>
 <div class="cute"><div class="row"><span class="emoji">😴</span><span class="lab">主 agent 在睡</span><span class="arrow">→</span><span class="emoji">🧠</span><span class="lab">记忆块被悄悄擦改</span><span class="arrow">→</span><span class="emoji">✨</span><span class="bubble">睡醒记忆更好</span></div><div class="cap">😴 前台主 agent "睡着"的间隙，sleeptime agent 把 🧠 共享记忆块擦掉、重写成更整洁的版本，✨ 主 agent 下回合醒来，记忆已被整理好——它甚至不知道夜里有人来过</div></div>
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p>sleeptime ＝ 把"记忆整理"<strong>实现成 agent 抽象的递归套用</strong>。后台那个"记忆整理器"不是特殊子系统——它就是<strong>另一个 <span class="mono">LettaAgentV3</span></strong>（<span class="mono">SleeptimeMultiAgentV4</span> 干脆继承普通 loop）。</p>
@@ -518,7 +535,26 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>"共享块"共享的是<strong>同一行 Block</strong>，不是各持一份副本——改一处，另一个 agent 下次重建 prompt 就见到。</p>
 <p><span class="mono">round_robin / supervisor / dynamic</span> 在 v0.16.8 <strong>不能经 live API 跑</strong>，别照着 schema 以为它们能用。</p>
 </div>
-<!--ZHMORE-->
+<h2>回扣与小结：多智能体是"涌现"出来的</h2>
+<p>把这一课收个尾。v0.16.8 的多智能体没有一个气派的"调度中枢"，它是从几个你<strong>早就学过</strong>的零件里拼出来的。</p>
+<p>回扣第 13、14 课：sleeptime agent 跑的<strong>就是那个 <span class="mono">LettaAgentV3</span> step loop</strong>——<span class="mono">SleeptimeMultiAgentV4</span> 直接继承它。被叫的 agent B 也一样，跑的是 B 自己的完整 loop。每个"成员"都只是一个普通 agent。</p>
+<p>回扣第 08、09 课：sleeptime 改的是 <strong>block ＋ 自编辑记忆</strong> 那一套——<span class="mono">memory_rethink</span> 复用的正是你学过的 core memory 工具，只不过这次写的是<strong>共享</strong>的那一行。</p>
+<p>回扣第 25 课：触发节奏靠 <span class="mono">group_manager</span> 的 <span class="mono">bump_turns_counter_async</span> 维护 <span class="mono">turns_counter</span>，正是第七部分那套 service manager 的又一次出场。</p>
+<p>于是"多智能体"在 Letta 这里，不是一个新运行时，而是<strong>旧零件的新组合</strong>：同一个 loop、同一套记忆工具、同一个 service manager，外加一行共享 Block 和一个计数器。</p>
+<p>这也是 Letta 一以贯之的"少即是多"：与其造一个庞大的多智能体引擎，不如把 agent、block、manager 这几个已被打磨过的抽象<strong>复用到极致</strong>。新行为从旧抽象的组合里涌现，维护面反而最小。</p>
+<p>再回扣第 24 课的"三层楼"：A 调 B 这一跳，正是从工具沙箱<strong>重新走了一遍</strong>那条 REST → SyncServer → loop 的下楼梯。多智能体没有绕开架构，而是<strong>把同一条请求路径又跑了一次</strong>，只是这次发起者是另一个 agent。</p>
+<p>一句话串起来：路径一让 agent 之间<strong>能说话</strong>（同步调 API），sleeptime 让 agent 之间<strong>能交接记忆</strong>（异步改共享块），而真正把它们粘住的，始终是那一行 <span class="mono">Block</span>。</p>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>v0.16.8 真正活着的多智能体<strong>只有两条</strong>：<span class="mono">send_message_to_agent_*</span> 工具（A 经 REST 重入、跑 B 自己的 loop）与 <strong>sleeptime</strong>（后台 agent 每 N 回合改记忆）。</li>
+<li>经典群管理器 <span class="mono">round_robin / supervisor / dynamic</span> 只剩 schema/枚举/类骨架：<span class="mono">load_multi_agent</span> 从未被调、<span class="mono">/v1/groups</span> deprecated 无发消息端点、<span class="mono">SupervisorMultiAgent.step</span> 注释掉。</li>
+<li>sleeptime ＝ <span class="mono">SleeptimeMultiAgentV4(LettaAgentV3)</span>：<span class="mono">step</span> 先 <span class="mono">super().step()</span> 跑前台，再 <span class="mono">run_sleeptime_agents</span>——<span class="mono">% frequency == 0</span> 命中则 <span class="mono">safe_create_task</span> <strong>非阻塞</strong>拉起后台。</li>
+<li>协调基元是<strong>一行共享 <span class="mono">Block</span></strong>（<span class="mono">blocks_agents.py::BlocksAgents</span> 复合主键）：sleeptime 用 <span class="mono">memory_rethink</span> 写、前台下回合重建 prompt 才读到；<span class="mono">Block.version</span> 乐观锁。</li>
+<li>易认反：sleeptime <span class="mono">manager_agent_id</span> ＝前台主 agent，<span class="mono">group.agent_ids</span> ＝后台编辑者；<span class="mono">turns_counter=-1</span> ＋ 默认频率 5 → 首回合即触发。</li>
+</ul>
+</div>
+<p>把这条肌肉记忆带走：在 Letta 里看到"多 agent"，别先找调度器——先问<strong>"它们调的是谁的 API"</strong>和<strong>"它们指向同一行 Block 吗"</strong>。答得上这两问，多智能体的行为就不再神秘。</p>
+<p>第八部分就此开张。下一课我们继续往"进阶专题"里走，把这套"旧零件、新组合"的思路用到更多地方。</p>
 </div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="27-dual-db-and-vectors.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">双数据库与向量存储</span><span class="lang-en">Dual database &amp; vector storage</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
