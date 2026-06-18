@@ -403,9 +403,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>注意发送方身份是<strong>自动注入</strong>的：B 收到的消息会被打上 <span class="mono">[Incoming message from agent with ID '...']</span> 前缀，所以 B 知道"这条是另一个 agent 发来的"。</p>
 <p>B 跑完后，A 怎么"听见"回复？工具把 <span class="mono">response.messages</span> 里 B 的 assistant 消息抽出来，作为这次工具调用的<strong>返回值</strong>交回 A 的 loop——于是在 A 看来，"问另一个 agent"和"调一个普通工具拿到字符串"没有区别。</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/multi_agent.py</span><span class="ln">send_message_to_agent_and_wait_for_reply：经 REST 重入、跑 B 的 loop（简化）</span></div>
-<pre><span class="kw">def</span> <span class="fn">send_message_to_agent_and_wait_for_reply</span>(self, message: str, other_agent_id: str) -&gt; str:
+<pre><span class="kw">def</span> <span class="fn">send_message_to_agent_and_wait_for_reply</span>(message: str, other_agent_id: str) -&gt; str:
     <span class="cm"># 工具在沙箱里执行：建一个面向本服务器的客户端</span>
-    client = <span class="fn">Letta</span>(base_url=self.base_url, token=self.token)
+    client = <span class="fn">_get_sandbox_client</span>()
     <span class="cm"># 经 REST 把消息投给 B —— 跑的是 B 自己完整的 loop，不经群管理器</span>
     response = client.agents.messages.<span class="fn">create</span>(
         agent_id=other_agent_id,
@@ -503,7 +503,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     agent_state.memory.<span class="fn">update_block_value</span>(label=label, value=new_memory)
     <span class="cm"># 内容变了才写库：落到那一行共享 Block（version 自增）</span>
     <span class="kw">await</span> agent_manager.<span class="fn">update_memory_if_changed_async</span>(agent_state)
-    <span class="kw">return</span> <span class="kw">None</span>                              <span class="cm"># memory_finish_edits 同样返回 None，收尾</span>
+    <span class="kw">return</span> new_memory                        <span class="cm"># 返回新内容；真正收尾的是 memory_finish_edits（它才返回 None）</span>
 </pre></div>
 <p>三步：拒只读块 → <span class="mono">update_block_value(label, new_memory)</span> 整块替换 → <span class="mono">update_memory_if_changed_async</span> 把新值写进那一行共享 Block。<span class="mono">memory_finish_edits</span> 则只 <span class="mono">return None</span> 收尾。</p>
 <p>顺带分清 <span class="mono">voice_sleeptime</span>：它是语音场景的变体，走另一套工具（含 <span class="mono">finish_rethinking_memory</span>），和标准 sleeptime 的 <span class="mono">memory_finish_edits</span> 不是一回事。本课只讲标准 sleeptime，遇到 voice 那条线记得它<strong>另有一套</strong>。</p>
@@ -700,9 +700,9 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>Note the sender's identity is <strong>auto-injected</strong>: the message B receives is prefixed with <span class="mono">[Incoming message from agent with ID '...']</span>, so B knows “this came from another agent.”</p>
 <p>Once B finishes, how does A “hear” the reply? The tool pulls B's assistant message out of <span class="mono">response.messages</span> and hands it back as this tool call's <strong>return value</strong> to A's loop — so from A's view, “asking another agent” is no different from “calling an ordinary tool and getting a string.”</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/multi_agent.py</span><span class="ln">send_message_to_agent_and_wait_for_reply: re-enter over REST, run B's loop (simplified)</span></div>
-<pre><span class="kw">def</span> <span class="fn">send_message_to_agent_and_wait_for_reply</span>(self, message: str, other_agent_id: str) -&gt; str:
+<pre><span class="kw">def</span> <span class="fn">send_message_to_agent_and_wait_for_reply</span>(message: str, other_agent_id: str) -&gt; str:
     <span class="cm"># tool runs in the sandbox: build a client pointed at this server</span>
-    client = <span class="fn">Letta</span>(base_url=self.base_url, token=self.token)
+    client = <span class="fn">_get_sandbox_client</span>()
     <span class="cm"># post the message to B over REST -- runs B's own full loop, no group manager</span>
     response = client.agents.messages.<span class="fn">create</span>(
         agent_id=other_agent_id,
@@ -800,7 +800,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     agent_state.memory.<span class="fn">update_block_value</span>(label=label, value=new_memory)
     <span class="cm"># write only when content changed: lands in that one shared Block (version++)</span>
     <span class="kw">await</span> agent_manager.<span class="fn">update_memory_if_changed_async</span>(agent_state)
-    <span class="kw">return</span> <span class="kw">None</span>                              <span class="cm"># memory_finish_edits likewise returns None to wrap up</span>
+    <span class="kw">return</span> new_memory                        <span class="cm"># returns the new content; memory_finish_edits is the one that returns None</span>
 </pre></div>
 <p>Three steps: refuse read-only blocks → <span class="mono">update_block_value(label, new_memory)</span> replaces the whole block → <span class="mono">update_memory_if_changed_async</span> writes the new value into that one shared Block. <span class="mono">memory_finish_edits</span> just does <span class="mono">return None</span> to wrap up.</p>
 <p>While we're here, distinguish <span class="mono">voice_sleeptime</span>: it's a voice-scenario variant using a different tool set (including <span class="mono">finish_rethinking_memory</span>), not the same as standard sleeptime's <span class="mono">memory_finish_edits</span>. This lesson covers only standard sleeptime; when you hit the voice line, remember it has <strong>its own set</strong>.</p>
