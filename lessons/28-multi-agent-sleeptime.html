@@ -461,6 +461,44 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p><span class="mono">orm/blocks_agents.py::BlocksAgents</span>——复合主键 <span class="mono">(agent_id, block_id, block_label)</span>，让一行 Block 挂到多个 agent。</p>
 <p><span class="mono">services/tool_executor/core_tool_executor.py::CoreToolExecutor.memory_rethink</span>——sleeptime 改记忆的落点。</p>
 </div>
+<h2>唯一的协调基元：共享的一行 Block</h2>
+<p>两个 agent 怎么"商量"？答案朴素到让人意外：它们<strong>指向同一行 <span class="mono">Block</span></strong>。没有消息队列、没有共享内存对象，就是数据库里<strong>同一条记录</strong>。</p>
+<p>让一行 Block 挂到多个 agent 的，是关联表 <span class="mono">orm/blocks_agents.py::BlocksAgents</span>：复合主键 <span class="mono">(agent_id, block_id, block_label)</span>。<span class="mono">Block.agents</span> ↔ <span class="mono">Agent.core_memory</span> 经 <span class="mono">secondary="blocks_agents"</span> 多对多相连。</p>
+<p>谁把它们接到一起？<span class="mono">server.py::SyncServer.create_sleeptime_agent_async</span> 建 sleeptime agent 时，传 <span class="mono">block_ids=[b.id for b in main_agent.memory.blocks]</span>——<strong>同一批 Block 行</strong>，不是副本。</p>
+<div class="cellgroup"><div class="cg-cap"><b>一行 Block 挂多个 agent：<span class="mono">blocks_agents.py::BlocksAgents</span> 复合主键</b></div><div class="cells"><span class="cell hl">agent_id</span><span class="sep">·</span><span class="cell hl">block_id</span><span class="sep">·</span><span class="cell hl">block_label</span><span class="sep">→</span><span class="cell">Block.version（乐观锁）</span></div></div>
+<p>把"两个 agent 共享同一行"画出来——注意中间那行 <span class="mono">Block</span> 只有一个 <span class="mono">block_id</span>：</p>
+<div class="flow">
+  <div class="node"><div class="nt">前台主 agent</div><div class="nd">core_memory</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">blocks_agents</div><div class="nd">(agent_id, block_id, label)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">同一行 Block</div><div class="nd">block_id 唯一 · version</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">blocks_agents</div><div class="nd">(agent_id, block_id, label)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">后台 sleeptime agent</div><div class="nd">core_memory</div></div>
+</div>
+<p>读法：两端是两个 agent 的 core memory，中间经 <span class="mono">blocks_agents</span> 各自连到<strong>同一行 Block</strong>。sleeptime 在右边写，前台在左边读——共享的就是中间那一行。</p>
+<p>sleeptime 用什么工具改这行？标准 sleeptime 配 <span class="mono">constants.py::BASE_SLEEPTIME_TOOLS</span> ＝ <span class="mono">memory_replace / memory_insert / memory_rethink / memory_finish_edits</span>，实现都在 <span class="mono">CoreToolExecutor</span>。看其中的 <span class="mono">memory_rethink</span>：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/tool_executor/core_tool_executor.py</span><span class="ln">memory_rethink：改写共享 Block 那一行（简化）</span></div>
+<pre><span class="kw">async def</span> <span class="fn">memory_rethink</span>(self, agent_state, label: str, new_memory: str):
+    block = agent_state.memory.<span class="fn">get_block</span>(label)
+    <span class="kw">if</span> block.read_only:                       <span class="cm"># 只读块：拒绝改写</span>
+        <span class="kw">raise</span> <span class="fn">ValueError</span>(<span class="st">&quot;cannot rethink a read-only block&quot;</span>)
+    <span class="cm"># 整块替换 label 对应的内容</span>
+    agent_state.memory.<span class="fn">update_block_value</span>(label=label, value=new_memory)
+    <span class="cm"># 内容变了才写库：落到那一行共享 Block（version 自增）</span>
+    <span class="kw">await</span> agent_manager.<span class="fn">update_memory_if_changed_async</span>(agent_state)
+    <span class="kw">return</span> <span class="kw">None</span>                              <span class="cm"># memory_finish_edits 同样返回 None，收尾</span>
+</pre></div>
+<p>三步：拒只读块 → <span class="mono">update_block_value(label, new_memory)</span> 整块替换 → <span class="mono">update_memory_if_changed_async</span> 把新值写进那一行共享 Block。<span class="mono">memory_finish_edits</span> 则只 <span class="mono">return None</span> 收尾。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">易错纠正：标准 sleeptime 的"重想记忆"是 <span class="mono">memory_rethink</span>，<strong>不是</strong> <span class="mono">rethink_memory</span>（legacy）或 <span class="mono">finish_rethinking_memory</span>（voice 专用）。看 v0.16.8 时认准 <span class="mono">BASE_SLEEPTIME_TOOLS</span> 那四个。</span></div>
+<details class="accordion"><summary>sleeptime 改了记忆，前台<strong>什么时候</strong>才看得见？</summary><div class="acc-body">
+<p>不是即时的。sleeptime 调 <span class="mono">memory_rethink</span> → <span class="mono">update_memory_if_changed_async</span> 把新值写进那一行 <span class="mono">Block</span>，仅此而已——它没去"通知"前台。</p>
+<p>前台是在<strong>下一回合重建 system prompt</strong> 时，把这行 Block 重新编译进 core memory，才读到新值（回扣第 08、09 课：core memory 每回合从 block 现编）。</p>
+<p><span class="mono">Block</span> 带乐观锁 <span class="mono">version</span>：并发写按版本号检测冲突，避免后台与前台互相覆盖。</p>
+<p>所以"共享"共享的是<strong>那一行的当前值</strong>，可见性边界是"下次重建 prompt"，不是"立刻推送"。</p>
+</div></details>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
