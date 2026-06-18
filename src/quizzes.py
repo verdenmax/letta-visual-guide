@@ -2156,6 +2156,121 @@ QUIZZES = {
             },
         ],
     },
+    "24-three-layer-architecture.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，那个唯一的全局 SyncServer 究竟在哪里被创建？",
+                    "en": "In letta v0.16.8, where is that single global SyncServer actually created?",
+                },
+                "opts": [
+                    {"zh": "在 app.py 的模块级——import 这个模块那一刻就同步建好了",
+                     "en": "At module level in app.py — built synchronously the moment the module is imported"},
+                    {"zh": "在 create_application 工厂里，构建 FastAPI 应用时一并 new 出来",
+                     "en": "Inside the create_application factory, newed up together with the FastAPI app"},
+                    {"zh": "在 lifespan 里，第一次 await server.init_async(...) 时才创建",
+                     "en": "Inside lifespan, created on the first await server.init_async(...)"},
+                    {"zh": "在 get_letta_server 里惰性创建，每个请求新建一个",
+                     "en": "Lazily created inside get_letta_server, a fresh one per request"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "它是 app.py::server 这个模块级全局，在模块被 import 那一刻就同步构造好。create_application 工厂里其实也有一行 SyncServer(...)，但那行是注释掉的——server 不在工厂里建。lifespan 只做异步引导：await server.init_async(...) 建默认 org/user、把基础工具 upsert 进库，那是“对象建好之后”才需要 await 的初始化，不是构造。get_letta_server 只是惰性 import 那个模块全局并返回，每个路由经 Depends(get_letta_server) 拿到的都是同一个实例，并不新建。一句话：import 时同步接线、启动时异步 init。",
+                    "en": "It's the module-level global app.py::server, constructed synchronously the moment the module is imported. The create_application factory does contain a SyncServer(...) line, but it's commented out — the server isn't built in the factory. lifespan only does async bootstrapping: await server.init_async(...) creates the default org/user and upserts base tools, an initialization that needs await after the object already exists, not construction. get_letta_server merely lazy-imports that module global and returns it, so every router that asks via Depends(get_letta_server) gets the same instance and none builds a new one. In one line: synchronous wiring at import, async init at startup.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个薄 CRUD 端点，通常靠什么拿到它要的数据？",
+                    "en": "How does a thin CRUD endpoint usually reach the data it needs?",
+                },
+                "opts": [
+                    {"zh": "直接调 server.&lt;manager&gt;.&lt;method&gt;()；SyncServer 自己的方法只留给跨-manager 编排",
+                     "en": "Directly via server.&lt;manager&gt;.&lt;method&gt;(); SyncServer's own methods are reserved for cross-manager orchestration"},
+                    {"zh": "每次读写都得过一道 SyncServer 方法，那是通往 DB 的唯一一道门",
+                     "en": "Every read/write must pass through a SyncServer method, the one door to the DB"},
+                    {"zh": "路由自己开一个 db_registry.async_session() 跑查询",
+                     "en": "The router opens a db_registry.async_session() itself and runs the query"},
+                    {"zh": "把请求投进一个内部消息队列，由 manager 工作者异步消费",
+                     "en": "It posts the request onto an internal message queue consumed by a manager worker"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "绝大多数时候，端点通过 server 对象直接调对应 manager：server.agent_manager.get_agent_by_id_async(...) 这种。在 agents.py 里，这种“直调 manager”约 131 次，而调 SyncServer 自己方法只约 16 次——后者只用于跨多个 manager 的编排（如 create_agent_async 解析 LLM/embedding 配置、变换 block、再委托 agent_manager 写）。所以 SyncServer 是服务定位器加跨-manager 协调者，不是“通往 DB 的唯一一道门”。路由从不自己开 session（session 在 manager 里开关），层与层之间也没有消息队列：所有 manager 都是 SyncServer 的普通属性，调用就是普通的 async 方法调用。",
+                    "en": "The vast majority of the time, the endpoint calls the matching manager directly through the server object: things like server.agent_manager.get_agent_by_id_async(...). In agents.py this “direct manager call” appears about 131 times, while calling SyncServer's own methods appears only about 16 — and the latter is reserved for orchestration across several managers (e.g. create_agent_async resolves the LLM/embedding config, transforms blocks, then delegates the write to agent_manager). So SyncServer is a service locator plus cross-manager coordinator, not “the one door to the DB”. The router never opens a session itself (sessions are opened and closed inside the manager), and there's no message queue between layers: every manager is a plain attribute of SyncServer, so a call is just an ordinary async method call.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "对一条请求来说，actor 的解析究竟发生在哪一步？",
+                    "en": "For a request, at which step does actor resolution actually happen?",
+                },
+                "opts": [
+                    {"zh": "在处理函数体内、await get_actor_or_default_async 时；get_headers 只解析/校验 user_id 头",
+                     "en": "In the handler body, when it awaits get_actor_or_default_async; get_headers only parses/validates the user_id header"},
+                    {"zh": "在一个跑在每个端点之前的全局鉴权中间件里",
+                     "en": "In a global auth middleware that runs before every endpoint"},
+                    {"zh": "在 get_headers 里——它顺手查库拿到 user 并返回 actor",
+                     "en": "Inside get_headers — it conveniently looks up the user in the DB and returns the actor"},
+                    {"zh": "在 ORM 里，跑 agent 查询、apply_access_predicate 焊进 SQL 时",
+                     "en": "In the ORM, when the agent query runs and apply_access_predicate is welded into the SQL"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "actor 在处理函数体内解析（薄路由第 ① 步）：await server.user_manager.get_actor_or_default_async(actor_id=headers.actor_id)，这才开 session #1 真正查 user。dependencies.py::get_headers 只把 user_id 头解析/校验成 HeaderParams.actor_id（校验 user-&lt;uuid4&gt; 格式、不碰 DB），并不查库、也不返回 actor。它不是全局鉴权中间件——靠的是每个 handler 自己的 Depends 加函数体。而 apply_access_predicate 是 session #2 查 agent 时焊进的组织级隔离，管的是“能看谁的数据”，跟“解析出 actor 是谁”是两回事。缺 user_id 时，OSS 模式落到 default user。",
+                    "en": "The actor is resolved inside the handler body (the thin router's step ①): await server.user_manager.get_actor_or_default_async(actor_id=headers.actor_id), which is what opens session #1 to actually look up the user. dependencies.py::get_headers only parses/validates the user_id header into HeaderParams.actor_id (checking the user-&lt;uuid4&gt; format, touching no DB); it neither queries the DB nor returns an actor. It is not a global auth middleware — it relies on each handler's own Depends plus the function body. And apply_access_predicate is the organization-level isolation welded into session #2's agent query; it governs “whose data you may see”, a separate concern from “resolving who the actor is”. When user_id is missing, OSS mode falls back to the default user.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "谁来开 DB session / 事务？一条 GET /v1/agents/{id} 又跨了几个事务？",
+                    "en": "Who opens the DB session/transaction, and how many does one GET /v1/agents/{id} span?",
+                },
+                "opts": [
+                    {"zh": "manager 用 db_registry.async_session() 开；路由从不开——一条请求跨多个独立事务",
+                     "en": "The manager, via db_registry.async_session(); the router never does — one request spans multiple independent transactions"},
+                    {"zh": "路由一开始就开一个 session，把整条请求包进单个事务",
+                     "en": "The router opens one session up front, wrapping the whole request in a single transaction"},
+                    {"zh": "SyncServer 开一个共享 session，本请求里所有 manager 复用它",
+                     "en": "SyncServer opens one shared session that every manager reuses for this request"},
+                    {"zh": "一个全局中间件开启并提交一个请求级工作单元（UoW）",
+                     "en": "A global middleware opens and commits one request-level unit of work (UoW)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "事务边界被划在 manager 方法里：每个方法各自 async with db_registry.async_session() 开一个 session，办完即 commit/close。于是 retrieve_agent 这一条请求跨了两个独立事务——session #1 查 user，session #2 走 select(AgentModel)+apply_access_predicate+where(id==...)——并没有把整条请求包进一个请求级 UoW。路由层从不开 session（薄：不写业务、不开库），SyncServer 也不替大家开共享 session。代价是两次读不是同一个快照；也因为没有大事务，后一步失败不会自动回滚前一步已提交的写，补偿/幂等的责任落回编排方。session 的来历，第 27 课细讲。",
+                    "en": "Transaction boundaries are drawn inside manager methods: each method opens its own session with async with db_registry.async_session() and commits/closes once done. So the single retrieve_agent request spans two independent transactions — session #1 to look up the user, session #2 for select(AgentModel)+apply_access_predicate+where(id==...) — rather than wrapping the whole request in a request-level UoW. The router layer never opens a session (thin: no business, no DB), and SyncServer doesn't open a shared one for everybody either. The cost is that the two reads aren't the same snapshot; and because there's no big transaction, a failure in a later step won't auto-roll-back a write already committed earlier, so compensation/idempotency falls back on the orchestrator. Lesson 27 covers where the session comes from.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "类名叫 SyncServer、docstring 还写着“单线程 / 阻塞”。可 v0.16.8 的现实是什么？",
+                    "en": "The class is named SyncServer and its docstring still says “single-threaded / blocking”. What's the reality in v0.16.8?",
+                },
+                "opts": [
+                    {"zh": "名不副实的历史遗留——路由调到的方法几乎全是 async def，并发是单事件循环上的协作式 async",
+                     "en": "A legacy misnomer — the methods routers call are almost all async def; concurrency is cooperative async on one event loop"},
+                    {"zh": "名副其实——它确实单线程、阻塞，请求严格一个接一个处理",
+                     "en": "Accurate — it really is single-threaded and blocking, serving requests strictly one at a time"},
+                    {"zh": "它为每个请求开一个操作系统线程，这正是“Sync”的本意",
+                     "en": "It spawns one OS thread per request, which is exactly what “Sync” means"},
+                    {"zh": "它在路由层是同步的，只有进了 ORM 内部才阻塞",
+                     "en": "It's synchronous at the router layer and blocks only once inside the ORM"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "docstring “Simple single-threaded / blocking server process” 是历史遗留：早期确有“同步、单线程、阻塞”的设想，名字就是那时定的。但 v0.16.8 里路由调到的方法几乎全是 async def，并发靠单事件循环上的协作式 async，不是多线程、不是阻塞、不是一个接一个、也不是“每请求一线程”。名字没改，是因为它早已是无数调用点的稳定符号，改名的收益远抵不过全仓改动的风险——读代码时把 “Sync” 当历史标签即可。提醒：这跟那个可选的服务器口令中间件（CheckPasswordMiddleware，仅 secure 模式）是两码事，后者管“整台服务器让不让进”，与 actor/租户身份正交。",
+                    "en": "The docstring “Simple single-threaded / blocking server process” is a legacy remnant: there really was an early vision of “synchronous, single-threaded, blocking”, and the name was fixed back then. But in v0.16.8 the methods routers call are almost all async def, with concurrency from cooperative async on a single event loop — not multithreading, not blocking, not one-at-a-time, and not “one thread per request”. The name hasn't changed because it's long been a stable symbol at countless call sites, and renaming's payoff is far outweighed by the repo-wide risk — when reading the code, just treat “Sync” as a historical label. A reminder: this is unrelated to the optional server-password middleware (CheckPasswordMiddleware, secure mode only), which governs “whether the whole server lets you in” and is orthogonal to actor/tenant identity.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“三层楼公司”的比喻，把一条 GET /v1/agents/{id} 从进门到落库再原路返回完整讲一遍，并想透四件事：(1) 那个唯一的全局 SyncServer 为什么在 app.py 模块级、import 时就同步建好（create_application 里那行是注释掉的），而 init_async 却推迟到 lifespan？这“import 同步接线 + 启动异步 init”的两段式，到底买到了什么？(2) 为什么是“薄路由直调 manager”（agents.py 约 131 : 16），而不是把 CRUD 都走 SyncServer？这又如何跟“actor 在函数体内解析、session 只在 manager 里开”扣在一起？(3) 为什么一次请求＝多个独立事务、没有请求级 UoW？这把什么责任交回给了编排方？(4) SyncServer 这个“同步”的误名、再加上那道正交的服务器口令中间件，和每请求的 actor/租户身份，三者各管什么、谁也不替代谁？",
+                "en": "Use this lesson's “three-floor company” metaphor to tell a single GET /v1/agents/{id} as a whole — from the front door to the database and back along the same path — and think through four things: (1) Why is that single global SyncServer built synchronously at module level in app.py at import time (the line in create_application is commented out), while init_async is deferred to lifespan? What exactly does this “synchronous wiring at import + async init at startup” two-phase split buy? (2) Why is it “thin routers calling managers directly” (about 131 : 16 in agents.py) rather than routing all CRUD through SyncServer? And how does that clasp together with “the actor is resolved in the handler body, the session is opened only in the manager”? (3) Why is one request = multiple independent transactions with no request-level UoW, and what responsibility does that hand back to the orchestrator? (4) SyncServer's “sync” misnomer, plus that orthogonal server-password middleware, plus the per-request actor/tenant identity — what does each govern, and why does none replace the others?",
+            },
+        ],
+    },
 }
 
 
