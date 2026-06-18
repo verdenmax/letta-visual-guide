@@ -2846,6 +2846,121 @@ QUIZZES = {
             },
         ],
     },
+    "30-jobs-runs-steps.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "关于 Run、Step、Job 的层级关系，下面哪种说法是对的？",
+                    "en": "Which statement about the Run / Step / Job hierarchy is correct?",
+                },
+                "opts": [
+                    {"zh": "Run ⊃ Step ⊃ StepMetrics（外加 Run–RunMetrics 一对一）；Job 是平级的另一张表，不是 Run 的父级",
+                     "en": "Run ⊃ Step ⊃ StepMetrics (plus a 1:1 Run–RunMetrics); Job is a sibling table, not Run's parent"},
+                    {"zh": "Job ⊃ Run ⊃ Step：Job 是最外层容器，每个 Run 都属于某个 Job",
+                     "en": "Job ⊃ Run ⊃ Step: Job is the outermost container and every Run belongs to a Job"},
+                    {"zh": "Run 与 Step 是平级两张表，靠 StepMetrics 关联",
+                     "en": "Run and Step are two sibling tables, linked through StepMetrics"},
+                    {"zh": "Step ⊃ Run：一个 Step 里包含多次 Run（每次重试算一个 Run）",
+                     "en": "Step ⊃ Run: one Step contains several Runs (one Run per retry)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "正确嵌套只有一条：orm/run.py::Run（表 runs，一次 agent 调用）挂 Run.steps（1:N），每个 orm/step.py::Step（表 steps）再 1:1 挂 orm/step_metrics.py::StepMetrics；建 Run 时 RunManager.create_run 同时写一份 RunMetrics（1:1）。orm/job.py::Job（表 jobs，UserMixin）是平级的后台/批任务，不在这条链上——“Job ⊃ Run ⊃ Steps”是本课头号坑。Job 与 Run 是两种正交的异步：Run 有 LLM/工具/step，Job（加载/解析/嵌入文件）根本没有 step 概念，所以做成两张平级表，而非 Job 包 Run。",
+                    "en": "There is only one correct nesting: orm/run.py::Run (table runs, one agent invocation) hangs Run.steps (1:N), and each orm/step.py::Step (table steps) hangs one orm/step_metrics.py::StepMetrics 1:1; creating a Run also writes one RunMetrics (1:1) via RunManager.create_run. orm/job.py::Job (table jobs, UserMixin) is a sibling background/batch task, off this chain — 'Job ⊃ Run ⊃ Steps' is the lesson's number-one trap. Job and Run are two orthogonal kinds of async: a Run has LLM/tools/steps, while a Job (load/parse/embed a file) has no concept of a step, which is why they are two sibling tables rather than Job-wraps-Run.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "在 Letta 的执行模型里，一个 Step 对应什么？",
+                    "en": "In Letta's execution model, what does one Step correspond to?",
+                },
+                "opts": [
+                    {"zh": "一圈 loop 迭代：一次 LLM 调用＋这一轮的工具执行",
+                     "en": "One loop iteration: a single LLM call plus that round's tool execution"},
+                    {"zh": "一条消息：每发出或收到一条 Message 就是一个 Step",
+                     "en": "One message: every Message sent or received is a Step"},
+                    {"zh": "一次工具调用：每调用一个工具记一个 Step",
+                     "en": "One tool call: each tool invocation is its own Step"},
+                    {"zh": "一整次 agent 调用：Step 与 Run 一一对应",
+                     "en": "A whole agent invocation: Step maps one-to-one to Run"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "Step ＝ 第 14 课那个 for i in range(max_steps) 的一圈迭代 ＝ 一次 LLM 调用＋这一轮工具执行（letta_agent_v2/v3 的 _step；连 legacy 的 StreamingServerInterface.step_complete 都把 step 定义为“LLM 响应＋工具执行”）。由此一个 Run 至多 max_steps 个 Step（Run:Step = 1:≤max_steps），每个 Step 产出的多条 Message 都被盖上 run_id+step_id（LettaAgentV3._checkpoint_messages，Step:Message = 1:N）。所以它既不是“一条消息”、也不是“一个工具”，更不与 Run 一一对应。",
+                    "en": "A Step is one iteration of Lesson 14's for i in range(max_steps) loop = one LLM call plus that round's tool execution (the _step in letta_agent_v2/v3; even the legacy StreamingServerInterface.step_complete defines step as 'LLM response + tool execution'). Hence a Run has at most max_steps Steps (Run:Step = 1:≤max_steps), and each Step stamps its several Messages with run_id+step_id (LettaAgentV3._checkpoint_messages, Step:Message = 1:N). So it is neither 'one message' nor 'one tool', and it does not map one-to-one to a Run.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "通过 messages/async 异步给 agent 发一条消息，底层创建的是什么？",
+                    "en": "Sending an agent a message asynchronously via messages/async creates what underneath?",
+                },
+                "opts": [
+                    {"zh": "一个后台 Run：send_message_async 立即返回，之后轮询 GET /v1/runs/{run_id}",
+                     "en": "A background Run: send_message_async returns immediately, then you poll GET /v1/runs/{run_id}"},
+                    {"zh": "一个 Job：异步路径专门建 Job 来追踪进度",
+                     "en": "A Job: the async path creates a Job to track progress"},
+                    {"zh": "一个 Step：异步消息直接落成一行 steps",
+                     "en": "A Step: the async message lands directly as a steps row"},
+                    {"zh": "什么都不建：消息排进队列，没有独立资源",
+                     "en": "Nothing: the message just goes on a queue, with no resource of its own"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "messages/async 走 send_message_async：立即返回一个 background Run（run-… id），真正的活儿丢进 shielded 后台任务，之后轮询 GET /v1/runs/{run_id}（及 /steps、/messages、/usage、/metrics），取消用 RunManager.cancel_run，后台流式恢复要 Redis（POST /v1/runs/{run_id}/stream）。它建的是 Run 不是 Job——orm/job.py::Job 是加载文件那类后台/批任务，和“一次 agent 调用”是两条正交的线。把异步 agent 消息当成建 Job，是本课点名的常见误区。",
+                    "en": "messages/async goes through send_message_async: it returns a background Run (a run-… id) immediately, throws the real work into a shielded background task, and you then poll GET /v1/runs/{run_id} (plus /steps, /messages, /usage, /metrics), cancel via RunManager.cancel_run, and resume a background stream through Redis (POST /v1/runs/{run_id}/stream). It creates a Run, not a Job — orm/job.py::Job is a background/batch task like loading a file, an orthogonal line from 'one agent invocation'. Treating an async agent message as creating a Job is the common mistake this lesson calls out.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "_step 在 loop 里怎么把一行 steps 记下来，使得连崩溃的迭代也留得下记录？",
+                    "en": "How does _step record a steps row in the loop so that even a crashed iteration leaves a record?",
+                },
+                "opts": [
+                    {"zh": "调 LLM 之前就以 PENDING/0 token 写行（log_step_async），跑完再回填真实用量翻 SUCCESS；finally＋StepProgression 兜底",
+                     "en": "It writes a PENDING/0-token row before the LLM call (log_step_async), backfills real usage to SUCCESS after; finally + StepProgression covers crashes"},
+                    {"zh": "跑完整步、拿到真实 token 后才写一行 steps，状态直接是 SUCCESS",
+                     "en": "It writes the steps row only after the whole step, with real tokens and status straight to SUCCESS"},
+                    {"zh": "先写 SUCCESS，崩了再回滚删掉那一行",
+                     "en": "It writes SUCCESS first, then rolls back and deletes the row on a crash"},
+                    {"zh": "每步写两行：一行 PENDING、一行 SUCCESS，事后合并",
+                     "en": "It writes two rows per step — one PENDING, one SUCCESS — and merges them later"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "顺序是关键：_step_checkpoint_start 在调 LLM 之前就 log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...) 写下一行 steps（零 token）并开 OTel span agent_step；LLM＋工具跑完后，_step_checkpoint_finish 用 update_step_success_async(真实 per-step usage, stop_reason) 翻 SUCCESS 并 record_step_metrics_async。因为行“先存在”，finally 里的 StepProgression 状态机（START…FINISHED）一旦发现没走到 FINISHED，就 update_step_error_async 翻 FAILED/CANCELLED——崩溃/取消也留可归因记录。“跑完才写一行”正是它要避免的朴素设计：先占坑多付一次写，换来每圈迭代都可归因。",
+                    "en": "Order is the key: _step_checkpoint_start calls log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...) before the LLM call, writing one steps row (zero tokens) and opening the OTel span agent_step; after the LLM + tools, _step_checkpoint_finish uses update_step_success_async(real per-step usage, stop_reason) to flip to SUCCESS and record_step_metrics_async. Because the row already exists, the StepProgression state machine (START…FINISHED) in the finally detects anything short of FINISHED and calls update_step_error_async to mark FAILED/CANCELLED — so crashes/cancels still leave an accountable record. 'Write a row only when done' is the naive design this avoids: reserving first costs one extra write and buys per-iteration accountability.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "Step.trace_id = get_trace_id() 把哪三样东西缝在一起？",
+                    "en": "What three things does Step.trace_id = get_trace_id() stitch together?",
+                },
+                "opts": [
+                    {"zh": "steps 行（计费）↔ OTel 分布式 trace（延迟）↔ provider trace 原始 LLM payload（调试）——三种可观测粒度",
+                     "en": "The steps row (billing) ↔ the OTel distributed trace (latency) ↔ the provider-trace raw payload (debugging) — three observability granularities"},
+                    {"zh": "三个 agent：主 agent、sleeptime 子 agent、工具 agent 的调用链",
+                     "en": "Three agents: the call chain of the primary, the sleeptime sub-agent, and a tool agent"},
+                    {"zh": "三种外壳：同步、SSE 流式、后台 Run 三条连接",
+                     "en": "Three shells: the sync, SSE streaming, and background-Run connections"},
+                    {"zh": "两条流式路径：v3 的 StreamingService 与 legacy 的 StreamingServerInterface",
+                     "en": "The two streaming paths: v3's StreamingService and the legacy StreamingServerInterface"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "每跑一圈 step，Letta 同时往三个不同系统各记一笔：① steps 行（StepManager 写，per-step model/provider/token/stop_reason/feedback，给产品＋计费，默认就写）；② OTel（letta/otel/，trace_method 第 25 课开 span，MetricRegistry 的 ttft/step_execution_time/message_cost/sse_* 直方图，给延迟/分布式追踪，按 app.py 的 otel_exporter_otlp_endpoint 配置开关、pytest no-op）；③ provider trace（TelemetryManager 按 step_id 存原始 LLM 请求/响应，给调试，默认 NoopTelemetryManager 不存）。get_trace_id() 把当前 OTel trace id 写进 Step.trace_id，正是这枚缝合钉。干扰项里：v3 流式走 services/streaming_service.py::StreamingService（不是 legacy 的 StreamingServerInterface），那是流式路径之争，不是 trace_id 缝的三套账。",
+                    "en": "On every step Letta writes once into three different systems: (1) the steps row (written by StepManager — per-step model/provider/token/stop_reason/feedback, for product + billing, on by default); (2) OTel (letta/otel/, trace_method from Lesson 25 opens a span, MetricRegistry's ttft/step_execution_time/message_cost/sse_* histograms, for latency/distributed tracing, gated by app.py's otel_exporter_otlp_endpoint and a no-op under pytest); (3) the provider trace (TelemetryManager stores the raw LLM request/response keyed by step_id, for debugging, default NoopTelemetryManager stores nothing). get_trace_id() writes the current OTel trace id into Step.trace_id — exactly that stitching pin. As for the distractor: v3 streaming runs through services/streaming_service.py::StreamingService (not the legacy StreamingServerInterface) — that is a streaming-path distinction, not the three ledgers trace_id stitches.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“一个 loop、三套账、三种壳”的框架，把“你给一个 agent 发一条消息、它跑了三圈工具调用才停下”从头到尾讲一遍，并想透五件事：(1) 这次调用建了一个什么资源（Run，由 services/run_manager.py::RunManager.create_run 发 run-… id 并落 RunMetrics）？为什么它和加载文件用的 orm/job.py::Job 是两张平级的表，而不是 Job ⊃ Run？(2) 这三圈分别是三个 Step，复述 _step 的五段（_step_checkpoint_start 占坑 → LLM＋工具 → _step_checkpoint_finish 回填 → _checkpoint_messages 盖 run_id+step_id → finally·StepProgression 兜底），并解释为什么 log_step_async 要在 LLM 调用之前以 PENDING/0 token 写行。(3) 这一次调用“同时”留下了哪三套账？steps 行、OTel span、provider trace 各给谁看、默认开还是关、靠哪个字段（Step.trace_id = get_trace_id()）缝起来？(4) 如果第二圈 LLM 超时崩了，那一行 steps 会停在什么状态、由谁负责翻（StepProgression＋finally＋update_step_error_async）？对比“跑完才写一行”，先占坑多付出什么、换回什么？(5) 同一段 loop 被同步（LettaResponse）、流式（StreamingService 吐 data: {json} 帧）、后台（messages/async 立即返回 Run、轮询 GET /runs/{id}）三种壳包起来，三者各自的取舍是什么、为什么后台流式恢复要 Redis？最后想一想：既然 per-step token 在 steps 行、Run 总量靠 LettaAgentV2._update_global_usage_stats 跨 step 累加，那当你只看到 Run 总 token 却查不到任何 steps 行时，第一个该怀疑的是什么（提示：NoopStepManager，第 28 课）？",
+                "en": "Using this lesson's 'one loop, three ledgers, three shells' framework, narrate 'you send an agent a message and it runs three rounds of tool calls before stopping' from end to end, and think through five things: (1) What resource did this invocation create (a Run, whose run-… id and RunMetrics come from services/run_manager.py::RunManager.create_run)? Why are it and the orm/job.py::Job used for loading a file two sibling tables, rather than Job ⊃ Run? (2) The three rounds are three Steps; recite the five stages of _step (_step_checkpoint_start reserves the slot → LLM + tools → _step_checkpoint_finish backfills → _checkpoint_messages stamps run_id+step_id → finally · StepProgression covers the fall), and explain why log_step_async writes the row as PENDING/0 tokens before the LLM call. (3) Which three ledgers did this one invocation leave 'at once'? Who is each of the steps row, the OTel span, and the provider trace for, is each on or off by default, and which field (Step.trace_id = get_trace_id()) stitches them? (4) If the second round's LLM times out and crashes, what status does that steps row stop in and who flips it (StepProgression + finally + update_step_error_async)? Versus 'write a row only when done', what extra cost does reserving-first pay and what does it buy back? (5) The same loop is wrapped in sync (LettaResponse), streaming (StreamingService emitting data: {json} frames), and background (messages/async returns a Run at once, poll GET /runs/{id}) shells — what is each one's trade-off, and why does background stream recovery need Redis? Finally, ponder: since per-step tokens live in the steps row while a Run's total is accumulated across steps by LettaAgentV2._update_global_usage_stats, when you see a Run's total tokens but cannot find any steps rows, what should you suspect first (hint: NoopStepManager, Lesson 28)?",
+            },
+        ],
+    },
 }
 
 
