@@ -1036,6 +1036,34 @@ LESSON_26 = {
 <p>违规＝查不到，而非报错：被排除的行根本不进结果集，<span class="mono">read</span> 得 <span class="mono">None</span>→<span class="mono">NoResultFound</span>，<span class="mono">list</span> 得 <span class="mono">[]</span>。唯一的 <span class="mono">ValueError</span> 来自 actor 配置错（没有 org/id accessor）。</p>
 <p>那三个 <span class="mono">access</span>（read/write/admin）呢？开头 <span class="mono">del access</span> 把它丢了——<strong>目前纯 no-op</strong>，是给将来行级权限预留的形参，现在传什么都不影响结果。</p>
 </div></details>
+<h2>软删 vs 硬删：删除是可逆的</h2>
+<p>第三件长在这个基类上的事：<strong>可恢复性</strong>。"删"在这里不是一个动作，而是三个，差别很大。先把三种删并排看清：</p>
+<div class="cols">
+  <div class="col"><h4>🏷️ delete_async · 软删</h4><p>只把 <span class="mono">is_deleted</span> 翻成 <span class="mono">True</span>（内部走 <span class="mono">update_async</span>，有 actor 则顺手盖审计）。行留库、可恢复；读路<strong>默认仍能看见</strong>它。</p></div>
+  <div class="col"><h4>🔥 hard_delete_async · 物理删</h4><p><span class="mono">session.delete(self)</span>，整行从库里消失，带死锁重试；<span class="mono">actor</span> 在这里<strong>只用于日志</strong>，不参与隔离。</p></div>
+  <div class="col"><h4>🧹 bulk_hard_delete_async · 批量物理删</h4><p><span class="mono">delete(cls).where(id.in_(...))</span> <span class="mono">+ apply_access_predicate</span>——<strong>唯一</strong>在 SQL 层强制租户的删。</p></div>
+</div>
+<p>三者里只有 <span class="mono">bulk_hard_delete_async</span> 在删除时也套了 predicate；其余两种删，安全边界都<strong>"骑"在它们之前那次读上</strong>：你得先 <span class="mono">read_async</span> 拿到这行（已被隔离），才删得了它。</p>
+<p>默认走软删。实战里 <span class="mono">services/provider_manager.py</span> 删 provider 时调软删，读 / 列时再带 <span class="mono">check_is_deleted=True</span> 把软删行挡掉——删与读两侧，过滤是<strong>分开 opt-in</strong> 的。</p>
+<p>这就解释了那条最反直觉的默认：读路 <span class="mono">check_is_deleted</span> 默认 <span class="mono">False</span>，<strong>软删行默认仍被返回</strong>。想让它"看起来真的删了"，读时得显式传 <span class="mono">check_is_deleted=True</span>。</p>
+<details class="accordion"><summary>软删为什么"还在库里"？什么时候才过滤掉？</summary><div class="acc-body">
+<p>软删只翻一个布尔位 <span class="mono">is_deleted=True</span>，行的字节一个没动，外键、关联照旧——所以<strong>历史、审计、恢复</strong>都还在手上。</p>
+<p>过滤是<strong>读侧的 opt-in</strong>：<span class="mono">read / list</span> 默认 <span class="mono">check_is_deleted=False</span>，不追加 <span class="mono">is_deleted==False</span>，于是软删行照样查得到。</p>
+<p>想挡掉软删行，调用方得显式传 <span class="mono">check_is_deleted=True</span>（如 <span class="mono">provider_manager</span> 的读路）。一处删、一处读，各自决定要不要看见"已作废"。</p>
+<p>为什么不默认过滤？因为不少内部场景（审计、回溯、级联清理）正需要看到软删行；把过滤交给调用方，比一刀切更灵活。</p>
+</div></details>
+<h2>审计字段：每行天生能回答"谁、何时"</h2>
+<p>同一个基类还顺手给每行几个"出生证明"字段（外加我们已熟的 <span class="mono">is_deleted</span>），让任何一行都能回答<strong>"谁建的、谁最后动的、何时"</strong>。</p>
+<div class="cellgroup"><div class="cg-cap"><b>审计五件套（<span class="mono">base.py::CommonSqlalchemyMetaMixins</span>）</b></div><div class="cells"><span class="cell hl">created_at</span><span class="sep">·</span><span class="cell">updated_at</span><span class="sep">·</span><span class="cell">_created_by_id</span><span class="sep">·</span><span class="cell">_last_updated_by_id</span><span class="sep">·</span><span class="cell">is_deleted</span></div></div>
+<p><span class="mono">created_at</span> / <span class="mono">updated_at</span> 由 <strong>DB 侧默认值</strong>盖：<span class="mono">created_at</span> 用 <span class="mono">server_default=func.now()</span>，<span class="mono">updated_at</span> 再加 <span class="mono">server_onupdate</span>，每次写自动刷新。</p>
+<p>两个 <span class="mono">*_by_id</span> 才是"谁"：注意<strong>物理列名带下划线</strong>——<span class="mono">_created_by_id</span>、<span class="mono">_last_updated_by_id</span>；对外属性去掉下划线，setter 还断言 id 前缀＝<span class="mono">"user"</span>。</p>
+<p><span class="mono">created_by_id</span> 只在<strong>首次写</strong>时设、此后不变；<span class="mono">last_updated_by_id</span> 每次写都更新。于是一行的"出身"与"最近经手人"分得清清楚楚。</p>
+<details class="accordion"><summary>审计字段是怎么盖上去的？为什么列名带下划线？</summary><div class="acc-body">
+<p>不是 SQLAlchemy 的事件监听，而是 CRUD 里<strong>显式调</strong> <span class="mono">_set_created_and_updated_by_fields(actor_id)</span> 盖的——create / update 路径上手动点一下。</p>
+<p>关键前提：<strong>只有传了 actor 才盖</strong>。没 actor 的写（少见的系统内部路径）就不落"谁"，只有 DB 侧的时间默认值照常生效。</p>
+<p>物理列叫 <span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>（带下划线），是为了和对外属性解耦：属性 setter 会断言传入 id 以 <span class="mono">"user"</span> 开头，挡住乱填。</p>
+<p><span class="mono">created_by_id</span> 首次设定后不再变，<span class="mono">last_updated_by_id</span> 每次写刷新——一个记"谁生的"，一个记"谁最后碰的"。</p>
+</div></details>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
