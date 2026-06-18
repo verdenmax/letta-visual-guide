@@ -294,6 +294,46 @@ LESSON_28 = {
 <p>Third: the body of <span class="mono">SupervisorMultiAgent.step</span> is <strong>commented out entirely</strong>; calling it does nothing.</p>
 <p>Conclusion: in v0.16.8, <span class="mono">round_robin / supervisor / dynamic</span> are merely <strong>schema plus enum plus class skeleton</strong> — seats saved for the future, not features usable today.</p>
 </div></details>
+<h2>Live path one: send_message_to_agent_* (agent calls agent directly)</h2>
+<p>Path one isn't “scheduling” but a <strong>tool call</strong>. These tools are registered in <span class="mono">functions/function_sets/multi_agent.py</span>, typed <span class="mono">ToolType.LETTA_MULTI_AGENT_CORE</span>, and <strong>execute in the sandbox</strong> like any other tool.</p>
+<p>The core mechanism is one sentence: inside the tool body it <strong>builds a <span class="mono">letta_client.Letta</span> client</strong> and calls <span class="mono">client.agents.messages.create(agent_id=other_agent_id, ...)</span> — <strong>re-entering the server</strong> over REST to run callee agent B's own <strong>full loop</strong> (<span class="mono">AgentLoop.load(B).step</span>), <strong>never through a group manager</strong>.</p>
+<p>Let's draw this call chain:</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">Agent A</div><div class="nd">calls the wait_for_reply tool</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Tool sandbox</div><div class="nd">builds letta_client.Letta</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">REST re-entry</div><div class="nd">messages.create(B)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Agent B's loop</div><div class="nd">AgentLoop.load(B).step</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">Reply flows back to A</div><div class="nd">takes B's assistant message</div></div>
+</div>
+<p>Note the sender's identity is <strong>auto-injected</strong>: the message B receives is prefixed with <span class="mono">[Incoming message from agent with ID '...']</span>, so B knows “this came from another agent.”</p>
+<p>Once B finishes, how does A “hear” the reply? The tool pulls B's assistant message out of <span class="mono">response.messages</span> and hands it back as this tool call's <strong>return value</strong> to A's loop — so from A's view, “asking another agent” is no different from “calling an ordinary tool and getting a string.”</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/functions/function_sets/multi_agent.py</span><span class="ln">send_message_to_agent_and_wait_for_reply: re-enter over REST, run B's loop (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">send_message_to_agent_and_wait_for_reply</span>(self, message: str, other_agent_id: str) -&gt; str:
+    <span class="cm"># tool runs in the sandbox: build a client pointed at this server</span>
+    client = <span class="fn">Letta</span>(base_url=self.base_url, token=self.token)
+    <span class="cm"># post the message to B over REST -- runs B's own full loop, no group manager</span>
+    response = client.agents.messages.<span class="fn">create</span>(
+        agent_id=other_agent_id,
+        messages=[{<span class="st">&quot;role&quot;</span>: <span class="st">&quot;system&quot;</span>, <span class="st">&quot;content&quot;</span>: message}],  <span class="cm"># auto-prefixed [Incoming message from agent ...]</span>
+    )
+    <span class="cm"># synchronous, blocking: pull out B's assistant reply, hand it back to caller A</span>
+    <span class="kw">return</span> <span class="fn">extract_assistant_reply</span>(response.messages)
+</pre></div>
+<p>Why loop through REST rather than call B in-process? Because the tool runs in the <strong>sandbox</strong> (callback to Lesson 20), where all it can get is an ordinary client handle; so A calling B goes through <strong>the same public API</strong> as an external script calling B — isolation and auth treated identically.</p>
+<p>This also explains why B runs its “own <strong>full</strong> loop”: when the server receives <span class="mono">messages.create(B)</span> it does the usual <span class="mono">AgentLoop.load(B).step</span> — B calls tools as needed, writes memory as needed — and A only gets its assistant reply back at the end.</p>
+<details class="accordion"><summary>How do the three <span class="mono">send_message_to_agent_*</span> variants differ?</summary><div class="acc-body">
+<p><strong>① <span class="mono">..._and_wait_for_reply(message, other_agent_id)</span></strong>: <strong>synchronous, blocking</strong>, two-way — send to one agent and <strong>wait</strong> for its reply before continuing. The most common.</p>
+<p><strong>② <span class="mono">..._to_agents_matching_tags(message, match_all, match_some)</span></strong>: <strong>synchronous broadcast</strong> — filter a batch of agents by tags, then send to and wait for each <strong>one by one</strong>. One-to-many.</p>
+<p><strong>③ <span class="mono">..._to_agent_async(message, other_agent_id)</span></strong>: <strong>asynchronous, one-way</strong> — fire and forget, no reply awaited; note it's <strong>disabled in production</strong>.</p>
+<p>All three share one mechanism (build client → <span class="mono">messages.create</span> → run the other's loop); they differ only in <strong>whether they wait</strong> and <strong>one versus a batch</strong>.</p>
+</div></details>
+<p>The tag broadcast (<span class="mono">..._matching_tags</span>) deserves a note: it filters a batch of agents from the DB by <span class="mono">match_all / match_some</span>, then <strong>waits on each in turn</strong>. So it's essentially a “looped wait_for_reply,” not true parallel fan-out — one-to-many, but still synchronous and serial.</p>
+<p>An engineering caution: <span class="mono">..._and_wait_for_reply</span> truly <strong>blocks</strong> A's step until B's whole turn finishes. If B then calls C and C calls D, the blocking <strong>stacks layer by layer</strong> — when designing agent collaboration, don't let the synchronous wait chain grow too long.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't confuse this path with sleeptime: <span class="mono">..._and_wait_for_reply</span> is <strong>synchronous and blocking</strong> — A stalls waiting for B to finish. Sleeptime below is exactly the opposite: a <strong>non-blocking</strong> background task. The two “multi-agent” modes have completely opposite blocking semantics.</span></div>
 <!--ENMORE-->
 """,
 }
