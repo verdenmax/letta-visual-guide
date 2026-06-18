@@ -938,6 +938,54 @@ LESSON_29 = {
 
 LESSON_30 = {
     "zh": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第 14 课我们盯着那个朴素的 <span class="mono">for</span> 循环看了很久——agent 每跑一圈就调一次 LLM、执行一批工具，跑到停为止。这一课换个问题：这一圈一圈的执行，<strong>是怎么被记下来、被追踪、又被实时吐给你看的</strong>？</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">先把一个最常被记错的结构摆正：一次 agent 调用是一个 <span class="mono">Run</span>，它<strong>包含</strong>若干 <span class="mono">Step</span>，每个 Step 再挂一份 <span class="mono">StepMetrics</span>。而 <span class="mono">Job</span> <strong>不是 Run 的父级</strong>——它是平级的另一张表，管的是后台批任务。把这层关系记反，是读这块源码最常见的坑。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>一个 <span class="mono">for</span> 循环，三种外壳，三套账本</strong>。同一段 agent loop，被同步、流式、后台三种壳一包，每跑一步就同时记下三份互相关联的视图。</p>
+<p>三实体：<strong><span class="mono">Run</span></strong>(一次 agent 调用) ⊃ <strong><span class="mono">Step</span></strong>(一次 LLM＋工具) ⊃ <strong><span class="mono">StepMetrics</span></strong>(耗时)；<span class="mono">Job</span> 是<strong>平级</strong>的后台/批任务，不在这条嵌套链上。</p>
+<p>三套可观测：<strong><span class="mono">steps</span> 行</strong>(产品＋计费)、<strong>OTel span</strong>(延迟＋分布式追踪)、<strong>provider trace</strong>(原始 LLM payload)——靠 <span class="mono">Step.trace_id</span> 缝在一起。</p>
+<p>三种外壳：<strong>同步</strong> <span class="mono">LettaResponse</span>、<strong>流式</strong> SSE、<strong>后台</strong>可恢复的 Run——壳不同，里头都是那同一个 <span class="mono">for</span> 循环。</p>
+</div>
+<p>为什么值得专门讲？因为很多人把"任务追踪"当成 agent 之外的运维系统去找。看懂"它就是 loop 自己边跑边记的三份账"，你才知道该去哪张表、哪条 span 里查。</p>
+<p>把这条主线记牢：本课从头到尾都在回答同一个问题——<strong>一圈 loop 迭代，在三张表、三条追踪、三种外壳里各留下什么</strong>。下面先认三实体，再看 step 怎么落库，最后看可观测与流式。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">底注：<span class="mono">Run</span>(表 <span class="mono">runs</span>) ⊃ <span class="mono">Step</span>(表 <span class="mono">steps</span>) ⊃ <span class="mono">StepMetrics</span>，外加 <span class="mono">Run</span>–<span class="mono">RunMetrics</span> 一对一；<span class="mono">Job</span>(表 <span class="mono">jobs</span>)<strong>另起一张表、平级存在</strong>。"Job ⊃ Run ⊃ Steps" 是<strong>错</strong>的。</span></div>
+<h2>三实体三张表：Run、Step、Job 各管什么</h2>
+<p>先认三实体，它们对应三张表，别混。前两个是嵌套关系，第三个是平级的另一条线。</p>
+<p><strong>① <span class="mono">Run</span></strong>（<span class="mono">orm/run.py::Run</span>，表 <span class="mono">runs</span>）＝<strong>一次 agent 调用</strong>。带 <span class="mono">agent_id</span>(必填)、<span class="mono">OrganizationMixin</span>；挂 <span class="mono">Run.steps</span>(1:N，级联删) 和 <span class="mono">Run.messages</span>(1:N)。状态 <span class="mono">RunStatus{created,running,completed,failed,cancelled}</span>。</p>
+<p>建 Run 的同时还写一份 <span class="mono">RunMetrics</span>：<span class="mono">services/run_manager.py::RunManager.create_run</span> 落 <span class="mono">run_start_ns</span>、<span class="mono">num_steps=0</span>——Run 与 RunMetrics 是<strong>一对一</strong>。</p>
+<p><strong>② <span class="mono">Step</span></strong>（<span class="mono">orm/step.py::Step</span>，表 <span class="mono">steps</span>）＝<strong>一圈 loop 迭代</strong>，也就是<strong>一次 LLM 调用＋一轮工具执行</strong>。带 <span class="mono">run_id</span> 外键，回指它属于哪个 Run。</p>
+<p>Step 行里塞满"这一步发生了什么"：<span class="mono">model</span> / <span class="mono">provider_*</span>、per-step 的 <span class="mono">prompt/completion/total_tokens</span>、<span class="mono">stop_reason</span>、<span class="mono">trace_id</span>(OTel)、<span class="mono">feedback</span>、<span class="mono">status</span>。状态 <span class="mono">StepStatus{PENDING,SUCCESS,FAILED,CANCELLED}</span>。</p>
+<p>每个 Step 再 1:1 挂一份 <span class="mono">orm/step_metrics.py::StepMetrics</span>：<span class="mono">llm_request_ns</span> / <span class="mono">tool_execution_ns</span> / <span class="mono">step_ns</span> 三段耗时。Step 自己也 1:N 挂 <span class="mono">Step.messages</span>。写 Step 的是 <span class="mono">services/step_manager.py::StepManager</span>（外加单例 <span class="mono">NoopStepManager</span>，下文细说）。</p>
+<p><strong>③ <span class="mono">Job</span></strong>（<span class="mono">orm/job.py::Job</span>，表 <span class="mono">jobs</span>，带 <span class="mono">UserMixin</span>）＝<strong>后台/批任务</strong>，典型就是第 29 课那种"加载＋解析＋嵌入文件"。类型 <span class="mono">JobType{JOB,RUN,BATCH}</span>、状态 <span class="mono">JobStatus{created,running,completed,failed,pending,cancelled,expired}</span>，由 <span class="mono">services/job_manager.py::JobManager</span> 管。</p>
+<p>最关键的一句：<strong><span class="mono">Job</span> 不是 <span class="mono">Run</span> 的父级</strong>。它是<strong>另起一张表、平级存在</strong>的概念。嵌套链只有 <span class="mono">Run ⊃ Step ⊃ StepMetrics</span> 这一条，Job 站在旁边。</p>
+<div class="cellgroup"><div class="cg-cap"><b>嵌套链：<span class="mono">Run ⊃ Step ⊃ StepMetrics</span>（<span class="mono">Job</span> 平级，不在链上）</b></div><div class="cells"><span class="cell hl">Run · runs · RunStatus</span><span class="lab">1:1 RunMetrics</span><span class="sep">⊃</span><span class="cell">Step · steps · trace_id · StepStatus</span><span class="lab">1:N Message</span><span class="sep">⊃</span><span class="cell">StepMetrics · 三段耗时</span><span class="sep">‖</span><span class="cell q">Job · jobs · JobStatus（平级，非父级）</span></div></div>
+<p>三实体认完，看它们的 ID 怎么从一个 HTTP 请求一路串下去。这条链把"调用 → 步 → 消息"缝成可回查的层级：</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">POST …/messages</div><div class="nd">一次 agent 调用进来</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">create_run</div><div class="nd">发 run-… ＋ RunMetrics</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">agent_loop.step(run_id)</div><div class="nd">for i in range(max_steps)</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">_step(run_id) → step-…</div><div class="nd">每圈写一行 steps</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">每条 Message 盖章</div><div class="nd">run_id ＋ step_id</div></div>
+</div>
+<p>逐段读这条链。<span class="mono">POST .../messages</span> 进来，<span class="mono">RunManager.create_run</span> 先发一个 <span class="mono">run-…</span> id；接着 <span class="mono">agent_loop.step(run_id)</span> 启动那个 <span class="mono">for i in range(max_steps)</span> 循环（第 14 课的主角）。</p>
+<p>循环里每圈调一次 <span class="mono">_step(run_id)</span>：用 <span class="mono">generate_step_id()</span> 发一个 <span class="mono">step-…</span> id，写一行 <span class="mono">steps</span>。这一步产出的<strong>每条新 <span class="mono">Message</span></strong> 都被盖上 <span class="mono">run_id</span>＋<span class="mono">step_id</span>（<span class="mono">letta_agent_v3.py::LettaAgentV3._checkpoint_messages</span>，回扣第 3 课）。</p>
+<p>于是层级很干净：<strong>一个 <span class="mono">Run</span> → 至多 <span class="mono">max_steps</span> 个 <span class="mono">Step</span> → 每个 <span class="mono">Step</span> 多条 <span class="mono">Message</span></strong>。拿着 <span class="mono">run_id</span> 能查到整次调用，拿着 <span class="mono">step_id</span> 能定位到具体哪一圈、产了哪些消息。</p>
+<details class="accordion"><summary>Job、Run、Step 到底谁包谁？一次说清</summary><div class="acc-body">
+<p><strong><span class="mono">Run</span></strong>：一次 agent 调用（你发一条消息、agent 跑一轮直到停）。它<strong>包含</strong> Step 与 Message。</p>
+<p><strong><span class="mono">Step</span></strong>：Run 里的<strong>一圈 loop 迭代</strong>＝一次 LLM 调用＋一轮工具执行。它<strong>被 Run 包含</strong>，再<strong>包含</strong> StepMetrics 与若干 Message。</p>
+<p><strong><span class="mono">Job</span></strong>：和 Run <strong>平级</strong>的后台/批任务（如加载文件）。它<strong>不包含</strong> Run，也<strong>不被</strong> Run 包含——是另一张表上的另一条线。</p>
+<p>所以正确嵌套是 <span class="mono">Run ⊃ Step ⊃ StepMetrics</span>（外加 <span class="mono">Run</span>–<span class="mono">RunMetrics</span> 一对一）。把它写成 <span class="mono">Job ⊃ Run ⊃ Steps</span> 是<strong>错</strong>的，这是本课要纠的第一个坑。</p>
+</div></details>
+<div class="card analogy"><div class="tag">📝 生活类比</div>
+<p>把一次 agent 调用想成一<strong>单快递</strong>。</p>
+<p>这一单（<span class="mono">Run</span>）在路上会被<strong>多次扫描</strong>——揽收、转运、派送，每次扫描就是一个 <span class="mono">Step</span>，留下<strong>时间戳和重量</strong>（<span class="mono">StepMetrics</span> 的耗时、<span class="mono">token</span> 用量）。</p>
+<p>而仓库那边的<strong>后台理货任务</strong>（<span class="mono">Job</span>）是<strong>另一条线</strong>：它不在你这单的轨迹里，自己跑自己的。</p>
+<p>你想知道包裹到哪了，有两种看法：要么盯着<strong>实时轨迹推送</strong>（SSE 流），要么事后拿<strong>单号查物流</strong>（轮询 <span class="mono">GET /runs/{id}</span>）。同一单，两种观察方式。</p>
+</div>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
