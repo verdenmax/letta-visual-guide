@@ -444,6 +444,25 @@ LESSON_28 = {
 <p>A “shared block” shares the <strong>same Block row</strong>, not a copy each — edit one place and the other agent sees it on its next prompt rebuild.</p>
 <p><span class="mono">round_robin / supervisor / dynamic</span> cannot run over a live API in v0.16.8; don't read the schema and assume they're usable.</p>
 </div>
-<!--ENMORE-->
+<h2>Callbacks and recap: multi-agent is something that “emerges”</h2>
+<p>Let's wrap up this lesson. v0.16.8's multi-agent has no grand “scheduling hub”; it's assembled from a few parts you <strong>already learned</strong> long ago.</p>
+<p>Callback to Lessons 13 and 14: the sleeptime agent runs that very <span class="mono">LettaAgentV3</span> step loop — <span class="mono">SleeptimeMultiAgentV4</span> subclasses it directly. The callee agent B is the same, running B's own full loop. Every “member” is just an ordinary agent.</p>
+<p>Callback to Lessons 8 and 9: what sleeptime edits is the block plus self-editing memory set — <span class="mono">memory_rethink</span> reuses exactly the core-memory tools you learned, only this time writing the shared row.</p>
+<p>Callback to Lesson 25: the trigger cadence relies on <span class="mono">group_manager</span>'s <span class="mono">bump_turns_counter_async</span> maintaining <span class="mono">turns_counter</span> — another appearance of that service-manager set from Part 7.</p>
+<p>So “multi-agent” in Letta is not a new runtime but a <strong>new combination of old parts</strong>: the same loop, the same memory tools, the same service manager, plus one shared Block row and a counter.</p>
+<p>This is Letta's consistent “less is more”: rather than building a giant multi-agent engine, it reuses the already-polished abstractions of agent, block, and manager to the hilt. New behavior emerges from combining old abstractions, and the maintenance surface stays minimal.</p>
+<p>Another callback to Lesson 24's “three floors”: the A-calls-B hop walks that REST → SyncServer → loop staircase back down, this time from the tool sandbox. Multi-agent doesn't bypass the architecture but <strong>runs the same request path again</strong>, only with another agent as the initiator.</p>
+<p>To string it together: path one lets agents <strong>talk</strong> (a synchronous API call), sleeptime lets agents <strong>hand off memory</strong> (an asynchronous edit of the shared block), and what truly glues them is always that one <span class="mono">Block</span> row.</p>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li>Only <strong>two</strong> multi-agent mechanisms are truly live in v0.16.8: the <span class="mono">send_message_to_agent_*</span> tools (A re-enters over REST to run B's own loop) and <strong>sleeptime</strong> (a background agent edits memory every N turns).</li>
+<li>The classic group managers <span class="mono">round_robin / supervisor / dynamic</span> are only schema/enum/class skeleton: <span class="mono">load_multi_agent</span> is never called, <span class="mono">/v1/groups</span> is deprecated with no send endpoint, and <span class="mono">SupervisorMultiAgent.step</span> is commented out.</li>
+<li>Sleeptime = <span class="mono">SleeptimeMultiAgentV4(LettaAgentV3)</span>: <span class="mono">step</span> first does <span class="mono">super().step()</span> for the foreground, then <span class="mono">run_sleeptime_agents</span> — on a <span class="mono">% frequency == 0</span> hit, <span class="mono">safe_create_task</span> non-blockingly wakes the background.</li>
+<li>The coordination primitive is <strong>one shared <span class="mono">Block</span></strong> (<span class="mono">blocks_agents.py::BlocksAgents</span> composite PK): sleeptime writes with <span class="mono">memory_rethink</span>, the foreground reads only on its next prompt rebuild; <span class="mono">Block.version</span> is an optimistic lock.</li>
+<li>Read-backwards alert: sleeptime's <span class="mono">manager_agent_id</span> = the foreground primary agent, <span class="mono">group.agent_ids</span> = the background editors; <span class="mono">turns_counter=-1</span> plus default frequency 5 → it fires on the very first turn.</li>
+</ul>
+</div>
+<p>Take this muscle memory with you: when you see “multi-agent” in Letta, don't hunt for a scheduler first — ask “whose API are they calling” and “do they point at the same Block row.” Answer those two and multi-agent behavior is no longer mysterious.</p>
+<p>Part 8 is now open. In the next lesson we continue into the “advanced topics,” applying this “old parts, new combinations” mindset to more places.</p>
 """,
 }
