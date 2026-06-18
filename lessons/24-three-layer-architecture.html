@@ -476,7 +476,50 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>于是"业务枢纽"＝<strong>跨-manager 协调者</strong>，而不是"通往 DB 的唯一一道门"。这个重新理解，正是读懂这层代码的钥匙。</p>
 <p>再点一下分层的接缝：FastAPI 的 <span class="mono">Depends</span> 就是那道缝——两个依赖把一个普通函数变成分层 handler，actor 在 header 依赖跑完后于<strong>函数体内</strong>解析，而非靠全局鉴权中间件。</p>
 </div>
-<!--ZHMORE-->
+<h2>再挖深一点</h2>
+<p>主线到这儿就完整了。下面四个抽屉，专收你大概率会追问的细节——按兴趣展开即可，不展开也不影响对主线的理解。</p>
+<details class="accordion"><summary>为什么路由要做得这么薄？</summary><div class="acc-body">
+<p>把业务逻辑从路由里抽走，至少买到三样好处。</p>
+<p><strong>复用</strong>：同一个 <span class="mono">agent_manager.get_agent_by_id_async</span>，REST 端点能调，内部代码、后台任务也能调，不必各写一份。</p>
+<p><strong>可测</strong>：测业务不必起 HTTP——直接对 manager 写单测即可，路由那层薄到几乎不用测。</p>
+<p><strong>一致鉴权</strong>：访问控制焊在 ORM 层（<span class="mono">apply_access_predicate</span>），无论谁来调 manager，组织级隔离都照样生效，而不是每个端点各写一遍、各漏一处。</p>
+</div></details>
+<details class="accordion"><summary>SyncServer 为何叫 "Sync" 却几乎全是 async？</summary><div class="acc-body">
+<p>纯属<strong>历史命名</strong>。早期确实有"同步、单线程、阻塞"的设想，类的 docstring 就是那时写下的。</p>
+<p>但 v0.16.8 的现实是：路由调到的方法几乎全是 <span class="mono">async def</span>，并发靠单事件循环上的协作式 async，而不是多线程或阻塞。</p>
+<p>名字没改，是因为它早已是无数调用点的稳定符号；改名的收益，远抵不过全仓改动的风险。读代码时，把 "Sync" 当成一个<strong>历史标签</strong>看待就好。</p>
+</div></details>
+<details class="accordion"><summary>一次请求为什么是多个事务，而不是一个？</summary><div class="acc-body">
+<p>因为<strong>事务边界被划在 manager 方法里</strong>，而不是请求级别。</p>
+<p>每个 manager 方法（如查 user、查 agent）各自用 <span class="mono">async with db_registry.async_session()</span> 开一个 session，办完即 commit/close。</p>
+<p>于是 <span class="mono">retrieve_agent</span> 这一条请求，跨了<strong>两个独立事务</strong>：先查 user，再查 agent；并没有把整条请求包进一个大事务的"请求级 UoW"。</p>
+<p>代价是两次读之间不是同一个快照；好处是边界清晰、各 manager 自洽，也更容易复用与测试。第 27 课会把 session 的来历讲透。</p>
+</div></details>
+<details class="accordion"><summary>那个可选的服务器口令中间件是什么？</summary><div class="acc-body">
+<p>这是一道<strong>正交</strong>的、整服务器级的关卡，只在 secure 模式启用。</p>
+<p><span class="mono">middleware/check_password.py::CheckPasswordMiddleware</span> 检查 <span class="mono">X-BARE-PASSWORD: password &lt;pw&gt;</span> 或 <span class="mono">Authorization: Bearer &lt;pw&gt;</span>；健康探针放行，否则 401。</p>
+<p>它只在 <span class="mono">LETTA_SERVER_SECURE=true</span> 或 <span class="mono">--secure</span> 时才挂载，用的是<strong>单一共享密钥</strong>，与租户/actor 完全无关——别把它和前面那套 <span class="mono">user_id</span>/actor 的多租户身份混为一谈。</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>路由<strong>不是</strong>都经 <span class="mono">SyncServer</span> 方法——多数是 <span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> 直调，只有跨-manager 编排才走 SyncServer。</p>
+<p><span class="mono">SyncServer</span> 名"同步"实"异步"：docstring 是历史遗留，真实路径几乎全 <span class="mono">async</span>。</p>
+<p>actor 在<strong>处理函数体内</strong>解析（第 ① 步），不是全局鉴权中间件；路由层<strong>从不</strong>开 DB session。</p>
+<p>缺 <span class="mono">user_id</span> 时，OSS 模式默认落到 <strong>default user</strong>，不会直接报错。</p>
+<p>那个全局 server 在 <strong>import 时</strong>就建好（<span class="mono">app.py::server</span>），<strong>不</strong>在 <span class="mono">create_application</span> 工厂里；层与层之间<strong>无消息队列</strong>。</p>
+</div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>一条请求穿三层：<strong>薄路由 → SyncServer + Managers → ORM → DB</strong>。</li>
+<li>进程里<strong>唯一一个全局 <span class="mono">SyncServer</span></strong>：import 时建、<span class="mono">lifespan</span> 里 <span class="mono">init_async</span>；路由经 <span class="mono">Depends(get_letta_server)</span> 拿到同一个它。</li>
+<li>薄路由四步：解析 actor → 处理参数 → 调 manager/server → 返回 schema；<strong>DB session 只在 manager 里开</strong>。</li>
+<li>多数是 <strong>manager 直调</strong>，只有跨-manager 编排才走 SyncServer 方法（agents.py 约 131 : 16）。</li>
+<li>一次请求＝<strong>多个独立事务</strong>；访问控制由 ORM 的 <span class="mono">apply_access_predicate</span> 焊进每条查询。</li>
+</ul>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">一句话收束：<strong>路由只接、manager 才办、ORM 守门、DB 落地，全靠一个全局 server 串起来</strong>。这三层分工，正是后面 25–27 课所有细节赖以站立的地基。</span></div>
+<p>这条"薄模式"你其实早就见过：第 03 课 <span class="mono">agents.py::send_message</span> 的消息生命周期，走的正是同一套"路由只接、manager 才办"。</p>
+<p>而被 server 拉起来的 agent 循环（第 13、14 课的 <span class="mono">AgentLoop.load(...)</span> 再 <span class="mono">.step(...)</span>），也是从这一层被调起来的——服务端正是它的入口。</p>
+<p>接下来三课会把第二、三层逐一拆开：第 25 课讲 manager 到底怎么写业务，第 26 课讲 ORM 的 CRUD 与多租户隔离，第 27 课讲 DB session 与 <span class="mono">async_session</span> 的来历。三层楼，一层层往下走。</p>
 </div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="23-local-models-gbnf.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">本地模型与 GBNF 受限解码</span><span class="lang-en">Local models &amp; GBNF constrained decoding</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
