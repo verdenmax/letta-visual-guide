@@ -748,6 +748,88 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 <p>It also answers a common question: why not just return the ORM row to the router and skip a conversion? Because then the DB session's lifecycle <strong>leaks into the router layer</strong>, and serialization can trip lazy loading without warning — both dangerous and hard to test.</p>
 <p>The reverse holds too: because what's returned is pydantic, unit-testing a manager needs <strong>no HTTP at all</strong> — just call the method and assert on the returned schema, the flip side of last lesson's "thin routers barely need testing."</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">An organization is the <strong>root</strong> of the tenant tree, so its read takes no <span class="mono">actor</span> parameter. Switch to tenant-scoped objects like agent or message and the signature gains an <span class="mono">actor</span>, on which the ORM welds <span class="mono">apply_access_predicate</span> into the query — same shape, just one extra identity.</span></div>
+<h2>db_registry: the only seam that can open a session</h2>
+<p>The most pivotal line in the uniform shape is <span class="mono">async with db_registry.async_session()</span>. How does it <strong>fix two things in one line</strong> — drawing the transaction boundary and injecting the tenant scope? The answer hides in <span class="mono">db.py</span>.</p>
+<p>First, a fact with stark contrast: <span class="mono">db_registry</span> sounds like a complex "registry," yet its class docstring is one self-deprecating line — <strong>"Dummy registry to maintain the existing interface."</strong></p>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">db.py::DatabaseRegistry</span> — the process-wide singleton <span class="mono">db_registry</span>; v0.16.8 exposes only <span class="mono">async_session()</span>, no sync <span class="mono">session()</span>.</p>
+<p><span class="mono">db.py</span> module level: <span class="mono">engine = create_async_engine(...)</span> + <span class="mono">async_session_factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)</span>.</p>
+<p><span class="mono">utils.py::enforce_types</span>, <span class="mono">otel/tracing.py::trace_method</span>, <span class="mono">sqlalchemy_base.py::SqlalchemyBase.to_pydantic</span> — this layer's three cross-cutting tools.</p>
+</div>
+<p>Spread <span class="mono">async_session</span> open and it's just an <span class="mono">@asynccontextmanager</span>: commit on a clean exit, roll back on error, and always clear the field at the end.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/db.py</span><span class="ln">DatabaseRegistry.async_session: the transaction boundary lives here (excerpt)</span></div>
+<pre><span class="cm"># module level: one engine + one session factory per process</span>
+engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)
+async_session_factory = <span class="fn">async_sessionmaker</span>(engine, expire_on_commit=<span class="kw">False</span>, autoflush=<span class="kw">False</span>)
+
+<span class="kw">class</span> <span class="fn">DatabaseRegistry</span>:
+    <span class="st">&quot;&quot;&quot;Dummy registry to maintain the existing interface.&quot;&quot;&quot;</span>
+
+    <span class="nb">@asynccontextmanager</span>
+    <span class="kw">async def</span> <span class="fn">async_session</span>(self):
+        session = <span class="fn">async_session_factory</span>()
+        <span class="kw">try</span>:
+            <span class="kw">yield</span> session
+            <span class="kw">await</span> session.<span class="fn">commit</span>()        <span class="cm"># clean exit -&gt; commit</span>
+        <span class="kw">except</span> BaseException:               <span class="cm"># includes CancelledError</span>
+            <span class="kw">await</span> session.<span class="fn">rollback</span>()      <span class="cm"># error -&gt; roll back</span>
+            <span class="kw">raise</span>
+        <span class="kw">finally</span>:
+            session.<span class="fn">expunge_all</span>()         <span class="cm"># detach all objects, so no row leaks out of the session</span>
+            <span class="kw">await</span> session.<span class="fn">close</span>()
+
+db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="cm"># process-wide singleton</span>
+</pre></div>
+<p>The three closing actions each have a job: <span class="mono">commit/rollback</span> keeps the data correct, <span class="mono">expunge_all</span> keeps the objects safe, <span class="mono">close</span> returns the connection. Every time a session opens, this closing set runs <strong>atomically</strong> once.</p>
+<p>Line it up with last lesson's sequence: the "two door open/closes" counted in that GET request — each BEGIN/commit actually happens inside this <span class="mono">async_session</span>; the manager method merely borrows it to open a door.</p>
+<p>A word on where these managers come from: they aren't injected by a DI container — they're plainly newed up line by line in last lesson's <span class="mono">SyncServer.__init__</span> as <span class="mono">self.x_manager = XManager()</span> — so plain there's hardly a framework feel.</p>
+<p>This echoes last lesson's conclusion too: one request = <strong>several independent transactions</strong>, not one request-wide mega-transaction. Here's why — the transaction boundary is drawn by <span class="mono">async with</span> inside each manager method.</p>
+<p>Note it's <span class="mono">except BaseException</span>, not <span class="mono">except Exception</span>: even <span class="mono">CancelledError</span> (a cancelled request) must roll back — cancellation is routine in the async world, and a half-finished transaction must never be left in the database.</p>
+<p>And the inconspicuous <span class="mono">expire_on_commit=False</span>: it keeps objects from being marked stale after commit, so <span class="mono">to_pydantic()</span> reading fields needn't make another DB round trip. That's the other half of the key to "why convert inside the session" later.</p>
+<p>So who calls these managers? The answer: <strong>four kinds of callers, all converging</strong>, finally narrowing to that one seam, <span class="mono">db_registry.async_session()</span>.</p>
+<div class="cellgroup"><div class="cg-cap"><b>Who calls the managers (four kinds of callers)</b></div><div class="cells"><span class="cell hl">REST routers</span><span class="sep">·</span><span class="cell">agent loop</span><span class="sep">·</span><span class="cell">other managers</span><span class="sep">·</span><span class="cell">serialization / batch jobs</span></div></div>
+<p>The four call paths look like they each go their own way, but on the second floor they're gathered onto the same narrow road:</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">Any caller</div><div class="nd">router / loop / another manager</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">manager method</div><div class="nd">server.&lt;manager&gt;.&lt;method&gt;</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">async_session()</div><div class="nd">the only seam · one transaction</div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">The "only seam" is this layer's biggest lever: routers and the agent loop <strong>never see</strong> a session, and can't write a <span class="mono">WHERE organization_id</span>. Isolation and transactions are <strong>structurally</strong> welded to "the only place a session can open" — impossible to forget.</span></div>
+<details class="accordion"><summary>Why does the manager layer need to exist at all?</summary><div class="acc-body">
+<p>Folding "open session + scoped CRUD + convert to pydantic" into one layer buys at least four things.</p>
+<p><strong>Transaction ownership</strong>: in the whole process only a manager can open a session, so the transaction boundary has a single, clear owner, not scattered across routers or loops.</p>
+<p><strong>Tenant scope</strong>: <span class="mono">apply_access_predicate</span> is injected just once in this layer, so org-level isolation can't be bypassed and needn't be re-written at every endpoint.</p>
+<p><strong>Reuse across callers</strong>: the same method can be called by a REST router, the agent loop, or another manager; <span class="mono">AgentManager.__init__</span> even composes <span class="mono">BlockManager / ToolManager / MessageManager / PassageManager</span> directly.</p>
+<p><strong>Cross-cutting for free</strong>: stack the decorators and typing, tracing, and id checking apply to every method alike, no hand-writing needed.</p>
+</div></details>
+<h2>schema ↔ ORM: a change of outfit in both directions</h2>
+<p>The uniform shape actually has two changes of outfit: on the way out, ORM row → pydantic; on the way in, pydantic → ORM row. The two directions use <strong>two different entry points</strong> — don't mix them up.</p>
+<p>Take the outbound (read) leg first. The conversion method hangs on the <strong>ORM class</strong>, not written inside the manager:</p>
+<div class="cols">
+  <div class="col"><h4>📤 Outbound · ORM → pydantic</h4><p><span class="mono">SqlalchemyBase.to_pydantic</span> = <span class="mono">self.__pydantic_model__.model_validate(self, from_attributes=True)</span>. Each ORM model declares its own <span class="mono">__pydantic_model__</span> (e.g. <span class="mono">orm/agent.py → PydanticAgentState</span>).</p></div>
+  <div class="col"><h4>📥 Inbound · pydantic → ORM</h4><p><span class="mono">model_dump(to_orm=True)</span> (<span class="mono">schemas/letta_base.py::LettaBase.model_dump</span>) breaks the fields into a dict, renames <span class="mono">metadata</span> to <span class="mono">metadata_</span> along the way, then feeds the ORM constructor.</p></div>
+</div>
+<p>Neither direction has a <span class="mono">to_record()</span> / <span class="mono">to_orm()</span> method — outbound relies on <span class="mono">to_pydantic</span>, inbound on <span class="mono">model_dump(to_orm=True)</span>; just these two keys.</p>
+<p>Why rename <span class="mono">metadata</span>? Because SQLAlchemy reserves <span class="mono">metadata</span> as a reserved attribute, so the ORM column can only be <span class="mono">metadata_</span>; the outward schema still wants <span class="mono">metadata</span>, so the change of outfit swaps them in passing.</p>
+<p>For simple models one <span class="mono">to_pydantic()</span> is enough; but something like agent, which carries <strong>a pile of relationships</strong>, must hand-assemble the block, tool, source relations, so it overrides <span class="mono">to_pydantic_async</span>:</p>
+<table class="t">
+<tr><th>Method</th><th>Hangs on</th><th>What it does</th><th>Used for</th></tr>
+<tr><td class="mono">to_pydantic()</td><td>SqlalchemyBase</td><td class="mono">model_validate(from_attributes=True)</td><td>simple models (e.g. organization)</td></tr>
+<tr><td class="mono">to_pydantic_async()</td><td>overridden by complex ORM classes</td><td>assembles relations by hand, may issue more queries</td><td class="mono">orm/agent.py::Agent</td></tr>
+<tr><td class="mono">model_dump(to_orm=True)</td><td>LettaBase (pydantic side)</td><td>split fields + metadata→metadata_</td><td>construct ORM rows (write path)</td></tr>
+</table>
+<p>Why does agent use the async version? Because assembling relations may issue more queries, and queries need <span class="mono">await</span>. A simple model has all its fields in hand, so a sync <span class="mono">to_pydantic()</span> suffices. In one line: <strong>the more relations, the more likely the conversion is async</strong>.</p>
+<p>A word on direction: the outbound (read) leg runs in nearly every method, so <span class="mono">to_pydantic</span> is a high-frequency path; the inbound (write) leg shows up only on create / update, so <span class="mono">model_dump(to_orm=True)</span> is far sparser.</p>
+<p>Think of the "change of outfit" as customs: crossing the counter in either direction means swapping papers — the ORM row is an "internal badge," pydantic an "outward passport." Each governs its own stretch; don't leave with the wrong papers.</p>
+<p>Note too that <span class="mono">actor</span> is <strong>passed explicitly</strong>, not fished out of some global context: every method that needs isolation spells <span class="mono">actor</span> right in its signature — whose identity, whose data, plain to see and easy to test.</p>
+<details class="accordion"><summary>Why must the conversion finish inside the session?</summary><div class="acc-body">
+<p>Because once you leave the <span class="mono">async with</span> block, the session is already <span class="mono">close</span>d and the ORM row detached by <span class="mono">expunge_all</span> — read its fields now and you'll likely hit a <span class="mono">DetachedInstanceError</span> outright.</p>
+<p>Someone will ask: isn't there <span class="mono">expire_on_commit=False</span>, so the object shouldn't expire? True, already-loaded fields are still there; but the moment you touch an <strong>unloaded</strong> relationship or lazy attribute, an object cut off from its session can't re-query, and it blows up all the same.</p>
+<p>So the rule is hard: <strong>while the door is still open, read out everything you need and set it into pydantic</strong>. Once the copy is formed, it's wholly independent of the counter and that door.</p>
+<p>This also explains a "counterintuitive" detail in <span class="mono">get_agent_by_id_async</span>: it deliberately converts to pydantic <strong>before decrypting and after releasing the DB connection</strong>, then runs the expensive PBKDF2 decryption — the schema boundary doubles as a connection-pool optimization.</p>
+</div></details>
 <!--ENMORE-->
 """,
 }
