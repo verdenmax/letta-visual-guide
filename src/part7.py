@@ -1346,3 +1346,10 @@ LESSON_26 = {
 <p>The third-floor gate is now seen through. Next lesson we walk down to the engine room at the bottom and watch which database these rows actually land in, and what smooths over the differences between SQLite and Postgres.</p>
 """,
 }
+
+LESSON_27 = {
+    "zh": r"""
+<!--ZHMORE-->
+""",
+    "en": r"""<p>stub</p>""",
+}

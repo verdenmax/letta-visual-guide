@@ -39,4 +39,5 @@ CONTENT = {
     "24-three-layer-architecture.html": part7.LESSON_24,
     "25-service-managers.html": part7.LESSON_25,
     "26-crud-and-multitenancy.html": part7.LESSON_26,
+    "27-dual-db-and-vectors.html": part7.LESSON_27,
 }
