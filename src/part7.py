@@ -1135,6 +1135,43 @@ LESSON_26 = {
 <p>三楼这道门禁看透了。下一课，我们走到楼底的引擎房，看这些行究竟落在哪个库、靠什么把 SQLite 与 Postgres 的差异抹平。</p>
 """,
     "en": r"""
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Last lesson we stood at the second-floor counter and saw the uniform shape of every manager method — open the door, fetch data, change clothes inside. Step 3's one line, <span class="mono">apply_access_predicate</span>, welds tenant isolation "into every SQL," and back then it got only a passing mention.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson pushes open the third-floor archive room and watches how that gate actually works: around 40 models share one <span class="mono">SqlalchemyBase</span>, one set of generic async CRUD, welding "you only ever see your own cell" into the lowest layer. <strong>Secure by default</strong> — not "remember to add it," but hard to leak even if you tried.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>The whole lesson in one sentence: <strong>every query, by default, sees only the rows that are "your tenant, not yet deleted."</strong></p>
+<p>On the read path (<span class="mono">read / list / size</span>), as long as you pass an <span class="mono">actor</span>, the gate auto-appends a <span class="mono">WHERE organization_id == actor.org</span>.</p>
+<p>On the write path (<span class="mono">create / update</span>), it stamps the audit fields along the way: who created it, who last changed it, and when.</p>
+<p>"Delete" defaults to a <strong>soft delete</strong>: <span class="mono">delete_async</span> only flips <span class="mono">is_deleted</span> to <span class="mono">True</span>; the row still lies in the table.</p>
+<p>All of this lives on one abstract base class, <span class="mono">SqlalchemyBase</span>; around 40 models inherit it for free, with no need to rewrite each one.</p>
+</div>
+<p>This isn't one model's quirk — it's the <strong>shared foundation of all models</strong>. Below, we first draw "secure by default" as one overall flow, then take it apart section by section.</p>
+<p>Let's flag one counterintuitive point up front: when <span class="mono">actor</span> is absent, this gate <strong>does not hard-fail</strong> — it logs a loud <span class="mono">SECURITY</span> warning and runs on, unscoped. Why it's designed that way is the subject of this lesson's second half.</p>
+<p>Re-aim the camera: Lesson 24 looked at "the whole three-floor building," Lesson 25 at "the second-floor counter," and this lesson watches only <strong>the third-floor gate</strong> — what filter each step adds to a query, from assembly to landing in the DB.</p>
+<p>A word on granularity: every code block here is marked "simplified / excerpt." Real methods often carry pagination, filtering, batching and other extra parameters, but the three skeletal moves — <strong>weld isolation, stamp audit, soft delete</strong> — never budge, and the skeleton is exactly what we're after.</p>
+<p>One more term to pin down: "tenant" in this lesson = organization (org). One org can hold multiple users, who by default <strong>share the same rows</strong>; objects that are truly per-user private are very few, and we'll name them one by one below.</p>
+<h2>A query's security pipeline (secure by default)</h2>
+<p>Lay "secure by default" out as a pipeline and you'll see: identity is recognized at the <strong>outermost</strong> layer, isolation is welded into the SQL at the <strong>innermost</strong> layer, and the relay legs in between only honestly thread the <span class="mono">actor</span> through.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Password middleware (optional)</h4><p><span class="mono">CheckPasswordMiddleware</span>: a whole-server-level gate, mounted only in <span class="mono">--secure</span> mode; orthogonal to tenancy.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>get_headers · identify</h4><p>Reads the <span class="mono">user_id</span> header, validates it looks like <span class="mono">user-&lt;uuid4&gt;</span>; format only, <strong>never touches the DB</strong>.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Resolve actor</h4><p><span class="mono">get_actor_or_default_async</span>: found → <span class="mono">User</span> (with org); <span class="mono">no_default_actor</span> and no id → rejected.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>manager threads actor</h4><p>The router threads <span class="mono">actor</span> all the way into the manager method — "threading actor" is the path of least resistance.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Into generic CRUD</h4><p><span class="mono">&lt;crud&gt;_async(actor=...)</span>: lands on <span class="mono">SqlalchemyBase</span>'s uniform verbs.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>Weld isolation</h4><p><span class="mono">apply_access_predicate</span> auto-appends <span class="mono">WHERE org==actor.org</span> (<span class="mono">+ is_deleted==False</span> only when <span class="mono">check_is_deleted</span>).</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>Only your own cell remains</h4><p>SQL lands; what comes back is only <strong>this tenant's, undeleted</strong> rows; cross-tenant rows never enter the result set.</p></div></div>
+</div>
+<p>Of the seven steps, the one that truly <strong>decides who you see</strong> is step 6's auto-appended <span class="mono">WHERE</span>; the first five all do the same thing — safely deliver "who you are" to the gate.</p>
+<p>Notice step 1 is parenthesized: the server password is a whole-server-level gate, <strong>orthogonal to tenant isolation</strong> — the password governs "can you enter this server," the <span class="mono">actor</span> governs "once in, which cell you see." That orthogonality gets its own treatment later.</p>
+<p>Watch the half-clause in step 6's parentheses too: <span class="mono">is_deleted==False</span> is appended only when <span class="mono">check_is_deleted</span> is true — in other words, <strong>soft-deleted rows are still read back by default</strong>. This is the most counterintuitive bit; the soft-delete section spells it out.</p>
+<div class="card analogy"><div class="tag">🏦 An everyday analogy</div>
+<p>Picture the whole database as a <strong>shared archive with a gate</strong>; you (the caller) get in only by presenting your badge (<span class="mono">actor</span>).</p>
+<p>Every time you open a cabinet, the gate automatically lets you see only your <strong>department's (org)</strong> cell; other departments' cabinets you can't even see.</p>
+<p>"Delete" doesn't really incinerate; it slaps a <strong>"void" sticker</strong> on the file (soft delete) — the original stays on the shelf, and you can peel the sticker off to restore it when needed.</p>
+<p>On every fetch or return, the archivist automatically stamps a <strong>"who, when"</strong> mark for you (audit), without you asking.</p>
+<p>The beauty: these rules aren't written on each borrowing slip but welded into <strong>the gate itself</strong> — swap in a hundred borrowers and the rules don't change a word.</p>
+</div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">Gate · every query</span><span class="arrow">→</span><span class="emoji">🏷️</span><span class="lab">Void sticker · soft delete</span><span class="arrow">→</span><span class="emoji">🧾</span><span class="bubble">Who/when · audit</span></div><div class="cap">🔐 The gate auto-stamps every query (only your cell passes), 🏷️ a "void" sticker = soft delete (original stays on the shelf, recoverable), 🧾 every fetch/return auto-stamps a "who/when" mark (audit)</div></div>
+<p>The three things in this little picture — isolation, soft delete, audit — actually all live on <strong>the same abstract class</strong>. The next three sections take them apart, in exactly this order.</p>
 <!--ENMORE-->
 """,
 }
