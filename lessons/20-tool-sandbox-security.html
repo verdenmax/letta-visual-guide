@@ -522,7 +522,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
   <div class="qn">2. 为什么沙箱回传给服务端的结果必须用 JSON 读，而绝不能 pickle.loads？</div>
   <ol class="opts">
     <li>因为 agent_state 已经在去程用过 pickle 了，回程不能重复用同一种格式</li>
-    <li>因为沙箱刚执行过不可信的用户代码，它的 stdout 是不可信输出。pickle.loads 会在反序列化时执行任意代码——对沙箱输出 pickle.loads 等于一个服务端 RCE；json.loads 最坏只是拿到假数据</li>
+    <li>因为沙箱输出不可信，pickle.loads 会执行任意代码、等于服务端 RCE；json.loads 最坏只是假数据</li>
     <li>因为沙箱里没装 pickle 模块，只能用 JSON 编码结果</li>
     <li>因为 JSON 比 pickle 快，回程数据量大，必须用最快的格式</li>
   </ol>
@@ -537,7 +537,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>压缩 stdout，避免大结果占用太多带宽</li>
     <li>把 pickle 升级成加密格式，防止 agent_state 在去程被沙箱偷看</li>
     <li>替代 JSON 解析，让服务端可以直接 pickle.loads 沙箱输出</li>
-    <li>结果通道被污染：用户工具能往 stdout 打任何东西（调试 print、异常栈、甚至伪造的假结果）。marker 在噪声里定位真 payload、长度精确切片、MD5 抓篡改/截断，三层叠起来保证读到的就是工具真正返回的那份</li>
+    <li>结果通道被污染：stdout 里混着噪声甚至伪造的假结果，校验保证读到真 payload</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
@@ -550,7 +550,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>它新增了 marker+长度+MD5 帧，在此之前回程根本没有任何完整性校验</li>
     <li>它把去程的 agent_state 也从 pickle 改成 JSON，彻底禁用了 pickle</li>
     <li>它把本地沙箱换成 E2B，用云端隔离替代了进程隔离</li>
-    <li>它只把 sandbox→server 的 payload 编码从 pickle 换成 JSON，于是服务端读回从 pickle.loads 变成 json.loads，消除 RCE 面。marker+长度+MD5 帧早就存在、不是它加的；server→sandbox 仍 pickle agent_state，是有意保留的受信方向</li>
+    <li>它只把回程 payload 编码从 pickle 换成 JSON，消除 RCE 面；完整性帧和去程 agent_state 的 pickle 都没动</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
@@ -560,7 +560,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <div class="quiz">
   <div class="qn">5. 在 v0.16.8 里，沙箱实际执行的那段脚本是由 letta/templates/sandbox_code_file.py.j2 模板渲染出来的吗？</div>
   <ol class="opts">
-    <li>不是。那个 .j2 模板在 v0.16.8 没有被任何 .py 引用，只能当对照参考；真实脚本是 tool_sandbox/base.py 里 generate_execution_script / _render_sandbox_code 用字符串拼出来的</li>
+    <li>不是。那个 .j2 模板在 v0.16.8 没被任何 .py 引用，真实脚本是 tool_sandbox/base.py 用字符串拼出来的</li>
     <li>没有脚本——沙箱直接 import 用户的工具模块并调用，不需要拼脚本</li>
     <li>是的，Jinja2 在运行时渲染该模板，把 agent_state 和用户源码填进去生成脚本</li>
     <li>是的，但只有 Modal 沙箱用模板，本地和 E2B 用别的方式</li>
@@ -764,7 +764,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
   <div class="qn">2. Why must the result the sandbox sends back to the server be read as JSON, and never pickle.loads'd?</div>
   <ol class="opts">
     <li>Because agent_state already used pickle on the way in, and the return trip cannot reuse the same format</li>
-    <li>Because the sandbox just ran untrusted user code, so its stdout is untrusted output. pickle.loads executes arbitrary code during deserialization — pickle.loads on the sandbox output is a server-side RCE; json.loads at worst yields fake data</li>
+    <li>Because the sandbox output is untrusted, pickle.loads executes arbitrary code — a server-side RCE; json.loads at worst yields fake data</li>
     <li>Because the sandbox has no pickle module installed, so it can only encode results as JSON</li>
     <li>Because JSON is faster than pickle, and the return data is large, so the fastest format is required</li>
   </ol>
@@ -779,7 +779,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>Compressing stdout to keep large results from using too much bandwidth</li>
     <li>Upgrading pickle to an encrypted format to stop the sandbox from peeking at agent_state on the way in</li>
     <li>Replacing JSON parsing so the server can pickle.loads the sandbox output directly</li>
-    <li>The result channel being polluted: a user tool can print anything to stdout (debug prints, stack traces, even a forged fake result). The marker locates the real payload amid the noise, the length slices it precisely, and MD5 catches tampering/truncation — three layers ensuring what is read is exactly what the tool actually returned</li>
+    <li>The result channel being polluted: stdout carries noise and even forged fake results, so verification ensures the real payload is read</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
@@ -792,7 +792,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>It added the marker+length+MD5 frame; before it, the return leg had no integrity check at all</li>
     <li>It also switched the inbound agent_state from pickle to JSON, banning pickle entirely</li>
     <li>It replaced the local sandbox with E2B, swapping cloud isolation for process isolation</li>
-    <li>It only switched the sandbox→server payload encoding from pickle to JSON, so the server's read-back changed from pickle.loads to json.loads, eliminating the RCE surface. The marker+length+MD5 frame already existed and was not added by it; server→sandbox still pickles agent_state, the intentionally kept trusted direction</li>
+    <li>It only switched the return-leg payload encoding from pickle to JSON, eliminating the RCE surface; the integrity frame and the inbound pickling of agent_state were left untouched</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
@@ -802,7 +802,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
 <div class="quiz">
   <div class="qn">5. In v0.16.8, is the script the sandbox actually runs rendered from the letta/templates/sandbox_code_file.py.j2 template?</div>
   <ol class="opts">
-    <li>No. That .j2 template is not referenced by any .py in v0.16.8 and only serves as a side reference; the real script is string-assembled by generate_execution_script / _render_sandbox_code in tool_sandbox/base.py</li>
+    <li>No. That .j2 template is referenced by no .py in v0.16.8; the real script is string-assembled in tool_sandbox/base.py</li>
     <li>There is no script — the sandbox directly imports the user's tool module and calls it, with no assembling needed</li>
     <li>Yes, Jinja2 renders that template at runtime, filling in agent_state and the user source to produce the script</li>
     <li>Yes, but only the Modal sandbox uses the template; local and E2B use other means</li>

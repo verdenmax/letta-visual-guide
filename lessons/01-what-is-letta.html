@@ -552,7 +552,7 @@ resp = client.agents.messages.<span class="fn">create</span>(
   <div class="qn">3. “自我编辑记忆”在机制上意味着什么？</div>
   <ol class="opts">
     <li>直接清空上下文窗口</li>
-    <li>agent 改写自己的系统提示（核心记忆被重新编译进第 0 条 system 消息）</li>
+    <li>agent 改写自己的系统提示</li>
     <li>把整段对话写进一个日志文件</li>
     <li>重新训练（微调）底层模型</li>
   </ol>
@@ -778,7 +778,7 @@ resp = client.agents.messages.<span class="fn">create</span>(
   <div class="qn">3. Mechanically, what does 'self-editing memory' mean?</div>
   <ol class="opts">
     <li>Simply clearing the context window</li>
-    <li>The agent rewrites its own system prompt (core memory is recompiled into message #0)</li>
+    <li>The agent rewrites its own system prompt</li>
     <li>Writing the whole conversation to a log file</li>
     <li>Re-training (fine-tuning) the underlying model</li>
   </ol>

@@ -560,7 +560,7 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
   <ol class="opts">
     <li>因为系统提示不允许被修改</li>
     <li>为了让 decode 阶段并行化</li>
-    <li>前缀逐 token 不变才能命中 prefix cache、跳过昂贵的 prefill，省时省钱</li>
+    <li>前缀不变才能命中 prefix cache、跳过昂贵的 prefill</li>
     <li>因为模型读不懂太长的系统提示</li>
   </ol>
   <details class="accordion">
@@ -571,7 +571,7 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 <div class="quiz">
   <div class="qn">3. “换个 1M 上下文的模型就不用管理记忆了”——这个说法的问题在哪？</div>
   <ol class="opts">
-    <li>长上下文只是放宽约束而非取消它：成本随 token 涨、prefill 延迟涨、还有 lost-in-the-middle</li>
+    <li>长上下文只是放宽约束，而非取消它</li>
     <li>长上下文会让模型忘记系统提示</li>
     <li>1M 上下文的模型根本不存在</li>
     <li>长上下文模型不能调用工具</li>
@@ -816,7 +816,7 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
   <ol class="opts">
     <li>Because the system prompt is not allowed to be modified</li>
     <li>To parallelize the decode phase</li>
-    <li>A token-for-token stable prefix hits the prefix cache and skips the costly prefill, saving time and money</li>
+    <li>A stable prefix hits the prefix cache and skips the costly prefill</li>
     <li>Because the model can't understand a long system prompt</li>
   </ol>
   <details class="accordion">
@@ -827,7 +827,7 @@ threshold = <span class="fn">get_compaction_trigger_threshold</span>(llm_config)
 <div class="quiz">
   <div class="qn">3. 'Just switch to a 1M-context model and you won't need memory management' — what's wrong with this?</div>
   <ol class="opts">
-    <li>Long context only loosens, not removes, the constraint: cost rises with tokens, prefill latency rises, plus lost-in-the-middle</li>
+    <li>Long context only loosens the constraint, it doesn't remove it</li>
     <li>Long context makes the model forget the system prompt</li>
     <li>1M-context models don't exist at all</li>
     <li>Long-context models cannot call tools</li>

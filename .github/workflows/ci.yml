@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Pure-stdlib generator: no install step needed.
+      - name: Build (index + lessons + print editions)
+        working-directory: src
+        run: python build.py
+
+      - name: Verify committed HTML is up to date
+        run: |
+          git diff --exit-code -- index.html lessons \
+            || { echo "::error::Committed HTML is stale. Run 'cd src && python build.py' and commit the result."; exit 1; }
+
+      - name: Check internal links resolve
+        working-directory: src
+        run: python check_links.py
+
+      - name: Check HTML structure / source alignment
+        working-directory: src
+        run: python check_html.py

@@ -601,7 +601,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
 <div class="quiz">
   <div class="qn">2. 你把几万字塞进 persona/human 块，系统提示本身就快顶满窗口。这时 agent 不断压缩对话却仍然报错——发生了什么？</div>
   <ol class="opts">
-    <li>走了“系统提示溢出”特判：压缩只驱逐对话、绝不动 core；当第 0 条系统消息自己就 ≥ 窗口，抛 SystemPromptTokenExceededError</li>
+    <li>走了“系统提示溢出”特判：系统提示本身 ≥ 窗口，再压对话也没用</li>
     <li>压缩会把核心记忆也一起摘要掉，多压几次就好了</li>
     <li>这是 recall 满了，清空对话历史即可</li>
     <li>agent 自动把超出的核心记忆挪进 archival，不会报错</li>
@@ -616,7 +616,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
   <ol class="opts">
     <li>原始消息被原样保留在上下文窗口里，只是折叠起来</li>
     <li>原始消息被永久删除，只剩摘要，细节再也找不回</li>
-    <li>摘要是有损的，但原话没被删：原始 Message 仍留在 recall 里，可用 conversation_search 按 hybrid 捞回</li>
+    <li>原话没被删：原始 Message 仍留在 recall 里，需要时可再捞回</li>
     <li>原始消息被搬进核心记忆长期保存</li>
   </ol>
   <details class="accordion">
@@ -900,7 +900,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
 <div class="quiz">
   <div class="qn">2. You stuff tens of thousands of chars into persona/human blocks, so the system prompt alone nearly fills the window. The agent keeps compacting conversation yet still errors out — what happened?</div>
   <ol class="opts">
-    <li>It took the “system-prompt overflow” special case: compaction only evicts conversation and never touches core; when message[0] alone is ≥ the window, it raises SystemPromptTokenExceededError</li>
+    <li>It took the “system-prompt overflow” special case: the system prompt itself is ≥ the window, so compacting more conversation won't help</li>
     <li>Compaction summarizes core memory too; just compact a few more times and it's fine</li>
     <li>This is recall being full; just clear the conversation history</li>
     <li>The agent auto-moves the overflowing core memory into archival, so it won't error</li>
@@ -915,7 +915,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
   <ol class="opts">
     <li>The originals stay verbatim in the context window, just collapsed</li>
     <li>The original messages are permanently deleted; only the summary remains and details are gone forever</li>
-    <li>The summary is lossy, but the originals aren't deleted: the original Message rows stay in recall and can be fetched back by conversation_search (hybrid)</li>
+    <li>The originals aren't deleted: the original Message rows stay in recall and can be fetched back when needed</li>
     <li>The originals are moved into core memory for long-term keeping</li>
   </ol>
   <details class="accordion">

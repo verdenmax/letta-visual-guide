@@ -626,7 +626,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="qn">2. 模型无视裁剪后的 schema，硬挑了一个不在合法集里的工具。框架会怎么处理这次调用？</div>
   <ol class="opts">
     <li>静默丢弃这次调用，既不执行也不回任何消息，直接进入下一步</li>
-    <li>不执行该工具：_handle_ai_response 算出 tool_rule_violated = name not in valid_tool_names，转而调 _build_rule_violation_result 合成一条 status="error" 的 [ToolConstraintError] 当作“工具返回”喂回模型，让它自纠</li>
+    <li>不执行该工具：而是合成一条 [ToolConstraintError] 错误当作“工具返回”喂回模型，让它自纠</li>
     <li>直接抛出异常、终止整个 step，让用户看到报错</li>
     <li>照样执行该工具，只是在结果后面附一句警告，提醒模型下次别这么调</li>
   </ol>
@@ -638,7 +638,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">3. ToolRulesSolver.get_allowed_tool_names 在算“这一步合法工具集”时，到底对哪些规则求交集来缩小工具集？</div>
   <ol class="opts">
-    <li>只对 child 类（Child/Conditional/MaxCount）+ parent 规则求交，再 & 可用工具；terminal / continue / required_before_exit / requires_approval 根本不进交集</li>
+    <li>只对 child 类规则 + parent 规则求交集</li>
     <li>只对 terminal + required_before_exit 求交，因为它们决定循环能否结束</li>
     <li>对全部 9 种规则一视同仁地求交集</li>
     <li>对 init + requires_approval 求交，其余规则在别处处理</li>
@@ -651,7 +651,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">4. 某工具配了 requires_approval。模型这一步要调它时，agent 循环会停下，停止原因（StopReasonType）记成什么？随后又发生什么？</div>
   <ol class="opts">
-    <li>停止原因记 requires_approval：循环不执行该工具，持久化一条 create_approval_request_message_from_llm_response(...) 造的“审批请求”消息；人批准后下一次以 is_approval_response 进来，绕过违规检查放行</li>
+    <li>停止原因记 requires_approval：不执行该工具，等人批准后才放行执行</li>
     <li>不记停止原因，循环照常执行工具，只是事后发一封审批邮件</li>
     <li>停止原因记 tool_rule，和终止工具一样，因为两者都让循环停下</li>
     <li>停止原因记 max_steps：审批被当作“步数耗尽”处理</li>
@@ -666,7 +666,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <ol class="opts">
     <li>枚举值就是 Init / Terminal / Child，和子类名前缀完全一致</li>
     <li>根本没有枚举，规则全靠子类的 isinstance 判断，没有 type 字段</li>
-    <li>枚举值是历史命名 run_first / exit_loop / constrain_child_tools 等，而子类才叫 InitToolRule / TerminalToolRule / ChildToolRule——别照子类名去猜枚举值</li>
+    <li>枚举值用历史命名（如 run_first），和子类名（如 InitToolRule）并不一致</li>
     <li>枚举值和子类名是同一个字符串，框架不区分二者</li>
   </ol>
   <details class="accordion">
@@ -975,7 +975,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
   <div class="qn">2. The model ignores the trimmed schema and picks a tool that isn't in the legal set. How does the framework handle that call?</div>
   <ol class="opts">
     <li>It silently drops the call, neither executing nor returning any message, and moves straight to the next step</li>
-    <li>It doesn't execute the tool: _handle_ai_response computes tool_rule_violated = name not in valid_tool_names, then calls _build_rule_violation_result to synthesize a status="error" [ToolConstraintError] as the “tool return” fed back to the model for self-correction</li>
+    <li>It doesn't execute the tool: instead it synthesizes a [ToolConstraintError] error as the “tool return” fed back to the model for self-correction</li>
     <li>It raises an exception outright, terminating the whole step so the user sees the error</li>
     <li>It runs the tool anyway, just appending a warning after the result to remind the model not to do it next time</li>
   </ol>
@@ -987,7 +987,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
 <div class="quiz">
   <div class="qn">3. When ToolRulesSolver.get_allowed_tool_names computes “this step's legal tool set,” which rules does it actually intersect to shrink the tool set?</div>
   <ol class="opts">
-    <li>Only the child family (Child/Conditional/MaxCount) + parent rules are intersected, then & available tools; terminal / continue / required_before_exit / requires_approval never enter the intersection</li>
+    <li>Only the child-family rules + parent rules are intersected</li>
     <li>Only terminal + required_before_exit are intersected, since they decide whether the loop can end</li>
     <li>All 9 rule types are intersected, treated alike</li>
     <li>init + requires_approval are intersected, with the rest handled elsewhere</li>
@@ -1000,7 +1000,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
 <div class="quiz">
   <div class="qn">4. A tool is configured with requires_approval. When the model goes to call it this step, the agent loop stops — what stop reason (StopReasonType) is recorded, and what happens next?</div>
   <ol class="opts">
-    <li>The stop reason is requires_approval: the loop doesn't execute the tool, persists an “approval request” message from create_approval_request_message_from_llm_response(...); after a human approves, the next entry comes in as an is_approval_response that bypasses the violation check and proceeds</li>
+    <li>The stop reason is requires_approval: the tool isn't executed; it proceeds only after a human approves</li>
     <li>No stop reason is recorded; the loop runs the tool as usual and just sends an approval email afterward</li>
     <li>The stop reason is tool_rule, same as a terminal tool, since both stop the loop</li>
     <li>The stop reason is max_steps: approval is treated as “steps exhausted”</li>
@@ -1015,7 +1015,7 @@ This is the <strong>capstone of Part 4</strong>, with a single theme: turn "how 
   <ol class="opts">
     <li>The enum values are Init / Terminal / Child, exactly matching the subclass name prefixes</li>
     <li>There's no enum at all; rules rely solely on isinstance of the subclass, with no type field</li>
-    <li>The enum values are legacy-named run_first / exit_loop / constrain_child_tools etc., while the subclasses are InitToolRule / TerminalToolRule / ChildToolRule — don't guess the enum value from the subclass name</li>
+    <li>The enum values use legacy names (e.g. run_first), not matching the subclass names (e.g. InitToolRule)</li>
     <li>The enum value and the subclass name are the same string; the framework doesn't distinguish them</li>
   </ol>
   <details class="accordion">

@@ -520,7 +520,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>按 model 字段（比如 gpt-4o、claude-3-5-sonnet）的名字前缀来判断</li>
     <li>按整个 LLMConfig 对象做结构匹配，比对里面所有字段后再决定 client</li>
     <li>按 model_endpoint 这个 URL 的域名（比如 api.openai.com）来路由</li>
-    <li>按 llm_config.model_endpoint_type——它是一个 ProviderType 字符串，被传进 create 后用 match/case 匹配；正因为 ProviderType(str, Enum) 本质是字符串，才能直接拿来 match</li>
+    <li>按 llm_config.model_endpoint_type——它是一个 ProviderType 字符串，传进 create 后用 match/case 匹配</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
@@ -543,7 +543,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">3. 三方法 build_request_data / request_async / convert_response_to_chat_completion 里，哪一个负责把“各家五花八门的原始响应”收敛成统一的 ChatCompletionResponse？</div>
   <ol class="opts">
-    <li>convert_response_to_chat_completion——它是个 async 方法，把这一家的原始响应翻译成 OpenAI 形状的 ChatCompletionResponse；不管底层是 Anthropic 内容块、Google functionCall 还是纯文本，都收敛成同一个类型</li>
+    <li>convert_response_to_chat_completion——它把这一家的原始响应翻译成统一的 ChatCompletionResponse</li>
     <li>request_async——它发请求时直接要求各家返回 ChatCompletionResponse 格式</li>
     <li>build_request_data——它在组请求时就顺手把响应格式也统一好了</li>
     <li>send_llm_request——编排方法自己做格式转换，三方法只管收发</li>
@@ -569,7 +569,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">5. 本课反复说的“三方法契约”，是 LLMClientBase 的完整抽象方法集合吗？</div>
   <ol class="opts">
-    <li>不是。“三方法”是教学化简——LLMClientBase 实际有 8 个 @abstractmethod，另外 5 个是 request（同步）、request_embeddings、stream_async、is_reasoning_model、handle_llm_error；本课只抓 build/request_async/convert 这条“数据形状”主线</li>
+    <li>不是。“三方法”是教学化简——LLMClientBase 实际有 8 个 @abstractmethod</li>
     <li>不是，共有 12 个抽象方法，多出来的还包括 stream（同步流式）、count_tokens 等</li>
     <li>是的，LLMClientBase 恰好只有这 3 个抽象方法，子类实现完就能用</li>
     <li>不是，实际只有 2 个抽象方法（build 和 convert），request_async 是基类提供的具体实现</li>
@@ -774,7 +774,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>By the name prefix of the model field (e.g. gpt-4o, claude-3-5-sonnet)</li>
     <li>By structurally matching the whole LLMConfig object, comparing all its fields before deciding the client</li>
     <li>By the domain of the model_endpoint URL (e.g. api.openai.com)</li>
-    <li>By llm_config.model_endpoint_type — a ProviderType string that is passed into create and matched with match/case; because ProviderType(str, Enum) is essentially a string, it can be matched directly</li>
+    <li>By llm_config.model_endpoint_type — a ProviderType string passed into create and matched with match/case</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
@@ -797,7 +797,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">3. Among the three methods build_request_data / request_async / convert_response_to_chat_completion, which one collapses “each provider's wildly varied raw response” into the unified ChatCompletionResponse?</div>
   <ol class="opts">
-    <li>convert_response_to_chat_completion — an async method that translates this provider's raw response into an OpenAI-shaped ChatCompletionResponse; whether the layer below is Anthropic content blocks, Google functionCall or plain text, all collapse into the same type</li>
+    <li>convert_response_to_chat_completion — it translates this provider's raw response into the unified ChatCompletionResponse</li>
     <li>request_async — when sending the request it directly demands every provider return the ChatCompletionResponse format</li>
     <li>build_request_data — while assembling the request it also unifies the response format in passing</li>
     <li>send_llm_request — the orchestration method does the format conversion itself, while the three methods only send and receive</li>
@@ -823,7 +823,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">5. Is the “three-method contract” this lesson keeps citing the complete set of abstract methods on LLMClientBase?</div>
   <ol class="opts">
-    <li>No. “Three methods” is a teaching simplification — LLMClientBase actually has 8 @abstractmethod, the other 5 being request (sync), request_embeddings, stream_async, is_reasoning_model and handle_llm_error; this lesson grabs only the build/request_async/convert “data shape” through-line</li>
+    <li>No. “Three methods” is a teaching simplification — LLMClientBase actually has 8 @abstractmethod</li>
     <li>No — there are 12 abstract methods in total, the extras also including stream (sync streaming), count_tokens and so on</li>
     <li>Yes — LLMClientBase has exactly these 3 abstract methods, and a subclass is usable once it implements them</li>
     <li>No — there are really only 2 abstract methods (build and convert); request_async is a concrete implementation the base class provides</li>

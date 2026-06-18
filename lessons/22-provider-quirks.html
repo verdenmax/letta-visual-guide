@@ -503,7 +503,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <div class="quiz">
   <div class="qn">1. 当某家 provider 的行为跟 OpenAI 略有不同时，它的 client 子类通常重写哪两个方法？</div>
   <ol class="opts">
-    <li>build_request_data + convert_response_to_chat_completion——前者出门时改请求、后者回来时把响应翻成 OpenAI 形状；子类大多是先 super() 拿到标准形状、再就地改几笔 dict</li>
+    <li>build_request_data + convert_response_to_chat_completion——前者改请求、后者把响应翻成 OpenAI 形状</li>
     <li>__init__ + _prepare_client_kwargs——子类重写构造与连接初始化</li>
     <li>request_async + stream_async——真正负责跟网络通信的那两个方法</li>
     <li>三方法契约全部，外加工厂 match/case 里那条分支</li>
@@ -518,7 +518,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
   <ol class="opts">
     <li>排在最后、且可选——追加在真正参数之后，免得打乱它们</li>
     <li>放在 parameters 里哪都行，顺序无所谓，反正模型会整体规划</li>
-    <li>排在第一个、且是必填——add_inner_thoughts_to_functions 把 thinking 加成第一个 property，再 required.insert(0, key) 把它排到必填项最前；于是模型必须先写完 thinking，才轮到真正的业务参数</li>
+    <li>排在第一个、且是必填——模型必须先写完 thinking 才轮到业务参数</li>
     <li>放在工具调用旁边的一个顶层独立字段里，根本不在 parameters 内</li>
   </ol>
   <details class="accordion">
@@ -543,7 +543,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
   <div class="qn">4. 本课说“内心独白排第一”是默认做法，但有一家偏偏反着来。Google 把 thinking 字段放在哪里？</div>
   <ol class="opts">
     <li>放在中间——第一个必填字段之后、其余参数之前</li>
-    <li>排在最后——Google 把 thinking 追加在末尾（INNER_THOUGHTS_KWARG_VERTEX），是“排第一”规则的反例；GoogleVertexClient 还把字段名另起一套（functionCall / .args）、用 “model” 表示助手角色</li>
+    <li>排在最后——Google 把 thinking 追加在末尾，是“排第一”规则的反例</li>
     <li>排第一，跟所有人一模一样——Google 遵循同样的约定</li>
     <li>Google 根本不用 thinking 字段，它完全靠原生推理</li>
   </ol>
@@ -555,7 +555,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <div class="quiz">
   <div class="qn">5. 一个 OpenAIClient 怎么能在不为每家单写一个 client 的情况下，服务 25 种 ProviderType 里的约 19 种（openai、ollama、vllm、Groq、xAI……）？</div>
   <ol class="opts">
-    <li>_prepare_client_kwargs 只把 base_url 设成 llm_config.model_endpoint——同一套 OpenAI SDK 指向不同 URL 就接上不同的家；这些端点大多提供“OpenAI 兼容”接口，于是默认 case _ 兜底回 OpenAIClient</li>
+    <li>_prepare_client_kwargs 把 base_url 设成 model_endpoint——同一套 OpenAI SDK 换个 URL 就接上不同的家；这些端点大多是“OpenAI 兼容”的</li>
     <li>它从 model 名字前缀识别出是哪家，再据此改写 payload</li>
     <li>每家都自带一个 OpenAIClient 子类，根本没有共享的默认实现</li>
     <li>它内部维护一张注册表，把每个 provider 名字映射到一套手写的请求/响应翻译器</li>
@@ -743,7 +743,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <div class="quiz">
   <div class="qn">1. When a provider behaves a little differently from OpenAI, which two methods does its client subclass typically override?</div>
   <ol class="opts">
-    <li>build_request_data + convert_response_to_chat_completion — the first edits the request on the way out, the second translates the response back into the OpenAI shape; the subclass usually calls super() for the standard shape, then patches a few dict lines in place</li>
+    <li>build_request_data + convert_response_to_chat_completion — the first edits the request, the second translates the response into the OpenAI shape</li>
     <li>__init__ + _prepare_client_kwargs — the subclass rewrites construction and connection setup</li>
     <li>request_async + stream_async — the two methods that actually talk to the network</li>
     <li>All three contract methods, plus the factory's match/case branch</li>
@@ -758,7 +758,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
   <ol class="opts">
     <li>Last, and optional — appended after the real parameters so it doesn't disrupt them</li>
     <li>Anywhere in the parameters; order doesn't matter because the model plans holistically</li>
-    <li>First, and required — add_inner_thoughts_to_functions adds thinking as the first property, then required.insert(0, key) puts it at the front of required; so the model must finish writing thinking before any real business parameter</li>
+    <li>First, and required — the model must finish thinking before any business parameter</li>
     <li>In a separate top-level field next to the tool call, not inside the parameters at all</li>
   </ol>
   <details class="accordion">
@@ -783,7 +783,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
   <div class="qn">4. The lesson says “inner monologue first” is the default — but one family breaks it. Where does Google place the thinking field?</div>
   <ol class="opts">
     <li>In the middle, after the first required field but before the rest</li>
-    <li>Last — Google appends thinking at the end (INNER_THOUGHTS_KWARG_VERTEX), the exception to the “first” rule; GoogleVertexClient also renames fields (functionCall / .args) and uses “model” for the assistant role</li>
+    <li>Last — Google appends thinking at the end, the exception to the “first” rule</li>
     <li>First, exactly like everyone else — Google follows the same convention</li>
     <li>Google doesn't use a thinking field at all; it relies purely on native reasoning</li>
   </ol>
@@ -795,7 +795,7 @@ data[<span class="st">"temperature"</span>] = <span class="nb">1.0</span>
 <div class="quiz">
   <div class="qn">5. How can a single OpenAIClient serve ~19 of 25 ProviderTypes (openai, ollama, vllm, Groq, xAI, …) without a bespoke client for each?</div>
   <ol class="opts">
-    <li>_prepare_client_kwargs just sets base_url to llm_config.model_endpoint — the same OpenAI SDK pointed at a different URL connects to a different provider; most expose an “OpenAI-compatible” interface, so the default case _ falls back to OpenAIClient</li>
+    <li>_prepare_client_kwargs sets base_url to model_endpoint — the same OpenAI SDK at a different URL connects to a different provider; most are “OpenAI-compatible”</li>
     <li>It detects the provider from the model name prefix and rewrites the payload accordingly</li>
     <li>Each provider ships its own OpenAIClient subclass; there is no shared default</li>
     <li>It maintains an internal registry mapping every provider name to a hand-written request/response translator</li>
