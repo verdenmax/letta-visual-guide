@@ -2501,6 +2501,121 @@ QUIZZES = {
             },
         ],
     },
+    "27-dual-db-and-vectors.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，“这个进程到底用 SQLite 还是 Postgres”由什么决定？",
+                    "en": "In letta v0.16.8, what actually decides whether a process uses SQLite or Postgres?",
+                },
+                "opts": [
+                    {"zh": "派生 @property settings.database_engine：配了 PG URI（letta_pg_uri_no_default 非 None）就是 Postgres，否则 SQLite",
+                     "en": "The derived @property settings.database_engine: a configured PG URI (letta_pg_uri_no_default not None) means Postgres, otherwise SQLite"},
+                    {"zh": "环境变量 LETTA_DATABASE_ENGINE=sqlite|postgres，手动二选一",
+                     "en": "An env var LETTA_DATABASE_ENGINE=sqlite|postgres, a manual either/or"},
+                    {"zh": "server/db.py 启动时按可用驱动探测：装了 asyncpg 就走 Postgres，否则 SQLite",
+                     "en": "server/db.py probes available drivers at startup: with asyncpg installed it goes Postgres, else SQLite"},
+                    {"zh": "看 letta_pg_uri 是否为 None——为 None 就回退 SQLite",
+                     "en": "Whether letta_pg_uri is None — if None it falls back to SQLite"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "决定权在 settings.py::Settings.database_engine，它是只读 @property，逻辑就一行：POSTGRES if self.letta_pg_uri_no_default else SQLITE。所以“配没配 PG URI”是 dev/prod 的唯一分界；DatabaseChoice(str, Enum) 只有 POSTGRES / SQLITE 两值，是被读出来的结论而非可写字段。没有 LETTA_DATABASE_ENGINE 这种开关——你只要设了任意 LETTA_PG_*（host/db/user/password/port/uri）就会静默翻成 Postgres。陷阱：letta_pg_uri 永远有默认值（postgresql+pg8000://letta:letta@localhost:5432/letta），判定不能看它，真正“URI-或-None”的是 letta_pg_uri_no_default。也不是按驱动探测：server/db.py 模块级只 create_async_engine(async_pg_uri)，不做后端探测。",
+                    "en": "The decision lives in settings.py::Settings.database_engine, a read-only @property whose logic is one line: POSTGRES if self.letta_pg_uri_no_default else SQLITE. So “is a PG URI configured” is the only dev/prod divider; DatabaseChoice(str, Enum) has just POSTGRES / SQLITE and is a conclusion read out, not a writable field. There is no LETTA_DATABASE_ENGINE switch — set any LETTA_PG_* (host/db/user/password/port/uri) and it silently flips to Postgres. The trap: letta_pg_uri always has a default (postgresql+pg8000://letta:letta@localhost:5432/letta), so the check can't read it — the real “URI-or-None” is letta_pg_uri_no_default. It isn't driver probing either: server/db.py at module level only does create_async_engine(async_pg_uri) and detects no backend.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "“一套 ORM 在两套库上跑”，这个双库接缝主要落在代码哪里？",
+                    "en": "For “one ORM running on two databases,” where in the code does the dual-DB seam mainly live?",
+                },
+                "opts": [
+                    {"zh": "分布在多处、大多声明式：passage.py 的 import 期列类型、查询构造器的分支、sqlite_functions.py 的 connect 事件、custom_columns.py、alembic/env.py",
+                     "en": "Distributed across several places, mostly declarative: passage.py's import-time column type, the query-builder branch, sqlite_functions.py's connect event, custom_columns.py, alembic/env.py"},
+                    {"zh": "集中在 server/db.py 一个 if database_engine 大开关里，按后端建不同引擎",
+                     "en": "Concentrated in one big if database_engine switch inside server/db.py, building a different engine per backend"},
+                    {"zh": "由 SQLAlchemy 的方言层自动处理，应用代码完全不含分库逻辑",
+                     "en": "Handled automatically by SQLAlchemy's dialect layer; the application code contains no dual-DB logic at all"},
+                    {"zh": "每个 manager 在自己的方法里各写一段 if sqlite/else postgres 来切换",
+                     "en": "Each manager writes its own if sqlite/else postgres block inside its methods to switch"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "双库不是 server/db.py 里的聪明 switch——v0.16.8 它其实是 Postgres-only async（模块级只 create_async_engine(async_pg_uri)，不按 database_engine 分叉、不加载 sqlite-vec）。真正的接缝分布在约六处、且大多 import 期声明：① settings.database_engine 这个派生 property；② orm/passage.py::BasePassage 类体里、import 期的 if POSTGRES: Vector(MAX_EMBEDDING_DIM) else CommonVector；③ 查询构造器两路 order_by（sqlalchemy_base.py 与 services/helpers/agent_manager_helper.py）；④ orm/sqlite_functions.py::register_functions 用 @event.listens_for(Engine, “connect”) 给任何 SQLite 连接注册 numpy cosine_distance；⑤ orm/custom_columns.py 的 TypeDecorator；⑥ alembic/env.py 选 URI、分两后端建表。唯一还构造 SQLite URI 的地方就是 alembic/env.py。也不是 manager 各写分支：分叉只在用到向量搜索处各写一次。",
+                    "en": "The dual DB isn't a clever switch in server/db.py — in v0.16.8 that file is Postgres-only async (module level only create_async_engine(async_pg_uri), no branch on database_engine, no sqlite-vec loaded). The real seam is distributed across ~six places, most declared at import time: (1) the derived settings.database_engine property; (2) orm/passage.py::BasePassage's class-body, import-time if POSTGRES: Vector(MAX_EMBEDDING_DIM) else CommonVector; (3) the two-way order_by in the query builder (sqlalchemy_base.py and services/helpers/agent_manager_helper.py); (4) orm/sqlite_functions.py::register_functions using @event.listens_for(Engine, “connect”) to register a numpy cosine_distance on any SQLite connection; (5) orm/custom_columns.py's TypeDecorators; (6) alembic/env.py picking the URI and building tables for two backends. The only place that still builds a SQLite URI is alembic/env.py. It isn't per-manager branches either — the fork only appears where vector search is used.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "向量在 Postgres 与 SQLite 两套库里分别怎么存、怎么搜？",
+                    "en": "How are vectors stored and searched in Postgres versus SQLite?",
+                },
+                "opts": [
+                    {"zh": "Postgres：pgvector 的 Vector(4096) + 原生算子 &lt;=&gt;（可挂 ANN 索引）；SQLite：CommonVector(BINARY) + numpy cosine_distance UDF 全表 ORDER BY 暴力",
+                     "en": "Postgres: pgvector's Vector(4096) + the native operator &lt;=&gt; (ANN-index capable); SQLite: CommonVector(BINARY) + a numpy cosine_distance UDF brute-forcing ORDER BY over the whole table"},
+                    {"zh": "两套库都用 pgvector 的 Vector 列与原生 &lt;=&gt;，SQLite 靠 sqlite-vec 扩展提供同款算子",
+                     "en": "Both databases use pgvector's Vector column and the native &lt;=&gt;, with SQLite getting the same operator from the sqlite-vec extension"},
+                    {"zh": "两套库都把向量存成 JSON 文本，搜索时在 Python 里反序列化后算 cosine",
+                     "en": "Both store vectors as JSON text and, at search time, deserialize in Python to compute cosine"},
+                    {"zh": "SQLite 用 sqlite-vec 的原生 KNN 索引，Postgres 反而是全表暴力没有索引",
+                     "en": "SQLite uses sqlite-vec's native KNN index, while Postgres is the brute-force one with no index"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "存：Postgres 是 pgvector 的 Vector(4096) 定长列；SQLite 是 orm/custom_columns.py::CommonVector——impl=BINARY 的 TypeDecorator，用 sqlite_vec.serialize_float32 打包、np.frombuffer 还原。搜：列类型与搜索分支共用一个 if settings.database_engine is POSTGRES（orm/passage.py::BasePassage import 期定列类型；sqlalchemy_base.py / agent_manager_helper.py 运行时分支）。Postgres 走 cls.embedding.cosine_distance(q) → 编译成原生 &lt;=&gt;，可挂 ivfflat / hnsw 做 ANN；SQLite 走 func.cosine_distance(col, q) → 调 orm/sqlite_functions.py::register_functions 注册的 numpy UDF，对全表逐行算再 ORDER BY ASC。关键纠正：SQLite 的相似度不是 sqlite-vec 原生——sqlite_vec.load() 是注释掉的，只借了它的 serialize_float32 打包字节。两边语义一致（按 cosine 升序取最近），只是一个有 ANN、一个全表暴力。",
+                    "en": "Storage: Postgres is pgvector's Vector(4096) fixed-length column; SQLite is orm/custom_columns.py::CommonVector — an impl=BINARY TypeDecorator packing with sqlite_vec.serialize_float32 and restoring with np.frombuffer. Search: the column type and the search branch share one if settings.database_engine is POSTGRES (orm/passage.py::BasePassage fixes the column type at import time; sqlalchemy_base.py / agent_manager_helper.py branch at runtime). Postgres uses cls.embedding.cosine_distance(q) → compiles to native &lt;=&gt; and can attach ivfflat / hnsw for ANN; SQLite uses func.cosine_distance(col, q) → the numpy UDF registered by orm/sqlite_functions.py::register_functions, computed row by row over the whole table then ORDER BY ASC. Key correction: SQLite's similarity is not sqlite-vec native — sqlite_vec.load() is commented out; only its serialize_float32 is borrowed to pack bytes. Both are semantically the same (nearest by ascending cosine); one just has ANN, the other brute-forces the whole table.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "所有 embedding 都被 np.pad 到 MAX_EMBEDDING_DIM=4096（尾部补 0）。为什么这对相似度搜索是“免费”的？",
+                    "en": "Every embedding is np.padded to MAX_EMBEDDING_DIM=4096 (zeros at the tail). Why is this “free” for similarity search?",
+                },
+                "opts": [
+                    {"zh": "等量补 0 既不改点积、也不改 L2 范数，于是 cosine 与未填充时数学上完全相等，排序一模一样",
+                     "en": "Equal zero-padding changes neither the dot product nor the L2 norm, so cosine is mathematically identical to the unpadded vector and the ranking is unchanged"},
+                    {"zh": "因为搜索前会把补的 0 再切掉，只比较原始维度，所以毫无影响",
+                     "en": "Because the padding zeros are sliced off again before search, so only the original dims are compared and there's no effect"},
+                    {"zh": "因为 cosine 会先做 L2 归一化，归一化能消除任何长度差异，所以补什么都行",
+                     "en": "Because cosine first L2-normalizes the vectors, and normalization erases any length difference, so any padding works"},
+                    {"zh": "因为补的是很小的随机数，对高维点积的影响可以忽略不计",
+                     "en": "Because the padding is tiny random numbers whose effect on a high-dimensional dot product is negligible"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "cosine = 点积 /（两向量 L2 范数之积）。尾部补的全是 0：点积里每个新增项是 0 × x = 0，分子不变；L2 里每个新增项是 0² = 0，分母不变。分子分母都不动，cosine 值与排序就和未填充严格相等——这是恒等式，不是近似。所以 constants.py::MAX_EMBEDDING_DIM=4096 把任意维度零填充到定长，一个 Vector(4096)/CommonVector 列即可装下任意模型的输出，且不影响检索排序。注意几个错误项：并没有“搜索前切掉 0”这一步（写路与查询路都补到 4096 再比，是共同前提）；补的是 0 而非随机数；cosine 确实含归一化，但“免费”的根因是补 0 同时不改点积与范数，而非归一化能抹掉任意填充。代价仅是多存一串 0（如 1024 维白存 3072 个 0）。",
+                    "en": "Cosine = dot product / (product of the two L2 norms). The tail padding is all zeros: in the dot product each added term is 0 × x = 0, so the numerator is unchanged; in the L2 norm each added term is 0² = 0, so the denominator is unchanged. With neither moving, the cosine value and the ranking are exactly equal to the unpadded case — an identity, not an approximation. So constants.py::MAX_EMBEDDING_DIM=4096 zero-pads any dimension to a fixed length, letting one Vector(4096)/CommonVector column hold any model's output without affecting retrieval order. Watch the wrong options: there is no “slice the zeros off before search” step (both write and query pad to 4096 before comparing — a shared precondition); the padding is zeros, not random numbers; and although cosine does include normalization, the reason it's “free” is that zero-padding leaves both dot product and norm unchanged, not that normalization erases arbitrary padding. The only cost is storing extra zeros (e.g. 3072 wasted zeros for a 1024-dim model).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "把 EmbeddingConfig / LLMConfig 这类配置整块 model_dump 成一列 JSON（而非拆成多列），买到了什么、代价是什么？",
+                    "en": "Storing configs like EmbeddingConfig / LLMConfig as one whole model_dumped JSON column (instead of splitting into many columns) — what does it buy, and what does it cost?",
+                },
+                "opts": [
+                    {"zh": "买到扁平 schema + schema-on-read 演化（加字段免迁移）；代价是子字段不能 WHERE / 建索引，且每次读写都要 (de)序列化",
+                     "en": "Buys a flat schema + schema-on-read evolution (adding a field needs no migration); costs the inability to WHERE / index subfields, plus (de)serialization on every read/write"},
+                    {"zh": "买到对任意子字段高效 WHERE / 建索引；代价是每加一个字段都要写一次 alembic 迁移",
+                     "en": "Buys efficient WHERE / indexing on any subfield; costs an alembic migration for every new field"},
+                    {"zh": "买到跨表外键与 JOIN 的能力；代价是失去 pydantic 的类型校验",
+                     "en": "Buys cross-table foreign keys and JOINs; costs the loss of pydantic's type validation"},
+                    {"zh": "买到更小的存储体积与更快的查询；没有任何实际代价",
+                     "en": "Buys smaller storage and faster queries, with no real cost at all"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "orm/custom_columns.py 的 TypeDecorator（EmbeddingConfigColumn / LLMConfigColumn / ToolRulesColumn，impl=JSON、cache_ok=True）把整个 pydantic 对象一格存下：process_bind_param 写时 model_dump(mode=“json”) → dict，process_result_value 读时 dict → Model(**data) 还原（真正转换委托 helpers/converters.py）。买到两样：① 扁平 schema + 免迁移——给 LLMConfig 加 pydantic 字段不动表结构，老行靠 deserialize_llm_config 在读时补默认（schema-on-read）；② 保真——嵌套结构不被拍平，读回仍是强类型对象。代价两样：① JSON 子字段不能高效 WHERE / 建索引（没法“按 embedding 模型名筛选”）；② 每次读写都跑一遍 (de)序列化，有 CPU 开销。impl=JSON 在 Postgres 落成 JSONB、SQLite 落成文本，但对上层透明。对配置多变、又很少按子字段查询的 Letta，这笔账划算。",
+                    "en": "The TypeDecorators in orm/custom_columns.py (EmbeddingConfigColumn / LLMConfigColumn / ToolRulesColumn, impl=JSON, cache_ok=True) store the whole pydantic object in one cell: process_bind_param writes via model_dump(mode=“json”) → dict, and process_result_value reads dict → Model(**data) to restore it (the real conversion delegated to helpers/converters.py). It buys two things: (1) a flat schema + no migration — adding a pydantic field to LLMConfig leaves the table schema untouched, and old rows get defaults filled on read by deserialize_llm_config (schema-on-read); (2) fidelity — nested structure isn't flattened, and it reads back as a strongly-typed object. It costs two things: (1) JSON subfields can't be efficiently put in a WHERE or indexed (no “filter by embedding model name”); (2) every read/write runs a round of (de)serialization, a CPU cost. impl=JSON lands as JSONB on Postgres and text on SQLite, but that's transparent to the upper layers. For Letta — configs that change a lot and are rarely queried by subfield — it pays off.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“一张蓝图、两座工厂”的比喻，把“一条 archival 记忆从写入到按相似度被搜出来”完整讲一遍，并想透四件事：(1) 为什么说“用哪套库”不是 server/db.py 里的一个聪明 switch，而是散在六处、大多 import 期就声明好的接缝？settings.database_engine 这个 @property 凭什么判定 Postgres / SQLite，又为什么不能用 LETTA_DATABASE_ENGINE 手动选？(2) 同一个 Passage 模型，为什么 Postgres 落成 pgvector 的 Vector(4096)、SQLite 落成 CommonVector(BINARY)？那个“列类型在 import 期烤进模型”的 if，为什么意味着一个进程运行时不能切库？(3) 同一句“按相似度排序”，怎么在 Postgres 编译成原生 &lt;=&gt;（可 ANN）、在 SQLite 变成 numpy UDF 全表暴力？为什么 sqlite_vec.load() 注释掉了、却还要 import sqlite_vec？(4) 为什么把任意维度 np.pad 到 4096 对 cosine 排序是“免费”的（请从点积与 L2 范数说清）？再把 pydantic-in-DB 那列 JSON 的“免迁移 + 保真”红利与“子字段不可索引 + 序列化开销”代价摆到一起权衡。最后回到那个诚实星号：v0.16.8 的 server/db.py 只建 Postgres，这跟“双库故事完整活在 ORM 与 alembic”是否矛盾？",
+                "en": "Using this lesson's “one blueprint, two factories” metaphor, narrate a single archival memory from being written to being searched out by similarity, and think through four things: (1) Why is “which database” not a clever switch in server/db.py but a seam scattered across six places, most declared at import time? On what basis does the settings.database_engine @property decide Postgres / SQLite, and why can't you pick it by hand with LETTA_DATABASE_ENGINE? (2) For the same Passage model, why does Postgres land as pgvector's Vector(4096) and SQLite as CommonVector(BINARY)? Why does that “bake the column type into the model at import time” if mean a process can't switch databases at runtime? (3) How does the same “order by similarity” compile into the native &lt;=&gt; (ANN-capable) on Postgres and into a numpy UDF brute-force over the whole table on SQLite? And why is sqlite_vec still imported even though sqlite_vec.load() is commented out? (4) Why is np.padding any dimension to 4096 “free” for cosine ranking (explain it from the dot product and the L2 norm)? Then weigh the pydantic-in-DB JSON column's “no-migration + fidelity” payoff against its “non-indexable subfields + serialization overhead” cost. Finally, return to the honest asterisk: v0.16.8's server/db.py only builds Postgres — does that contradict “the dual-DB story lives fully in the ORM and alembic”?",
+            },
+        ],
+    },
 }
 
 
