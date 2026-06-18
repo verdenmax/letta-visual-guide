@@ -334,6 +334,54 @@ LESSON_28 = {
 <p>The tag broadcast (<span class="mono">..._matching_tags</span>) deserves a note: it filters a batch of agents from the DB by <span class="mono">match_all / match_some</span>, then <strong>waits on each in turn</strong>. So it's essentially a “looped wait_for_reply,” not true parallel fan-out — one-to-many, but still synchronous and serial.</p>
 <p>An engineering caution: <span class="mono">..._and_wait_for_reply</span> truly <strong>blocks</strong> A's step until B's whole turn finishes. If B then calls C and C calls D, the blocking <strong>stacks layer by layer</strong> — when designing agent collaboration, don't let the synchronous wait chain grow too long.</p>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't confuse this path with sleeptime: <span class="mono">..._and_wait_for_reply</span> is <strong>synchronous and blocking</strong> — A stalls waiting for B to finish. Sleeptime below is exactly the opposite: a <strong>non-blocking</strong> background task. The two “multi-agent” modes have completely opposite blocking semantics.</span></div>
+<h2>Live path two: sleeptime (a background agent quietly edits memory)</h2>
+<p>Sleeptime is the only <strong>truly live</strong> “group” behavior in v0.16.8. The wiring point is <span class="mono">agents/agent_loop.py::AgentLoop.load</span>: when an agent is <span class="mono">letta_v1_agent / sleeptime_agent</span>, has <span class="mono">enable_sleeptime</span> on, and is attached to a group, it's handed to <span class="mono">SleeptimeMultiAgentV4</span>.</p>
+<p>The key point up front: <span class="mono">groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4</span> <strong>directly subclasses <span class="mono">LettaAgentV3</span></strong> — it's <strong>a subclass of that ordinary loop from Lessons 13 and 14</strong>, not some special subsystem.</p>
+<p>Its <span class="mono">step</span> does two things: first <span class="mono">await super().step(...)</span> to run the <strong>foreground primary agent</strong> through a normal turn and save <span class="mono">response_messages</span>; then call <span class="mono">run_sleeptime_agents()</span> to decide whether to wake the background.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/groups/sleeptime_multi_agent_v4.py</span><span class="ln">SleeptimeMultiAgentV4: foreground runs first, then non-blockingly wakes the background (simplified)</span></div>
+<pre><span class="kw">class</span> <span class="fn">SleeptimeMultiAgentV4</span>(LettaAgentV3):       <span class="cm"># note: it's just a subclass of the ordinary loop</span>
+    <span class="kw">async def</span> <span class="fn">step</span>(self, input_messages, ...):
+        <span class="cm"># 1) foreground primary agent runs a normal turn; save the messages it produced</span>
+        response_messages = <span class="kw">await</span> <span class="fn">super</span>().<span class="fn">step</span>(input_messages, ...)
+        <span class="cm"># 2) decide whether to wake the background sleeptime agents</span>
+        <span class="kw">await</span> self.<span class="fn">run_sleeptime_agents</span>(response_messages)
+        <span class="kw">return</span> response_messages
+
+    <span class="kw">async def</span> <span class="fn">run_sleeptime_agents</span>(self, response_messages):
+        count = <span class="kw">await</span> group_manager.<span class="fn">bump_turns_counter_async</span>(self.group.id)  <span class="cm"># (c+1) % frequency</span>
+        <span class="kw">if</span> count % self.group.sleeptime_agent_frequency != 0:
+            <span class="kw">return</span>                                   <span class="cm"># not yet, skip</span>
+        <span class="kw">for</span> agent_id <span class="kw">in</span> self.group.agent_ids:     <span class="cm"># the background editors</span>
+            <span class="kw">await</span> self.<span class="fn">_issue_background_task</span>(agent_id, response_messages)  <span class="cm"># non-blocking safe_create_task</span>
+</pre></div>
+<p>Line by line: <span class="mono">bump_turns_counter_async</span> advances the counter as <span class="mono">(c+1) % frequency</span>; only an exact division (<span class="mono">% frequency == 0</span>) is a hit.</p>
+<p>On a hit, for <strong>each background sleeptime agent</strong> in <span class="mono">group.agent_ids</span> it runs <span class="mono">_issue_background_task</span>: create a <span class="mono">Run</span>, then <span class="mono">safe_create_task(_participant_agent_step)</span> — a <strong>non-blocking asyncio background task</strong>. The foreground <strong>doesn't wait</strong>.</p>
+<p>What does that background task do? <span class="mono">_participant_agent_step</span> stitches <span class="mono">prior + response_messages</span> into a transcript, wraps it in a <span class="mono">&lt;system-reminder&gt;</span> — “you are a background sleeptime agent, your job is memory management, update the relevant blocks with the memory tools” — then runs <span class="mono">step</span> as a <strong>full <span class="mono">LettaAgentV3</span></strong>.</p>
+<p>Note what it feeds the background is <span class="mono">prior + response_messages</span> — namely the foreground's just-happened turn. The background agent doesn't tidy out of thin air but decides what to write into long-term memory blocks based on “what was just said.” It reads the conversation and edits the memory.</p>
+<p>Don't miss this detail: <span class="mono">_issue_background_task</span> first creates a <span class="mono">Run</span> record, then <span class="mono">safe_create_task</span>. The <span class="mono">Run</span> makes this background tidying <strong>observable and traceable</strong> — not “fire a task and forget” but, like the foreground, leaving a queryable execution record.</p>
+<p>That <span class="mono">&lt;system-reminder&gt;</span> matters too: it temporarily injects the sleeptime agent's <strong>identity and duty</strong> — “you are a background memory manager, update the relevant blocks with the memory tools.” The same loop, via this prompt plus <span class="mono">sleeptime_memory_persona</span>, is “switched” into a memory tidier.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>User → foreground step</h4><p>A user message arrives; <span class="mono">SleeptimeMultiAgentV4.step</span> first does <span class="mono">await super().step()</span> to run the foreground primary agent.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>bump_turns_counter</h4><p>The counter advances by <span class="mono">(c+1) % frequency</span>; ask: is <span class="mono">% frequency == 0</span>?</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Hit → non-blocking wake</h4><p>On a hit, <span class="mono">safe_create_task(_participant_agent_step)</span> for each background agent; the foreground doesn't wait and returns right away.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>sleeptime step → memory_rethink</h4><p>The background agent runs <span class="mono">step</span> as a full <span class="mono">LettaAgentV3</span>, rewriting memory with <span class="mono">memory_rethink</span>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Write shared Block (version++)</h4><p>The new content lands in that one <span class="mono">Block</span> row; the optimistic-lock <span class="mono">version</span> increments.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>Foreground reads it next turn</h4><p>On its next turn, rebuilding the system prompt, the foreground naturally reads the tidied new value.</p></div></div>
+</div>
+<details class="accordion"><summary>How often does sleeptime trigger? And why “on the very first turn”?</summary><div class="acc-body">
+<p>Frequency is set by <span class="mono">group.sleeptime_agent_frequency</span>, default <strong>5</strong> (see <span class="mono">server.py::create_sleeptime_agent_async</span>).</p>
+<p>The hit condition is <span class="mono">% frequency == 0</span> after <span class="mono">bump_turns_counter</span> advances.</p>
+<p>The trick is the initial value: <span class="mono">GroupManager.create_group_async</span> sets <span class="mono">turns_counter</span> to <strong><span class="mono">-1</span></strong> for sleeptime. On the first turn <span class="mono">(-1+1)=0</span>, and <span class="mono">0 % 5 == 0</span> → <strong>a hit on the very first turn</strong>.</p>
+<p>So a newly created sleeptime agent needn't idle for 5 turns; the background starts tidying memory right after the first conversation turn.</p>
+</div></details>
+<p>The name “sleeptime” is deliberate: it echoes the brain's “memory consolidation” during sleep — tidying the day's short-term experiences into long-term memory. Letta turns this metaphor into engineering: foreground conversation is like “being awake,” background tidying like “sleep,” the two staggered so neither preempts the other.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Remember this causal chain: <strong>sleeptime = the same <span class="mono">LettaAgentV3</span> loop plus one shared memory row plus one turn counter</strong>. There's no “special memory-tidying subsystem” — just an ordinary agent dropped into a transcript, given memory tools, and told “your job is to tidy memory.”</span></div>
+<div class="card detail"><div class="tag">🔬 Down in the code</div>
+<p><span class="mono">functions/function_sets/multi_agent.py</span> — the three <span class="mono">send_message_to_agent_*</span> tools, <span class="mono">LETTA_MULTI_AGENT_CORE</span>, sandbox-executed.</p>
+<p><span class="mono">groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4</span> — subclasses <span class="mono">LettaAgentV3</span>; <span class="mono">step</span> does <span class="mono">super().step()</span> then <span class="mono">run_sleeptime_agents</span>.</p>
+<p><span class="mono">orm/blocks_agents.py::BlocksAgents</span> — composite PK <span class="mono">(agent_id, block_id, block_label)</span>, attaching one <span class="mono">Block</span> row to many agents.</p>
+<p><span class="mono">services/tool_executor/core_tool_executor.py::CoreToolExecutor.memory_rethink</span> — where sleeptime's memory edit lands.</p>
+</div>
 <!--ENMORE-->
 """,
 }
