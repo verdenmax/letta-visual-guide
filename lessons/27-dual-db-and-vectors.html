@@ -420,6 +420,78 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <div class="note info"><span class="ni">💡</span><span class="nx">所以"定长一列装任意模型"不是近似、不是妥协，而是<strong>数学上严格等价于不填充</strong>，代价只是多存一串 0、占点空间。SQLite 那个 numpy UDF <span class="mono">validate_and_transform_embedding</span> 还会校验维度＝＝4096，对不上就直接返回 <span class="mono">0.0</span>——填充是写路和查询路<strong>共同的前提</strong>。</span></div>
 <p>那"存哪种列"呢？这是六处接缝里的第二处，发生在 <span class="mono">BasePassage</span> 的<strong>类体里、import 期</strong>：Postgres 用 pgvector 的 <span class="mono">Vector(4096)</span>，SQLite 用 <span class="mono">CommonVector</span>（一个 BINARY blob）。具体代码下一节连搜索一起看。</p>
 <div class="note warn"><span class="ni">⚠️</span><span class="nx"><span class="mono">MAX_EMBEDDING_DIM</span> 的注释明确写着"别改，否则得重置数据库"：它定死了列宽，一旦改动，就和库里已存的定长向量对不上了。这把尺是<strong>全局约定</strong>，不是某张表的局部选择。</span></div>
+<h2>向量怎么搜：原生 &lt;=&gt; vs numpy 暴力</h2>
+<p>存定了，怎么搜？这是六处接缝里的第三处，也是运行时唯一真正"分两路"的地方：同一句"按相似度排序"，在两套库上编译成完全不同的执行。</p>
+<p>先把列类型和搜索分支放进同一张代码里看——它们其实共用一个 <span class="mono">if database_engine is POSTGRES</span>：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/passage.py · letta/orm/sqlalchemy_base.py</span><span class="ln">import 期定列类型；运行时按引擎分两路搜（节选）</span></div>
+<pre><span class="cm"># orm/passage.py::BasePassage —— 类体里、import 期就把列类型烤进模型</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    embedding = <span class="fn">mapped_column</span>(<span class="fn">Vector</span>(MAX_EMBEDDING_DIM))   <span class="cm"># pgvector 定长 4096</span>
+<span class="kw">else</span>:
+    embedding = <span class="fn">Column</span>(CommonVector)                      <span class="cm"># SQLite：BINARY blob</span>
+
+<span class="cm"># 查询构造器：运行时按同一个开关，分两路排序</span>
+<span class="kw">if</span> settings.database_engine <span class="kw">is</span> DatabaseChoice.POSTGRES:
+    query = query.<span class="fn">order_by</span>(cls.embedding.<span class="fn">cosine_distance</span>(q_emb).<span class="fn">asc</span>())          <span class="cm"># 编译成 SQL &lt;=&gt;</span>
+<span class="kw">else</span>:
+    query = query.<span class="fn">order_by</span>(<span class="fn">func.cosine_distance</span>(cls.embedding, q_emb).<span class="fn">asc</span>())   <span class="cm"># 走 numpy UDF</span>
+</pre></div>
+<p>看清两处分叉：上半段是 <strong>import 期</strong>的——类体里那个 <span class="mono">if</span> 在模块被导入时就执行一次，把列类型<strong>烤死</strong>在模型上。所以一个进程被特化到一种后端，运行时<strong>不能切库</strong>。</p>
+<p>下半段是<strong>运行时</strong>的：Postgres 把 <span class="mono">cosine_distance()</span> 翻成原生算子 <span class="mono">&lt;=&gt;</span>，SQLite 则调那个我们在 <span class="mono">register_functions</span> 里见过的 numpy UDF。把全貌摆成一张表：</p>
+<table class="t">
+<tr><th>维度</th><th>Postgres（pgvector）</th><th>SQLite</th></tr>
+<tr><td>向量列</td><td class="mono">Vector(4096)</td><td class="mono">CommonVector（BINARY）</td></tr>
+<tr><td>距离调用</td><td class="mono">embedding.cosine_distance(q)</td><td class="mono">func.cosine_distance(col, q)</td></tr>
+<tr><td>实际算子</td><td>SQL 原生 <span class="mono">&lt;=&gt;</span></td><td>Python numpy UDF</td></tr>
+<tr><td>排序</td><td class="mono">ORDER BY dist ASC</td><td class="mono">ORDER BY dist ASC</td></tr>
+<tr><td>索引 / ANN</td><td>可挂 <span class="mono">ivfflat</span> / <span class="mono">hnsw</span></td><td>无，全表暴力</td></tr>
+<tr><td>适用规模</td><td>大库也扛得住</td><td>小库 / 开发够用</td></tr>
+</table>
+<p>两边<strong>语义相同</strong>——都按 cosine 升序取最近的若干条；差别只在执行：Postgres 可借索引做近似最近邻（ANN），SQLite 对全表逐行算、再排序。</p>
+<p>这也呼应第 10、11 课：你读过的 archival / recall 检索，底层那句"找最像的记忆"，到这层就分成了这两条路。</p>
+<details class="accordion"><summary>向量在两套库里到底怎么存、怎么搜？性能差在哪？</summary><div class="acc-body">
+<p><strong>存</strong>：Postgres 是 pgvector 的 <span class="mono">Vector(4096)</span> 定长列；SQLite 是 <span class="mono">CommonVector</span>——一个 BINARY blob，用 <span class="mono">sqlite_vec.serialize_float32</span> 打包、<span class="mono">np.frombuffer</span> 还原。</p>
+<p><strong>搜</strong>：Postgres 把 <span class="mono">cosine_distance()</span> 编译成原生算子 <span class="mono">&lt;=&gt;</span>，可借 <span class="mono">ivfflat</span> / <span class="mono">hnsw</span> 索引做 ANN；SQLite 调 numpy UDF，对<strong>全表</strong>逐行算距离再排序。</p>
+<p>所以差距在<strong>规模</strong>：小库、开发环境，SQLite 全表暴力毫无压力；行数一大，就得靠 Postgres 的向量索引。两边语义一致，只是一个有 ANN、一个没有。</p>
+<p>别忘了：两边都先把查询向量 <span class="mono">np.pad</span> 到 4096 再比——填充是存和搜<strong>共同的前提</strong>，它让"任意模型的向量"落进同一个定长空间。</p>
+</div></details>
+<h2>pydantic-in-DB：把配置整块塞进一列 JSON</h2>
+<p>魔术的另一半和向量无关，却同样优雅：<span class="mono">EmbeddingConfig</span>、<span class="mono">LLMConfig</span>、<span class="mono">ToolRules</span> 这些配置，<strong>不拆成列</strong>，而是整块当 JSON blob 存一格。</p>
+<p>第 21 课你见过 <span class="mono">LLMConfig</span> / <span class="mono">EmbeddingConfig</span> 在内存里是 pydantic 模型。它们怎么落库？靠 <span class="mono">custom_columns.py</span> 里一批 <span class="mono">TypeDecorator</span>——SQLAlchemy 的"列类型适配器"。</p>
+<p>它在 ORM 与 DB 之间架了一座双向桥，往返各走一道转换：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>EmbeddingConfig（pydantic）</h4><p>内存里是个带类型、带默认值的 pydantic 模型。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>写 · process_bind_param</h4><p><span class="mono">model_dump(mode="json")</span> → 一个普通 dict。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>落库 · 一列 JSON</h4><p>整块配置塞进 <span class="mono">impl=JSON</span> 那一格，关系 schema 保持扁平。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>读 · process_result_value</h4><p>dict → <span class="mono">Model(**data)</span>，还原成 pydantic。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>schema-on-read 兜底</h4><p><span class="mono">deserialize_llm_config</span> 给缺失字段填默认——加字段<strong>免迁移</strong>。</p></div></div>
+</div>
+<p>这批 <span class="mono">TypeDecorator</span> 都继承同一套骨架（<span class="mono">cache_ok=True</span>，委托 <span class="mono">helpers/converters.py</span> 做真正的转换）。挑两个最有代表性的看代码：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/custom_columns.py</span><span class="ln">两类 TypeDecorator：配置存 JSON、向量存 BINARY（节选）</span></div>
+<pre><span class="kw">class</span> <span class="fn">EmbeddingConfigColumn</span>(TypeDecorator):
+    impl = JSON                          <span class="cm"># 底层就是一列 JSON</span>
+    cache_ok = <span class="kw">True</span>
+    <span class="kw">def</span> <span class="fn">process_bind_param</span>(self, value, _):      <span class="cm"># 写：pydantic -&gt; dict</span>
+        <span class="kw">return</span> value.<span class="fn">model_dump</span>(mode=<span class="st">&quot;json&quot;</span>) <span class="kw">if</span> value <span class="kw">else</span> value
+    <span class="kw">def</span> <span class="fn">process_result_value</span>(self, value, _):    <span class="cm"># 读：dict -&gt; pydantic</span>
+        <span class="kw">return</span> <span class="fn">EmbeddingConfig</span>(**value) <span class="kw">if</span> value <span class="kw">else</span> value
+
+<span class="kw">class</span> <span class="fn">CommonVector</span>(TypeDecorator):
+    impl = BINARY                        <span class="cm"># 向量打包成二进制</span>
+    cache_ok = <span class="kw">True</span>
+    <span class="kw">def</span> <span class="fn">process_bind_param</span>(self, value, _):
+        <span class="kw">return</span> <span class="fn">serialize_vector</span>(value)           <span class="cm"># sqlite_vec.serialize_float32</span>
+    <span class="kw">def</span> <span class="fn">process_result_value</span>(self, value, _):
+        <span class="kw">return</span> <span class="fn">deserialize_vector</span>(value)         <span class="cm"># np.frombuffer</span>
+</pre></div>
+<p>两个类一个模子：<span class="mono">bind</span> 管"进库怎么打包"，<span class="mono">result</span> 管"出库怎么还原"。<span class="mono">EmbeddingConfigColumn</span> 走 JSON，<span class="mono">CommonVector</span> 走 BINARY——后者正是上文 SQLite 那列向量的真身。</p>
+<p>有意思的是 <span class="mono">CommonVector</span> 只<strong>借用</strong>了 <span class="mono">sqlite_vec.serialize_float32</span> 来打包字节，并没有用它的原生相似度。还记得吗？<span class="mono">sqlite_vec.load()</span> 是注释掉的。</p>
+<details class="accordion"><summary>把配置塞进一列 JSON，是聪明还是偷懒？取舍在哪？</summary><div class="acc-body">
+<p>买到两样东西。其一<strong>免迁移</strong>：给 <span class="mono">LLMConfig</span> 加个 pydantic 字段，不用动表结构——老行反序列化时 <span class="mono">deserialize_llm_config</span> 自动补默认（schema-on-read）。</p>
+<p>其二<strong>保真</strong>：整个 pydantic 对象原样进、原样出，嵌套结构不被拍平成一堆列，读回来还是那个强类型对象。</p>
+<p>代价也实在：JSON 里的子字段<strong>不能 <span class="mono">WHERE</span>、不能建索引</strong>——你没法高效地"按 embedding 模型名筛选"。而且每次读写都要跑一遍 (de)序列化，有 CPU 开销。</p>
+<p>一句话取舍：<strong>用"不可查询子字段 + 序列化开销"，换"扁平 schema + 加字段免迁移 + 配置保真"</strong>。对 Letta 这种配置多变、又很少按子字段查询的场景，划算。</p>
+</div></details>
 <!--ZHMORE-->
 
 </div>
