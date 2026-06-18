@@ -1572,5 +1572,7 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>第七部分到此完整：从三层架构，到 manager、到 secure-by-default 的 base、再到双库与向量。服务端怎么把"一个 agent 的记忆"安全地存下、又精准地取回，你已看穿整条链路。</p>
 <p>接下来是<strong>第八部分</strong>：进阶专题与术语表。我们会挑几个横切全局的主题深挖，再用一份术语表把这一路的关键词收拢成可随时回查的索引。</p>
 """,
-    "en": r"""<p>stub</p>""",
+    "en": r"""
+<!--ENMORE-->
+""",
 }
