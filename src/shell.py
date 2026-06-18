@@ -673,6 +673,10 @@ def index_page(lesson_prefix="lessons/"):
       <span><i style="background:var(--accent)"></i>{bi("关键要点", "Key points")}</span>
     </div>
     <p style="margin:.8rem 0 0;color:var(--faint);font-size:.8rem">{bi("📌 对照 Letta 仓库真实源码核实（锚定 v0.16.8）· 源码引用以“文件 + 符号名”为主（行号随上游更新而变）", "📌 Verified against the real Letta source (anchored at v0.16.8); references cite file + symbol (line numbers drift upstream)")}</p>
+    <p class="print-links" style="margin:.85rem 0 0">
+      <a class="pdf-btn" href="print-zh.html">📄 {bi("中文打印版 / 存为 PDF", "中文 print / Save as PDF")}</a>
+      <a class="pdf-btn" href="print-en.html">📄 {bi("English 打印版 / 存为 PDF", "English print / Save as PDF")}</a>
+    </p>
   </div>
   <div class="toc-search">
     <input id="q" type="search" placeholder="🔎 搜索课程 / Search lessons" autocomplete="off" aria-label="search">

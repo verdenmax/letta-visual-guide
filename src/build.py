@@ -42,6 +42,8 @@ def build():
     with open(os.path.join(ROOT, shell.INDEX_FILE), "w", encoding="utf-8") as f:
         f.write(shell.index_page(lesson_prefix="lessons/"))
     written.append(shell.INDEX_FILE)
+    import build_print  # noqa: E402  (single-file print/PDF editions)
+    written.extend(build_print.build())
     return written
 
 
