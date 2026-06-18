@@ -431,7 +431,105 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 </table>
 <p>正文到此为止——三十课正文 ＋ 这张术语表，就是这趟 Letta 源码之旅的全部地图。配套的全量 quizzes、双语 PDF、CI 与 README，都收在仓库的收尾里，随时回来翻查。</p>
 </div>
-  <div class="lang-en"><p>stub</p></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">The previous thirty lessons are done; this one <strong>teaches nothing new</strong> — it's a quick-reference index: every key term from across the guide, each squeezed into a single line, with a jump-link tacked on the end.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Using it is simple: spot a word that looks familiar but won't quite come back to you, read the one-line definition on the right; want to see <strong>where it actually came from</strong>, click the link to jump straight to the lesson that covers it best. Both languages are kept side by side so you can line them up with the original English terms in the source.</p>
+<div class="cute"><div class="row"><span class="emoji">📖</span><span class="lab">a half-remembered word</span><span class="arrow">→</span><span class="emoji">👇</span><span class="lab">glance at one line</span><span class="arrow">→</span><span class="emoji">🔗</span><span class="bubble">jump back to that lesson</span></div><div class="cap">📖 Like flipping open a quick-reference handbook: hit a 👇 term you can't quite place, glance at the one-line definition on the right, and if you want to dig deeper 🔗 click the jump-link back to the lesson that first covered it — the whole value of this page lives in those links.</div></div>
+
+<h2>① Macro: the map that came first</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">Letta</span> / <span class="mono">MemGPT</span></td><td>The open-source project that turns an agent with memory — one that can rewrite its own memory — into a service; its predecessor paper was MemGPT.</td><td><a href="01-what-is-letta.html">Lesson 01</a></td></tr>
+<tr><td><span class="mono">project map</span></td><td>The letta repo's directory skeleton: agents / services / orm / llm_api each own a slice — learn the layout before reading code.</td><td><a href="02-project-map.html">Lesson 02</a></td></tr>
+<tr><td><span class="mono">message lifecycle</span></td><td>One user message's full journey: hit the API, assemble context, call the LLM, run tools, persist to the DB.</td><td><a href="03-message-lifecycle.html">Lesson 03</a></td></tr>
+<tr><td><span class="mono">stateful / stateless</span></td><td>The agent has persistent state, but the service process is stateless: every turn is rebuilt from the DB, so it scales horizontally.</td><td><a href="06-stateful-vs-stateless.html">Lesson 06</a></td></tr>
+<tr><td><span class="mono">context window</span></td><td>The screenful of token budget fed to the LLM; the whole memory system is one long fight against its ceiling.</td><td><a href="05-context-window.html">Lesson 05</a></td></tr>
+<tr><td><span class="mono">LLM agent</span></td><td>A loop that thinks, calls a tool, reads the result, and thinks again — not just one-shot Q&A.</td><td><a href="04-agent-and-tools.html">Lesson 04</a></td></tr>
+<tr><td><span class="mono">tool calling</span></td><td>The LLM doesn't act itself; it emits which function to call with which arguments, and hands the work off to run externally.</td><td><a href="04-agent-and-tools.html">Lesson 04</a></td></tr>
+</table>
+
+<h2>② Memory system: the main thread of this guide</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">memory tiers</span></td><td>Memory split into three tiers — core / recall / archival — by whether it lives in the context window.</td><td><a href="07-memory-tiers.html">Lesson 07</a></td></tr>
+<tr><td><span class="mono">core memory</span></td><td>The always-in-context tier the agent can rewrite by hand, assembled from individual memory blocks.</td><td><a href="08-memory-blocks.html">Lesson 08</a></td></tr>
+<tr><td><span class="mono">recall memory</span></td><td>The database archive of the full conversation history, fetched back by message search when needed.</td><td><a href="11-recall-memory.html">Lesson 11</a></td></tr>
+<tr><td><span class="mono">archival memory</span></td><td>An unbounded long-term fact store, retrieved by meaning through vector semantic search.</td><td><a href="10-archival-memory.html">Lesson 10</a></td></tr>
+<tr><td><span class="mono">Block</span> / memory block</td><td>The smallest unit of core memory: an editable chunk of text with a label and a character limit.</td><td><a href="08-memory-blocks.html">Lesson 08</a></td></tr>
+<tr><td><span class="mono">self-editing memory</span></td><td>The agent edits its own core memory with the memory_* tools — memory is writable.</td><td><a href="09-self-editing-memory.html">Lesson 09</a></td></tr>
+<tr><td>context <span class="mono">compaction</span></td><td>When the context is nearly full, summarize or evict old messages to make room for new ones.</td><td><a href="12-context-compaction.html">Lesson 12</a></td></tr>
+<tr><td><span class="mono">Passage</span></td><td>One row in archival memory or a data source: a chunk of text paired with its embedding vector.</td><td><a href="10-archival-memory.html">Lesson 10</a></td></tr>
+<tr><td><span class="mono">vector search</span></td><td>Turn the query into a vector too, then find the nearest passages by distance.</td><td><a href="10-archival-memory.html">Lesson 10</a></td></tr>
+<tr><td><span class="mono">conversation history</span></td><td>The complete record of every message exchanged — exactly what recall memory is.</td><td><a href="11-recall-memory.html">Lesson 11</a></td></tr>
+</table>
+<div class="note tip"><span class="ni">📌</span><span class="nx">When a term shows up across several lessons, its jump-link points to <strong>the lesson that covers it most fully</strong>; to see how it ties into the rest, the "recap" paragraph at the end of that lesson usually hides more threads to pull.</span></div>
+<h2>③ Agent execution: that for loop</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">AgentState</span></td><td>A full snapshot of the agent's state — memory / tools / messages / config — rebuilt from it every turn.</td><td><a href="13-agent-state-and-loop.html">Lesson 13</a></td></tr>
+<tr><td><span class="mono">AgentLoop</span></td><td>The loop abstraction that drives the agent forward step by step, deciding when to call the LLM and when to stop.</td><td><a href="13-agent-state-and-loop.html">Lesson 13</a></td></tr>
+<tr><td><span class="mono">LettaAgentV3</span> / V3 step loop</td><td>The current workhorse agent implementation, splitting a turn into an interruptible, resumable chain of steps.</td><td><a href="14-v3-step-loop.html">Lesson 14</a></td></tr>
+<tr><td><span class="mono">_step</span></td><td>One step: a single LLM call plus the tools it names — the smallest cell of the loop.</td><td><a href="14-v3-step-loop.html">Lesson 14</a></td></tr>
+<tr><td><span class="mono">heartbeat</span></td><td>The signal that auto-continues for another round after a tool runs, letting the agent take several steps without waiting for the user.</td><td><a href="15-heartbeat-to-no-heartbeat.html">Lesson 15</a></td></tr>
+<tr><td><span class="mono">no-heartbeat</span></td><td>The newer design controls continuation explicitly with tool rules, cutting that implicit heartbeat wire.</td><td><a href="15-heartbeat-to-no-heartbeat.html">Lesson 15</a></td></tr>
+<tr><td><span class="mono">tool rule</span> / ToolRule</td><td>A state-machine constraint on tools: who may follow whom, and where the loop must stop.</td><td><a href="16-tool-rules.html">Lesson 16</a></td></tr>
+</table>
+
+<h2>④ Tool system: a rack of hammers</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td>Tool = Python function + docstring</td><td>A tool is just an ordinary Python function with type hints and a docstring — no magic.</td><td><a href="17-tool-as-function.html">Lesson 17</a></td></tr>
+<tr><td>schema <span class="mono">derivation</span></td><td>Generate the JSON schema automatically from the function signature and docstring — <strong>without ever executing it</strong>.</td><td><a href="18-schema-without-executing.html">Lesson 18</a></td></tr>
+<tr><td>tool <span class="mono">dispatch</span></td><td>Take the LLM's tool call, look up the matching implementation by name, and actually run it.</td><td><a href="19-tool-dispatch-and-mcp.html">Lesson 19</a></td></tr>
+<tr><td><span class="mono">MCP</span></td><td>Model Context Protocol: pull in tools exposed by external servers and dispatch them uniformly.</td><td><a href="19-tool-dispatch-and-mcp.html">Lesson 19</a></td></tr>
+<tr><td><span class="mono">sandbox</span></td><td>Tool code runs in an isolated environment (e2b / a local subprocess) so it can't mess with the host.</td><td><a href="20-tool-sandbox-security.html">Lesson 20</a></td></tr>
+</table>
+<h2>⑤ LLM providers: smoothing over each one's temperament</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">LLMClient</span></td><td>The unified client base class for every model provider, hiding each one's API differences behind it.</td><td><a href="21-provider-contract.html">Lesson 21</a></td></tr>
+<tr><td><span class="mono">provider contract</span></td><td>The uniform interface contract that runs in three steps: build_request_data → request → convert.</td><td><a href="21-provider-contract.html">Lesson 21</a></td></tr>
+<tr><td><span class="mono">ChatCompletionResponse</span></td><td>Every provider's response is normalized into this internal shape; downstream code only knows it, never the raw format.</td><td><a href="21-provider-contract.html">Lesson 21</a></td></tr>
+<tr><td>provider <span class="mono">quirks</span></td><td>Each API's temperament differences: parameter names, streaming formats, and tool-call shapes all differ.</td><td><a href="22-provider-quirks.html">Lesson 22</a></td></tr>
+<tr><td><span class="mono">inner_thoughts</span> inner monologue</td><td>Stuff the agent's reasoning into a parameter or field, working around models with no native thinking.</td><td><a href="22-provider-quirks.html">Lesson 22</a></td></tr>
+<tr><td><span class="mono">GBNF</span></td><td>A grammar-constraint format that forces a local model to emit only valid tool-call JSON.</td><td><a href="23-local-models-gbnf.html">Lesson 23</a></td></tr>
+<tr><td><span class="mono">local models</span></td><td>Local models run via llama.cpp and friends, with GBNF filling in the tool-calling they lack.</td><td><a href="23-local-models-gbnf.html">Lesson 23</a></td></tr>
+</table>
+
+<h2>⑥ Server & persistence: punching down through three layers</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">three-layer</span> architecture</td><td>API routing → service-manager layer → ORM data layer; a request falls top-down through all three.</td><td><a href="24-three-layer-architecture.html">Lesson 24</a></td></tr>
+<tr><td><span class="mono">SyncServer</span></td><td>The top-level service object that gathers all the Managers — the single entry point for the routing layer.</td><td><a href="24-three-layer-architecture.html">Lesson 24</a></td></tr>
+<tr><td><span class="mono">actor</span></td><td>The identity of the user making the request, carried all the way down to the DB layer for permission and ownership checks.</td><td><a href="24-three-layer-architecture.html">Lesson 24</a></td></tr>
+<tr><td>service-layer <span class="mono">Manager</span></td><td>One Manager per resource type (AgentManager, ...), holding the business logic and transaction boundaries.</td><td><a href="25-service-managers.html">Lesson 25</a></td></tr>
+<tr><td><span class="mono">db_registry</span></td><td>The registry that centrally manages DB engines and sessions — everything that needs the database goes through it.</td><td><a href="25-service-managers.html">Lesson 25</a></td></tr>
+<tr><td><span class="mono">SqlalchemyBase</span></td><td>The base class for every ORM model, baking in CRUD, access control, soft delete, and other shared powers.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">apply_access_predicate</span></td><td>Auto-filters queries by the actor's org — the master gate of multi-tenant isolation.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">multi-tenancy</span></td><td>One database partitioned into tenants by organization, with data invisible across tenants.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">soft delete</span></td><td>Deleting just flips is_deleted to true: the row stays, auditable and recoverable.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">audit fields</span></td><td>Shared columns like created_at / updated_at / created_by_id that leave a trace of who changed what, when.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">database_engine</span></td><td>Picks a different engine for SQLite vs Postgres, which decides whether features like vector columns are available.</td><td><a href="27-dual-db-and-vectors.html">Lesson 27</a></td></tr>
+<tr><td><span class="mono">pgvector</span> / vector store</td><td>Postgres's vector extension that lets embeddings live in a column and supports nearest-neighbor search.</td><td><a href="27-dual-db-and-vectors.html">Lesson 27</a></td></tr>
+<tr><td>pydantic <span class="mono">custom columns</span></td><td>A custom SQLAlchemy column type that transparently stores a pydantic object into a single column.</td><td><a href="27-dual-db-and-vectors.html">Lesson 27</a></td></tr>
+</table>
+<h2>⑦ Advanced topics: after it's running</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">multi-agent</span> / group</td><td>Several agents wired into a group to collaborate; the kind that actually works today is sleeptime.</td><td><a href="28-multi-agent-sleeptime.html">Lesson 28</a></td></tr>
+<tr><td><span class="mono">sleeptime</span></td><td>The mechanism where a background agent quietly tidies shared memory blocks while the foreground is idle.</td><td><a href="28-multi-agent-sleeptime.html">Lesson 28</a></td></tr>
+<tr><td><span class="mono">shared block</span></td><td>One memory block mounted by several agents at once — edit it in one place and every other agent sees it.</td><td><a href="28-multi-agent-sleeptime.html">Lesson 28</a></td></tr>
+<tr><td>data <span class="mono">source</span> / RAG</td><td>Uploaded documents chunked, embedded, and stored as a searchable external knowledge source.</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
+<tr><td><span class="mono">SourcePassage</span> / <span class="mono">ArchivalPassage</span></td><td>Two kinds of passage on the same vector table: one from files, one from archival memory.</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
+<tr><td><span class="mono">FileAgent</span> / <span class="mono">FileBlock</span></td><td>The block that drops an opened file's raw text read-only into context (up to 5 open by default).</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
+<tr><td><span class="mono">Run</span></td><td>One full agent invocation, wrapping several steps inside — the top-level unit for billing and tracing.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+<tr><td><span class="mono">Step</span></td><td>One lap inside a Run: a single LLM call plus a round of tools, mapping to one row in the steps table.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+<tr><td><span class="mono">Job</span></td><td>A background/batch task <strong>sibling</strong> to Run, not its parent — don't get this backwards.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+<tr><td><span class="mono">observability</span></td><td>Three ledgers — the steps row / OTel span / provider trace — each recording one facet.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+<tr><td><span class="mono">SSE</span> streaming</td><td>Pushes out chunk by chunk as data: {json}, so the frontend sees output as it's generated.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+</table>
+<p>That's the end of the main text — thirty lessons plus this glossary make up the entire map of this Letta source-code journey. The full quiz set, the bilingual PDFs, CI, and the README all live in the repo's closing pieces, ready whenever you come back to look something up.</p>
+</div>
   <div class="footnav"><a class="prev" href="30-jobs-runs-steps.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">jobs / runs / steps 与可观测性</span><span class="lang-en">Jobs, runs, steps &amp; observability</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>

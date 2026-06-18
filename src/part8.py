@@ -1585,6 +1585,21 @@ LESSON_31 = {
 <tr><td><span class="mono">pgvector</span> / vector store</td><td>Postgres's vector extension that lets embeddings live in a column and supports nearest-neighbor search.</td><td><a href="27-dual-db-and-vectors.html">Lesson 27</a></td></tr>
 <tr><td>pydantic <span class="mono">custom columns</span></td><td>A custom SQLAlchemy column type that transparently stores a pydantic object into a single column.</td><td><a href="27-dual-db-and-vectors.html">Lesson 27</a></td></tr>
 </table>
-<!--ENMORE-->
+<h2>⑦ Advanced topics: after it's running</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">multi-agent</span> / group</td><td>Several agents wired into a group to collaborate; the kind that actually works today is sleeptime.</td><td><a href="28-multi-agent-sleeptime.html">Lesson 28</a></td></tr>
+<tr><td><span class="mono">sleeptime</span></td><td>The mechanism where a background agent quietly tidies shared memory blocks while the foreground is idle.</td><td><a href="28-multi-agent-sleeptime.html">Lesson 28</a></td></tr>
+<tr><td><span class="mono">shared block</span></td><td>One memory block mounted by several agents at once — edit it in one place and every other agent sees it.</td><td><a href="28-multi-agent-sleeptime.html">Lesson 28</a></td></tr>
+<tr><td>data <span class="mono">source</span> / RAG</td><td>Uploaded documents chunked, embedded, and stored as a searchable external knowledge source.</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
+<tr><td><span class="mono">SourcePassage</span> / <span class="mono">ArchivalPassage</span></td><td>Two kinds of passage on the same vector table: one from files, one from archival memory.</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
+<tr><td><span class="mono">FileAgent</span> / <span class="mono">FileBlock</span></td><td>The block that drops an opened file's raw text read-only into context (up to 5 open by default).</td><td><a href="29-data-sources-rag.html">Lesson 29</a></td></tr>
+<tr><td><span class="mono">Run</span></td><td>One full agent invocation, wrapping several steps inside — the top-level unit for billing and tracing.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+<tr><td><span class="mono">Step</span></td><td>One lap inside a Run: a single LLM call plus a round of tools, mapping to one row in the steps table.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+<tr><td><span class="mono">Job</span></td><td>A background/batch task <strong>sibling</strong> to Run, not its parent — don't get this backwards.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+<tr><td><span class="mono">observability</span></td><td>Three ledgers — the steps row / OTel span / provider trace — each recording one facet.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+<tr><td><span class="mono">SSE</span> streaming</td><td>Pushes out chunk by chunk as data: {json}, so the frontend sees output as it's generated.</td><td><a href="30-jobs-runs-steps.html">Lesson 30</a></td></tr>
+</table>
+<p>That's the end of the main text — thirty lessons plus this glossary make up the entire map of this Letta source-code journey. The full quiz set, the bilingual PDFs, CI, and the README all live in the repo's closing pieces, ready whenever you come back to look something up.</p>
 """,
 }
