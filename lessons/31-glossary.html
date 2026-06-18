@@ -333,6 +333,37 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <h1><span class="lang-zh">术语表·概念索引</span><span class="lang-en">Glossary &amp; concept index</span></h1>
   </div>
   <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">前面三十课讲完了，这一课<strong>不教新东西</strong>——它是一张速查索引：把全书出现过的关键术语，每个压成一句话，后面再贴一条跳链。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">用法很简单：扫到眼熟却记不清的词，先看右边那句定义；想回去看它<strong>到底怎么来的</strong>，点链接直接跳到讲它最透的那一课。中英对照都留着，方便你跟源码里的英文原词对上号。</p>
+<div class="cute"><div class="row"><span class="emoji">📖</span><span class="lab">记不清的词</span><span class="arrow">→</span><span class="emoji">👇</span><span class="lab">扫一眼一句话</span><span class="arrow">→</span><span class="emoji">🔗</span><span class="bubble">点链接跳回那一课</span></div><div class="cap">📖 像翻开一本速查手册：遇到 👇 记不清的术语，先瞄一眼右边的一句话定义，还想深究就 🔗 点跳链回到首讲它的那一课——这一页的价值，全在那一条条链接里</div></div>
+
+<h2>① 宏观：先有的那张地图</h2>
+<table class="t">
+<tr><th>术语</th><th>一句话</th><th>所在课</th></tr>
+<tr><td><span class="mono">Letta</span> / <span class="mono">MemGPT</span></td><td>把"有记忆、能自己改记忆"的 agent 做成一套服务的开源项目，前身论文叫 MemGPT。</td><td><a href="01-what-is-letta.html">第 01 课</a></td></tr>
+<tr><td>项目地图 <span class="mono">project map</span></td><td>letta 仓库的目录骨架：agents / services / orm / llm_api 各管一摊，先认路再读码。</td><td><a href="02-project-map.html">第 02 课</a></td></tr>
+<tr><td>消息生命周期 <span class="mono">message lifecycle</span></td><td>用户一句话从进 API、拼上下文、调 LLM、跑工具到落库的完整一条龙。</td><td><a href="03-message-lifecycle.html">第 03 课</a></td></tr>
+<tr><td>有状态 vs 无状态 <span class="mono">stateful / stateless</span></td><td>agent 有持久状态，但服务进程无状态：每轮都从 DB 现拼，所以能水平扩展。</td><td><a href="06-stateful-vs-stateless.html">第 06 课</a></td></tr>
+<tr><td>上下文窗口 <span class="mono">context window</span></td><td>喂给 LLM 的那一屏 token 预算，记忆系统的全部设计都是在跟它的上限较劲。</td><td><a href="05-context-window.html">第 05 课</a></td></tr>
+<tr><td><span class="mono">LLM agent</span></td><td>一个会"想—调工具—看结果—再想"的循环体，不止是一次性问答。</td><td><a href="04-agent-and-tools.html">第 04 课</a></td></tr>
+<tr><td>工具调用 <span class="mono">tool calling</span></td><td>LLM 不直接干活，而是吐出"调哪个函数、传什么参数"，交由外部代跑。</td><td><a href="04-agent-and-tools.html">第 04 课</a></td></tr>
+</table>
+
+<h2>② 记忆系统：这套书的主线</h2>
+<table class="t">
+<tr><th>术语</th><th>一句话</th><th>所在课</th></tr>
+<tr><td>记忆三层 <span class="mono">memory tiers</span></td><td>按"是否常驻上下文"把记忆分成核心 / 回忆 / 归档三层。</td><td><a href="07-memory-tiers.html">第 07 课</a></td></tr>
+<tr><td>核心记忆 <span class="mono">core memory</span></td><td>常驻上下文、agent 能亲手改写的那层，由一块块记忆块拼成。</td><td><a href="08-memory-blocks.html">第 08 课</a></td></tr>
+<tr><td>回忆记忆 <span class="mono">recall memory</span></td><td>完整对话历史的数据库存档，要用时再按消息检索调回来。</td><td><a href="11-recall-memory.html">第 11 课</a></td></tr>
+<tr><td>归档记忆 <span class="mono">archival memory</span></td><td>容量无上限的长期事实库，靠向量语义检索按"意思"取回。</td><td><a href="10-archival-memory.html">第 10 课</a></td></tr>
+<tr><td>记忆块 <span class="mono">Block</span> / memory block</td><td>核心记忆的最小单元：一段带 label、有字数上限的可编辑文本。</td><td><a href="08-memory-blocks.html">第 08 课</a></td></tr>
+<tr><td>自我编辑记忆 <span class="mono">self-editing memory</span></td><td>agent 用 memory_* 工具改自己的核心记忆——记忆是可写的。</td><td><a href="09-self-editing-memory.html">第 09 课</a></td></tr>
+<tr><td>上下文压缩 <span class="mono">compaction</span></td><td>上下文快塞满时，把旧消息摘要或驱逐，给新内容腾地方。</td><td><a href="12-context-compaction.html">第 12 课</a></td></tr>
+<tr><td><span class="mono">Passage</span></td><td>归档 / 数据源里的一行：一段文本配上它的 embedding 向量。</td><td><a href="10-archival-memory.html">第 10 课</a></td></tr>
+<tr><td>向量检索 <span class="mono">vector search</span></td><td>把查询也转成向量，按距离找最接近的几个 passage。</td><td><a href="10-archival-memory.html">第 10 课</a></td></tr>
+<tr><td>对话历史 <span class="mono">conversation history</span></td><td>所有来往消息的完整记录，正是 recall memory 的本体。</td><td><a href="11-recall-memory.html">第 11 课</a></td></tr>
+</table>
+<div class="note tip"><span class="ni">📌</span><span class="nx">同一个词在多课都露过面时，跳链指向<strong>讲它最透的那一课</strong>；想看它跟别处怎么串起来，那一课结尾的"回顾"段落里通常还埋着更多线索。</span></div>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
