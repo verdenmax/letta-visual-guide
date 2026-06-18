@@ -733,7 +733,26 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p><span class="mono">access</span> (read/write/admin) is <strong>a no-op for now</strong> (the opening <span class="mono">del access</span>): passing it changes nothing, it just reserves a seat for the future.</p>
 <p>With <span class="mono">no_default_actor</span> off, a request missing <span class="mono">user_id</span> lands in the <strong>shared default tenant</strong> — convenient in development, but in production always carry identity explicitly or enable the guard.</p>
 </div>
-<!--ENMORE-->
+<h2>Callbacks and setups: the compound interest of one base class</h2>
+<p>Let's wrap this lesson. Multi-tenancy, recoverability and auditability spread "for free" across the whole codebase because they all live on the same <span class="mono">SqlalchemyBase</span> — <strong>inherit once, compound three ways</strong>.</p>
+<p>Callback to Lesson 25: in the manager's uniform pipeline, steps 3 and 4 call exactly this generic CRUD. The manager opens the session and threads <span class="mono">actor</span>, the CRUD welds isolation and stamps audit — two layers, each to its own job.</p>
+<p>Callback to Lesson 24: <span class="mono">actor</span>'s source is the <span class="mono">user_id</span> header at the router entrance. Down the three floors, identity sinks all the way and only at this layer gets translated into one <span class="mono">WHERE</span>.</p>
+<p>Callback to Lessons 08 / 10 / 11: the Block, Passage and the memory trio you saw long ago all carry <span class="mono">OrganizationMixin</span> and all go through this <span class="mono">apply_access_predicate</span> — the same gate, this time isolating memory.</p>
+<p>Setup for Lesson 27: these isolated, audited rows ultimately land in which database, on which engine, smoothing over which dialect differences? The next lesson pushes open that bottom-most door.</p>
+<p>One sentence threads Part 7's last three lessons: Lesson 25 "who opens the transaction," Lesson 26 "how each row is isolated and accounted for," Lesson 27 "where these rows land." The three together make up complete server-side persistence.</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">One abstract base class delivers isolation, soft delete and audit at once — that's exactly "inherit once, compound three ways." When reading this code, first learn <span class="mono">SqlalchemyBase</span>, then each model, and the rest is just "which column was added, which verb was overridden."</span></div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><strong>secure by default</strong>: on the read path, as long as you pass <span class="mono">actor</span>, <span class="mono">apply_access_predicate</span> auto-appends <span class="mono">WHERE org==actor.org</span> (the USER scope is jobs/runs only); a violation = not found (<span class="mono">NoResultFound</span> / <span class="mono">[]</span>), not an error.</li>
+<li>One abstract base class <span class="mono">SqlalchemyBase</span> gives ~40 models one set of generic async CRUD: <strong>reads control access, writes stamp audit, deletes split soft/hard</strong>; isolation is written once, welded into the lowest layer.</li>
+<li>Soft delete is <strong>reversible by default</strong>: <span class="mono">delete_async</span> only flips <span class="mono">is_deleted</span>; read-side filtering is opt-in (<span class="mono">check_is_deleted</span> defaults to <span class="mono">False</span>), so soft-deleted rows are still returned by default.</li>
+<li>The five audit fields are stamped explicitly by the CRUD's <span class="mono">_set_created_and_updated_by_fields</span>, and <strong>only when an actor is passed</strong>; the physical columns carry an underscore (<span class="mono">_created_by_id</span> / <span class="mono">_last_updated_by_id</span>).</li>
+<li>Key gate: the predicate is <strong>gated on <span class="mono">if actor:</span></strong>, <span class="mono">actor=None</span> only warns, doesn't block; <span class="mono">access</span> is a no-op for now; the server password is orthogonal to tenant isolation.</li>
+</ul>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">In one line: <span class="mono">SqlalchemyBase</span> = "the foundation of secure by default" — every query auto-scoped by org/user, deletion reversible by default, every row carrying its own "who/when." Multi-tenant, recoverable, auditable — all properties of one abstract class.</span></div>
+<p>Take this muscle memory with you: when you see a new model, first ask who it inherits — as long as <span class="mono">SqlalchemyBase</span> is at the root, isolation, soft delete and audit are all in place by default, and all you're looking for is "which column it added."</p>
+<p>The third-floor gate is now seen through. Next lesson we walk down to the engine room at the bottom and watch which database these rows actually land in, and what smooths over the differences between SQLite and Postgres.</p>
 </div>
   <div class="footnav"><a class="prev" href="25-service-managers.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">服务层 Managers</span><span class="lang-en">The service-layer Managers</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
