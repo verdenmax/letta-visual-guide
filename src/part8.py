@@ -1534,6 +1534,28 @@ LESSON_31 = {
 <tr><td><span class="mono">vector search</span></td><td>Turn the query into a vector too, then find the nearest passages by distance.</td><td><a href="10-archival-memory.html">Lesson 10</a></td></tr>
 <tr><td><span class="mono">conversation history</span></td><td>The complete record of every message exchanged — exactly what recall memory is.</td><td><a href="11-recall-memory.html">Lesson 11</a></td></tr>
 </table>
+<div class="note tip"><span class="ni">📌</span><span class="nx">When a term shows up across several lessons, its jump-link points to <strong>the lesson that covers it most fully</strong>; to see how it ties into the rest, the "recap" paragraph at the end of that lesson usually hides more threads to pull.</span></div>
+<h2>③ Agent execution: that for loop</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">AgentState</span></td><td>A full snapshot of the agent's state — memory / tools / messages / config — rebuilt from it every turn.</td><td><a href="13-agent-state-and-loop.html">Lesson 13</a></td></tr>
+<tr><td><span class="mono">AgentLoop</span></td><td>The loop abstraction that drives the agent forward step by step, deciding when to call the LLM and when to stop.</td><td><a href="13-agent-state-and-loop.html">Lesson 13</a></td></tr>
+<tr><td><span class="mono">LettaAgentV3</span> / V3 step loop</td><td>The current workhorse agent implementation, splitting a turn into an interruptible, resumable chain of steps.</td><td><a href="14-v3-step-loop.html">Lesson 14</a></td></tr>
+<tr><td><span class="mono">_step</span></td><td>One step: a single LLM call plus the tools it names — the smallest cell of the loop.</td><td><a href="14-v3-step-loop.html">Lesson 14</a></td></tr>
+<tr><td><span class="mono">heartbeat</span></td><td>The signal that auto-continues for another round after a tool runs, letting the agent take several steps without waiting for the user.</td><td><a href="15-heartbeat-to-no-heartbeat.html">Lesson 15</a></td></tr>
+<tr><td><span class="mono">no-heartbeat</span></td><td>The newer design controls continuation explicitly with tool rules, cutting that implicit heartbeat wire.</td><td><a href="15-heartbeat-to-no-heartbeat.html">Lesson 15</a></td></tr>
+<tr><td><span class="mono">tool rule</span> / ToolRule</td><td>A state-machine constraint on tools: who may follow whom, and where the loop must stop.</td><td><a href="16-tool-rules.html">Lesson 16</a></td></tr>
+</table>
+
+<h2>④ Tool system: a rack of hammers</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td>Tool = Python function + docstring</td><td>A tool is just an ordinary Python function with type hints and a docstring — no magic.</td><td><a href="17-tool-as-function.html">Lesson 17</a></td></tr>
+<tr><td>schema <span class="mono">derivation</span></td><td>Generate the JSON schema automatically from the function signature and docstring — <strong>without ever executing it</strong>.</td><td><a href="18-schema-without-executing.html">Lesson 18</a></td></tr>
+<tr><td>tool <span class="mono">dispatch</span></td><td>Take the LLM's tool call, look up the matching implementation by name, and actually run it.</td><td><a href="19-tool-dispatch-and-mcp.html">Lesson 19</a></td></tr>
+<tr><td><span class="mono">MCP</span></td><td>Model Context Protocol: pull in tools exposed by external servers and dispatch them uniformly.</td><td><a href="19-tool-dispatch-and-mcp.html">Lesson 19</a></td></tr>
+<tr><td><span class="mono">sandbox</span></td><td>Tool code runs in an isolated environment (e2b / a local subprocess) so it can't mess with the host.</td><td><a href="20-tool-sandbox-security.html">Lesson 20</a></td></tr>
+</table>
 <!--ENMORE-->
 """,
 }
