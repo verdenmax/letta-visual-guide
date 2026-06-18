@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>try{var l=localStorage.getItem('lvg-lang');if(l==='en'){document.documentElement.dataset.lang='en';document.documentElement.lang='en';}}catch(e){}</script>
+<title>23 · 本地模型与 GBNF 受限解码 / Local models &amp; GBNF constrained decoding - Letta 图解教程</title>
+<meta name="description" content="第六部分 · LLM Provider 抽象｜本地模型与 GBNF 受限解码 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="theme-color" content="#6d5efc">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzZkNWVmYycvPjx0ZXh0IHg9JzE2JyB5PScyMicgZm9udC1mYW1pbHk9J3N5c3RlbS11aSxzYW5zLXNlcmlmJyBmb250LXNpemU9JzE1JyBmb250LXdlaWdodD0nODAwJyBmaWxsPScjZmZmJyB0ZXh0LWFuY2hvcj0nbWlkZGxlJz5MPC90ZXh0Pjwvc3ZnPg==">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Letta 图解教程">
+<meta property="og:title" content="23 · 本地模型与 GBNF 受限解码 / Local models &amp; GBNF constrained decoding - Letta 图解教程">
+<meta property="og:description" content="第六部分 · LLM Provider 抽象｜本地模型与 GBNF 受限解码 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="23 · 本地模型与 GBNF 受限解码 / Local models &amp; GBNF constrained decoding - Letta 图解教程">
+<meta name="twitter:description" content="第六部分 · LLM Provider 抽象｜本地模型与 GBNF 受限解码 - Letta 图解教程（中英双语，配真实源码对应、折叠深挖与设计亮点）">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --ink: #1d2129;
+  --muted: #5b6470; --faint: #8a939f; --line: #e1e5ea;
+  --accent: #6d5efc; --accent-soft: #ecebfe; --accent-ink: #4733cf;
+  --blue: #2563eb; --blue-soft: #e7efff; --amber: #b4690e; --amber-soft: #fdf1dd;
+  --purple: #7c3aed; --purple-soft: #f0e9ff; --red: #d23f3f; --red-soft: #fbe6e6;
+  --code-bg: #0f172a; --code-ink: #e2e8f0; --code-line: #1e293b;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel-2: #1c232c; --ink: #e6edf3;
+    --muted: #9aa6b2; --faint: #6e7a86; --line: #2a323c;
+    --accent: #9d8cff; --accent-soft: #211a45; --accent-ink: #c8bcff;
+    --blue: #6ea8fe; --blue-soft: #16243f; --amber: #e0a44a; --amber-soft: #33270f;
+    --purple: #b794f6; --purple-soft: #271a40; --red: #f08080; --red-soft: #3a1a1a;
+    --code-bg: #0a0f1a; --code-ink: #d8e2f0; --code-line: #14202f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+code, .mono { font-family: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: break-word; }
+
+/* ---- top progress bar ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 50; background: var(--panel);
+  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+}
+.topbar-inner {
+  max-width: 960px; margin: 0 auto; padding: .7rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .home { font-size: .82rem; color: var(--muted); font-weight: 600; display:flex; gap:.5rem; align-items:center; }
+.topbar .home b { color: var(--accent); }
+.topbar .pill { font-size: .72rem; color: var(--muted); background: var(--panel-2);
+  padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.progress { height: 3px; background: var(--panel-2); }
+.progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 2.4rem 1.25rem 5rem; }
+
+/* ---- hero ---- */
+.hero { margin-bottom: 2rem; }
+.hero .part { font-size: .76rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: .55rem; }
+.hero h1 { font-size: 2.05rem; line-height: 1.2; letter-spacing: -.01em; font-weight: 750; }
+.hero .lead { margin-top: .9rem; font-size: 1.06rem; color: var(--muted); }
+
+h2 { font-size: 1.32rem; margin: 2.4rem 0 .9rem; letter-spacing: -.01em;
+  display: flex; align-items: center; gap: .55rem; }
+h2::before { content: ""; width: 4px; height: 1.05em; background: var(--accent); border-radius: 3px; display: inline-block; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
+p { margin: .7rem 0; }
+ul, ol { margin: .6rem 0 .6rem 1.3rem; }
+li { margin: .3rem 0; }
+strong { color: var(--ink); font-weight: 680; }
+.inline { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: .08em .4em; font-size: .9em; color: var(--accent-ink); }
+
+/* ---- callout cards ---- */
+.card { border-radius: var(--radius); padding: 1.05rem 1.2rem; margin: 1.2rem 0;
+  border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.card .tag { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .5rem; }
+.card.macro { border-left: 4px solid var(--blue); }
+.card.macro .tag { color: var(--blue); }
+.card.detail { border-left: 4px solid var(--purple); }
+.card.detail .tag { color: var(--purple); }
+.card.analogy { border-left: 4px solid var(--amber); background: var(--amber-soft); }
+.card.analogy .tag { color: var(--amber); }
+.card.key { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.card.key .tag { color: var(--accent-ink); }
+.card.warn { border-left: 4px solid var(--red); background: var(--red-soft); }
+.card.warn .tag { color: var(--red); }
+.card.spark { border-left: 4px solid #e0a000;
+  background: linear-gradient(100deg, rgba(224,160,0,.12), transparent 70%); }
+.card.spark .tag { color: #c98a00; }
+@media (prefers-color-scheme: dark) { .card.spark .tag { color: #f0c050; } }
+
+/* ---- note / alert callout (lightweight inline emphasis; breaks up prose) ---- */
+.note { display: flex; gap: .6rem; align-items: flex-start; margin: 1rem 0; padding: .6rem .9rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+  font-size: .92rem; line-height: 1.6; }
+.note .ni { font-size: 1.1rem; line-height: 1.5; flex-shrink: 0; }
+.note .nx { color: var(--ink); }
+.note.tip { background: var(--accent-soft); border-color: var(--accent); }
+.note.tip .nx { color: var(--accent-ink); }
+.note.info { background: var(--blue-soft); border-color: var(--blue); }
+.note.info .nx { color: var(--blue); }
+.note.warn { background: var(--amber-soft); border-color: var(--amber); }
+.note.warn .nx { color: var(--amber); }
+
+/* ---- cute figure (friendly emoji-driven mini illustration) ---- */
+.cute { margin: 1.3rem 0; padding: 1rem 1.1rem; border-radius: 14px; text-align: center;
+  border: 1px dashed var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), transparent 80%); }
+.cute .row { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.cute .emoji { font-size: 2rem; line-height: 1.2; }
+.cute .lab { font-size: .82rem; font-weight: 700; color: var(--accent-ink); }
+.cute .arrow { color: var(--faint); font-size: 1.3rem; padding: 0 .2rem; }
+.cute .bubble { display: inline-block; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: .3rem .6rem; font-size: .82rem; color: var(--ink); }
+.cute .cap { font-size: .85rem; color: var(--muted); margin-top: .55rem; }
+
+/* ---- code file callout ---- */
+.codefile { margin: 1.2rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: var(--shadow); }
+.codefile .cf-head { display: flex; align-items: center; gap: .55rem; padding: .5rem .85rem;
+  background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: .8rem; }
+.codefile .cf-head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink:0; }
+.codefile .cf-head .path { font-family: ui-monospace, monospace; color: var(--ink); font-weight: 600; }
+.codefile .cf-head .ln { margin-left: auto; color: var(--faint); font-size: .72rem; }
+.codefile pre { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem;
+  overflow-x: auto; font-size: .82rem; line-height: 1.6; }
+.codefile pre .cm { color: #7d8aa3; }
+.codefile pre .kw { color: #c792ea; }
+.codefile pre .fn { color: #82aaff; }
+.codefile pre .st { color: #c3e88d; }
+.codefile pre .nb { color: #f78c6c; }
+
+pre.code { background: var(--code-bg); color: var(--code-ink); padding: .9rem 1rem; border-radius: 12px;
+  overflow-x: auto; font-size: .83rem; line-height: 1.6; margin: 1.1rem 0; box-shadow: var(--shadow); }
+pre.code .cm { color: #7d8aa3; } pre.code .kw { color: #c792ea; }
+pre.code .fn { color: #82aaff; } pre.code .st { color: #c3e88d; } pre.code .nb { color: #f78c6c; }
+
+/* ---- collapsible accordion (details/summary) ---- */
+.accordion { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  margin: .7rem 0; box-shadow: var(--shadow); overflow: hidden; }
+.accordion > summary { cursor: pointer; padding: .85rem 1.1rem; font-weight: 650; font-size: .96rem;
+  list-style: none; display: flex; align-items: center; gap: .6rem; user-select: none; }
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::after { content: "▶"; font-size: .68rem; color: var(--accent);
+  margin-left: auto; transition: transform .15s ease; }
+.accordion[open] > summary::after { transform: rotate(90deg); }
+.accordion > summary:hover { background: var(--panel-2); }
+.accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.accordion .badge-num { background: var(--accent-soft); color: var(--accent-ink);
+  width: 1.6rem; height: 1.6rem; border-radius: 7px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: .82rem; font-weight: 700; flex-shrink: 0; }
+.accordion .hint { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.acc-body { padding: .9rem 1.1rem 1.1rem; }
+.acc-intro { color: var(--muted); font-size: .9rem; margin: .2rem 0 .4rem; }
+.qa { margin: 1rem 0; }
+.qa:first-child { margin-top: .3rem; }
+.qa .q { font-weight: 680; font-size: .9rem; display: flex; gap: .45rem; align-items: center; margin-bottom: .3rem; }
+.qa .a { color: var(--muted); font-size: .9rem; }
+.qa .a strong { color: var(--ink); }
+.qa pre.code { margin: .5rem 0 0; font-size: .78rem; }
+
+/* ---- flow diagram ---- */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin: 1.3rem 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1rem; box-shadow: var(--shadow); }
+.flow .node { flex: 1 1 0; min-width: 110px; text-align: center; padding: .7rem .5rem;
+  border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.flow .node .nt { font-weight: 700; font-size: .92rem; }
+.flow .node .nd { font-size: .76rem; color: var(--muted); margin-top: .2rem; }
+.flow .node.hl { background: var(--accent-soft); border-color: var(--accent); }
+.flow .arrow { align-self: center; color: var(--faint); font-size: 1.3rem; padding: 0 .35rem; }
+
+/* vertical flow */
+.vflow { margin: 1.3rem 0; }
+.vflow .step { display: flex; gap: .9rem; position: relative; padding-bottom: 1.1rem; }
+.vflow .step:not(:last-child)::before { content:""; position:absolute; left: 15px; top: 34px; bottom: -2px;
+  width: 2px; background: var(--line); }
+.vflow .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; z-index:1; }
+.vflow .sc h4 { margin: .25rem 0 .2rem; font-size: 1rem; }
+.vflow .sc p { margin: .15rem 0; font-size: .92rem; color: var(--muted); }
+.vflow .sc .mono { font-size: .8rem; color: var(--accent-ink); }
+
+/* layered architecture */
+.layers { margin: 1.3rem 0; display: flex; flex-direction: column; gap: .55rem; }
+.layer { border-radius: 12px; padding: .85rem 1.1rem; border: 1px solid var(--line); background: var(--panel);
+  box-shadow: var(--shadow); }
+.layer .lh { display: flex; align-items: center; gap: .6rem; }
+.layer .lh .badge { font-size: .7rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; }
+.layer .lh .name { font-weight: 700; font-family: ui-monospace, monospace; }
+.layer .ld { font-size: .85rem; color: var(--muted); margin-top: .35rem; }
+.layer.l-core { border-left: 4px solid var(--accent); } .layer.l-core .badge { background: var(--accent-soft); color: var(--accent-ink); }
+.layer.l-main { border-left: 4px solid var(--blue); } .layer.l-main .badge { background: var(--blue-soft); color: var(--blue); }
+.layer.l-part { border-left: 4px solid var(--purple); } .layer.l-part .badge { background: var(--purple-soft); color: var(--purple); }
+.layer.l-app { border-left: 4px solid var(--amber); } .layer.l-app .badge { background: var(--amber-soft); color: var(--amber); }
+
+/* two-column compare */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; box-shadow: var(--shadow); min-width: 0; }
+.col h4 { margin: 0 0 .4rem; font-size: .95rem; }
+
+table.t { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: .9rem;
+  background: var(--panel); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+table.t th, table.t td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+table.t th { background: var(--panel-2); font-size: .8rem; letter-spacing: .02em; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td .mono { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--accent-ink); }
+@media (max-width: 640px) {
+  /* Wide multi-column tables: scroll within their own box instead of
+     forcing page-level horizontal overflow (which clipped right columns). */
+  table.t { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.t th, table.t td { padding: .5rem .6rem; }
+}
+.selftest { margin: 2.2rem 0 0; border-top: 2px dashed var(--line); padding-top: 1.2rem; }
+.selftest > h2 { margin-top: .2rem; }
+.quiz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 12px; padding: .9rem 1.1rem; margin: 1rem 0; box-shadow: var(--shadow); }
+.quiz .qn { font-weight: 650; }
+.quiz ol.opts { list-style: upper-alpha; margin: .55rem 0 .6rem 1.5rem; padding: 0; }
+.quiz ol.opts li { margin: .3rem 0; padding-left: .15rem; }
+.quiz details.accordion { margin: .5rem 0 0; }
+.selftest code { font-family: ui-monospace, monospace; font-size: .9em; color: var(--accent-ink);
+  background: var(--accent-soft); padding: 0 .28em; border-radius: 4px; }
+
+/* footer nav */
+.footnav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem;
+  padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.footnav a { flex: 1; padding: .85rem 1.1rem; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); box-shadow: var(--shadow); transition: .15s; }
+.footnav a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.footnav a.next { text-align: right; }
+.footnav .dir { font-size: .72rem; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.footnav .ttl { font-weight: 700; color: var(--ink); margin-top: .15rem; }
+.footnav a.disabled { opacity: .35; pointer-events: none; }
+
+/* index page */
+.toc { display: grid; gap: .7rem; margin-top: 1.6rem; }
+.toc-part { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--accent); margin: 1.4rem 0 .2rem; }
+.toc a { display: flex; align-items: center; gap: .9rem; padding: .85rem 1.05rem; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); transition: .15s; }
+.toc a:hover { border-color: var(--accent); transform: translateX(3px); }
+.toc .n { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.toc .tt { font-weight: 650; color: var(--ink); }
+.toc .ts { font-size: .8rem; color: var(--muted); margin-left: auto; text-align: right; }
+.toc-search { position: relative; margin: 1.6rem 0 -.4rem; }
+.toc-search input { width: 100%; box-sizing: border-box; padding: .75rem 2.8rem .75rem 1rem;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font-size: .98rem; box-shadow: var(--shadow); }
+.toc-search input:focus { outline: none; border-color: var(--accent); }
+.toc-search .qcount { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
+  color: var(--faint); font-size: .8rem; pointer-events: none; }
+.toc a.hide, .toc .toc-part.hide { display: none; }
+.toc-empty { display: none; color: var(--muted); padding: 1rem; text-align: center; }
+.toc-empty.show { display: block; }
+.hero.index h1 { font-size: 2.3rem; }
+.legend { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--muted); }
+.legend span { display:flex; align-items:center; gap:.4rem; }
+.legend i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.pdf-btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1.1rem;
+  background:var(--accent); color:#fff; border-radius:10px; font-size:.9rem; font-weight:650;
+  box-shadow:var(--shadow); transition:.15s; }
+.pdf-btn:hover { background:var(--accent-ink); transform:translateY(-1px); }
+
+/* ---- bilingual language switch ----
+   Contract: <html> must carry data-lang="zh" (default) or "en".
+   page()/index_page() hard-code data-lang="zh"; LANG_BOOT may switch to "en". */
+html[data-lang="en"] .lang-zh { display: none !important; }
+html[data-lang="zh"] .lang-en { display: none !important; }
+.langtoggle { font-size:.72rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:999px;
+  padding:.22rem .7rem; cursor:pointer; line-height:1.4; white-space:nowrap; }
+.langtoggle:hover { background:var(--accent); color:#fff; }
+
+/* ---- schematic: cell strips (token sequences / quant blocks / KV columns) ---- */
+.cellgroup { margin: 1.2rem 0; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.cellgroup .cg-cap { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+.cellgroup .cg-cap b { color: var(--ink); }
+.cells { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.cells + .cells { margin-top: .5rem; }
+.cell { min-width: 2.1rem; padding: .38rem .5rem; text-align: center; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font-size: .78rem;
+  font-family: ui-monospace, monospace; white-space: nowrap; }
+.cell.scale { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); font-weight: 700; }
+.cell.hl    { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cell.q     { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+.cell.dim   { opacity: .45; }
+.cells .lab { font-size: .76rem; color: var(--faint); padding: 0 .35rem; }
+.cells .sep { color: var(--faint); padding: 0 .1rem; }
+
+/* ---- schematic: timeline lanes (prefill vs decode, step-by-step) ---- */
+.timeline { margin: 1.2rem 0; display: flex; flex-direction: column; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.timeline .lane { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.timeline .lane-label { min-width: 6rem; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.timeline .tslot { padding: .4rem .6rem; border-radius: 8px; background: var(--panel-2);
+  border: 1px solid var(--line); font-size: .78rem; text-align: center; font-family: ui-monospace, monospace; }
+.timeline .tslot.span { flex: 1; min-width: 8rem; background: var(--blue-soft); border-color: var(--blue);
+  color: var(--blue); font-weight: 700; }
+.timeline .tslot.now { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+</style>
+</head><body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../index.html">🧠 <b class="lang-zh">Letta 图解教程</b><b class="lang-en">Letta Visual Guide</b></a>
+    <span class="pill"><span class="lang-zh">第六部分 · LLM Provider 抽象</span><span class="lang-en">Part 6 · The LLM provider abstraction</span></span>
+    <span class="pill">23 / 23</span>
+    <button class="langtoggle" onclick="lvgToggleLang()" aria-label="switch language"><span class="lang-zh">EN</span><span class="lang-en">中</span></button>
+  </div>
+  <div class="progress"><span style="width:100%"></span></div>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="part"><span class="lang-zh">第六部分 · LLM Provider 抽象</span><span class="lang-en">Part 6 · The LLM provider abstraction</span></div>
+    <h1><span class="lang-zh">本地模型与 GBNF 受限解码</span><span class="lang-en">Local models &amp; GBNF constrained decoding</span></h1>
+  </div>
+  <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">第六部分走到收尾。前两课我们先立好了统一契约（第 21 课），又把各家云厂商的怪癖一个个关进子类（第 22 课）。可还剩一种最硬的情况没碰：一个连<strong>原生 function calling 都没有</strong>的本地模型，它只会"续写文本"，你要怎么让它去调一个工具？</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就来还原 MemGPT 时代那个经典戏法：先把工具的 schema 当成文本塞进提示，再用一套 <span class="mono">GBNF</span> 语法去<strong>约束解码器本身</strong>，让模型采样时压根吐不出非法 token、只能吐出合法 JSON。先打个预防针——这是一条 legacy 老路径。</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>这是 legacy 路径</strong>：现代本地后端（ollama/vllm/lmstudio）走第 21 课的 OpenAI 兼容 <span class="mono">OpenAIClient</span>；GBNF 受限解码只在旧 <span class="mono">Agent</span> 兜底路径、且仅 <span class="mono">llamacpp/koboldcpp/webui</span> 生效。讲的是"它怎么 work、为什么经典"，不是"现在默认这么跑"。</span></div>
+<div class="card analogy"><div class="tag">🔌 生活类比</div>
+<p>把"给只会续写的模型加上 function calling"想象成这样：你面前是一个<strong>只会接话的小孩</strong>，你递一句，他就顺着往下写一句，他压根不懂什么叫"调用工具"。</p>
+<p>第一招很直白：把工具长什么样、有哪些参数，<strong>写成说明书直接抄进题面</strong>，再叮嘱一句"请照这个格式输出 JSON"。这就是 wrapper 把 schema 塞进提示。</p>
+<p>可光靠叮嘱不保险——他可能写跑题、JSON 还少个括号。于是有了第二招，也是真正的妙手：给他一张<strong>镂空钢板</strong>盖在纸上，笔只能落进挖空的格子里，<strong>物理上写不出</strong>格子外的字。</p>
+<p>这张钢板，就是 <span class="mono">GBNF</span> 语法。它不"劝"模型守格式，而是直接卡住采样：每一步只允许语法合法的 token，于是落笔必然成形。</p>
+<p>记住这两招的分工：第一招让模型"知道"该填什么，第二招让它"只能"填对——一软一硬。缺了第二招，第一招就只剩一句温柔的祈祷。</p>
+</div>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>给只会续写的模型，用语法逼出可解析的 JSON</strong>。</p>
+<p>先把话说在前头——这是一条<strong>历史 / 次要路径</strong>。现代本地后端（ollama / vllm / lmstudio）早就提供"OpenAI 兼容"端点，走的是第 21 课那个默认 <span class="mono">case _ → OpenAIClient</span>，根本没有专属 client。</p>
+<p>GBNF 这条路只在<strong>兜底</strong>时才被走到：旧的 <span class="mono">agent.py::Agent</span> 在 <span class="mono">LLMClient.create</span> 之后，经 <span class="mono">llm_api_tools.py::create</span> 的 <span class="mono">else</span>（本地）分支，调到 <span class="mono">chat_completion_proxy.py::get_chat_completion</span>。</p>
+<p>它的流程是一条链：选 wrapper →（名字带 <span class="mono">grammar</span> 才）动态生成 GBNF → wrapper 把函数 schema 塞进<strong>提示文本</strong> → 调"裸 completion"后端 → 把文本<strong>解析回</strong> <span class="mono">{function, params}</span> → 心跳补正。</p>
+<p>记住一句话：<strong>schema 进提示，语法管采样，文本再解析回结构</strong>。这三步就是本课要逐环拆开的全部，也是这条老路的全部秘密。</p>
+</div>
+<p>所以本课其实就讲三件环环相扣的事：<strong>schema 怎么进提示</strong>、<strong>GBNF 怎么卡住采样</strong>、<strong>文本又怎么被解析回结构</strong>。下面逐个拆开，但先回答一个最该问的问题。</p>
+<p>多说一句来历：早期 MemGPT 面对的正是一批没有工具 API 的开源模型，这套"提示 + 语法"的打法就是那时逼出来的。今天读它，更像在读一段"function calling 还没标准化"的历史切片。</p>
+<h2>为什么光把 schema 写进提示还不够</h2>
+<p>把"只靠提示叮嘱"和"提示再加语法卡死"两个世界并排摆出来，最能看清 GBNF 的价值到底在哪。</p>
+<div class="cols">
+  <div class="col"><h4>😬 只靠提示叮嘱</h4><p>模型"大概率"会照格式来，但仍可能漏字段、JSON 被截断、甚至忘了调函数。解析端只能事后修补，修不动就直接失败。"对不对"是<strong>一个概率</strong>。</p></div>
+  <div class="col"><h4>😌 提示 + GBNF 语法</h4><p>采样阶段就被卡死：每一步只能选语法合法的 token，输出<strong>必然</strong>是可解析的 JSON。"可解析"不再靠运气，而是<strong>被保证</strong>。</p></div>
+</div>
+<p>这一对照几乎就是本课的核心：<strong>把"但愿格式没错"换成"采样器只能选对的 token"</strong>。带着这个对照往下看，后面每一步的用意都会更清楚。</p>
+<p>举个具体的：你叮嘱模型输出 JSON，它却回一句"好的，我这就帮你发消息"——一句大白话，连个花括号都没有，解析端只能干瞪眼。</p>
+<p>就算它真输出了 JSON，也可能漏掉最后一个 <span class="mono">}</span>，或把 <span class="mono">inner_thoughts</span> 错拼成 <span class="mono">inner_thought</span>。差一个字符，<span class="mono">json.loads</span> 就当场翻脸。</p>
+<h2>走一遍 get_chat_completion 的流程</h2>
+<p>别被"legacy"三个字吓退——正因为它把每一步都摊开来做、毫不藏着掖着，反而成了看清"function calling 到底是什么"的最佳标本。</p>
+<p>这条 legacy 路的总指挥是 <span class="mono">chat_completion_proxy.py::get_chat_completion</span>。把它干的事竖排开看，是一条很顺的七步流水线：</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>选 wrapper</h4><p>默认是 <span class="mono">ChatMLInnerMonologueWrapper</span>；也可以按名字从 <span class="mono">get_available_wrappers()</span> 里取一个。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>生成 GBNF</h4><p><strong>仅当</strong> wrapper 名字含 <span class="mono">grammar</span> 时，<span class="mono">generate_grammar_and_documentation</span> 动态拼出语法——不是去读静态 <span class="mono">.gbnf</span> 文件。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>schema 进提示</h4><p><span class="mono">chat_completion_to_prompt</span> 把函数 schema 写进<strong>提示文本</strong>，让裸模型"看见"有哪些工具。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>调裸 completion</h4><p>按 <span class="mono">endpoint_type</span> 打到 <span class="mono">/completion</span> 这类裸补全端点；grammar 只会传给 4 个后端。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>解析回结构</h4><p><span class="mono">output_to_chat_completion_response</span> 把吐回的文本<strong>读回</strong> <span class="mono">{function, params}</span>。</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>心跳补正</h4><p><span class="mono">function_correction</span> 经 <span class="mono">patch_function</span> 补上 <span class="mono">request_heartbeat</span>（回扣第 15 课）。</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>统一形状</h4><p>最后包成第 21 课那个 <span class="mono">ChatCompletionResponse</span> 交回，下游照旧只读这一种形状。</p></div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">留意第 2 步那个 <strong>仅当</strong>：GBNF 不是默认就生成的，要 wrapper 名字里带 <span class="mono">grammar</span>。换句话说，"受限解码"是要你<strong>显式点名</strong>才开的特性，不是这条路的默认配置。</span></div>
+<p>下面把这条流水线落成代码骨架。注意它和上一课三方法的味道一致：<strong>组 → 发 → 转</strong>，只是这里多了"生成语法"和"心跳补正"两道本地特有的工序。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/chat_completion_proxy.py</span><span class="ln">get_chat_completion 主流程（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">get_chat_completion</span>(model, messages, functions=<span class="kw">None</span>,
+                        wrapper=<span class="kw">None</span>, endpoint=<span class="kw">None</span>, endpoint_type=<span class="kw">None</span>,
+                        function_correction=<span class="kw">True</span>, ...) -&gt; ChatCompletionResponse:
+    <span class="cm"># 1) 选 wrapper（默认 ChatMLInnerMonologueWrapper）</span>
+    llm_wrapper = DEFAULT_WRAPPER() <span class="kw">if</span> wrapper <span class="kw">is</span> <span class="kw">None</span> <span class="kw">else</span> get_available_wrappers()[wrapper]
+
+    <span class="cm"># 2) 仅当 wrapper 名字含 "grammar" 才动态生成 GBNF（不读静态 .gbnf）</span>
+    grammar = <span class="kw">None</span>
+    <span class="kw">if</span> <span class="st">"grammar"</span> <span class="kw">in</span> (wrapper <span class="kw">or</span> <span class="st">""</span>):
+        grammar = <span class="fn">generate_grammar_and_documentation</span>(functions)
+
+    <span class="cm"># 3) wrapper 把函数 schema 塞进提示文本</span>
+    prompt = llm_wrapper.<span class="fn">chat_completion_to_prompt</span>(messages, functions)
+
+    <span class="cm"># 4) 按 endpoint_type 调裸 completion 后端（grammar 只有 4 个后端会真正用）</span>
+    result = <span class="fn">get_completion</span>(endpoint, endpoint_type, prompt, grammar=grammar)
+
+    <span class="cm"># 5) 把文本解析回 {function, params}</span>
+    chat_completion = llm_wrapper.<span class="fn">output_to_chat_completion_response</span>(result)
+
+    <span class="cm"># 6) 本地心跳补正（回扣第 15 课）</span>
+    <span class="kw">if</span> function_correction:
+        chat_completion = <span class="fn">patch_function</span>(chat_completion)
+
+    <span class="kw">return</span> chat_completion   <span class="cm"># 7) 已是 ChatCompletionResponse 统一形状</span>
+</pre></div>
+<p>七步里，真正"本地特有"的只有第 2、5、6 三步：生成语法、把文本读回结构、补心跳。其余几步，本质上就是上一课"组请求 → 发请求 → 转形状"那条老骨架。</p>
+<p>再多看一眼第 4 步打的端点：是"裸 completion"，比如 llamacpp 的 <span class="mono">/completion</span>、koboldcpp 的 <span class="mono">/api/v1/generate</span>。它们只会"接着这段文字往下写"。</p>
+<p>这些端点没有 <span class="mono">/chat/completions</span> 那种现成的消息与工具结构。正因为后端这么"原始"，前面那套"schema 进提示、语法卡采样、文本再解析回来"才有存在的必要——所有结构，都得靠 proxy 这层自己造。</p>
+<h2>GBNF：把 JSON 形状刻进语法</h2>
+<p>那么"卡住采样"具体怎么卡？答案是 <span class="mono">GBNF</span>——llama.cpp 用的一种 GGML BNF 语法。它被喂给采样器，<strong>每一步只允许语法合法的 token</strong>，于是输出必然是可解析的 JSON。</p>
+<p>它强制出来的骨架长这样：最外层是一个 <span class="mono">function</span> 名，配一个 <span class="mono">params</span> 对象；而 <span class="mono">params</span> 里<strong>每个分支都被逼着</strong>先写一个 <span class="mono">inner_thoughts</span> 字符串。</p>
+<div class="cellgroup"><div class="cg-cap"><b>一条 GBNF 强制出来的 JSON 骨架</b></div><div class="cells"><span class="cell hl">{</span><span class="sep">·</span><span class="cell">"function": &lt;name&gt;</span><span class="sep">·</span><span class="cell">"params":</span><span class="sep">·</span><span class="cell hl">inner_thoughts: string</span><span class="sep">·</span><span class="cell">request_heartbeat: bool</span><span class="sep">·</span><span class="cell">}</span></div></div>
+<p>先花十秒认一下 BNF 记号：<span class="mono">::=</span> 读作"被定义为"，竖线 <span class="mono">|</span> 是"或者"，引号里的是必须原样出现的字面量。规则层层引用，最后拼成一棵语法树。</p>
+<p>把它写成语法规则会更清楚。下面是参考样例里的几条关键产生式——但记住开头那句注释：这只是<strong>样板</strong>，运行时是动态生成的。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/grammars/json_func_calls_with_inner_thoughts.gbnf</span><span class="ln">关键产生式（节选）</span></div>
+<pre><span class="cm"># 参考样例：运行时其实是“动态生成”的，这份样板硬编码了 8 个 MemGPT 基础工具</span>
+root               ::= Function
+Function           ::= SendMessage | ConversationSearch | ArchivalMemoryInsert | ...
+SendMessage        ::= "{" "\"function\":" "\"send_message\"" "," "\"params\":" SendMessageParams "}"
+SendMessageParams  ::= "{" InnerThoughtsParam "," "\"message\":" string "}"
+InnerThoughtsParam ::= "\"inner_thoughts\":" string     <span class="cm"># 每个分支都被强制带上</span>
+<span class="cm"># 记忆类工具的 params 还会再强制一个布尔：</span>
+RequestHeartbeatParam ::= "\"request_heartbeat\":" ( "true" | "false" )
+</pre></div>
+<p>读懂这几行，就读懂了整个戏法：<span class="mono">root</span> 只能展开成某个 <span class="mono">Function</span>，每个 <span class="mono">Function</span> 又只能展开成一个带 <span class="mono">inner_thoughts</span> 的 <span class="mono">params</span> 对象。模型沿着这棵树往下采样，<strong>无路可走到非法形状</strong>。</p>
+<p>那 8 个分支也不是随手列的，正是 MemGPT 的基础工具集（发消息、读写归档与核心记忆等）。样例把它们写死只为演示；真跑起来，<span class="mono">Function</span> 的可选项是<strong>照当前 agent 的工具集动态生成</strong>的。</p>
+<p>所以模型其实没有"选择困难"：在每个位置，语法都替它把候选集砍到最小，它只是在合法选项里挑概率最高的那个。形状由语法定，内容由模型填，分工清清楚楚。</p>
+<div class="cute"><div class="row"><span class="emoji">🔡🔣🔤</span><span class="lab">乱挤的 token</span><span class="arrow">→</span><span class="emoji">📐</span><span class="bubble">只放合法 JSON 出去</span></div><div class="cap">GBNF 像一张镂空模板：一堆乱七八糟的 token 想挤进来，只有 { } 形状的合法 JSON token 能通过</div></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">那个 <span class="mono">inner_thoughts</span> 字段不是摆设：它被语法逼着出现在每个分支里，解析时再从 <span class="mono">params</span> 提到 <span class="mono">message.content</span>，正是第 15 课"内心独白"的本地版来源。</span></div>
+<p>这一点很关键：本地这条路里，<span class="mono">inner_thoughts</span> 不是模型"自愿"写的，而是被语法<strong>硬性要求</strong>的。等于把第 15 课那条"内心独白"约定，从提示层面的请求，升格成了语法层面的强制。</p>
+<h2>并不是所有后端都吃这套语法</h2>
+<p>这里有个最容易被忽略的限制：GBNF 受限解码<strong>只有四个后端</strong>真正生效。其余本地后端拿到 grammar 也会把它<strong>丢掉</strong>，改靠别的办法保证 JSON。</p>
+<table class="t">
+<tr><th>后端</th><th>grammar</th><th>靠什么保证 JSON</th></tr>
+<tr><td class="mono">llamacpp / koboldcpp / webui / webui-legacy</td><td>传入 grammar</td><td>受限解码：输出<strong>必然</strong>可解析</td></tr>
+<tr><td class="mono">ollama / vllm / lmstudio …</td><td>丢弃 grammar</td><td>靠提示格式 + <span class="mono">clean_json</span> 容错修复</td></tr>
+</table>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">别把 <span class="mono">clean_json</span> 当成"重采样 / 重试"。它是 <span class="mono">json_parser.py::clean_json</span> 的<strong>容错修复</strong>：尽力把模型吐的脏文本掰成合法 JSON，实在掰不动就报错——而不是再喊模型重生成一遍。</span></div>
+<p>说白了，"丢弃 grammar"的后端就少了那道采样保险，只能赌模型自觉、再靠 <span class="mono">clean_json</span> 兜底。多数现代本地模型对话能力够强，赌得起；但这跟四个语法后端的"硬保证"，终究是两个等级。</p>
+<p>所以同一条 legacy 路，对四个语法后端是"<strong>采样级</strong>的硬保证"，对其余后端则退化成"<strong>解析级</strong>的尽力修复"。前者治本，后者治标。</p>
+<p>为什么偏偏是这四个？因为只有它们的采样接口暴露了一个能接 grammar 的入口（llama.cpp 系一脉相承）。ollama、vllm 这些虽然底子相近，对外却只给"OpenAI 兼容"那套，并不收 GBNF。</p>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>这其实是 MemGPT 最初的魔法，也是对"function calling"一次漂亮的重新理解。</p>
+<p>在 OpenAI 的工具 API 还没一统江湖之前，你要怎么让一个只会"续写文本"的模型去调用函数？</p>
+<p>第一步好想：把函数 schema 当文本塞进提示，请它输出 JSON。难的是第二步——用 <strong>GBNF 语法去约束解码器本身</strong>，让模型在采样时<strong>压根吐不出</strong>任何非法 token，只能吐出一个合法的 <span class="mono">{"function":…, "params":{"inner_thoughts":…}}</span>。</p>
+<p>受限解码把"<strong>但愿</strong>格式对了"换成"采样器<strong>只能</strong>挑语法合法的 token"——可解析性，从概率升级成了保证。</p>
+<p>这也正是它后来变成 legacy 的原因：等到每家 provider 都会说 OpenAI 的工具 API（第 21 课那个通用形状），兼容后端就不再需要这套语法戏法了。</p>
+<p>但它仍是 Letta 拿到可靠结构化输出的<strong>观念源头</strong>。一头呼应第 21 课（OpenAI 形状赢了），一头呼应第 15 课（inner_thoughts 与心跳）。</p>
+</div>
+<h2>wrapper：在裸 completion 上"演"出 function calling</h2>
+<p>语法管住了"吐什么形状"，那"把工具讲给模型听"和"把文本读回结构"这两头，归谁管？归 wrapper。它的抽象基类是 <span class="mono">wrapper_base.py::LLMChatCompletionWrapper</span>，只有两个方法。</p>
+<p>一头 <span class="mono">chat_completion_to_prompt</span> 把函数 schema（连同 <span class="mono">inner_thoughts</span> 的说明）<strong>写进提示</strong>；另一头 <span class="mono">output_to_chat_completion_response</span> 把模型吐回的文本<strong>解析回</strong> <span class="mono">{function, args}</span>。</p>
+<p>这两个方法都挂在抽象基类上、标了 <span class="mono">@abstractmethod</span>。换句话说，任何一个新 wrapper 想接进来，都被逼着把"怎么写出去"和"怎么读回来"两头都填齐，少一个都实例化不了。</p>
+<p>选哪个 wrapper，由 <span class="mono">utils.py::get_available_wrappers()</span> 决定：名字含 <span class="mono">grammar</span> 就顺手建语法，含 <span class="mono">noforce</span> 就把 <span class="mono">inner_thoughts</span> 放到顶层。默认那个是 <span class="mono">ChatMLInnerMonologueWrapper</span>。</p>
+<p>为什么还要分模型家族？因为不同基座的"对话模板"不一样：ChatML 用 <span class="mono">&lt;|im_start|&gt;</span> 这类标记分隔角色，Llama3 又另起一套。wrapper 得套对模板，模型才认得出哪段是系统、哪段是用户。</p>
+<p>下面看"解析回结构"这一头的骨架——它就是上面 <span class="mono">clean_json</span> 容错修复真正被调用的地方。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/llm_chat_completion_wrappers/chatml.py</span><span class="ln">output_to_chat_completion_response（简化）</span></div>
+<pre><span class="kw">def</span> <span class="fn">output_to_chat_completion_response</span>(self, raw_llm_output) -&gt; ChatCompletionResponse:
+    <span class="cm"># 1) 先把脏文本掰成 JSON（容错修复，不是重采样）</span>
+    data = <span class="fn">clean_json</span>(raw_llm_output)
+
+    <span class="cm"># 2) 取出 function 名与 params</span>
+    function_name = data[<span class="st">"function"</span>]
+    function_params = data[<span class="st">"params"</span>]
+
+    <span class="cm"># 3) 把 inner_thoughts 从 params 提升到 message.content（回扣第 15 课）</span>
+    inner_thoughts = function_params.pop(<span class="st">"inner_thoughts"</span>, <span class="kw">None</span>)
+
+    message = {
+        <span class="st">"role"</span>: <span class="st">"assistant"</span>,
+        <span class="st">"content"</span>: inner_thoughts,
+        <span class="st">"function_call"</span>: {<span class="st">"name"</span>: function_name,
+                          <span class="st">"arguments"</span>: json.<span class="fn">dumps</span>(function_params)},
+    }
+    <span class="kw">return</span> <span class="fn">ChatCompletionResponse</span>(choices=[Choice(message=message)])
+</pre></div>
+<p>看清这三步，就看清了 wrapper 的本质：它是一台<strong>双向翻译机</strong>——出去时把工具写成人话塞进提示，回来时把人话读回成 <span class="mono">function_call</span>。模型自始至终只在"续写文本"。</p>
+<p>这台翻译机最妙的地方，是它把"会不会 function calling"这个能力，从模型身上<strong>挪到了外面</strong>。模型还是那个只会续写的模型，本事是 proxy 这层替它"接"上去的。</p>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">local_llm/chat_completion_proxy.py::get_chat_completion</span>——legacy 总指挥，串起七步。</p>
+<p><span class="mono">chat_completion_proxy.py::generate_grammar_and_documentation</span>——运行时动态生成 GBNF（底层调 <span class="mono">grammars/gbnf_grammar_generator.py::generate_gbnf_grammar_and_documentation</span>）。</p>
+<p><span class="mono">llm_chat_completion_wrappers/wrapper_base.py::LLMChatCompletionWrapper</span>——抽象基类，两个方法。</p>
+<p><span class="mono">llm_chat_completion_wrappers/chatml.py::ChatMLInnerMonologueWrapper</span>——默认 wrapper（<span class="mono">DEFAULT_WRAPPER</span>）。</p>
+<p><span class="mono">local_llm/function_parser.py::insert_heartbeat</span> 与 <span class="mono">patch_function</span>——本地心跳补正（回扣第 15 课）。</p>
+</div>
+<h2>今天它还在哪条路上</h2>
+<p>把"现代"和"legacy"两条路并排画出来，就不会再把它们搞混。现代本地后端根本不碰下面这条链：</p>
+<div class="flow">
+  <div class="node"><div class="nt">agent.py::Agent</div><div class="nd">旧执行体</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">llm_api_tools.py::create</div><div class="nd">老 create 函数</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">else 本地分支</div><div class="nd">非云厂商兜底</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">get_chat_completion</div><div class="nd">GBNF 老路</div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">对照记牢：现代本地（ollama/vllm/lmstudio）走 <span class="mono">LLMClient.create → OpenAIClient</span>（第 21 课默认 <span class="mono">case _</span>，无专属 client）；GBNF 这条路只在旧 <span class="mono">agent.py::Agent</span> 经 <span class="mono">llm_api_tools.py::create</span> 的 <span class="mono">else</span> 本地分支兜底时才被走到。</span></div>
+<h2>再挖深一点</h2>
+<p>主线到这里就完整了。下面四个抽屉，专收你大概率会追问的细节——按兴趣展开即可，不展开也不影响对主线的理解。</p>
+<details class="accordion"><summary>GBNF 到底做了什么？</summary><div class="acc-body">
+<p>GBNF 是 llama.cpp 的一种 GGML BNF 语法。它不参与"理解"，只在<strong>采样那一步</strong>做一件事：把下一个 token 的候选集，裁剪到"语法此刻允许的"那些。</p>
+<p>于是模型每走一步都被语法牵着：该出 <span class="mono">{</span> 的位置只能出 <span class="mono">{</span>，该出字段名的位置只能出那几个名字。走到最后，整串输出<strong>必然</strong>是一棵合法的 JSON 树。</p>
+<p>这就是它最值钱的地方：把"可解析"从一个<strong>概率</strong>，变成了一个<strong>保证</strong>——顺带治好"忘了调函数 / JSON 断在半截"这两类老毛病。</p>
+</div></details>
+<details class="accordion"><summary>为什么说它是 legacy？</summary><div class="acc-body">
+<p>因为 OpenAI 兼容赢了。等到几乎每家 provider 都提供"OpenAI 形状"的工具 API，第 21 课那个默认 <span class="mono">case _ → OpenAIClient</span> 就能接住一大票本地后端，根本用不上语法戏法。</p>
+<p>代码里也有痕迹：<span class="mono">LLMClient.create</span> 里<strong>没有</strong>本地专属 client；<span class="mono">ProviderType</span> 枚举里也<strong>不再</strong>有 <span class="mono">llamacpp / koboldcpp / webui</span> 这些项，它们退到了 <span class="mono">local_llm</span> 这条老路里。</p>
+<p>所以本课讲的是"它当年怎么 work、为什么经典"，而不是"今天默认就这么跑"。</p>
+</div></details>
+<details class="accordion"><summary>不支持语法的后端怎么办？</summary><div class="acc-body">
+<p>只有 <span class="mono">koboldcpp / llamacpp / webui / webui-legacy</span> 这四个会真正吃 grammar。其余后端（ollama / vllm / lmstudio…）拿到 grammar 也直接丢掉。</p>
+<p>它们改靠两条腿走路：一是 wrapper 把格式要求写进提示，二是 <span class="mono">json_parser.py::clean_json</span> 在解析时<strong>容错修复</strong>那串文本。</p>
+<p>强调一遍：<span class="mono">clean_json</span> 是"尽力把脏 JSON 掰正"，<strong>不是</strong>"再喊模型生成一遍"。它治标不治本，但多数时候够用。</p>
+</div></details>
+<details class="accordion"><summary>wrapper 怎么"在裸 completion 上演 function calling"？</summary><div class="acc-body">
+<p>出去这一头：wrapper 用 <span class="mono">_compile_function_block</span> 把函数 schema（含 <span class="mono">inner_thoughts</span> 的描述）写进提示，并按模型家族（ChatML、Llama3…）套上对应模板，必要时还给 <span class="mono">first_message</span> 一点引导。</p>
+<p>回来这一头：把文本经 <span class="mono">clean_json</span> 读回 <span class="mono">{function, args}</span>，再把 <span class="mono">inner_thoughts</span> 从 params 提到 <span class="mono">content</span>。</p>
+<p>心跳也在这条路里补：<span class="mono">function_parser.py::insert_heartbeat</span> 给记忆类工具补上 <span class="mono">request_heartbeat</span>，正接回第 15 课那套"要不要再走一步"的判断。</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>别以为 GBNF 是现在本地模型的<strong>默认</strong>路径。它是 legacy；现代本地后端走第 21 课的 <span class="mono">OpenAIClient</span>。</p>
+<p>别以为运行时 GBNF 读的是某个静态 <span class="mono">.gbnf</span> 文件。它是<strong>动态生成</strong>的；<span class="mono">json_func_calls_with_inner_thoughts.gbnf</span> 只是参考样例。</p>
+<p>别以为所有本地后端都吃 grammar。只有 <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span> 四个生效，其余直接丢弃。</p>
+<p>别把 <span class="mono">clean_json</span> 当成"重采样重试"——它只是解析时的容错修复，掰不动就报错。</p>
+</div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li><span class="mono">chat_completion_proxy.py::get_chat_completion</span> 是 legacy 总指挥：选 wrapper → 生成 GBNF → schema 进提示 → 调裸 completion → 解析回结构 → 心跳补正。</li>
+<li>GBNF 在<strong>采样级</strong>约束 token，让输出必然是可解析 JSON，并强制每个分支都带 <span class="mono">inner_thoughts</span>。</li>
+<li>语法只在 <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span> 生效；其余后端丢弃语法，靠 <span class="mono">clean_json</span> 容错修复。</li>
+<li>wrapper 是双向翻译机：<span class="mono">chat_completion_to_prompt</span> 把 schema 写出去，<span class="mono">output_to_chat_completion_response</span> 把文本读回来。</li>
+<li>这是 MemGPT 时代的经典老路；现代本地后端走第 21 课的 OpenAI 兼容 <span class="mono">OpenAIClient</span>。</li>
+</ul>
+</div>
+<h2>第六部分收官</h2>
+<p>三课走完，整个第六部分其实是一条很顺的线。把它收成一张图：</p>
+<div class="cellgroup"><div class="cg-cap"><b>第六部分收官：三课一条线</b></div><div class="cells"><span class="cell">21 立统一契约</span><span class="sep">·</span><span class="cell">22 隔离怪癖</span><span class="sep">·</span><span class="cell hl">23 本地 + GBNF</span></div></div>
+<p>一句话把三课缝起来：<strong>先立契约 → 再把怪癖关进笼子 → 最后连没有工具 API 的模型也想办法接上</strong>。</p>
+<p>它一头扣回第 21 课——之所以处处以 OpenAI 形状为目标，正因为它已是全行业的通用格式；一头扣回第 15 课——本地路上那个被语法逼出来的 <span class="mono">inner_thoughts</span> 与心跳，就是"内心独白 + 要不要再走一步"的同一套机制。</p>
+<p>退一步看，整部分讲的其实是同一件事的三个层次：<strong>定义一种通用语言、把方言关进翻译层、再给不会说话的模型也配一个翻译</strong>。抽象的红利，就这样一层层往外摊开。</p>
+<p>把这条线记牢，往后每见一家新接入的 provider，你都会自然去问同样三个问题：它的请求长什么样、响应怎么收成 OpenAI 形状、有没有原生工具能力。这正是第六部分留给你的肌肉记忆。</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">一句话收束整个第六部分：<strong>无论底下接的是云端大厂还是一个连工具 API 都没有的本地小模型，到了 agent 循环眼里，都只是同一种 OpenAI 形状的响应</strong>。这就是"provider 抽象"全部的野心。</span></div>
+<p>这份野心也有它的边界：它只管"把各家模型收成一种形状"。至于这些形状收回来之后怎么落库、怎么被一个长期运行的服务调度起来，就是下一部分要接手的活了。</p>
+<p>provider 这一层讲透了，模型这头就算交代清楚。可一个 agent 要真正跑起来，它的状态、记忆、消息得<strong>存下来</strong>，还要包成一个能对外服务的进程。下一部分，第七部分就转入 server 与持久化——看 Letta 怎么把这一切落到数据库与服务端，让一个 agent 真正"活"过一次次重启。</p>
+<div class="selftest">
+<h2>🧪 自测 · 想一想为什么这么设计</h2>
+<div class="quiz">
+  <div class="qn">1. 在 letta v0.16.8 里，本地模型的 GBNF / chat_completion_proxy 这条路，是当前主路径还是历史 legacy 路径？</div>
+  <ol class="opts">
+    <li>两条等价路径，由 LLMConfig 上的一个开关随机择一</li>
+    <li>当前主路径——所有本地模型都默认经过 get_chat_completion 和 GBNF 受限解码</li>
+    <li>legacy 历史路径——现代本地后端走第 21 课的 OpenAIClient（默认 case _）；GBNF 只在旧 Agent 的本地兜底分支才被走到</li>
+    <li>已被完全删除的死代码，v0.16.8 里根本调用不到</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。这是一条 legacy 历史路径。现代本地后端（ollama/vllm/lmstudio）大多提供 OpenAI 兼容端点，于是落到第 21 课工厂的默认 case _ → OpenAIClient，根本不需要专属 client。GBNF 这套只在旧 agent.py::Agent 之后、经 llm_api_tools.py::create 的 else（本地）分支兜底时，才走到 chat_completion_proxy.py::get_chat_completion。它不是默认主路径（多数本地模型并不经过它），不是随机择一的开关，更不是死代码——它仍能跑，只是退居二线。记住：讲它是为了看清 function calling 的本质，不是因为今天默认这么跑。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. GBNF 受限解码具体靠什么，把“输出是可解析 JSON”从一个概率变成一个保证？</div>
+  <ol class="opts">
+    <li>它约束采样器本身——每一步只允许语法此刻合法的 token 进入候选集，模型物理上吐不出非法形状</li>
+    <li>它先让模型自由生成，再用正则把不合法的部分删掉</li>
+    <li>它在提示里反复叮嘱模型“请务必输出合法 JSON”，靠更强的措辞提高守格式的概率</li>
+    <li>它把温度设为 0，让采样变成确定性的，从而保证 JSON 合法</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。关键在“采样级”约束。GBNF（llama.cpp 的 GGML BNF 语法）被喂给采样器，在生成的每一步把下一个 token 的候选集裁剪到“语法此刻允许的”那些——该出 { 的位置只能出 {，该出字段名的位置只能出那几个名字。于是模型无路可走到非法形状，输出必然可解析。这跟“在提示里更用力地叮嘱”（仍是概率）、“事后用正则删”（治标的解析修复，正是 clean_json 那条退化路）、“调低温度”（只改概率分布、不改合法性）都不同。一句话：可解析性不是被劝出来的，是被采样器物理地保证出来的。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. 同一条路生成了 grammar，但只有部分后端真正用它。哪些后端会真正吃 grammar，其余的又靠什么保证 JSON？</div>
+  <ol class="opts">
+    <li>只有 llamacpp / koboldcpp / webui / webui-legacy 真正吃 grammar；其余（ollama/vllm/lmstudio）丢弃，改靠 clean_json 容错修复</li>
+    <li>都不吃 grammar——grammar 只是文档，实际全靠 clean_json 兜底</li>
+    <li>只有 ollama 和 vllm 吃 grammar，老牌的 llamacpp/koboldcpp 反而不支持</li>
+    <li>所有本地后端都吃 grammar，因为它们底层都是 llama.cpp</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：A</strong>。只有 grammar_supported_backends（koboldcpp/llamacpp/webui/webui-legacy 四个）会把 grammar 真正传给采样器，拿到“采样级硬保证”。其余本地后端（ollama/vllm/lmstudio 等）即便拿到 grammar 也直接丢弃，退化成“解析级”的尽力修复：靠 wrapper 把格式写进提示，再靠 json_parser.py::clean_json 把脏文本掰成合法 JSON（注意 clean_json 是容错修复，不是重采样 / 重试）。所以不是“所有后端都吃”（只有四个），不是 ollama/vllm 那两个（恰恰相反），也不是“全靠 clean_json”（四个语法后端有更硬的保证）。为什么偏偏这四个？因为只有它们的采样接口暴露了能接 grammar 的入口。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. 一个连原生工具 API 都没有、只会续写文本的本地模型，是怎么“知道”自己有哪些函数可调的？</div>
+  <ol class="opts">
+    <li>模型权重里预训练好了这些函数定义，运行时无需传入</li>
+    <li>GBNF 语法本身就把函数讲给了模型——schema 是从语法反推出来的，不进提示</li>
+    <li>wrapper 把函数 schema 当文本直接塞进提示，模型在题面里“读到”有哪些工具及参数</li>
+    <li>通过一个独立的 /tools 端点，后端在调用前先把工具列表注册进去</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：C</strong>。靠 wrapper 把 schema 写进提示文本。chat_completion_to_prompt（内部用 _compile_function_block）把每个函数的名字、参数、说明，连同 inner_thoughts 的描述，一起当文本拼进提示；裸 completion 端点没有 /chat/completions 那种现成的工具结构，所有“工具长什么样”的信息只能由 proxy 这层自己造进题面。不是预训练进权重的（那样换工具就没法用），不是从 GBNF 反推的（语法管“吐什么形状”，讲解工具的是提示——二者分工：schema 进提示让模型“知道”，语法卡采样让它“只能”填对），也没有什么 /tools 注册端点。记住这台 wrapper 是双向翻译机的“出去”那一头。</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. 在这条本地路里，第 15 课那个“内心独白”（inner_thoughts）是怎么被表示和处理的？</div>
+  <ol class="opts">
+    <li>它是后端返回的一个独立 reasoning 字段，本地路直接透传，不做任何搬运</li>
+    <li>它是模型自愿在 JSON 之外多写的一段自然语言，proxy 原样保留</li>
+    <li>它只在云端模型上才有，本地这条路完全没有 inner_thoughts 的概念</li>
+    <li>它是被语法 / 提示强制出现的一个 JSON 字段，解析时再从 params 提升（pop）到 message.content</li>
+  </ol>
+  <details class="accordion">
+    <summary>看答案与解析 <span class="hint">点击展开</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>答案：D</strong>。inner_thoughts 是被强制出来的结构字段，不是模型自愿写的。语法路上，GBNF 逼着每个 params 分支先写一个 inner_thoughts 字符串；非语法路上，wrapper 把它写进提示要求。解析时，output_to_chat_completion_response 把它从参数里 pop 出来、搬进 message.content——正是把第 15 课那条“内心独白”约定，从提示层面升格成语法层面的强制。所以它不是 JSON 之外的自由文本，不是后端原生透传的字段，更不是只有云端才有。一句话：本地这条路里，inner_thoughts 是被语法 / 提示硬性要求、再被解析搬运到 content 的。</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 发散思考（没有标准答案，动手或动脑想想）</div>
+  <ul>
+    <li>用本课“镂空钢板”的比喻，把第 23 课“本地模型 + GBNF”这条 legacy 路完整讲一遍，并想透三件事：(1) 给一个只会续写文本、没有原生工具 API 的模型加 function calling，靠的是两招——wrapper 用 chat_completion_to_prompt 把函数 schema 当文本塞进提示（让模型“知道”），GBNF 在采样级约束 token（让它“只能”填对）。为什么说缺了第二招、第一招就只剩一句祈祷？这两招的“软 / 硬”分工，跟第 22 课“把 thinking 排成第一个必填参数、用结构逼出行为”是不是同一种思路？(2) 同一条路生成了 grammar，却只有 llamacpp/koboldcpp/webui/webui-legacy 四个真正吃它，其余（ollama/vllm/lmstudio）丢弃、退化成 clean_json 容错修复。为什么说这是“采样级硬保证”退化成“解析级尽力修复”这两个等级？为什么 clean_json 不能被理解成“重采样重试”？(3) 本地这条路里，inner_thoughts 是被语法 / 提示强制出现、再被 output_to_chat_completion_response 从 params 搬到 message.content 的。它怎么一头扣回第 15 课的“内心独白”，一头又解释了为什么今天它成了 legacy（第 21 课 OpenAI 兼容赢了）？</li>
+  </ul>
+</div>
+</div></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Part 6 reaches its close. The first two lessons stood up the unified contract (Lesson 21), then caged each cloud provider's quirks into a subclass one by one (Lesson 22). But one hardest case stays untouched: a local model with <strong>no native function calling at all</strong>, one that can only "continue text" — how do you get it to call a tool?</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson reconstructs that classic MemGPT-era trick: first stuff the tool schema into the prompt as text, then use a <span class="mono">GBNF</span> grammar to <strong>constrain the decoder itself</strong>, so that while sampling the model literally cannot emit an illegal token — only legal JSON. One inoculation up front: this is a legacy path.</p>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx"><strong>This is a legacy path</strong>: modern local backends (ollama/vllm/lmstudio) go through Lesson 21's OpenAI-compatible <span class="mono">OpenAIClient</span>; GBNF constrained decoding only fires on the old <span class="mono">Agent</span> fallback path, and only for <span class="mono">llamacpp/koboldcpp/webui</span>. We cover "how it works, why it's classic", not "how things run by default today".</span></div>
+<div class="card analogy"><div class="tag">🔌 Real-life analogy</div>
+<p>Picture "adding function calling to a model that can only continue text" like this: in front of you sits a <strong>child who only finishes sentences</strong> — you hand over a line, he writes the next one along, with no idea what "calling a tool" even means.</p>
+<p>The first move is blunt: write down what the tool looks like and which parameters it takes as a <strong>manual copied straight into the question</strong>, then add "please output JSON in this format". That is the wrapper stuffing the schema into the prompt.</p>
+<p>But a reminder alone isn't safe — he might wander off-topic, or leave the JSON one bracket short. Hence the second move, the real masterstroke: lay a <strong>stencil plate</strong> over the paper, so the pen can only land in the cut-out slots and <strong>physically cannot</strong> write outside them.</p>
+<p>That plate is the <span class="mono">GBNF</span> grammar. It doesn't "persuade" the model to keep the format — it clamps the sampling directly: each step only allows grammar-legal tokens, so every stroke necessarily takes shape.</p>
+<p>Remember the division of labor: the first move lets the model <strong>"know"</strong> what to fill in, the second lets it <strong>"only"</strong> fill it in right — one soft, one hard. Without the second, the first is just a gentle prayer.</p>
+</div>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>Grab the lesson in one line: <strong>for a model that can only continue text, use grammar to force out parseable JSON</strong>.</p>
+<p>Say it plainly up front — this is a <strong>historical / secondary path</strong>. Modern local backends (ollama / vllm / lmstudio) have long offered "OpenAI-compatible" endpoints, taking Lesson 21's default <span class="mono">case _ → OpenAIClient</span>, with no dedicated client at all.</p>
+<p>The GBNF route is reached only as a <strong>fallback</strong>: the old <span class="mono">agent.py::Agent</span>, after <span class="mono">LLMClient.create</span>, goes through <span class="mono">llm_api_tools.py::create</span>'s <span class="mono">else</span> (local) branch to call <span class="mono">chat_completion_proxy.py::get_chat_completion</span>.</p>
+<p>Its flow is a chain: pick a wrapper → (only if the name contains <span class="mono">grammar</span>) dynamically generate GBNF → the wrapper stuffs the function schema into <strong>prompt text</strong> → call the "bare completion" backend → parse the text <strong>back</strong> into <span class="mono">{function, params}</span> → heartbeat correction.</p>
+<p>Remember one line: <strong>schema into the prompt, grammar governs sampling, text parsed back into structure</strong>. These three steps are everything this lesson pries apart, ring by ring — and the whole secret of this old path.</p>
+</div>
+<p>So this lesson really tells three interlocking things: <strong>how schema enters the prompt</strong>, <strong>how GBNF clamps sampling</strong>, and <strong>how text gets parsed back into structure</strong>. We pry them apart below — but first answer the one question most worth asking.</p>
+<p>One more word on origins: early MemGPT faced exactly a batch of open-source models with no tool API, and this "prompt + grammar" play was forced out back then. Reading it today feels more like reading a historical slice from when "function calling wasn't standardized yet".</p>
+<h2>Why Putting Schema in the Prompt Isn't Enough</h2>
+<p>Set "rely on the prompt's reminder alone" and "prompt plus a grammar clamp" side by side, and you see exactly where GBNF's value lies.</p>
+<div class="cols">
+  <div class="col"><h4>😬 Prompt reminder only</h4><p>The model will "most likely" follow the format, but it can still drop fields, truncate the JSON, even forget to call a function. The parser can only patch afterward, and fails outright when it can't. "Correct" is <strong>a probability</strong>.</p></div>
+  <div class="col"><h4>😌 Prompt + GBNF grammar</h4><p>Clamped at the sampling stage: each step can only choose a grammar-legal token, so the output is <strong>necessarily</strong> parseable JSON. "Parseable" no longer rides on luck — it is <strong>guaranteed</strong>.</p></div>
+</div>
+<p>This contrast is nearly the lesson's core: swap "hopefully the format is right" for <strong>"the sampler can only pick the right tokens"</strong>. Carry it downward and the purpose of every later step gets clearer.</p>
+<p>Concretely: you tell the model to output JSON, and it replies "Sure, I'll send that message for you now" — plain prose, not a single brace, and the parser can only stare.</p>
+<p>Even if it does output JSON, it might drop the final <span class="mono">}</span>, or misspell <span class="mono">inner_thoughts</span> as <span class="mono">inner_thought</span>. One character off, and <span class="mono">json.loads</span> blows up on the spot.</p>
+<h2>Walking Through the get_chat_completion Flow</h2>
+<p>Don't let the word "legacy" scare you off — precisely because it lays every step out in the open, hiding nothing, it becomes the best specimen for seeing "what function calling really is".</p>
+<p>This legacy path's conductor is <span class="mono">chat_completion_proxy.py::get_chat_completion</span>. Lay out what it does vertically and it's a smooth seven-step pipeline:</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Pick the wrapper</h4><p>Default is <span class="mono">ChatMLInnerMonologueWrapper</span>; you can also fetch one by name from <span class="mono">get_available_wrappers()</span>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>Generate GBNF</h4><p><strong>Only when</strong> the wrapper name contains <span class="mono">grammar</span>, <span class="mono">generate_grammar_and_documentation</span> dynamically assembles the grammar — not by reading a static <span class="mono">.gbnf</span> file.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Schema into prompt</h4><p><span class="mono">chat_completion_to_prompt</span> writes the function schema into <strong>prompt text</strong>, so the bare model "sees" which tools exist.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>Call bare completion</h4><p>By <span class="mono">endpoint_type</span>, hit a bare completion endpoint like <span class="mono">/completion</span>; the grammar is passed to only 4 backends.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Parse back to structure</h4><p><span class="mono">output_to_chat_completion_response</span> reads the returned text <strong>back</strong> into <span class="mono">{function, params}</span>.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>Heartbeat correction</h4><p><span class="mono">function_correction</span>, via <span class="mono">patch_function</span>, supplies <span class="mono">request_heartbeat</span> (callback to Lesson 15).</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>Unify the shape</h4><p>Finally wrap into Lesson 21's <span class="mono">ChatCompletionResponse</span> and hand back; downstream still reads only this one shape.</p></div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">Note the <strong>only when</strong> in step 2: GBNF isn't generated by default — it needs <span class="mono">grammar</span> in the wrapper name. In other words, "constrained decoding" is a feature you must <strong>explicitly name</strong> to turn on, not this path's default setting.</span></div>
+<p>Below, drop this pipeline into a code skeleton. Note it has the same flavor as last lesson's three methods: <strong>assemble → send → convert</strong>, just with two locally specific steps added — "generate grammar" and "heartbeat correction".</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/chat_completion_proxy.py</span><span class="ln">get_chat_completion main flow (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">get_chat_completion</span>(model, messages, functions=<span class="kw">None</span>,
+                        wrapper=<span class="kw">None</span>, endpoint=<span class="kw">None</span>, endpoint_type=<span class="kw">None</span>,
+                        function_correction=<span class="kw">True</span>, ...) -&gt; ChatCompletionResponse:
+    <span class="cm"># 1) pick the wrapper (default ChatMLInnerMonologueWrapper)</span>
+    llm_wrapper = DEFAULT_WRAPPER() <span class="kw">if</span> wrapper <span class="kw">is</span> <span class="kw">None</span> <span class="kw">else</span> get_available_wrappers()[wrapper]
+
+    <span class="cm"># 2) only when the wrapper name contains "grammar" do we generate GBNF (no static .gbnf)</span>
+    grammar = <span class="kw">None</span>
+    <span class="kw">if</span> <span class="st">"grammar"</span> <span class="kw">in</span> (wrapper <span class="kw">or</span> <span class="st">""</span>):
+        grammar = <span class="fn">generate_grammar_and_documentation</span>(functions)
+
+    <span class="cm"># 3) the wrapper stuffs the function schema into prompt text</span>
+    prompt = llm_wrapper.<span class="fn">chat_completion_to_prompt</span>(messages, functions)
+
+    <span class="cm"># 4) call the bare completion backend by endpoint_type (only 4 backends really use grammar)</span>
+    result = <span class="fn">get_completion</span>(endpoint, endpoint_type, prompt, grammar=grammar)
+
+    <span class="cm"># 5) parse the text back into {function, params}</span>
+    chat_completion = llm_wrapper.<span class="fn">output_to_chat_completion_response</span>(result)
+
+    <span class="cm"># 6) local heartbeat correction (callback to Lesson 15)</span>
+    <span class="kw">if</span> function_correction:
+        chat_completion = <span class="fn">patch_function</span>(chat_completion)
+
+    <span class="kw">return</span> chat_completion   <span class="cm"># 7) already the unified ChatCompletionResponse shape</span>
+</pre></div>
+<p>Of the seven steps, only steps 2, 5, and 6 are truly "locally specific": generate grammar, read text back into structure, supply the heartbeat. The rest are essentially last lesson's old skeleton — <strong>assemble request → send request → convert shape</strong>.</p>
+<p>Glance once more at the endpoint step 4 hits: a "bare completion", like llamacpp's <span class="mono">/completion</span> or koboldcpp's <span class="mono">/api/v1/generate</span>. They only "keep writing on from this text".</p>
+<p>These endpoints have none of the ready-made message-and-tool structure of <span class="mono">/chat/completions</span>. Precisely because the backend is this "primitive", only then does the earlier "schema into prompt, grammar clamps sampling, text parsed back" have any reason to exist — every bit of structure must be built by the proxy layer itself.</p>
+<h2>GBNF: Carving the JSON Shape into Grammar</h2>
+<p>So how does "clamping the sampling" actually clamp? The answer is GBNF — a GGML BNF grammar used by llama.cpp. Fed to the sampler, <strong>each step only allows grammar-legal tokens</strong>, so the output is necessarily parseable JSON.</p>
+<p>The skeleton it forces out looks like this: the outermost layer is a <span class="mono">function</span> name paired with a <span class="mono">params</span> object; and inside <span class="mono">params</span>, <strong>every branch is forced</strong> to write an <span class="mono">inner_thoughts</span> string first.</p>
+<div class="cellgroup"><div class="cg-cap"><b>A JSON skeleton forced out by one GBNF</b></div><div class="cells"><span class="cell hl">{</span><span class="sep">·</span><span class="cell">"function": &lt;name&gt;</span><span class="sep">·</span><span class="cell">"params":</span><span class="sep">·</span><span class="cell hl">inner_thoughts: string</span><span class="sep">·</span><span class="cell">request_heartbeat: bool</span><span class="sep">·</span><span class="cell">}</span></div></div>
+<p>Spend ten seconds on the BNF notation: <span class="mono">::=</span> reads as "is defined as", the bar <span class="mono">|</span> is "or", and the literals in quotes must appear verbatim. Rules reference rules, layer by layer, finally assembling into a grammar tree.</p>
+<p>Writing it as grammar rules is clearer. Below are a few key productions from the reference sample — but remember that opening comment: this is only <strong>boilerplate</strong>; at runtime it is dynamically generated.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/grammars/json_func_calls_with_inner_thoughts.gbnf</span><span class="ln">key productions (excerpt)</span></div>
+<pre><span class="cm"># reference sample: at runtime it is actually "dynamically generated"; this boilerplate hardcodes 8 MemGPT base tools</span>
+root               ::= Function
+Function           ::= SendMessage | ConversationSearch | ArchivalMemoryInsert | ...
+SendMessage        ::= "{" "\"function\":" "\"send_message\"" "," "\"params\":" SendMessageParams "}"
+SendMessageParams  ::= "{" InnerThoughtsParam "," "\"message\":" string "}"
+InnerThoughtsParam ::= "\"inner_thoughts\":" string     <span class="cm"># every branch is forced to carry it</span>
+<span class="cm"># memory-class tools' params force one more boolean:</span>
+RequestHeartbeatParam ::= "\"request_heartbeat\":" ( "true" | "false" )
+</pre></div>
+<p>Read these few lines and you've read the whole trick: <span class="mono">root</span> can only expand into some <span class="mono">Function</span>, and each <span class="mono">Function</span> can only expand into a <span class="mono">params</span> object carrying <span class="mono">inner_thoughts</span>. The model samples down this tree with <strong>no path to an illegal shape</strong>.</p>
+<p>Those 8 branches aren't listed at random either — they're MemGPT's base tool set (send message, read/write archival and core memory, etc.). The sample hardcodes them only to demonstrate; in a real run, <span class="mono">Function</span>'s options are <strong>dynamically generated from the current agent's tool set</strong>.</p>
+<p>So the model has no "decision paralysis": at each position the grammar cuts its candidate set to the minimum, and it merely picks the highest-probability one among the legal options. Shape is set by grammar, content is filled by the model — the division is crystal clear.</p>
+<div class="cute"><div class="row"><span class="emoji">🔡🔣🔤</span><span class="lab">jumbled tokens</span><span class="arrow">→</span><span class="emoji">📐</span><span class="bubble">only legal JSON gets out</span></div><div class="cap">GBNF is like a stencil: a crowd of messy tokens want in, but only the legal { } -shaped JSON tokens can pass</div></div>
+<div class="note info"><span class="ni">💡</span><span class="nx">That <span class="mono">inner_thoughts</span> field is no decoration: the grammar forces it into every branch, and on parse it's lifted from <span class="mono">params</span> into <span class="mono">message.content</span> — exactly the local version of Lesson 15's "inner monologue".</span></div>
+<p>This point is key: on the local path, <span class="mono">inner_thoughts</span> isn't written "voluntarily" by the model — it's <strong>hard-required</strong> by the grammar. That promotes Lesson 15's "inner monologue" convention from a prompt-level request to a grammar-level mandate.</p>
+<h2>Not Every Backend Accepts This Grammar</h2>
+<p>Here's the most easily overlooked limit: GBNF constrained decoding really fires on only <strong>four backends</strong>. The rest take the grammar and <strong>drop</strong> it, falling back on another way to guarantee JSON.</p>
+<table class="t">
+<tr><th>Backend</th><th>grammar</th><th>How JSON is guaranteed</th></tr>
+<tr><td class="mono">llamacpp / koboldcpp / webui / webui-legacy</td><td>grammar passed in</td><td>constrained decoding: output <strong>necessarily</strong> parseable</td></tr>
+<tr><td class="mono">ollama / vllm / lmstudio …</td><td>grammar dropped</td><td>prompt format + <span class="mono">clean_json</span> tolerant repair</td></tr>
+</table>
+<div class="note warn"><span class="ni">⚠️</span><span class="nx">Don't treat <span class="mono">clean_json</span> as "resampling / retry". It's the tolerant repair of <span class="mono">json_parser.py::clean_json</span>: it tries hard to bend the model's dirty text into legal JSON, and errors out when it truly can't — rather than asking the model to regenerate.</span></div>
+<p>Plainly: a backend that "drops the grammar" loses that sampling insurance, and can only bet on the model behaving, with <span class="mono">clean_json</span> as a net. Most modern local models are conversational enough to bet on; but versus the four grammar backends' "hard guarantee", these are ultimately two tiers.</p>
+<p>So the same legacy path is a <strong>"sampling-level hard guarantee"</strong> for the four grammar backends, but degrades to a <strong>"parse-level best-effort repair"</strong> for the rest. The former cures the root, the latter treats the symptom.</p>
+<p>Why exactly these four? Because only their sampling interfaces expose an entry point that accepts a grammar (all descending from llama.cpp). ollama, vllm and the like share similar internals, but externally offer only the "OpenAI-compatible" set and don't accept GBNF.</p>
+<div class="card spark"><div class="tag">💡 Design highlight</div>
+<p>This is really MemGPT's original magic, and a beautiful reinterpretation of "function calling".</p>
+<p>Before OpenAI's tool API unified the field, how could you get a model that only "continues text" to call a function?</p>
+<p>The first step is easy to imagine: stuff the function schema into the prompt as text and ask for JSON. The hard part is the second — use a <strong>GBNF grammar to constrain the decoder itself</strong>, so that while sampling the model literally <strong>cannot</strong> emit any illegal token, only a legal <span class="mono">{"function":…, "params":{"inner_thoughts":…}}</span>.</p>
+<p>Constrained decoding swaps "hopefully the format came out right" for "the sampler can only pick grammar-legal tokens" — parseability, upgraded from a probability to a guarantee.</p>
+<p>This is also exactly why it later became legacy: once every provider could speak OpenAI's tool API (Lesson 21's universal shape), compatible backends no longer needed this grammar trick.</p>
+<p>But it remains the <strong>conceptual origin</strong> of Letta's reliable structured output. One end echoes Lesson 21 (the OpenAI shape won), the other echoes Lesson 15 (<span class="mono">inner_thoughts</span> and the heartbeat).</p>
+</div>
+<h2>wrapper: "Acting Out" Function Calling on Bare Completion</h2>
+<p>Grammar governs "what shape comes out", so who handles the two ends — "telling the model about the tools" and "reading text back into structure"? The wrapper. Its abstract base class is <span class="mono">wrapper_base.py::LLMChatCompletionWrapper</span>, with just two methods.</p>
+<p>On one end <span class="mono">chat_completion_to_prompt</span> writes the function schema (along with the <span class="mono">inner_thoughts</span> description) into the prompt; on the other, <span class="mono">output_to_chat_completion_response</span> parses the model's returned text back into <span class="mono">{function, args}</span>.</p>
+<p>Both methods hang on the abstract base, marked <span class="mono">@abstractmethod</span>. In other words, any new wrapper that wants in is forced to fill both ends — "how to write out" and "how to read back" — and can't be instantiated if either is missing.</p>
+<p>Which wrapper to pick is decided by <span class="mono">utils.py::get_available_wrappers()</span>: a name with <span class="mono">grammar</span> builds a grammar along the way, one with <span class="mono">noforce</span> puts <span class="mono">inner_thoughts</span> at the top level. The default is <span class="mono">ChatMLInnerMonologueWrapper</span>.</p>
+<p>Why split by model family? Because different bases have different "chat templates": ChatML uses markers like <span class="mono">&lt;|im_start|&gt;</span> to separate roles, while Llama3 has its own set. The wrapper must apply the right template for the model to recognize which span is system and which is user.</p>
+<p>Below, look at the skeleton of the "parse back to structure" end — it's where the <span class="mono">clean_json</span> tolerant repair above is actually called.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/local_llm/llm_chat_completion_wrappers/chatml.py</span><span class="ln">output_to_chat_completion_response (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">output_to_chat_completion_response</span>(self, raw_llm_output) -&gt; ChatCompletionResponse:
+    <span class="cm"># 1) first bend the dirty text into JSON (tolerant repair, not resampling)</span>
+    data = <span class="fn">clean_json</span>(raw_llm_output)
+
+    <span class="cm"># 2) pull out the function name and params</span>
+    function_name = data[<span class="st">"function"</span>]
+    function_params = data[<span class="st">"params"</span>]
+
+    <span class="cm"># 3) lift inner_thoughts from params into message.content (callback to Lesson 15)</span>
+    inner_thoughts = function_params.pop(<span class="st">"inner_thoughts"</span>, <span class="kw">None</span>)
+
+    message = {
+        <span class="st">"role"</span>: <span class="st">"assistant"</span>,
+        <span class="st">"content"</span>: inner_thoughts,
+        <span class="st">"function_call"</span>: {<span class="st">"name"</span>: function_name,
+                          <span class="st">"arguments"</span>: json.<span class="fn">dumps</span>(function_params)},
+    }
+    <span class="kw">return</span> <span class="fn">ChatCompletionResponse</span>(choices=[Choice(message=message)])
+</pre></div>
+<p>See these three steps and you see the wrapper's essence: a <strong>bidirectional translator</strong> — on the way out it writes tools as plain words into the prompt, on the way back it reads plain words into a <span class="mono">function_call</span>. The model, start to finish, only "continues text".</p>
+<p>The translator's slickest part is moving the "can it do function calling" capability <strong>off the model and outside</strong>. The model is still the same continue-only model; the skill is "wired on" for it by the proxy layer.</p>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">local_llm/chat_completion_proxy.py::get_chat_completion</span> — the legacy conductor, stringing the seven steps.</p>
+<p><span class="mono">chat_completion_proxy.py::generate_grammar_and_documentation</span> — dynamically generates GBNF at runtime (delegating to <span class="mono">grammars/gbnf_grammar_generator.py::generate_gbnf_grammar_and_documentation</span>).</p>
+<p><span class="mono">llm_chat_completion_wrappers/wrapper_base.py::LLMChatCompletionWrapper</span> — the abstract base, two methods.</p>
+<p><span class="mono">llm_chat_completion_wrappers/chatml.py::ChatMLInnerMonologueWrapper</span> — the default wrapper (<span class="mono">DEFAULT_WRAPPER</span>).</p>
+<p><span class="mono">local_llm/function_parser.py::insert_heartbeat</span> and <span class="mono">patch_function</span> — local heartbeat correction (callback to Lesson 15).</p>
+</div>
+<h2>Which Path Is It On Today</h2>
+<p>Draw the "modern" and "legacy" paths side by side and you'll never confuse them again. Modern local backends never touch the chain below:</p>
+<div class="flow">
+  <div class="node"><div class="nt">agent.py::Agent</div><div class="nd">old executor</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">llm_api_tools.py::create</div><div class="nd">old create function</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">else local branch</div><div class="nd">non-cloud fallback</div></div>
+  <div class="arrow">→</div>
+  <div class="node"><div class="nt">get_chat_completion</div><div class="nd">the old GBNF path</div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">Memorize the contrast: modern local (ollama/vllm/lmstudio) goes <span class="mono">LLMClient.create → OpenAIClient</span> (Lesson 21's default <span class="mono">case _</span>, no dedicated client); the GBNF route is reached only when the old <span class="mono">agent.py::Agent</span> falls through <span class="mono">llm_api_tools.py::create</span>'s <span class="mono">else</span> local branch.</span></div>
+<h2>Dig a Little Deeper</h2>
+<p>The main thread is complete here. The four drawers below hold the details you'll most likely ask about — open them by interest; leaving them shut doesn't hurt your grasp of the main thread.</p>
+<details class="accordion"><summary>What does GBNF actually do?</summary><div class="acc-body">
+<p>GBNF is a GGML BNF grammar from llama.cpp. It doesn't take part in "understanding"; it does one thing at <strong>the sampling step</strong>: trim the next token's candidate set down to those "the grammar allows right now".</p>
+<p>So the model is led by the grammar at every step: where a <span class="mono">{</span> belongs only a <span class="mono">{</span> can appear, where a field name belongs only those few names can. By the end, the whole output is <strong>necessarily</strong> a legal JSON tree.</p>
+<p>This is its most valuable part: turning "parseable" from a <strong>probability</strong> into a <strong>guarantee</strong> — curing, along the way, the two old ailments of "forgot to call a function / JSON cut off halfway".</p>
+</div></details>
+<details class="accordion"><summary>Why is it called legacy?</summary><div class="acc-body">
+<p>Because OpenAI-compatible won. Once nearly every provider offers an "OpenAI-shaped" tool API, Lesson 21's default <span class="mono">case _ → OpenAIClient</span> can catch a whole crowd of local backends, with no need for the grammar trick.</p>
+<p>There are traces in code too: <span class="mono">LLMClient.create</span> has <strong>no</strong> local-specific client; the <span class="mono">ProviderType</span> enum <strong>no longer</strong> carries entries like <span class="mono">llamacpp / koboldcpp / webui</span> — they've retreated into the old <span class="mono">local_llm</span> path.</p>
+<p>So this lesson covers "how it worked back then, why it's classic", not "this is how things run by default today".</p>
+</div></details>
+<details class="accordion"><summary>What about backends that don't support grammar?</summary><div class="acc-body">
+<p>Only those four — <span class="mono">koboldcpp / llamacpp / webui / webui-legacy</span> — really consume the grammar. The rest (ollama / vllm / lmstudio…) take the grammar and drop it outright.</p>
+<p>They walk on two legs instead: one, the wrapper writes the format requirement into the prompt; two, <span class="mono">json_parser.py::clean_json</span> tolerantly repairs that text on parse.</p>
+<p>To stress again: <span class="mono">clean_json</span> "bends dirty JSON straight as best it can", <strong>not</strong> "ask the model to generate again". It treats the symptom, not the root, but is enough most of the time.</p>
+</div></details>
+<details class="accordion"><summary>How does the wrapper "act out function calling on bare completion"?</summary><div class="acc-body">
+<p>The outbound end: the wrapper uses <span class="mono">_compile_function_block</span> to write the function schema (including the <span class="mono">inner_thoughts</span> description) into the prompt, applies the right template per model family (ChatML, Llama3…), and nudges <span class="mono">first_message</span> a little when needed.</p>
+<p>The inbound end: read the text back into <span class="mono">{function, args}</span> via <span class="mono">clean_json</span>, then lift <span class="mono">inner_thoughts</span> from params into <span class="mono">content</span>.</p>
+<p>The heartbeat is supplied on this path too: <span class="mono">function_parser.py::insert_heartbeat</span> adds <span class="mono">request_heartbeat</span> to memory-class tools, reconnecting to Lesson 15's "should we take another step" judgment.</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ Common pitfalls</div>
+<p>Don't assume GBNF is today's <strong>default</strong> path for local models. It's legacy; modern local backends go through Lesson 21's <span class="mono">OpenAIClient</span>.</p>
+<p>Don't assume runtime GBNF reads some static <span class="mono">.gbnf</span> file. It's <strong>dynamically generated</strong>; <span class="mono">json_func_calls_with_inner_thoughts.gbnf</span> is only a reference sample.</p>
+<p>Don't assume every local backend consumes the grammar. Only the four — <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span> — take effect; the rest drop it outright.</p>
+<p>Don't treat <span class="mono">clean_json</span> as "resample and retry" — it's only tolerant repair on parse, and errors out when it can't bend the text.</p>
+</div>
+<div class="card key"><div class="tag">✅ Key points</div>
+<ul>
+<li><span class="mono">chat_completion_proxy.py::get_chat_completion</span> is the legacy conductor: pick wrapper → generate GBNF → schema into prompt → call bare completion → parse back to structure → heartbeat correction.</li>
+<li>GBNF constrains tokens at the <strong>sampling level</strong>, making the output necessarily parseable JSON, and forces every branch to carry <span class="mono">inner_thoughts</span>.</li>
+<li>The grammar takes effect only on <span class="mono">llamacpp/koboldcpp/webui/webui-legacy</span>; other backends drop it and rely on <span class="mono">clean_json</span> tolerant repair.</li>
+<li>The wrapper is a bidirectional translator: <span class="mono">chat_completion_to_prompt</span> writes the schema out, <span class="mono">output_to_chat_completion_response</span> reads the text back.</li>
+<li>This is the classic MemGPT-era path; modern local backends go through Lesson 21's OpenAI-compatible <span class="mono">OpenAIClient</span>.</li>
+</ul>
+</div>
+<h2>Part 6 Finale</h2>
+<p>With three lessons done, all of Part 6 is really one smooth line. Gather it into a single picture:</p>
+<div class="cellgroup"><div class="cg-cap"><b>Part 6 finale: three lessons, one line</b></div><div class="cells"><span class="cell">21 stand up the contract</span><span class="sep">·</span><span class="cell">22 isolate the quirks</span><span class="sep">·</span><span class="cell hl">23 local + GBNF</span></div></div>
+<p>Stitch the three together in one line: <strong>stand up the contract → cage the quirks → then wire on even a model with no tool API</strong>.</p>
+<p>One end clasps back to Lesson 21 — the reason everything targets the OpenAI shape is that it's already the industry's universal format; the other clasps to Lesson 15 — the grammar-forced <span class="mono">inner_thoughts</span> and heartbeat on the local path are the same mechanism as "inner monologue + should we take another step".</p>
+<p>Step back and the whole part really tells one thing at three levels: define a common language, cage the dialects into a translation layer, then fit even a speechless model with a translator. The dividend of abstraction spreads outward, layer by layer.</p>
+<p>Hold this line firmly, and for every newly integrated provider you'll naturally ask the same three questions: what its request looks like, how its response is collected into the OpenAI shape, and whether it has native tool capability. That is exactly the muscle memory Part 6 leaves you.</p>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">One line to close all of Part 6: whether what's plugged in below is a cloud giant or a small local model with no tool API at all, in the eyes of the agent loop it's all just one same OpenAI-shaped response. That is the entire ambition of "provider abstraction".</span></div>
+<p>This ambition has its boundary too: it only handles "collecting every model into one shape". As for how those shapes get persisted once collected, and how a long-running service schedules them, that's the work the next part takes over.</p>
+<p>With the provider layer laid bare, the model end is accounted for. But for an agent to truly run, its state, memory, and messages must be <strong>persisted</strong>, and wrapped into a process that can serve the outside. The next part, Part 7, turns to the server and persistence — seeing how Letta lands all this into a database and a backend, letting an agent truly "live" across restart after restart.</p>
+<div class="selftest">
+<h2>🧪 Self-test - think about the design</h2>
+<div class="quiz">
+  <div class="qn">1. In letta v0.16.8, is the local-model GBNF / chat_completion_proxy route the current main path or a historical legacy path?</div>
+  <ol class="opts">
+    <li>Two equivalent paths, chosen at random by a switch on LLMConfig</li>
+    <li>The current main path — every local model goes through get_chat_completion and GBNF constrained decoding by default</li>
+    <li>A legacy historical path — modern local backends take Lesson 21's OpenAIClient (the default case _); GBNF is only reached on the old Agent's local fallback branch</li>
+    <li>Fully removed dead code that can't be reached at all in v0.16.8</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. This is a legacy historical path. Modern local backends (ollama/vllm/lmstudio) mostly expose OpenAI-compatible endpoints, so they land on Lesson 21's factory default case _ → OpenAIClient and need no dedicated client. The GBNF set is reached only when the old agent.py::Agent, via llm_api_tools.py::create's else (local) branch, falls through to chat_completion_proxy.py::get_chat_completion. It is not the default main path (most local models never go through it), not a randomly chosen switch, and not dead code — it still runs, just demoted. Remember: we study it to see the essence of function calling, not because it's how things run by default today.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">2. By what mechanism does GBNF constrained decoding turn “the output is parseable JSON” from a probability into a guarantee?</div>
+  <ol class="opts">
+    <li>It constrains the sampler itself — at each step only grammar-legal tokens enter the candidate set, so the model physically cannot emit an illegal shape</li>
+    <li>It lets the model generate freely, then strips the illegal parts with a regex</li>
+    <li>It repeatedly reminds the model in the prompt to “please output valid JSON”, raising the odds via stronger wording</li>
+    <li>It sets temperature to 0 to make sampling deterministic, thereby guaranteeing valid JSON</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The key is the “sampling-level” constraint. GBNF (llama.cpp's GGML BNF grammar) is fed to the sampler and, at every generation step, trims the next token's candidate set to those “the grammar allows right now” — where a { belongs only a { can appear, where a field name belongs only those few names can. So the model has no path to an illegal shape and the output is necessarily parseable. This differs from “reminding harder in the prompt” (still a probability), “stripping with a regex afterward” (symptom-level parse repair, exactly the degraded clean_json route), and “lowering the temperature” (which changes the probability distribution, not legality). In one line: parseability isn't coaxed out, it's physically guaranteed by the sampler.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">3. The same path generates a grammar, but only some backends actually use it. Which backends really consume the grammar, and what do the rest rely on to guarantee JSON?</div>
+  <ol class="opts">
+    <li>Only llamacpp / koboldcpp / webui / webui-legacy really consume the grammar; the rest (ollama/vllm/lmstudio) drop it and fall back on clean_json tolerant repair</li>
+    <li>None consume the grammar — it's just documentation, and everything actually relies on clean_json</li>
+    <li>Only ollama and vllm consume the grammar; the older llamacpp/koboldcpp don't support it</li>
+    <li>Every local backend consumes the grammar, since they're all llama.cpp underneath</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Only grammar_supported_backends (koboldcpp/llamacpp/webui/webui-legacy) actually pass the grammar to the sampler and get the “sampling-level hard guarantee”. Other local backends (ollama/vllm/lmstudio, etc.) drop the grammar even when handed one, degrading to “parse-level” best-effort repair: the wrapper writes the format into the prompt, then json_parser.py::clean_json bends the dirty text into legal JSON (note clean_json is tolerant repair, not resample / retry). So it's not “every backend consumes it” (only four), not ollama/vllm (the opposite), and not “all on clean_json” (the four grammar backends have a harder guarantee). Why these four? Because only their sampling interfaces expose an entry point that accepts a grammar.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">4. A local model with no native tool API, one that can only continue text — how does it “know” which functions it can call?</div>
+  <ol class="opts">
+    <li>The function definitions are pretrained into the model weights, so nothing needs to be passed at runtime</li>
+    <li>The GBNF grammar itself tells the model about the functions — the schema is inferred from the grammar and never enters the prompt</li>
+    <li>The wrapper stuffs the function schema into the prompt as text, so the model “reads” which tools and parameters exist right in the question</li>
+    <li>Through a separate /tools endpoint where the backend registers the tool list before the call</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. Via the wrapper writing the schema into the prompt text. chat_completion_to_prompt (internally _compile_function_block) assembles each function's name, parameters, and description — together with the inner_thoughts description — into the prompt as text; a bare completion endpoint has none of the ready-made tool structure of /chat/completions, so every bit of “what the tool looks like” must be built into the question by the proxy layer itself. It isn't pretrained into the weights (then you couldn't swap tools), isn't inferred from GBNF (the grammar governs “what shape comes out” while the prompt explains the tools — a division of labor: schema in the prompt lets the model “know”, grammar on the sampler makes it “only” fill in right), and there's no /tools registration endpoint. Remember this wrapper is the “outbound” end of a bidirectional translator.</div></div></div>
+  </details>
+</div>
+<div class="quiz">
+  <div class="qn">5. On this local path, how is Lesson 15's “inner monologue” (inner_thoughts) represented and handled?</div>
+  <ol class="opts">
+    <li>It's a separate reasoning field returned by the backend, passed straight through on the local path with no relocation</li>
+    <li>It's a stretch of natural language the model voluntarily adds outside the JSON, kept verbatim by the proxy</li>
+    <li>It exists only on cloud models; this local path has no concept of inner_thoughts at all</li>
+    <li>It's a JSON field forced to appear by the grammar/prompt, then lifted (popped) from params into message.content on parse</li>
+  </ol>
+  <details class="accordion">
+    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. inner_thoughts is a forced structured field, not something the model writes voluntarily. On the grammar route, GBNF forces every params branch to write an inner_thoughts string first; on the non-grammar route, the wrapper writes the requirement into the prompt. On parse, output_to_chat_completion_response pops it out of the parameters and moves it into message.content — exactly promoting Lesson 15's “inner monologue” convention from the prompt level to a grammar-level mandate. So it isn't free text outside the JSON, isn't a field passed through natively by the backend, and certainly isn't cloud-only. In one line: on this local path, inner_thoughts is hard-required by the grammar/prompt and then relocated to content on parse.</div></div></div>
+  </details>
+</div>
+<div class="card spark">
+  <div class="tag">💭 Open questions (no single right answer - just think or try)</div>
+  <ul>
+    <li>Use this lesson's “stencil plate” metaphor to tell lesson 23's “local model + GBNF” legacy path as a whole, and think through three things: (1) Adding function calling to a model that only continues text, with no native tool API, rests on two moves — the wrapper uses chat_completion_to_prompt to stuff the function schema into the prompt as text (so the model “knows”), and GBNF constrains tokens at the sampling level (so it “only” fills in right). Why is the first move just a prayer without the second? Is this “soft / hard” division the same idea as Lesson 22's “order thinking as the first required parameter, using structure to force behavior”? (2) The same path generates a grammar, yet only llamacpp/koboldcpp/webui/webui-legacy actually consume it, while the rest (ollama/vllm/lmstudio) drop it and degrade to clean_json tolerant repair. Why is this two tiers — a “sampling-level hard guarantee” degrading to a “parse-level best-effort repair”? And why must clean_json not be read as “resample and retry”? (3) On this local path, inner_thoughts is forced to appear by the grammar/prompt and then moved by output_to_chat_completion_response from params into message.content. How does it clasp back to Lesson 15's “inner monologue” on one end, while on the other explaining why it became legacy today (Lesson 21's OpenAI-compatible won)?</li>
+  </ul>
+</div>
+</div></div>
+  <div class="footnav"><a class="prev" href="22-provider-quirks.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">provider 怪癖的隔离</span><span class="lang-en">Isolating provider quirks</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
+</div>
+<script>
+function lvgSetLang(l){
+  l=(l==='en')?'en':'zh';
+  var d=document.documentElement;
+  d.dataset.lang=l; d.lang=(l==='en'?'en':'zh-CN');
+  try{localStorage.setItem('lvg-lang',l);}catch(e){}
+}
+function lvgToggleLang(){
+  lvgSetLang(document.documentElement.dataset.lang==='en'?'zh':'en');
+}
+</script>
+</body></html>

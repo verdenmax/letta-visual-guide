@@ -1811,6 +1811,351 @@ QUIZZES = {
             },
         ],
     },
+    "21-provider-contract.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "LLMClient.create 这个工厂，到底是按什么来挑选具体的 client 类的？",
+                    "en": "What does the LLMClient.create factory actually use to pick the concrete client class?",
+                },
+                "opts": [
+                    {"zh": "按 llm_config.model_endpoint_type——它是一个 ProviderType 字符串，被传进 create 后用 match/case 匹配；正因为 ProviderType(str, Enum) 本质是字符串，才能直接拿来 match",
+                     "en": "By llm_config.model_endpoint_type — a ProviderType string that is passed into create and matched with match/case; because ProviderType(str, Enum) is essentially a string, it can be matched directly"},
+                    {"zh": "按整个 LLMConfig 对象做结构匹配，比对里面所有字段后再决定 client",
+                     "en": "By structurally matching the whole LLMConfig object, comparing all its fields before deciding the client"},
+                    {"zh": "按 model 字段（比如 gpt-4o、claude-3-5-sonnet）的名字前缀来判断",
+                     "en": "By the name prefix of the model field (e.g. gpt-4o, claude-3-5-sonnet)"},
+                    {"zh": "按 model_endpoint 这个 URL 的域名（比如 api.openai.com）来路由",
+                     "en": "By the domain of the model_endpoint URL (e.g. api.openai.com)"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "工厂分派只认一个字段：model_endpoint_type。循环把它从 llm_config 里取出来、传进 LLMClient.create，里面对 provider_type 做 match/case 命中具体 client 类。关键细节：ProviderType 是 (str, Enum)，本质就是字符串，所以能直接 match。它分派的不是整个 LLMConfig 对象，也不是 model 名字或 model_endpoint 的 URL——把这些搞混，会以为“换个模型名就换 client”，但实际只有 endpoint 类型才驱动分派。",
+                    "en": "The factory dispatches on a single field: model_endpoint_type. The loop pulls it out of llm_config and passes it into LLMClient.create, which runs match/case on provider_type to hit a concrete client class. Key detail: ProviderType is (str, Enum) — essentially a string — so it can be matched directly. It does not dispatch on the whole LLMConfig object, nor on the model name, nor on the model_endpoint URL — confusing these makes you think “change the model name and you change the client”, when in reality only the endpoint type drives the dispatch.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "openai、ollama、vllm 这些 provider 在 match/case 里大多没有自己的 case 分支。一个 model_endpoint_type 为 ollama 的请求会被分派给哪个 client？",
+                    "en": "Providers like openai, ollama and vllm mostly have no case branch of their own in the match/case. Which client does a request with model_endpoint_type = ollama get dispatched to?",
+                },
+                "opts": [
+                    {"zh": "默认的 OpenAIClient——它们统一落到 case _ 兜底分支。这些本地/兼容端点大多提供“OpenAI 兼容”接口，所以同一个 OpenAIClient 只要把请求发到不同的 model_endpoint，就能伺候它们一大票",
+                     "en": "The default OpenAIClient — they all fall into the case _ catch-all. These local/compatible endpoints mostly expose an “OpenAI-compatible” interface, so the same OpenAIClient can serve a whole crowd of them just by sending the request to a different model_endpoint"},
+                    {"zh": "没有匹配的 client，create 会抛 NotImplementedError，必须先注册一个 OllamaClient",
+                     "en": "No matching client; create raises NotImplementedError, and you must first register an OllamaClient"},
+                    {"zh": "一个专门的 OllamaClient——每个 provider 名字都对应一个独立的 client 子类",
+                     "en": "A dedicated OllamaClient — every provider name maps to its own separate client subclass"},
+                    {"zh": "由 LLMConfig.provider_category 二次路由到本地推理专用的 LocalClient",
+                     "en": "A secondary route via LLMConfig.provider_category sends it to a local-inference-only LocalClient"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "没被显式列出 ≠ 没人管。match/case 的最后一档 case _ 兜底返回 OpenAIClient，于是 openai/ollama/vllm/lmstudio… 全都落到它头上。原因是这些端点大多本就提供“OpenAI 兼容”接口，Letta 只需把请求发到不同的 model_endpoint，同一个 OpenAIClient 就能复用。所以那十几个显式 case 其实是一份“例外名单”——只有行为真跟 OpenAI 不一样的家才单列。它不会抛错，也不是每个名字配一个子类。",
+                    "en": "Not listed explicitly ≠ unhandled. The final arm of the match/case, case _, falls back to OpenAIClient, so openai/ollama/vllm/lmstudio… all land on it. The reason is that these endpoints mostly already expose an “OpenAI-compatible” interface, so Letta only has to send the request to a different model_endpoint and the same OpenAIClient is reused. So the dozen-odd explicit cases are really an “exceptions list” — only providers whose behaviour genuinely differs from OpenAI get a separate entry. It does not raise, and it is not one subclass per name.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "三方法 build_request_data / request_async / convert_response_to_chat_completion 里，哪一个负责把“各家五花八门的原始响应”收敛成统一的 ChatCompletionResponse？",
+                    "en": "Among the three methods build_request_data / request_async / convert_response_to_chat_completion, which one collapses “each provider's wildly varied raw response” into the unified ChatCompletionResponse?",
+                },
+                "opts": [
+                    {"zh": "convert_response_to_chat_completion——它是个 async 方法，把这一家的原始响应翻译成 OpenAI 形状的 ChatCompletionResponse；不管底层是 Anthropic 内容块、Google functionCall 还是纯文本，都收敛成同一个类型",
+                     "en": "convert_response_to_chat_completion — an async method that translates this provider's raw response into an OpenAI-shaped ChatCompletionResponse; whether the layer below is Anthropic content blocks, Google functionCall or plain text, all collapse into the same type"},
+                    {"zh": "build_request_data——它在组请求时就顺手把响应格式也统一好了",
+                     "en": "build_request_data — while assembling the request it also unifies the response format in passing"},
+                    {"zh": "request_async——它发请求时直接要求各家返回 ChatCompletionResponse 格式",
+                     "en": "request_async — when sending the request it directly demands every provider return the ChatCompletionResponse format"},
+                    {"zh": "send_llm_request——编排方法自己做格式转换，三方法只管收发",
+                     "en": "send_llm_request — the orchestration method does the format conversion itself, while the three methods only send and receive"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "收敛形状的是第三个方法 convert_response_to_chat_completion（async）。流水线分工很清楚：build_request_data（同步）知道“这家要什么格式”、request_async（async）只负责发出去并拿回原始 dict、convert 才把原始响应翻成 OpenAI 形状的 ChatCompletionResponse。build 管入口格式、不碰响应；request_async 拿回的是还没统一的原始响应；send_llm_request 只是把三步串起来、并对网络请求那一步兜异常，转换工作委托给 convert。所有 provider 差异都被关进 build 和 convert 这首尾两步。",
+                    "en": "The shape-collapsing one is the third method, convert_response_to_chat_completion (async). The pipeline's division of labour is clear: build_request_data (sync) knows “what format this provider wants”, request_async (async) only sends it off and returns the raw dict, and convert is what translates the raw response into an OpenAI-shaped ChatCompletionResponse. build governs the inbound format and never touches the response; request_async returns the still-un-unified raw response; send_llm_request merely strings the three steps together and catches the request step's exceptions, delegating the conversion to convert. All provider differences are locked into the two end steps, build and convert.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "把一个 agent 的 model_endpoint_type 从 groq 改成 anthropic（或本地 ollama），第 14 课那套执行循环的代码需要跟着改吗？为什么？",
+                    "en": "If you change an agent's model_endpoint_type from groq to anthropic (or local ollama), does the execution loop from Lesson 14 need code changes? Why?",
+                },
+                "opts": [
+                    {"zh": "不需要，一行都不用改。循环只递出一个请求、收回一个 ChatCompletionResponse，“这次是哪家”被彻底挡在工厂和三方法里；换 provider 只是换 client 当“主语”，出口形状完全一样，循环全程无感",
+                     "en": "No — not a single line. The loop only hands out one request and collects back one ChatCompletionResponse; “which provider this time” is walled off inside the factory and the three methods. Switching providers only changes which client is the “subject”; the exit shape is identical, and the loop feels nothing"},
+                    {"zh": "需要，得在循环里加 if model_endpoint_type 为 anthropic 的分支来解析 Anthropic 的内容块",
+                     "en": "Yes — you must add an if-model_endpoint_type-is-anthropic branch in the loop to parse Anthropic's content blocks"},
+                    {"zh": "需要，因为 Anthropic 的 token 用量字段名和 OpenAI 不同，循环取 usage 的代码要改",
+                     "en": "Yes — because Anthropic's token-usage field names differ from OpenAI's, the loop's usage-reading code must change"},
+                    {"zh": "不需要改代码，但要手动调用 convert_* 把响应先转一遍，循环才能读",
+                     "en": "No code change, but you must manually call convert_* to convert the response first before the loop can read it"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "循环看不到底下是哪家——这正是统一契约最直接的红利。从循环视角，它永远只递出一个请求、收回一个 ChatCompletionResponse；换 groq→anthropic→ollama，变的只是三方法里的“主语”（哪个 client），出口形状一字不差，循环代码零改动。Anthropic 的内容块、不同的用量字段，都在该 client 的 build/convert 里被抹平了，不会冒进循环。convert_* 也由 send_llm_request 自动调用、无需手动。一个调试直觉：若循环里出现“if 是不是 anthropic”，多半是抽象漏了。",
+                    "en": "The loop cannot see which provider sits below — that is the most direct dividend of a unified contract. From the loop's view it always hands out one request and collects back one ChatCompletionResponse; switching groq→anthropic→ollama only changes the “subject” inside the three methods (which client), while the exit shape is identical and the loop code changes by zero. Anthropic's content blocks and its different usage fields are all smoothed over inside that client's build/convert and never surface in the loop. convert_* is also called automatically by send_llm_request, not by hand. A debugging instinct: if an “if is_anthropic” appears in the loop, the abstraction has probably leaked.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "本课反复说的“三方法契约”，是 LLMClientBase 的完整抽象方法集合吗？",
+                    "en": "Is the “three-method contract” this lesson keeps citing the complete set of abstract methods on LLMClientBase?",
+                },
+                "opts": [
+                    {"zh": "不是。“三方法”是教学化简——LLMClientBase 实际有 8 个 @abstractmethod，另外 5 个是 request（同步）、request_embeddings、stream_async、is_reasoning_model、handle_llm_error；本课只抓 build/request_async/convert 这条“数据形状”主线",
+                     "en": "No. “Three methods” is a teaching simplification — LLMClientBase actually has 8 @abstractmethod, the other 5 being request (sync), request_embeddings, stream_async, is_reasoning_model and handle_llm_error; this lesson grabs only the build/request_async/convert “data shape” through-line"},
+                    {"zh": "是的，LLMClientBase 恰好只有这 3 个抽象方法，子类实现完就能用",
+                     "en": "Yes — LLMClientBase has exactly these 3 abstract methods, and a subclass is usable once it implements them"},
+                    {"zh": "不是，实际只有 2 个抽象方法（build 和 convert），request_async 是基类提供的具体实现",
+                     "en": "No — there are really only 2 abstract methods (build and convert); request_async is a concrete implementation the base class provides"},
+                    {"zh": "不是，共有 12 个抽象方法，多出来的还包括 stream（同步流式）、count_tokens 等",
+                     "en": "No — there are 12 abstract methods in total, the extras also including stream (sync streaming), count_tokens and so on"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "“三方法”是刻意的教学化简。LLMClientBase 实际声明了 8 个 @abstractmethod：本课主线的 build_request_data / request_async / convert_response_to_chat_completion，加上同步版 request、向量嵌入 request_embeddings、流式 stream_async、推理模型判断 is_reasoning_model、统一错误处理 handle_llm_error。本课只挑那三个，因为它们合起来回答“一次普通对话请求怎么从各家格式收敛成统一形状”。正因为这 8 个都标了 @abstractmethod，子类漏实现任何一个，实例化时就会报错。不是 2 个，也不是 12 个。",
+                    "en": "“Three methods” is a deliberate teaching simplification. LLMClientBase actually declares 8 @abstractmethod: this lesson's main-thread build_request_data / request_async / convert_response_to_chat_completion, plus the synchronous request, the vector-embedding request_embeddings, the streaming stream_async, the reasoning-model check is_reasoning_model, and the unified error handling handle_llm_error. The lesson picks only those three because together they answer “how a plain chat request collapses from each provider's format into one unified shape”. Because all 8 are tagged @abstractmethod, a subclass that misses any one errors out at instantiation. It is neither 2 nor 12.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课的“联合国同声传译”比喻，把第 21 课的“供应商契约”完整讲一遍，并想透三件事：(1) 工厂分派只认 model_endpoint_type 这一个字段（一个 ProviderType 字符串），而不是整个 LLMConfig 对象、也不是 model 名字。为什么“用一个稳定的小字段当路由键”比“比对一大堆字段”更健壮？把它和“加一家供应商、循环零改动”联系起来——什么样的通用设计原则，能让你在任何插件式架构里一眼看出“该拿什么当分派键”？(2) 三方法把 provider 差异全锁进 build（入口格式）和 convert（出口格式）这首尾两步，中间的发送与编排是所有家共用的。如果有人图省事，把“解析 Anthropic 内容块”的逻辑写进了第 14 课的循环里，短期能跑，长期会埋下什么债？为什么说“循环里出现 if 是不是 anthropic”就是抽象漏了的信号？(3) Letta 干脆把 OpenAI 形状设成默认假设（case _ → OpenAIClient），用“也许不完美但人人都懂”换“加 provider 不改循环、加模块不问 provider”。这笔交易的代价是什么（和 OpenAI 形状绑得更紧）？如果哪天出现一个真正更好的新标准，这套抽象帮你把迁移成本压在了哪一层、而不会扩散到记忆/工具/压缩这些模块？",
+                "en": "Use this lesson's “UN simultaneous interpretation” metaphor to tell lesson 21's “provider contract” as a whole, and think through three things: (1) The factory dispatches on the single field model_endpoint_type (a ProviderType string), not the whole LLMConfig object and not the model name. Why is “using one stable small field as the routing key” more robust than “comparing a pile of fields”? Tie it to “add a provider, change the loop by zero lines” — what general design principle lets you tell at a glance, in any plug-in architecture, “what to use as the dispatch key”? (2) The three methods lock all provider differences into build (inbound format) and convert (outbound format), while the sending and orchestration in the middle are shared by everyone. If someone took a shortcut and wrote “parse Anthropic content blocks” logic into the Lesson 14 loop, it would run short-term — what debt does it bury long-term? Why is “an if is_anthropic appearing in the loop” a signal that the abstraction has leaked? (3) Letta simply makes the OpenAI shape the default assumption (case _ → OpenAIClient), trading “perhaps imperfect but understood by everyone” for “add a provider without changing the loop, add a module without asking about the provider”. What is the cost of this trade (binding more tightly to the OpenAI shape)? If a genuinely better new standard appeared one day, which single layer does this abstraction confine the migration cost to, so that it does not spread into the memory/tools/compaction modules?",
+            },
+        ],
+    },
+    "22-provider-quirks.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "当某家 provider 的行为跟 OpenAI 略有不同时，它的 client 子类通常重写哪两个方法？",
+                    "en": "When a provider behaves a little differently from OpenAI, which two methods does its client subclass typically override?",
+                },
+                "opts": [
+                    {"zh": "build_request_data + convert_response_to_chat_completion——前者出门时改请求、后者回来时把响应翻成 OpenAI 形状；子类大多是先 super() 拿到标准形状、再就地改几笔 dict",
+                     "en": "build_request_data + convert_response_to_chat_completion — the first edits the request on the way out, the second translates the response back into the OpenAI shape; the subclass usually calls super() for the standard shape, then patches a few dict lines in place"},
+                    {"zh": "request_async + stream_async——真正负责跟网络通信的那两个方法",
+                     "en": "request_async + stream_async — the two methods that actually talk to the network"},
+                    {"zh": "__init__ + _prepare_client_kwargs——子类重写构造与连接初始化",
+                     "en": "__init__ + _prepare_client_kwargs — the subclass rewrites construction and connection setup"},
+                    {"zh": "三方法契约全部，外加工厂 match/case 里那条分支",
+                     "en": "All three contract methods, plus the factory's match/case branch"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "怪癖只关在首尾两步：build_request_data（改请求）和 convert_response_to_chat_completion（改响应）。XAIClient 删掉两个惩罚字段、GroqClient 把对象形式的 tool_choice 降级成字符串 required，都是 super() 之后改一笔 dict 而已。request_async / stream_async 是各家共用的“发送”管道，不是放差异的地方；_prepare_client_kwargs 已在 OpenAIClient 上把 base_url 设好，这些只改字段的子类根本不碰它；更不必重写整个契约或工厂分支。记住这条纪律：差异进子类的这两个方法，循环之上永远是同一个 ChatCompletionResponse。",
+                    "en": "Quirks are caged in just the two end steps: build_request_data (edit request) and convert_response_to_chat_completion (edit response). XAIClient drops two penalty fields, GroqClient down-converts an object-form tool_choice to the string required — each just patches a dict after super(). request_async / stream_async are the shared “send” pipe, not where differences live; _prepare_client_kwargs already sets base_url on OpenAIClient, so these field-tweaking subclasses never touch it; and there is certainly no need to rewrite the whole contract or the factory branch. Remember the discipline: differences go into these two subclass methods, while above the loop it is always the same ChatCompletionResponse.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "Letta 给一个“只会调函数”的模型模拟内心独白时，这个 thinking 字段被放在每个工具参数的什么位置？是不是可选的？",
+                    "en": "When Letta simulates an inner monologue for a model that “only calls functions”, where in each tool's parameters does the thinking field go, and is it optional?",
+                },
+                "opts": [
+                    {"zh": "排在第一个、且是必填——add_inner_thoughts_to_functions 把 thinking 加成第一个 property，再 required.insert(0, key) 把它排到必填项最前；于是模型必须先写完 thinking，才轮到真正的业务参数",
+                     "en": "First, and required — add_inner_thoughts_to_functions adds thinking as the first property, then required.insert(0, key) puts it at the front of required; so the model must finish writing thinking before any real business parameter"},
+                    {"zh": "排在最后、且可选——追加在真正参数之后，免得打乱它们",
+                     "en": "Last, and optional — appended after the real parameters so it doesn't disrupt them"},
+                    {"zh": "放在工具调用旁边的一个顶层独立字段里，根本不在 parameters 内",
+                     "en": "In a separate top-level field next to the tool call, not inside the parameters at all"},
+                    {"zh": "放在 parameters 里哪都行，顺序无所谓，反正模型会整体规划",
+                     "en": "Anywhere in the parameters; order doesn't matter because the model plans holistically"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "顺序就是一切。LLM 是从左到右按 schema 顺序生成参数的，把 thinking 排在第一个必填字段，等于强迫模型“先写一段推理、再填结构化参数”——先想后调被钉死。helpers.py::add_inner_thoughts_to_functions 两手并用：OrderedDict 让 thinking 当第一个 property，required.insert(0, key) 让它在必填里也排最前。它不是可选的尾巴，也不是 parameters 之外的独立字段。注意 Google 是反例——它把 thinking 追加在最后——但默认/被迫模拟的这条路，永远是排第一。",
+                    "en": "Order is everything. An LLM generates parameters left to right in schema order, so making thinking the first required field forces the model to “write a chunk of reasoning, then fill the structured parameters” — think-before-act is nailed down. helpers.py::add_inner_thoughts_to_functions uses both hands: an OrderedDict makes thinking the first property, and required.insert(0, key) puts it first among required too. It is not an optional tail, nor a field outside parameters. Note Google is the counterexample — it appends thinking last — but the default/forced-simulation path always puts it first.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "哪一个开关决定 Letta 是“注入一段模拟的 thinking”还是“直接用模型的原生推理”？",
+                    "en": "Which single switch decides whether Letta injects a simulated thinking parameter or relies on the model's native reasoning?",
+                },
+                "opts": [
+                    {"zh": "LLMConfig.put_inner_thoughts_in_kwargs——普通工具调用模型为 True（注入/模拟），o1/gpt-5/Claude-4 这类原生推理模型为 False（用它们真的 thinking）",
+                     "en": "LLMConfig.put_inner_thoughts_in_kwargs — True for plain tool-calling models (inject/simulate), False for native-reasoning models like o1/gpt-5/Claude-4 (use their real thinking)"},
+                    {"zh": "is_reasoning_model——循环每一步都重新算一遍的一个布尔值",
+                     "en": "is_reasoning_model — a per-request boolean the loop recomputes each step"},
+                    {"zh": "INNER_THOUGHTS_KWARG——那个存着字符串 “thinking” 的设置项",
+                     "en": "INNER_THOUGHTS_KWARG — the setting that holds the string “thinking”"},
+                    {"zh": "LLMClient.create 里的 match/case——它把推理模型路由到另一个 client",
+                     "en": "The match/case in LLMClient.create — it routes reasoning models to a different client"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "决定权在 put_inner_thoughts_in_kwargs 这一个开关：为 True 就注入一段模拟独白（模型自己不会想），为 False 就退场、直接用模型真正的 reasoning（o1/o3/gpt-5、Claude 3.7/4、ZAI GLM 等）。名字本身就是答案——“把内心独白放进 kwargs（工具参数）里”，为真才需要注入。INNER_THOUGHTS_KWARG 只是那个键名字符串 “thinking”，不是开关；is_reasoning_model 是另一个抽象方法；工厂分派只认 endpoint 类型、不按是否推理路由。同一段注入代码，靠这个布尔值对两类模型给出恰好相反的处理。",
+                    "en": "The decision rests on the single switch put_inner_thoughts_in_kwargs: True injects a simulated monologue (the model can't think on its own), False steps aside and uses the model's real reasoning (o1/o3/gpt-5, Claude 3.7/4, ZAI GLM, etc.). The name is the answer — “put inner thoughts in kwargs (the tool parameters)”, true only when injection is needed. INNER_THOUGHTS_KWARG is merely the key-name string “thinking”, not a switch; is_reasoning_model is a different abstract method; and the factory dispatches on endpoint type, not on whether a model reasons. The same injection code, via this one boolean, gives two kinds of model exactly opposite treatment.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "本课说“内心独白排第一”是默认做法，但有一家偏偏反着来。Google 把 thinking 字段放在哪里？",
+                    "en": "The lesson says “inner monologue first” is the default — but one family breaks it. Where does Google place the thinking field?",
+                },
+                "opts": [
+                    {"zh": "排在最后——Google 把 thinking 追加在末尾（INNER_THOUGHTS_KWARG_VERTEX），是“排第一”规则的反例；GoogleVertexClient 还把字段名另起一套（functionCall / .args）、用 “model” 表示助手角色",
+                     "en": "Last — Google appends thinking at the end (INNER_THOUGHTS_KWARG_VERTEX), the exception to the “first” rule; GoogleVertexClient also renames fields (functionCall / .args) and uses “model” for the assistant role"},
+                    {"zh": "排第一，跟所有人一模一样——Google 遵循同样的约定",
+                     "en": "First, exactly like everyone else — Google follows the same convention"},
+                    {"zh": "Google 根本不用 thinking 字段，它完全靠原生推理",
+                     "en": "Google doesn't use a thinking field at all; it relies purely on native reasoning"},
+                    {"zh": "放在中间——第一个必填字段之后、其余参数之前",
+                     "en": "In the middle, after the first required field but before the rest"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "Google 是被点名的反例：它把 thinking 追加在最后，对应常量 INNER_THOUGHTS_KWARG_VERTEX，而不是像别家那样排第一。这一家处处跟 OpenAI 形状对着干——工具被包成 [{“functionDeclarations”:[...]}]、工具调用叫 functionCall（带 .name / .args）、助手角色名是 “model”——这些差异全被关进 GoogleVertexClient，循环照旧无感。常见误区正是想当然以为“各家都排第一”；真要写一个新 client，第一件事就是去确认它到底把 thinking 放哪儿。它当然也用 thinking、也不会把它塞在中间。",
+                    "en": "Google is the named counterexample: it appends thinking last, via the constant INNER_THOUGHTS_KWARG_VERTEX, rather than first like the others. This family works against the OpenAI shape at every turn — tools are wrapped as [{“functionDeclarations”:[...]}], the tool call is called functionCall (with .name / .args), and the assistant role is named “model” — all caged inside GoogleVertexClient so the loop feels nothing. The classic pitfall is assuming “everyone puts it first”; to write a new client for real, the first thing to do is confirm exactly where it puts thinking. It does use thinking, and it doesn't bury it in the middle.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个 OpenAIClient 怎么能在不为每家单写一个 client 的情况下，服务 25 种 ProviderType 里的约 19 种（openai、ollama、vllm、Groq、xAI……）？",
+                    "en": "How can a single OpenAIClient serve ~19 of 25 ProviderTypes (openai, ollama, vllm, Groq, xAI, …) without a bespoke client for each?",
+                },
+                "opts": [
+                    {"zh": "_prepare_client_kwargs 只把 base_url 设成 llm_config.model_endpoint——同一套 OpenAI SDK 指向不同 URL 就接上不同的家；这些端点大多提供“OpenAI 兼容”接口，于是默认 case _ 兜底回 OpenAIClient",
+                     "en": "_prepare_client_kwargs just sets base_url to llm_config.model_endpoint — the same OpenAI SDK pointed at a different URL connects to a different provider; most expose an “OpenAI-compatible” interface, so the default case _ falls back to OpenAIClient"},
+                    {"zh": "它内部维护一张注册表，把每个 provider 名字映射到一套手写的请求/响应翻译器",
+                     "en": "It maintains an internal registry mapping every provider name to a hand-written request/response translator"},
+                    {"zh": "每家都自带一个 OpenAIClient 子类，根本没有共享的默认实现",
+                     "en": "Each provider ships its own OpenAIClient subclass; there is no shared default"},
+                    {"zh": "它从 model 名字前缀识别出是哪家，再据此改写 payload",
+                     "en": "It detects the provider from the model name prefix and rewrites the payload accordingly"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "诀窍小得离谱：_prepare_client_kwargs 只把 base_url 设成 model_endpoint——同一套 OpenAI SDK，换个 URL 就接上一家。因为这些端点大多本就提供“OpenAI 兼容”接口，请求体/响应体的形状跟 OpenAI 对得上，真正不同的只是服务器地址，所以工厂的 case _ 直接兜底回 OpenAIClient。只有 6 种 ProviderType（anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax）需要非 OpenAI 的 client。那 8 个显式子类是“几乎兼容、但还差一口气”的例外，不是“每个名字配一个子类”；也没有什么手写翻译器注册表，更不靠 model 名字前缀去猜。",
+                    "en": "The trick is absurdly small: _prepare_client_kwargs only sets base_url to model_endpoint — the same OpenAI SDK, a new URL, a new provider connected. Because these endpoints mostly already expose an “OpenAI-compatible” interface, their request/response shapes line up with OpenAI and the only real difference is the server address, so the factory's case _ simply falls back to OpenAIClient. Only 6 ProviderTypes (anthropic / bedrock / chatgpt_oauth / google_ai / google_vertex / minimax) need a non-OpenAI client. The 8 explicit subclasses are the “almost compatible but one breath short” exceptions, not “one subclass per name”; there is no hand-written translator registry, and it certainly doesn't guess from the model name prefix.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“一张脸、多张面具”的演员比喻，把第 22 课的“供应商怪癖”完整讲一遍，并想透三件事：(1) 各家怪癖都被关进子类的 build_request_data（改请求）与 convert_response_to_chat_completion（改响应）这首尾两步，中间的发送与编排是所有家共用的。为什么把“易变的差异”锁进窄窄两个方法、把“不变的执行循环”彻底解放，能让“加一家 provider、循环零改动”成立？如果有人图省事，把“解析 Anthropic 内容块”写进了第 14 课的循环里，为什么说“循环里冒出 if 是不是 anthropic”就是抽象漏了的信号？(2) 对没有原生推理的模型，Letta 把一个 thinking 字符串硬塞成每个工具的第一个必填参数，逼模型“先想后调”，再在响应里 unpack 回 message.content。为什么“用结构去逼出行为”比“恳求模型请先想一想”更可靠？而 put_inner_thoughts_in_kwargs 又凭什么对原生推理模型（o1/gpt-5/Claude-4）自动关掉这一注入？(3) Google 把 thinking 追加在最后，是“排第一”默认的反例。为什么说“内心独白排第一”是一条默认、而非铁律？据此，动手写一个全新 client 时，你该最先确认哪几件事，才不会想当然踩坑？",
+                "en": "Use this lesson's “one face, many masks” actor metaphor to tell lesson 22's “provider quirks” as a whole, and think through three things: (1) Every provider's quirks are caged into the subclass's two end steps, build_request_data (edit request) and convert_response_to_chat_completion (edit response), while the sending and orchestration in the middle are shared by everyone. Why does locking the “volatile differences” into two narrow methods and fully freeing the “invariant execution loop” make “add a provider, change the loop by zero lines” hold? If someone took a shortcut and wrote “parse Anthropic content blocks” into the Lesson 14 loop, why is “an if is_anthropic appearing in the loop” a signal that the abstraction has leaked? (2) For models without native reasoning, Letta jams a thinking string in as each tool's first required parameter, forcing the model to “think before acting”, then unpacks it back into message.content on the response. Why is “using structure to force behavior” more reliable than “begging the model to please think first”? And on what basis does put_inner_thoughts_in_kwargs automatically switch that injection off for native-reasoning models (o1/gpt-5/Claude-4)? (3) Google appends thinking last, the counterexample to the “first” default. Why is “inner monologue first” a default rather than an iron law? Given that, when you sit down to write a brand-new client, what should you confirm first so you don't trip on a wrong assumption?",
+            },
+        ],
+    },
+    "23-local-models-gbnf.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，本地模型的 GBNF / chat_completion_proxy 这条路，是当前主路径还是历史 legacy 路径？",
+                    "en": "In letta v0.16.8, is the local-model GBNF / chat_completion_proxy route the current main path or a historical legacy path?",
+                },
+                "opts": [
+                    {"zh": "legacy 历史路径——现代本地后端走第 21 课的 OpenAIClient（默认 case _）；GBNF 只在旧 Agent 的本地兜底分支才被走到",
+                     "en": "A legacy historical path — modern local backends take Lesson 21's OpenAIClient (the default case _); GBNF is only reached on the old Agent's local fallback branch"},
+                    {"zh": "当前主路径——所有本地模型都默认经过 get_chat_completion 和 GBNF 受限解码",
+                     "en": "The current main path — every local model goes through get_chat_completion and GBNF constrained decoding by default"},
+                    {"zh": "两条等价路径，由 LLMConfig 上的一个开关随机择一",
+                     "en": "Two equivalent paths, chosen at random by a switch on LLMConfig"},
+                    {"zh": "已被完全删除的死代码，v0.16.8 里根本调用不到",
+                     "en": "Fully removed dead code that can't be reached at all in v0.16.8"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "这是一条 legacy 历史路径。现代本地后端（ollama/vllm/lmstudio）大多提供 OpenAI 兼容端点，于是落到第 21 课工厂的默认 case _ → OpenAIClient，根本不需要专属 client。GBNF 这套只在旧 agent.py::Agent 之后、经 llm_api_tools.py::create 的 else（本地）分支兜底时，才走到 chat_completion_proxy.py::get_chat_completion。它不是默认主路径（多数本地模型并不经过它），不是随机择一的开关，更不是死代码——它仍能跑，只是退居二线。记住：讲它是为了看清 function calling 的本质，不是因为今天默认这么跑。",
+                    "en": "This is a legacy historical path. Modern local backends (ollama/vllm/lmstudio) mostly expose OpenAI-compatible endpoints, so they land on Lesson 21's factory default case _ → OpenAIClient and need no dedicated client. The GBNF set is reached only when the old agent.py::Agent, via llm_api_tools.py::create's else (local) branch, falls through to chat_completion_proxy.py::get_chat_completion. It is not the default main path (most local models never go through it), not a randomly chosen switch, and not dead code — it still runs, just demoted. Remember: we study it to see the essence of function calling, not because it's how things run by default today.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "GBNF 受限解码具体靠什么，把“输出是可解析 JSON”从一个概率变成一个保证？",
+                    "en": "By what mechanism does GBNF constrained decoding turn “the output is parseable JSON” from a probability into a guarantee?",
+                },
+                "opts": [
+                    {"zh": "它约束采样器本身——每一步只允许语法此刻合法的 token 进入候选集，模型物理上吐不出非法形状",
+                     "en": "It constrains the sampler itself — at each step only grammar-legal tokens enter the candidate set, so the model physically cannot emit an illegal shape"},
+                    {"zh": "它在提示里反复叮嘱模型“请务必输出合法 JSON”，靠更强的措辞提高守格式的概率",
+                     "en": "It repeatedly reminds the model in the prompt to “please output valid JSON”, raising the odds via stronger wording"},
+                    {"zh": "它先让模型自由生成，再用正则把不合法的部分删掉",
+                     "en": "It lets the model generate freely, then strips the illegal parts with a regex"},
+                    {"zh": "它把温度设为 0，让采样变成确定性的，从而保证 JSON 合法",
+                     "en": "It sets temperature to 0 to make sampling deterministic, thereby guaranteeing valid JSON"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "关键在“采样级”约束。GBNF（llama.cpp 的 GGML BNF 语法）被喂给采样器，在生成的每一步把下一个 token 的候选集裁剪到“语法此刻允许的”那些——该出 { 的位置只能出 {，该出字段名的位置只能出那几个名字。于是模型无路可走到非法形状，输出必然可解析。这跟“在提示里更用力地叮嘱”（仍是概率）、“事后用正则删”（治标的解析修复，正是 clean_json 那条退化路）、“调低温度”（只改概率分布、不改合法性）都不同。一句话：可解析性不是被劝出来的，是被采样器物理地保证出来的。",
+                    "en": "The key is the “sampling-level” constraint. GBNF (llama.cpp's GGML BNF grammar) is fed to the sampler and, at every generation step, trims the next token's candidate set to those “the grammar allows right now” — where a { belongs only a { can appear, where a field name belongs only those few names can. So the model has no path to an illegal shape and the output is necessarily parseable. This differs from “reminding harder in the prompt” (still a probability), “stripping with a regex afterward” (symptom-level parse repair, exactly the degraded clean_json route), and “lowering the temperature” (which changes the probability distribution, not legality). In one line: parseability isn't coaxed out, it's physically guaranteed by the sampler.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "同一条路生成了 grammar，但只有部分后端真正用它。哪些后端会真正吃 grammar，其余的又靠什么保证 JSON？",
+                    "en": "The same path generates a grammar, but only some backends actually use it. Which backends really consume the grammar, and what do the rest rely on to guarantee JSON?",
+                },
+                "opts": [
+                    {"zh": "只有 llamacpp / koboldcpp / webui / webui-legacy 真正吃 grammar；其余（ollama/vllm/lmstudio）丢弃，改靠 clean_json 容错修复",
+                     "en": "Only llamacpp / koboldcpp / webui / webui-legacy really consume the grammar; the rest (ollama/vllm/lmstudio) drop it and fall back on clean_json tolerant repair"},
+                    {"zh": "所有本地后端都吃 grammar，因为它们底层都是 llama.cpp",
+                     "en": "Every local backend consumes the grammar, since they're all llama.cpp underneath"},
+                    {"zh": "只有 ollama 和 vllm 吃 grammar，老牌的 llamacpp/koboldcpp 反而不支持",
+                     "en": "Only ollama and vllm consume the grammar; the older llamacpp/koboldcpp don't support it"},
+                    {"zh": "都不吃 grammar——grammar 只是文档，实际全靠 clean_json 兜底",
+                     "en": "None consume the grammar — it's just documentation, and everything actually relies on clean_json"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "只有 grammar_supported_backends（koboldcpp/llamacpp/webui/webui-legacy 四个）会把 grammar 真正传给采样器，拿到“采样级硬保证”。其余本地后端（ollama/vllm/lmstudio 等）即便拿到 grammar 也直接丢弃，退化成“解析级”的尽力修复：靠 wrapper 把格式写进提示，再靠 json_parser.py::clean_json 把脏文本掰成合法 JSON（注意 clean_json 是容错修复，不是重采样 / 重试）。所以不是“所有后端都吃”（只有四个），不是 ollama/vllm 那两个（恰恰相反），也不是“全靠 clean_json”（四个语法后端有更硬的保证）。为什么偏偏这四个？因为只有它们的采样接口暴露了能接 grammar 的入口。",
+                    "en": "Only grammar_supported_backends (koboldcpp/llamacpp/webui/webui-legacy) actually pass the grammar to the sampler and get the “sampling-level hard guarantee”. Other local backends (ollama/vllm/lmstudio, etc.) drop the grammar even when handed one, degrading to “parse-level” best-effort repair: the wrapper writes the format into the prompt, then json_parser.py::clean_json bends the dirty text into legal JSON (note clean_json is tolerant repair, not resample / retry). So it's not “every backend consumes it” (only four), not ollama/vllm (the opposite), and not “all on clean_json” (the four grammar backends have a harder guarantee). Why these four? Because only their sampling interfaces expose an entry point that accepts a grammar.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一个连原生工具 API 都没有、只会续写文本的本地模型，是怎么“知道”自己有哪些函数可调的？",
+                    "en": "A local model with no native tool API, one that can only continue text — how does it “know” which functions it can call?",
+                },
+                "opts": [
+                    {"zh": "wrapper 把函数 schema 当文本直接塞进提示，模型在题面里“读到”有哪些工具及参数",
+                     "en": "The wrapper stuffs the function schema into the prompt as text, so the model “reads” which tools and parameters exist right in the question"},
+                    {"zh": "模型权重里预训练好了这些函数定义，运行时无需传入",
+                     "en": "The function definitions are pretrained into the model weights, so nothing needs to be passed at runtime"},
+                    {"zh": "GBNF 语法本身就把函数讲给了模型——schema 是从语法反推出来的，不进提示",
+                     "en": "The GBNF grammar itself tells the model about the functions — the schema is inferred from the grammar and never enters the prompt"},
+                    {"zh": "通过一个独立的 /tools 端点，后端在调用前先把工具列表注册进去",
+                     "en": "Through a separate /tools endpoint where the backend registers the tool list before the call"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "靠 wrapper 把 schema 写进提示文本。chat_completion_to_prompt（内部用 _compile_function_block）把每个函数的名字、参数、说明，连同 inner_thoughts 的描述，一起当文本拼进提示；裸 completion 端点没有 /chat/completions 那种现成的工具结构，所有“工具长什么样”的信息只能由 proxy 这层自己造进题面。不是预训练进权重的（那样换工具就没法用），不是从 GBNF 反推的（语法管“吐什么形状”，讲解工具的是提示——二者分工：schema 进提示让模型“知道”，语法卡采样让它“只能”填对），也没有什么 /tools 注册端点。记住这台 wrapper 是双向翻译机的“出去”那一头。",
+                    "en": "Via the wrapper writing the schema into the prompt text. chat_completion_to_prompt (internally _compile_function_block) assembles each function's name, parameters, and description — together with the inner_thoughts description — into the prompt as text; a bare completion endpoint has none of the ready-made tool structure of /chat/completions, so every bit of “what the tool looks like” must be built into the question by the proxy layer itself. It isn't pretrained into the weights (then you couldn't swap tools), isn't inferred from GBNF (the grammar governs “what shape comes out” while the prompt explains the tools — a division of labor: schema in the prompt lets the model “know”, grammar on the sampler makes it “only” fill in right), and there's no /tools registration endpoint. Remember this wrapper is the “outbound” end of a bidirectional translator.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "在这条本地路里，第 15 课那个“内心独白”（inner_thoughts）是怎么被表示和处理的？",
+                    "en": "On this local path, how is Lesson 15's “inner monologue” (inner_thoughts) represented and handled?",
+                },
+                "opts": [
+                    {"zh": "它是被语法 / 提示强制出现的一个 JSON 字段，解析时再从 params 提升（pop）到 message.content",
+                     "en": "It's a JSON field forced to appear by the grammar/prompt, then lifted (popped) from params into message.content on parse"},
+                    {"zh": "它是模型自愿在 JSON 之外多写的一段自然语言，proxy 原样保留",
+                     "en": "It's a stretch of natural language the model voluntarily adds outside the JSON, kept verbatim by the proxy"},
+                    {"zh": "它是后端返回的一个独立 reasoning 字段，本地路直接透传，不做任何搬运",
+                     "en": "It's a separate reasoning field returned by the backend, passed straight through on the local path with no relocation"},
+                    {"zh": "它只在云端模型上才有，本地这条路完全没有 inner_thoughts 的概念",
+                     "en": "It exists only on cloud models; this local path has no concept of inner_thoughts at all"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "inner_thoughts 是被强制出来的结构字段，不是模型自愿写的。语法路上，GBNF 逼着每个 params 分支先写一个 inner_thoughts 字符串；非语法路上，wrapper 把它写进提示要求。解析时，output_to_chat_completion_response 把它从参数里 pop 出来、搬进 message.content——正是把第 15 课那条“内心独白”约定，从提示层面升格成语法层面的强制。所以它不是 JSON 之外的自由文本，不是后端原生透传的字段，更不是只有云端才有。一句话：本地这条路里，inner_thoughts 是被语法 / 提示硬性要求、再被解析搬运到 content 的。",
+                    "en": "inner_thoughts is a forced structured field, not something the model writes voluntarily. On the grammar route, GBNF forces every params branch to write an inner_thoughts string first; on the non-grammar route, the wrapper writes the requirement into the prompt. On parse, output_to_chat_completion_response pops it out of the parameters and moves it into message.content — exactly promoting Lesson 15's “inner monologue” convention from the prompt level to a grammar-level mandate. So it isn't free text outside the JSON, isn't a field passed through natively by the backend, and certainly isn't cloud-only. In one line: on this local path, inner_thoughts is hard-required by the grammar/prompt and then relocated to content on parse.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“镂空钢板”的比喻，把第 23 课“本地模型 + GBNF”这条 legacy 路完整讲一遍，并想透三件事：(1) 给一个只会续写文本、没有原生工具 API 的模型加 function calling，靠的是两招——wrapper 用 chat_completion_to_prompt 把函数 schema 当文本塞进提示（让模型“知道”），GBNF 在采样级约束 token（让它“只能”填对）。为什么说缺了第二招、第一招就只剩一句祈祷？这两招的“软 / 硬”分工，跟第 22 课“把 thinking 排成第一个必填参数、用结构逼出行为”是不是同一种思路？(2) 同一条路生成了 grammar，却只有 llamacpp/koboldcpp/webui/webui-legacy 四个真正吃它，其余（ollama/vllm/lmstudio）丢弃、退化成 clean_json 容错修复。为什么说这是“采样级硬保证”退化成“解析级尽力修复”这两个等级？为什么 clean_json 不能被理解成“重采样重试”？(3) 本地这条路里，inner_thoughts 是被语法 / 提示强制出现、再被 output_to_chat_completion_response 从 params 搬到 message.content 的。它怎么一头扣回第 15 课的“内心独白”，一头又解释了为什么今天它成了 legacy（第 21 课 OpenAI 兼容赢了）？",
+                "en": "Use this lesson's “stencil plate” metaphor to tell lesson 23's “local model + GBNF” legacy path as a whole, and think through three things: (1) Adding function calling to a model that only continues text, with no native tool API, rests on two moves — the wrapper uses chat_completion_to_prompt to stuff the function schema into the prompt as text (so the model “knows”), and GBNF constrains tokens at the sampling level (so it “only” fills in right). Why is the first move just a prayer without the second? Is this “soft / hard” division the same idea as Lesson 22's “order thinking as the first required parameter, using structure to force behavior”? (2) The same path generates a grammar, yet only llamacpp/koboldcpp/webui/webui-legacy actually consume it, while the rest (ollama/vllm/lmstudio) drop it and degrade to clean_json tolerant repair. Why is this two tiers — a “sampling-level hard guarantee” degrading to a “parse-level best-effort repair”? And why must clean_json not be read as “resample and retry”? (3) On this local path, inner_thoughts is forced to appear by the grammar/prompt and then moved by output_to_chat_completion_response from params into message.content. How does it clasp back to Lesson 15's “inner monologue” on one end, while on the other explaining why it became legacy today (Lesson 21's OpenAI-compatible won)?",
+            },
+        ],
+    },
 }
 
 

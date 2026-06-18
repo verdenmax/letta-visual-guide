@@ -86,6 +86,12 @@ PAGES = [
      "第五部分 · 工具系统", "Part 5 · The tool system"),
     ("20-tool-sandbox-security.html", "自定义工具沙箱与安全修复", "The tool sandbox & a security fix",
      "第五部分 · 工具系统", "Part 5 · The tool system"),
+    ("21-provider-contract.html", "统一 provider 三方法契约", "The unified provider contract",
+     "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
+    ("22-provider-quirks.html", "provider 怪癖的隔离", "Isolating provider quirks",
+     "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
+    ("23-local-models-gbnf.html", "本地模型与 GBNF 受限解码", "Local models & GBNF constrained decoding",
+     "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
 ]
 
 
@@ -564,6 +570,12 @@ SUBTITLES = {
                                       "ToolType; factory dispatch; core/builtin/files/mcp/sandbox; MCP"),
     "20-tool-sandbox-security.html": ("local/E2B/Modal · 信任边界 · pickle vs JSON · marker+长度+MD5",
                                       "local/E2B/Modal; the trust boundary; pickle vs JSON; marker+length+MD5"),
+    "21-provider-contract.html": ("LLMClient.create 工厂 · 三方法 · OpenAI 形状作通用中间格式",
+                                  "the LLMClient.create factory; the 3 methods; the OpenAI shape as the universal format"),
+    "22-provider-quirks.html": ("OpenAIClient 复用 · Anthropic cache/thinking/batch · 内心独白注入为参数",
+                                "OpenAIClient reuse; Anthropic cache/thinking/batch; inner thoughts as a tool arg"),
+    "23-local-models-gbnf.html": ("chat_completion_proxy · GBNF 约束 JSON · wrapper · 经典老路径",
+                                  "chat_completion_proxy; GBNF-constrained JSON; wrappers; the classic legacy path"),
 }
 
 
