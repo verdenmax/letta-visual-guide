@@ -610,7 +610,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>框架把 request_heartbeat 透传给工具函数，由工具自己决定要不要续</li>
     <li>框架重启整个 step() 循环，从第 0 步重新跑</li>
     <li>框架直接把工具结果当成 assistant 消息追加，不需要任何额外消息</li>
-    <li>框架注入一条 role=user 的“心跳”消息（REQ_HEARTBEAT_MESSAGE，对用户隐藏）把控制权还给模型并 continue；工具报错时即便没要心跳，也会自动注入 FUNC_FAILED_HEARTBEAT_MESSAGE 续一圈</li>
+    <li>注入对用户隐藏、role=user 的“心跳”消息续步；工具报错时即使没要心跳也自动续一圈</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
@@ -622,7 +622,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
   <ol class="opts">
     <li>还是看 request_heartbeat，只是把默认值从 false 改成了 true</li>
     <li>看模型生成文本里有没有出现“继续”二字</li>
-    <li>靠 _decide_continuation：“这一轮调了工具就继续，没调就停”；_get_valid_tools 传 request_heartbeat=False 压根不加这个参数，_handle_ai_response 还会 args.pop(REQUEST_HEARTBEAT_PARAM, None) 把残留默默丢掉</li>
+    <li>靠 _decide_continuation：“调了工具就继续，没调就停”；模型硬塞的 request_heartbeat 会被丢掉</li>
     <li>每一步都无脑续，直到撞上 token 上限才停</li>
   </ol>
   <details class="accordion">
@@ -636,7 +636,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>消灭“上下文窗口溢出”这类 bug；老机制靠压缩历史兜底</li>
     <li>消灭“工具执行超时”这类 bug；老机制靠加大超时时间兜底</li>
     <li>消灭“并行工具调用结果冲突”这类 bug；老机制靠串行化工具兜底</li>
-    <li>消灭“模型忘了设 request_heartbeat=true → agent 在调完工具后直接静默冻住”这一类 bug；老机制靠 local_llm 里的 insert_heartbeat 给本地模型兜底（issue #601）</li>
+    <li>消灭“模型忘设心跳→agent 静默冻住”这类 bug；老机制靠 insert_heartbeat 给本地模型兜底</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
@@ -646,7 +646,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
 <div class="quiz">
   <div class="qn">5. 关于“哪几代靠心跳续步”，下面哪个说法是对的？</div>
   <ol class="opts">
-    <li>元老 Agent 和第二代 V2 都还在用心跳（V2 的 _get_valid_tools 传 True，_decide_continuation 里 continue_stepping = request_heartbeat），只有第三代 V3 把它彻底删掉</li>
+    <li>元老 Agent 和第二代 V2 都还在用心跳，只有第三代 V3 把它彻底删掉</li>
     <li>心跳是被全盘否定的旧设计，V2 和 V3 都已经不用了</li>
     <li>只有元老 Agent 用心跳，V2 和 V3 都改用了 _decide_continuation</li>
     <li>三代都在用心跳，V3 只是把常量名换了一个</li>
@@ -941,7 +941,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>The framework passes request_heartbeat through to the tool function and lets the tool decide whether to continue</li>
     <li>The framework restarts the whole step() loop, rerunning from step 0</li>
     <li>The framework just appends the tool result as an assistant message, needing no extra message</li>
-    <li>The framework injects a role=user “heartbeat” message (REQ_HEARTBEAT_MESSAGE, hidden from the user) to hand control back and continue; on tool failure it auto-injects FUNC_FAILED_HEARTBEAT_MESSAGE for one more lap even without a requested heartbeat</li>
+    <li>Injects a user-hidden role=user “heartbeat” message to continue; on a tool error it auto-continues a lap even without a requested heartbeat</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
@@ -953,7 +953,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
   <ol class="opts">
     <li>It still reads request_heartbeat, just flips the default from false to true</li>
     <li>It scans the model's generated text for the word “continue”</li>
-    <li>Via _decide_continuation: “called a tool this round → continue, didn't → stop”; _get_valid_tools passes request_heartbeat=False so the param isn't added at all, and _handle_ai_response does args.pop(REQUEST_HEARTBEAT_PARAM, None) to quietly drop any leftover</li>
+    <li>Via _decide_continuation: “called a tool → continue, didn't → stop”; any request_heartbeat the model jams in is dropped</li>
     <li>It blindly continues every step until it hits the token cap</li>
   </ol>
   <details class="accordion">
@@ -967,7 +967,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
     <li>Eliminates the “context-window overflow” bug-class; the old mechanism patched it by compacting history</li>
     <li>Eliminates the “tool execution timeout” bug-class; the old mechanism patched it by raising the timeout</li>
     <li>Eliminates the “parallel tool-call result conflict” bug-class; the old mechanism patched it by serializing tools</li>
-    <li>Eliminates the “model forgot to set request_heartbeat=true → the agent freezes silent after calling a tool” bug-class; the old mechanism backed local models up with insert_heartbeat in local_llm (issue #601)</li>
+    <li>Eliminates the “model forgot the heartbeat → the agent freezes silent” bug-class; the old mechanism patched it with insert_heartbeat for local models</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
@@ -977,7 +977,7 @@ args.<span class="fn">pop</span>(REQUEST_HEARTBEAT_PARAM, <span class="kw">None<
 <div class="quiz">
   <div class="qn">5. About “which generations continue via heartbeats,” which statement is correct?</div>
   <ol class="opts">
-    <li>Both the elder Agent and the second-gen V2 still use heartbeats (V2's _get_valid_tools passes True, and continue_stepping = request_heartbeat in _decide_continuation); only the third-gen V3 removes it entirely</li>
+    <li>Both the elder Agent and the second-gen V2 still use heartbeats; only the third-gen V3 removes it entirely</li>
     <li>Heartbeats are a wholly rejected old design that both V2 and V3 have dropped</li>
     <li>Only the elder Agent uses heartbeats; both V2 and V3 switched to _decide_continuation</li>
     <li>All three generations use heartbeats; V3 merely renamed a constant</li>

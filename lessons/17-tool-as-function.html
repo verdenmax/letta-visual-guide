@@ -571,7 +571,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <ol class="opts">
     <li>可以——它能干净地映射成“字符串键、整数值”的 JSON object</li>
     <li>不行——它会 raise TypeError，和“缺类型注解”报的是同一个错</li>
-    <li>不行——type_to_json_schema_type 对带参的 Dict[k,v] 会 raise ValueError。要传结构化入参，请改用 Pydantic BaseModel，它会经 model_json_schema() 展开</li>
+    <li>不行——带参的 Dict[k,v] 会 raise ValueError</li>
     <li>可以，但前提是你还得给它一个默认值 {}</li>
   </ol>
   <details class="accordion">
@@ -839,7 +839,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <ol class="opts">
     <li>Yes — it maps cleanly to a JSON object with string keys and integer values</li>
     <li>No — it raises TypeError, the very same error you get from a missing type annotation</li>
-    <li>No — type_to_json_schema_type raises ValueError on a parameterized Dict[k,v]. For structured input, define a Pydantic BaseModel instead; it is expanded via model_json_schema()</li>
+    <li>No — a parameterized Dict[k,v] raises ValueError</li>
     <li>Yes, but only if you also give it a default value of {}</li>
   </ol>
   <details class="accordion">
