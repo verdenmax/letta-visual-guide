@@ -765,6 +765,104 @@ LESSON_29 = {
 <p>Both kinds go into <strong>the same "search by meaning" index</strong> (that one vector column) — at query time both are ranked by "closeness of meaning."</p>
 <p>They just sit on <strong>two different shelves</strong> (two tables), and borrowing means filling out <strong>different request slips</strong> (two tools): use <span class="mono">semantic_search_files</span> for donated books, <span class="mono">archival_memory_search</span> to flip through the notes.</p>
 </div>
+<h2>The ingestion pipeline: how a file becomes a row of searchable passages</h2>
+<p>With the foundation met, let's see "how a file gets in." The modern ingestion entry point is <span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span>, which works a raw file step by step into a row of <span class="mono">SourcePassage</span> records.</p>
+<p>The whole pipeline breaks into eight steps, from upload all the way to landing in the database. Look at the panorama first, then we'll explain segment by segment:</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Upload → into some source</h4><p>The file is uploaded and assigned to an already-created <span class="mono">Source</span> (org-scoped; detailed next section).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>create_file (PARSING)</h4><p><span class="mono">FileManager.create_file</span> registers one <span class="mono">FileMetadata</span> row, status set to <span class="mono">PARSING</span>.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>extract_text (OCR)</h4><p><span class="mono">FileParser.extract_text</span> pulls the full text: PDFs/images go through OCR, documents convert to markdown.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>upsert_file_content (full text)</h4><p>The full text lands in the <span class="mono">file_contents</span> table — the original kept on file, independent of chunking.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>insert_file_into_context_windows</h4><p>It "opens" the file into a <span class="mono">FileAgent</span> (read-only original in context; covered in the final section).</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>chunk_text (by EmbeddingConfig)</h4><p><span class="mono">LlamaIndexChunker.chunk_text</span> chunks the text; <span class="mono">chunk_size</span> comes from <span class="mono">EmbeddingConfig</span> (Lesson 21).</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>generate_embedded_passages (batch 200)</h4><p>The <span class="mono">Embedder</span> computes embedding vectors in batches of 200.</p></div></div>
+  <div class="step"><div class="num">8</div><div class="sc"><h4>create_many_source_passages_async</h4><p>Bulk-writes into <span class="mono">source_passages</span>, each padded to 4096 → a row of <span class="mono">SourcePassage</span> records.</p></div></div>
+</div>
+<p>Put those eight steps into code, drop the error handling and the state machine, and the skeleton is this straight:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/file_processor/file_processor.py</span><span class="ln">FileProcessor.process: store text → chunk → embed → land (simplified)</span></div>
+<pre><span class="kw">async def</span> <span class="fn">process</span>(self, source_id, content, ...):
+    <span class="cm"># 1) register the file row, status set to PARSING</span>
+    file = <span class="kw">await</span> self.file_manager.<span class="fn">create_file</span>(..., status=FileProcessingStatus.PARSING)
+    <span class="cm"># 2) pull full text (OCR / markdown), store into file_contents</span>
+    text = <span class="kw">await</span> self.file_parser.<span class="fn">extract_text</span>(content)
+    <span class="kw">await</span> self.file_manager.<span class="fn">upsert_file_content</span>(file.id, text)
+    <span class="cm"># 3) "open" the file into context (FileAgent, see final section)</span>
+    <span class="kw">await</span> self.agent_manager.<span class="fn">insert_file_into_context_windows</span>(source_id, file, ...)
+    <span class="cm"># 4) chunk -&gt; embed (chunk_size comes from EmbeddingConfig)</span>
+    chunks = self.chunker.<span class="fn">chunk_text</span>(text)
+    passages = <span class="kw">await</span> self.embedder.<span class="fn">generate_embedded_passages</span>(chunks, batch_size=<span class="nb">200</span>)
+    <span class="cm"># 5) bulk-write into source_passages (each padded to 4096)</span>
+    <span class="kw">await</span> self.passage_manager.<span class="fn">create_many_source_passages_async</span>(passages, source_id=source_id)
+</pre></div>
+<p>Read the pipeline segment by segment. <strong>The first three steps "store the original"</strong>: <span class="mono">create_file</span> registers the file as one <span class="mono">FileMetadata</span> row (status <span class="mono">PARSING</span>); <span class="mono">extract_text</span> pulls plain text via OCR/markdown; <span class="mono">upsert_file_content</span> stores the full text into the <span class="mono">file_contents</span> table.</p>
+<p><strong>The fourth step is a fork</strong>: <span class="mono">insert_file_into_context_windows</span> "opens" the file into the agent's context (creating a <span class="mono">FileAgent</span>) — that branch is saved for the final section.</p>
+<p>The fork itself is rather elegant: <strong>ingest once, produce twice</strong> — the same pass both chunks-and-embeds the file (building RAG) and "opens" it into context (building a <span class="mono">FileAgent</span>). Upload one file and both forms are ready at once.</p>
+<p><strong>The last three steps are where RAG is built</strong>: <span class="mono">chunk_text</span> chunks by <span class="mono">EmbeddingConfig</span>, <span class="mono">generate_embedded_passages</span> embeds 200 at a time, and <span class="mono">create_many_source_passages_async</span> lands them into <span class="mono">source_passages</span>.</p>
+<p>That <span class="mono">status=PARSING</span> line is no decoration. <span class="mono">FileMetadata</span> carries a <span class="mono">processing_status</span> field plus two counters, <span class="mono">total_chunks</span> / <span class="mono">chunks_embedded</span> — status starts at <span class="mono">PARSING</span>, the counters track embedding progress, and only when every chunk is embedded is it ready. The frontend's "processing…" progress bar reads exactly this.</p>
+<p>Why store the full text separately in <span class="mono">file_contents</span> rather than keep only chunks? Because the two forms have different needs: <strong>chunks serve semantic recall</strong> (fuzzy-find relevant passages), <strong>full text serves verbatim opening</strong> (<span class="mono">open_files</span> wants the text exactly as is). Stored apart, the two paths don't interfere.</p>
+<p>Why embed in <strong>batches of 200</strong>? Because embedding calls an external model API; sending one at a time is too slow and too costly. Batch them and send once: higher throughput, fewer round trips. This is the familiar engineering move of "batching to amortize overhead."</p>
+<p>A word on resilience: the full text in <span class="mono">file_contents</span> is a master copy <strong>independent</strong> of the chunks. Want to swap the embedding model later and re-chunk/re-embed? The original is still there, no need to make the user re-upload — zero out <span class="mono">total_chunks</span> and re-run the back half.</p>
+<details class="accordion"><summary>Ingestion has two paths: the modern file_processor and the legacy connectors</summary><div class="acc-body">
+<p><strong>Modern (the mainline)</strong>: <span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span> — with OCR/markdown parsing, <span class="mono">LlamaIndexChunker</span> chunking, <span class="mono">generate_embedded_passages</span> batch embedding, and finally <span class="mono">create_many_source_passages_async</span>. This is what the lesson covers.</p>
+<p><strong>Legacy (the old path)</strong>: <span class="mono">data_sources/connectors.py::load_data</span> — using <span class="mono">DirectoryConnector</span> plus llama_index's <span class="mono">TokenTextSplitter</span>, calling the <strong>deprecated</strong> <span class="mono">create_many_passages_async</span>.</p>
+<p>For v0.16.8, lock onto the <span class="mono">file_processor</span> path; if you run into <span class="mono">connectors.load_data</span>, just recognize it as the old path and don't model new code on it.</p>
+</div></details>
+<div class="note tip"><span class="ni">🧩</span><span class="nx">The <span class="mono">chunk_size</span> isn't picked arbitrarily; it comes from the agent's <span class="mono">EmbeddingConfig</span> (Lesson 21) — <strong>chunks are cut as large as the embedding model's window</strong>. Ingestion and recall must use the <strong>same embedding config</strong>, or the vectors on the two sides simply aren't in the same space.</span></div>
+<div class="cute"><div class="row"><span class="emoji">📄</span><span class="lab">one document</span><span class="arrow">→</span><span class="emoji">📚</span><span class="lab">cut into cards</span><span class="arrow">→</span><span class="emoji">🔢</span><span class="bubble">stamp each with a vector</span></div><div class="cap">📄 one uploaded document is split into 📚 a stack of little cards (chunks), each stamped with a 🔢 vector (embedding), then lined up on that 4096-dim shelf — and from then on you can grab the closest few "by meaning" in one go</div></div>
+<h2>Retrieval: the same vector search, just a different tool and table</h2>
+<p>Passages are built — how do you query them? The key is still "same foundation, different source": <strong>retrieval also uses the same vector search</strong>, only the query builder and the tool name each get swapped.</p>
+<p>The source retrieval builder is <span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span>, and it is <strong>nearly identical in shape</strong> to archival's <span class="mono">build_agent_passage_query</span> — the only difference is which junction it joins and which table it scans.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/services/helpers/agent_manager_helper.py</span><span class="ln">build_source_passage_query: embed query → join → cosine sort (simplified)</span></div>
+<pre><span class="kw">def</span> <span class="fn">build_source_passage_query</span>(agent_id, query_text, embed_config, ...):
+    <span class="cm"># 1) embed the query text, pad to 4096 (same config as on write)</span>
+    q = <span class="fn">embed_query</span>(query_text, embed_config)
+    q = np.<span class="fn">pad</span>(q, (<span class="nb">0</span>, MAX_EMBEDDING_DIM - <span class="fn">len</span>(q)))
+    <span class="cm"># 2) take only passages from "sources this agent attached": join SourcesAgents</span>
+    query = (
+        <span class="fn">select</span>(SourcePassage)
+        .<span class="fn">join</span>(SourcesAgents, SourcesAgents.source_id == SourcePassage.source_id)
+        .<span class="fn">where</span>(SourcesAgents.agent_id == agent_id)
+    )
+    <span class="cm"># 3) ascending by cosine distance (Postgres pgvector; SQLite uses numpy)</span>
+    <span class="kw">return</span> query.<span class="fn">order_by</span>(SourcePassage.embedding.<span class="fn">cosine_distance</span>(q).<span class="fn">asc</span>())
+</pre></div>
+<p>Three steps to understand this query. <strong>① Embed + pad</strong>: embed the query text with the <strong>same <span class="mono">EmbeddingConfig</span></strong>, then <span class="mono">np.pad</span> to 4096 so it aligns with the padded vectors in the store.</p>
+<p><strong>② Join scopes the range</strong>: <span class="mono">select(SourcePassage)</span> join <span class="mono">SourcesAgents</span> on <span class="mono">source_id</span>, where <span class="mono">agent_id</span> — searching only passages in "the sources this agent has attached," never out of bounds.</p>
+<p><strong>③ Sort</strong>: Postgres uses <span class="mono">embedding.cosine_distance(q).asc()</span> (pgvector), SQLite falls back to numpy for the distance; the text fallback uses <span class="mono">func.lower(text).contains</span>.</p>
+<p>Don't get the direction backwards: <span class="mono">cosine_distance</span> is a <strong>distance</strong>, <strong>smaller is closer</strong>, so use <span class="mono">.asc()</span> to take the top few — the exact opposite of "bigger similarity is better" (a callback to Lesson 27).</p>
+<p>Compare archival's <span class="mono">build_agent_passage_query</span>: the same embed + pad + cosine, only it joins <span class="mono">ArchivesAgents</span> (on <span class="mono">archive_id</span>) and can also filter by tag. <strong>Same machine, different connector.</strong></p>
+<p>That <span class="mono">func.lower(text).contains</span> text fallback is a back road for the "no embedding / pure keyword" case: when no vector is available, you can at least match by substring, case-insensitively, instead of coming up empty-handed.</p>
+<p>One more branch: the <span class="mono">np.pad</span> to 4096 happens <strong>only on the pgvector path</strong>; if you go through the external vector store Turbopuffer (TPUF), padding is <strong>skipped</strong> — it manages dimensions itself. Padding is a concession to pgvector's "fixed-length column," not a universal step.</p>
+<p>Don't underestimate that <span class="mono">join SourcesAgents</span>: it is the <strong>multi-tenant guardrail</strong> (a callback to Lesson 26). Without it, the vector search would reach other agents' and other orgs' sources; with it, each agent can only search the handful of sources <strong>it has attached</strong>.</p>
+<div class="note info"><span class="ni">🔧</span><span class="nx">Watch out for the split between "function declaration" and "real implementation": the <span class="mono">semantic_search_files</span> / <span class="mono">archival_memory_search</span> in <span class="mono">function_sets/files.py</span> and <span class="mono">function_sets/base.py</span> are just <span class="mono">raise NotImplementedError</span> <strong>schema stubs</strong>; the real work lives in <span class="mono">tool_executor/files_tool_executor.py</span> and <span class="mono">core_tool_executor.py</span>.</span></div>
+<p>Straighten the source-retrieval chain into a line and the five nodes are clear at a glance:</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">query text</div><div class="nd">find passages about X</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">embed + pad</div><div class="nd">embed(q) → np.pad 4096</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">select(SourcePassage)</div><div class="nd">join SourcesAgents · source_id</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">cosine_distance.asc()</div><div class="nd">ranked by closeness</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node hl"><div class="nt">top-k passages</div><div class="nd">fed back to the tool caller</div></div>
+</div>
+<p>Finally, a table lays "source vs archival" side by side across six dimensions, handy to look back at any time:</p>
+<table class="t">
+<tr><th>Dimension</th><th>SourcePassage (source / RAG)</th><th>ArchivalPassage (archival)</th></tr>
+<tr><td>Table</td><td class="mono">source_passages</td><td class="mono">archival_passages</td></tr>
+<tr><td>Source FK</td><td class="mono">source_id (req) + file_id (opt)</td><td class="mono">archive_id</td></tr>
+<tr><td>Who writes it</td><td>you upload docs; built by ingestion</td><td>the agent calls archival_memory_insert</td></tr>
+<tr><td>Query builder</td><td class="mono">build_source_passage_query</td><td class="mono">build_agent_passage_query</td></tr>
+<tr><td>Retrieval tool</td><td class="mono">semantic_search_files</td><td class="mono">archival_memory_search</td></tr>
+<tr><td>Tags</td><td>none</td><td class="mono">passage_tags junction</td></tr>
+</table>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">orm/passage.py::SourcePassage / ArchivalPassage</span> — two subclasses of the same <span class="mono">BasePassage</span>, split across tables <span class="mono">source_passages / archival_passages</span>.</p>
+<p><span class="mono">services/file_processor/file_processor.py::FileProcessor.process</span> — the modern ingestion pipeline: parse → chunk → embed → <span class="mono">create_many_source_passages_async</span>.</p>
+<p><span class="mono">services/helpers/agent_manager_helper.py::build_source_passage_query</span> — source vector search: embed query + pad + join <span class="mono">SourcesAgents</span> + <span class="mono">cosine_distance</span>.</p>
+<p><span class="mono">orm/files_agents.py::FileAgent</span> — the file's other form: a read-only <span class="mono">FileBlock</span> in context (next section).</p>
+</div>
 <!--ENMORE-->
 """,
 }
