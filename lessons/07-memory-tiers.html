@@ -835,7 +835,7 @@ The answer is three tiers: <strong>core / recall / archival</strong>. They reall
     <li>recall memory — it stores all conversation history, so it's always in-window</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Only core is always in the context window (MemGPT's working context); recall and archival sit out of window and are pulled back by tools — recall keeps only its latest slice in-window, and archival is entirely out of window.</div></div></div>
   </details>
 </div>
@@ -848,7 +848,7 @@ The answer is three tiers: <strong>core / recall / archival</strong>. They reall
     <li>The model memorized all history via fine-tuning and needs no hint</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The &lt;memory_metadata&gt; from compile_memory_metadata_block provides counts and tags (not the content itself), written into system so the model reads it every turn — so it knows what it forgot and which tier to page. Crucially the agent initiates the search itself, the opposite of "framework auto-RAG."</div></div></div>
   </details>
 </div>
@@ -861,7 +861,7 @@ The answer is three tiers: <strong>core / recall / archival</strong>. They reall
     <li>Walking write-time order, newest to oldest</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. archival is a long-term vector store, and archival_memory_search retrieves by semantic similarity — ask about "that API-redesign decision" and you recover the note even if it was worded differently; that's the difference from exact keyword matching.</div></div></div>
   </details>
 </div>

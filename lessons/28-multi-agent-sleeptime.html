@@ -859,7 +859,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>All three group managers — round_robin / supervisor / dynamic — work, routed by ManagerType</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. v0.16.8 has exactly two live paths: (1) sleeptime (agents/agent_loop.py::AgentLoop.load → groups/sleeptime_multi_agent_v4.py::SleeptimeMultiAgentV4); (2) the send_message_to_agent_* tools in functions/function_sets/multi_agent.py. The classic group managers round_robin / supervisor / dynamic are only schema + enum + class skeleton: the executor groups/helpers.py::load_multi_agent is never called on the live path, the /v1/groups routes are entirely deprecated=True with no send-message endpoint, and even SupervisorMultiAgent.step has its whole body commented out. So both “all three group managers work” and “there's a central scheduler” are wrong; and sleeptime is in fact the only truly live “group” behavior, so calling it “merely schema” is wrong too.</div></div></div>
   </details>
 </div>
@@ -872,7 +872,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>rethink_memory / finish_rethinking_memory (the old self-editing-memory names)</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. Standard sleeptime is equipped with constants.py::BASE_SLEEPTIME_TOOLS = memory_replace / memory_insert / memory_rethink / memory_finish_edits, all implemented in services/tool_executor/core_tool_executor.py::CoreToolExecutor. Key correction: it's memory_rethink, not rethink_memory — the latter is the legacy self-editing-memory name; finish_rethinking_memory is voice_sleeptime-only and not the same as standard sleeptime's memory_finish_edits. core_memory_append / replace are the foreground's ordinary core-memory tools, not the sleeptime set; send_message_* are the path-one tools, unrelated to editing memory. For v0.16.8, just lock onto those four in BASE_SLEEPTIME_TOOLS.</div></div></div>
   </details>
 </div>
@@ -885,7 +885,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>An in-memory message queue through which the background pushes updates to the foreground</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The coordination primitive is plain to the point of being just one DB record: orm/blocks_agents.py::BlocksAgents (composite PK (agent_id, block_id, block_label)) attaches one Block row to many agents via the M2M (Block.agents ↔ Agent.core_memory, secondary=“blocks_agents”). server.py::create_sleeptime_agent_async builds the background agent passing block_ids=[b.id for b in main_agent.memory.blocks] — the same Block rows, not copies. Sleeptime's memory_rethink → update_memory_if_changed_async changes only that row's value (Block.version is an optimistic lock against concurrent overwrite), and the foreground reads the new value only when it recompiles the row on its next system-prompt rebuild. So there's no copy-merge, no message queue, no lock service, and no shared Python object — just one shared mutable Block row, with visibility bounded by “the next prompt rebuild.”</div></div></div>
   </details>
 </div>
@@ -898,7 +898,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>A separate coordinator agent that queues and schedules members' turns</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. This is v0.16.8's most counterintuitive piece of naming. Read orm/group.py::Group: manager_agent_id is actually the foreground primary agent (the one running the user conversation, whose finished step trips the counter), while group.agent_ids holds the background memory editors (those sleeptime agents). The reason: sleeptime's “subject” is always the foreground conversation — its SleeptimeMultiAgentV4.step first does super().step() for the foreground, then run_sleeptime_agents to “dispatch” the background. So recording the foreground as manager and stuffing the background into agent_ids is self-consistent from the implementation's view, but exactly opposite to the “manager = coordinator” intuition. There's no separate coordinator agent, and roles aren't assigned by creation order.</div></div></div>
   </details>
 </div>
@@ -911,7 +911,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It fans out in parallel to all matching agents and then aggregates every reply</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. ..._and_wait_for_reply is synchronous, blocking, and two-way: the tool body builds a letta_client.Letta → client.agents.messages.create(B), re-entering over REST to run B's own full loop (AgentLoop.load(B).step), then pulls out B's assistant reply as the tool's return value back to A — and A genuinely stalls at this step until B's whole turn finishes (if B then calls C and C calls D, the blocking stacks layer by layer). The “fire-and-forget” one is the other variant, send_message_to_agent_async (asynchronous, one-way), which is disabled in production. “Parallel fan-out” is also wrong: send_message_to_agents_matching_tags filters a batch by tags then waits on each in turn — synchronous and serial, not truly parallel. Confusing it with sleeptime's non-blocking background task is exactly the “opposite blocking semantics” trap this lesson warns about.</div></div></div>
   </details>
 </div>

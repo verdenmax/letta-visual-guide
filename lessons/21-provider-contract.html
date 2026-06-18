@@ -777,7 +777,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>By llm_config.model_endpoint_type — a ProviderType string passed into create and matched with match/case</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. The factory dispatches on a single field: model_endpoint_type. The loop pulls it out of llm_config and passes it into LLMClient.create, which runs match/case on provider_type to hit a concrete client class. Key detail: ProviderType is (str, Enum) — essentially a string — so it can be matched directly. It does not dispatch on the whole LLMConfig object, nor on the model name, nor on the model_endpoint URL — confusing these makes you think “change the model name and you change the client”, when in reality only the endpoint type drives the dispatch.</div></div></div>
   </details>
 </div>
@@ -790,7 +790,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>The default OpenAIClient — they all fall into the case _ catch-all. These local/compatible endpoints mostly expose an “OpenAI-compatible” interface, so the same OpenAIClient can serve a whole crowd of them just by sending the request to a different model_endpoint</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Not listed explicitly ≠ unhandled. The final arm of the match/case, case _, falls back to OpenAIClient, so openai/ollama/vllm/lmstudio… all land on it. The reason is that these endpoints mostly already expose an “OpenAI-compatible” interface, so Letta only has to send the request to a different model_endpoint and the same OpenAIClient is reused. So the dozen-odd explicit cases are really an “exceptions list” — only providers whose behaviour genuinely differs from OpenAI get a separate entry. It does not raise, and it is not one subclass per name.</div></div></div>
   </details>
 </div>
@@ -803,7 +803,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>send_llm_request — the orchestration method does the format conversion itself, while the three methods only send and receive</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The shape-collapsing one is the third method, convert_response_to_chat_completion (async). The pipeline's division of labour is clear: build_request_data (sync) knows “what format this provider wants”, request_async (async) only sends it off and returns the raw dict, and convert is what translates the raw response into an OpenAI-shaped ChatCompletionResponse. build governs the inbound format and never touches the response; request_async returns the still-un-unified raw response; send_llm_request merely strings the three steps together and catches the request step's exceptions, delegating the conversion to convert. All provider differences are locked into the two end steps, build and convert.</div></div></div>
   </details>
 </div>
@@ -816,7 +816,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>No code change, but you must manually call convert_* to convert the response first before the loop can read it</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. The loop cannot see which provider sits below — that is the most direct dividend of a unified contract. From the loop's view it always hands out one request and collects back one ChatCompletionResponse; switching groq→anthropic→ollama only changes the “subject” inside the three methods (which client), while the exit shape is identical and the loop code changes by zero. Anthropic's content blocks and its different usage fields are all smoothed over inside that client's build/convert and never surface in the loop. convert_* is also called automatically by send_llm_request, not by hand. A debugging instinct: if an “if is_anthropic” appears in the loop, the abstraction has probably leaked.</div></div></div>
   </details>
 </div>
@@ -829,7 +829,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>No — there are really only 2 abstract methods (build and convert); request_async is a concrete implementation the base class provides</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. “Three methods” is a deliberate teaching simplification. LLMClientBase actually declares 8 @abstractmethod: this lesson's main-thread build_request_data / request_async / convert_response_to_chat_completion, plus the synchronous request, the vector-embedding request_embeddings, the streaming stream_async, the reasoning-model check is_reasoning_model, and the unified error handling handle_llm_error. The lesson picks only those three because together they answer “how a plain chat request collapses from each provider's format into one unified shape”. Because all 8 are tagged @abstractmethod, a subclass that misses any one errors out at instantiation. It is neither 2 nor 12.</div></div></div>
   </details>
 </div>

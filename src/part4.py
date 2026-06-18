@@ -1014,7 +1014,7 @@ This lesson lifts the lid on the V3 engine. There's no magic inside, just a plai
 }
 
 # quiz seeds (en-phase agent to expand into quizzes.py):
-#  - what request_heartbeat is & which tools get it (non-terminal, required boolean)
+#  - what request_heartbeat is &amp; which tools get it (non-terminal, required boolean)
 #  - how the old loop continues (model sets true -> framework injects a heartbeat user-msg)
 #  - how V3 decides (a tool was called -> continue; ignores/strips heartbeat)
 #  - what bug class deleting it kills (model-forgot-to-set-it silence)

@@ -835,7 +835,7 @@ RequestHeartbeatParam ::= "\"request_heartbeat\":" ( "true" | "false" )
     <li>Fully removed dead code that can't be reached at all in v0.16.8</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. This is a legacy historical path. Modern local backends (ollama/vllm/lmstudio) mostly expose OpenAI-compatible endpoints, so they land on Lesson 21's factory default case _ → OpenAIClient and need no dedicated client. The GBNF set is reached only when the old agent.py::Agent, via llm_api_tools.py::create's else (local) branch, falls through to chat_completion_proxy.py::get_chat_completion. It is not the default main path (most local models never go through it), not a randomly chosen switch, and not dead code — it still runs, just demoted. Remember: we study it to see the essence of function calling, not because it's how things run by default today.</div></div></div>
   </details>
 </div>
@@ -848,7 +848,7 @@ RequestHeartbeatParam ::= "\"request_heartbeat\":" ( "true" | "false" )
     <li>It sets temperature to 0 to make sampling deterministic, thereby guaranteeing valid JSON</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The key is the “sampling-level” constraint. GBNF (llama.cpp's GGML BNF grammar) is fed to the sampler and, at every generation step, trims the next token's candidate set to those “the grammar allows right now” — where a { belongs only a { can appear, where a field name belongs only those few names can. So the model has no path to an illegal shape and the output is necessarily parseable. This differs from “reminding harder in the prompt” (still a probability), “stripping with a regex afterward” (symptom-level parse repair, exactly the degraded clean_json route), and “lowering the temperature” (which changes the probability distribution, not legality). In one line: parseability isn't coaxed out, it's physically guaranteed by the sampler.</div></div></div>
   </details>
 </div>
@@ -861,7 +861,7 @@ RequestHeartbeatParam ::= "\"request_heartbeat\":" ( "true" | "false" )
     <li>Every local backend consumes the grammar, since they're all llama.cpp underneath</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. Only grammar_supported_backends (koboldcpp/llamacpp/webui/webui-legacy) actually pass the grammar to the sampler and get the “sampling-level hard guarantee”. Other local backends (ollama/vllm/lmstudio, etc.) drop the grammar even when handed one, degrading to “parse-level” best-effort repair: the wrapper writes the format into the prompt, then json_parser.py::clean_json bends the dirty text into legal JSON (note clean_json is tolerant repair, not resample / retry). So it's not “every backend consumes it” (only four), not ollama/vllm (the opposite), and not “all on clean_json” (the four grammar backends have a harder guarantee). Why these four? Because only their sampling interfaces expose an entry point that accepts a grammar.</div></div></div>
   </details>
 </div>
@@ -874,7 +874,7 @@ RequestHeartbeatParam ::= "\"request_heartbeat\":" ( "true" | "false" )
     <li>Through a separate /tools endpoint where the backend registers the tool list before the call</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. Via the wrapper writing the schema into the prompt text. chat_completion_to_prompt (internally _compile_function_block) assembles each function's name, parameters, and description — together with the inner_thoughts description — into the prompt as text; a bare completion endpoint has none of the ready-made tool structure of /chat/completions, so every bit of “what the tool looks like” must be built into the question by the proxy layer itself. It isn't pretrained into the weights (then you couldn't swap tools), isn't inferred from GBNF (the grammar governs “what shape comes out” while the prompt explains the tools — a division of labor: schema in the prompt lets the model “know”, grammar on the sampler makes it “only” fill in right), and there's no /tools registration endpoint. Remember this wrapper is the “outbound” end of a bidirectional translator.</div></div></div>
   </details>
 </div>
@@ -887,7 +887,7 @@ RequestHeartbeatParam ::= "\"request_heartbeat\":" ( "true" | "false" )
     <li>It's a JSON field forced to appear by the grammar/prompt, then lifted (popped) from params into message.content on parse</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. inner_thoughts is a forced structured field, not something the model writes voluntarily. On the grammar route, GBNF forces every params branch to write an inner_thoughts string first; on the non-grammar route, the wrapper writes the requirement into the prompt. On parse, output_to_chat_completion_response pops it out of the parameters and moves it into message.content — exactly promoting Lesson 15's “inner monologue” convention from the prompt level to a grammar-level mandate. So it isn't free text outside the JSON, isn't a field passed through natively by the backend, and certainly isn't cloud-only. In one line: on this local path, inner_thoughts is hard-required by the grammar/prompt and then relocated to content on parse.</div></div></div>
   </details>
 </div>

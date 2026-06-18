@@ -756,7 +756,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>pickle, but only because it is fast — agent_state is too big for JSON, and it has nothing to do with trust direction</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. server→sandbox uses pickle as a deliberate trusted direction: agent_state is pickle.dumps'd by the server and pickle.loads'd back inside the sandbox. Because the deserialized bytes come from a trusted source (the server built them) and privilege flows toward the low-trust side, pickle.loads never becomes an attack surface. Note the distinction: in the whole script only agent_state uses pickle; call arguments are inlined literals via repr(), not pickle. “Forbid pickle in every direction” is wrong — what is forbidden is the return leg (sandbox→server).</div></div></div>
   </details>
 </div>
@@ -769,7 +769,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>Because JSON is faster than pickle, and the return data is large, so the fastest format is required</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. The return leg is the untrusted direction: the sandbox just ran a stranger's tool code, so every byte it writes to stdout is suspect. pickle.loads executes arbitrary code during deserialization — a malicious tool need only return an object carrying a __reduce__, and the instant the server pickle.loads it, it is RCE'd. With json.loads such objects cannot even be expressed, so the worst case is parsing fake data. This has nothing to do with speed or installed modules — it is purely a trust-boundary issue, and exactly what PR #3343 fixed.</div></div></div>
   </details>
 </div>
@@ -782,7 +782,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>The result channel being polluted: stdout carries noise and even forged fake results, so verification ensures the real payload is read</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. stdout is a noisy river: debug output, stack traces, even a fake result/fake marker a user deliberately prints are all mixed in. The three layers each do a job — marker (uuid5's 16 bytes) locates the real payload's start amid the noise; length (4 bytes big-endian '&gt;I') slices the payload precisely; MD5 (32 hex) catches tampering and truncation, raising Exception("Function ran, but output is corrupted.") on mismatch. It defends integrity/forgery, unrelated to encryption or compression; and it is certainly not there to let the server pickle.loads — on the contrary, once verified, only json.loads runs.</div></div></div>
   </details>
 </div>
@@ -795,7 +795,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>It only switched the return-leg payload encoding from pickle to JSON, eliminating the RCE surface; the integrity frame and the inbound pickling of agent_state were left untouched</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. #3343's scope is narrow but pivotal: it changes only the return payload's encoding (pickle→JSON), landing in tool_parser_helper.py — the server goes from pickle.loads(sandbox bytes) to json.loads(payload), structurally eliminating the server RCE. What it left alone: (1) the marker+length+MD5 frame already existed (it handles integrity and was not introduced by #3343); (2) server→sandbox still pickles agent_state (the trusted direction, kept on purpose, not an oversight). Saying it “added the frame,” “banned all pickle,” or “switched to E2B” all misstate the scope. In one line: the frame governs integrity, the encoding governs security, and #3343 moved the latter.</div></div></div>
   </details>
 </div>
@@ -808,7 +808,7 @@ agent_state = AgentState.<span class="fn">model_validate</span>(result[<span cla
     <li>Yes, but only the Modal sandbox uses the template; local and E2B use other means</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. A common trap. letta/templates/sandbox_code_file.py.j2 is dead in v0.16.8 — no .py references it, so it is only a human side reference. The real script is string-assembled by tool_sandbox/base.py::AsyncToolSandboxBase.generate_execution_script via _render_sandbox_code: pickle.loads to restore agent_state, inline arguments via repr(), inline the user's source_code verbatim, call it, pack result+agent_state into JSON, and write marker+length+MD5 to stdout. Do not be fooled by the docstring (which says “base64-encode/pickle the result”) or the _pkl variable name — both are legacy; what is actually carried is JSON. The sandbox also cannot import the user module (it lives only in the database), so the script must be inlined and self-contained.</div></div></div>
   </details>
 </div>

@@ -804,7 +804,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>The full Python source of the function, body included, so it can reason about edge cases</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. The model reads only the schema. generate_schema (letta/functions/schema_generator.py) uses inspect.signature for params + annotations and docstring_parser (Google style) for the description text, emitting name / description / parameters; the body is wiped, so neither the full source nor a live trace is ever available — that is the whole point of “you write code, the model reads a schema.” And Returns: is for humans: only the first docstring line (which becomes the description) and the Args: per-parameter lines enter the schema, not Returns:.</div></div></div>
   </details>
 </div>
@@ -817,7 +817,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It only logs a warning and substitutes “No description available” for x</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. In generate_schema's per-parameter loop a missing description is a hard stop: it scans doc.params for that arg, gets None, and raises ValueError (Parameter 'x' lacks a description...). Creation aborts and the error propagates to whoever is registering the tool. It is not downgraded to a warning, not given an empty/default description, and not silently dropped — any of those would defeat “the docstring is the model's only manual.” One subtlety: the “No description available” fallback applies only to the function-level description, never to a parameter.</div></div></div>
   </details>
 </div>
@@ -830,7 +830,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>x and agent_state, but not self</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. generate_schema skips reserved kwargs: at the top of the loop, if p.name is in TOOL_RESERVED_KWARGS ([self, agent_state]) it continues, so neither enters the schema — the signature is not mirrored verbatim. And request_heartbeat is NOT added by generate_schema; it is attached separately at runtime (Lesson 15), so any option that has generate_schema inject it is wrong. Net result: only x, the single parameter the model must actually supply.</div></div></div>
   </details>
 </div>
@@ -843,7 +843,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>Yes, but only if you also give it a default value of {}</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. A parameterized Dict[str, int] is rejected: type_to_json_schema_type hand-maps types and raises ValueError for a keyed Dict (and NotImplementedError for a general Union). JSON schema can't express an arbitrary key/value dict unambiguously, so Letta errors rather than guesses. The fix is a Pydantic BaseModel, whose model_json_schema() nests fields/types/required into the tool schema. Mind the error kind: it is ValueError, not the TypeError raised for a missing annotation — different gates, different exceptions.</div></div></div>
   </details>
 </div>
@@ -856,7 +856,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>Usually yes — validate_google_style_docstring is advisory: its ValueError is caught and downgraded to a logger.warning. The real gate is the per-parameter check for a description and a type annotation</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Two gates, soft and hard. validate_google_style_docstring is soft: its ValueError is wrapped in try/except and logged as a warning, so off-standard formatting alone won't stop the build. The hard gate lives inside generate_schema's loop — a parameter with no description raises ValueError, a missing type annotation raises TypeError; those are not swallowed. Nothing auto-corrects your docstring. So formatting is a reminder; a missing per-parameter description or annotation is what actually blocks creation.</div></div></div>
   </details>
 </div>

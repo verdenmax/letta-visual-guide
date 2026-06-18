@@ -879,7 +879,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>Step ⊃ Run: one Step contains several Runs (one Run per retry)</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. There is only one correct nesting: orm/run.py::Run (table runs, one agent invocation) hangs Run.steps (1:N), and each orm/step.py::Step (table steps) hangs one orm/step_metrics.py::StepMetrics 1:1; creating a Run also writes one RunMetrics (1:1) via RunManager.create_run. orm/job.py::Job (table jobs, UserMixin) is a sibling background/batch task, off this chain — 'Job ⊃ Run ⊃ Steps' is the lesson's number-one trap. Job and Run are two orthogonal kinds of async: a Run has LLM/tools/steps, while a Job (load/parse/embed a file) has no concept of a step, which is why they are two sibling tables rather than Job-wraps-Run.</div></div></div>
   </details>
 </div>
@@ -892,7 +892,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>One message: every Message sent or received is a Step</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. A Step is one iteration of Lesson 14's for i in range(max_steps) loop = one LLM call plus that round's tool execution (the _step in letta_agent_v2/v3; even the legacy StreamingServerInterface.step_complete defines step as 'LLM response + tool execution'). Hence a Run has at most max_steps Steps (Run:Step = 1:≤max_steps), and each Step stamps its several Messages with run_id+step_id (LettaAgentV3._checkpoint_messages, Step:Message = 1:N). So it is neither 'one message' nor 'one tool', and it does not map one-to-one to a Run.</div></div></div>
   </details>
 </div>
@@ -905,7 +905,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>A Step: the async message lands directly as a steps row</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. messages/async goes through send_message_async: it returns a background Run (a run-… id) immediately, throws the real work into a shielded background task, and you then poll GET /v1/runs/{run_id} (plus /steps, /messages, /usage, /metrics), cancel via RunManager.cancel_run, and resume a background stream through Redis (POST /v1/runs/{run_id}/stream). It creates a Run, not a Job — orm/job.py::Job is a background/batch task like loading a file, an orthogonal line from 'one agent invocation'. Treating an async agent message as creating a Job is the common mistake this lesson calls out.</div></div></div>
   </details>
 </div>
@@ -918,7 +918,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>It writes a PENDING/0-token row before the LLM call, then backfills real usage to SUCCESS after</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. Order is the key: _step_checkpoint_start calls log_step_async(usage=0,0,0, status=PENDING, run_id, step_id, model, provider...) before the LLM call, writing one steps row (zero tokens) and opening the OTel span agent_step; after the LLM + tools, _step_checkpoint_finish uses update_step_success_async(real per-step usage, stop_reason) to flip to SUCCESS and record_step_metrics_async. Because the row already exists, the StepProgression state machine (START…FINISHED) in the finally detects anything short of FINISHED and calls update_step_error_async to mark FAILED/CANCELLED — so crashes/cancels still leave an accountable record. 'Write a row only when done' is the naive design this avoids: reserving first costs one extra write and buys per-iteration accountability.</div></div></div>
   </details>
 </div>
@@ -931,7 +931,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>The steps row (billing) ↔ the OTel distributed trace (latency) ↔ the provider-trace raw payload (debugging) — three observability granularities</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. On every step Letta writes once into three different systems: (1) the steps row (written by StepManager — per-step model/provider/token/stop_reason/feedback, for product + billing, on by default); (2) OTel (letta/otel/, trace_method from Lesson 25 opens a span, MetricRegistry's ttft/step_execution_time/message_cost/sse_* histograms, for latency/distributed tracing, gated by app.py's otel_exporter_otlp_endpoint and a no-op under pytest); (3) the provider trace (TelemetryManager stores the raw LLM request/response keyed by step_id, for debugging, recorded by default on v3/postgres, Noop only on the legacy Agent/sleeptime path). get_trace_id() writes the current OTel trace id into Step.trace_id — exactly that stitching pin. As for the distractor: v3 streaming runs through services/streaming_service.py::StreamingService (not the legacy StreamingServerInterface) — that is a streaming-path distinction, not the three ledgers trace_id stitches.</div></div></div>
   </details>
 </div>

@@ -819,7 +819,7 @@ Just four keywords: <strong>Passage</strong> (one archival memory = text + vecto
     <li>Orders by created_at descending and always returns just the most recent rows</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. The search tool first turns the query into a vector with the same embedding model, then asks the database to sort by vector distance and take the nearest neighbors. The SQLite path uses cosine_distance (=1−similarity) registered in sqlite_functions.py; the Postgres path uses pgvector; both do order_by(cosine_distance(...).asc()). So it recalls by semantic closeness — "payment" can hit "invoice already settled" with zero shared words. Exact WHERE, recency, and keyword counting are not how it retrieves.</div></div></div>
   </details>
 </div>
@@ -832,7 +832,7 @@ Just four keywords: <strong>Passage</strong> (one archival memory = text + vecto
     <li>SQLite stores vectors as JSON text and can't compute similarity at all</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: B</strong>. In orm/passage.py, BasePassage picks the embedding column by settings.database_engine: Vector(MAX_EMBEDDING_DIM) on Postgres, else CommonVector; sqlalchemy_base.py branches the ordering the same way, but both sides do cosine_distance(...).asc(). The difference is sealed inside the ORM/column-type layer, so archival_memory_insert/search and the agent calling them notice nothing — which is why laptop→prod needs no business-code changes. Switching DBs doesn't require rewriting the tools, and sqlite-vec computes similarity just fine.</div></div></div>
   </details>
 </div>
@@ -845,7 +845,7 @@ Just four keywords: <strong>Passage</strong> (one archival memory = text + vecto
     <li>search is similarity recall (no guaranteed exact hit), and every insert / search costs one embedding call</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. archival retrieves by meaning, returning the closest few — it can miss a target phrased very differently or drowned out by more-similar noise, so no exact-hit guarantee. Writing embeds the text into a vector; searching embeds the query — each is one embedding call with real cost. Unlike core memory, it doesn't live in the system prompt; it sits in the store and is recalled only when needed, so it isn't billed by token every turn — which is exactly why it scales "infinitely" cheaply.</div></div></div>
   </details>
 </div>

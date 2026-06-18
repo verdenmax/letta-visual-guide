@@ -935,7 +935,7 @@ memory = <span class="fn">ChatMemory</span>(
     <li>The character — core memory is just one long string with no finer structure</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. core memory's atom is the Block (letta/schemas/block.py), with four core fields: label (tag/addressing key), value (content), limit (char cap), read_only (whether the agent can edit it). Memory is the collection of Blocks, and Memory.compile() renders them into the &lt;memory_blocks&gt; text in system. Message / Passage belong to recall / archival, not core.</div></div></div>
   </details>
 </div>
@@ -948,7 +948,7 @@ memory = <span class="fn">ChatMemory</span>(
     <li>The system copies one for B, and the two diverge from then on</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. A block is an addressable, shareable first-class entity: sharing uses the BlocksAgents join table (letta/orm/blocks_agents.py) linking block.id and agent.id many-to-many. The two agents reference the "same row," so a change in one place shows everywhere with no sync step — that's how "shared memory" works.</div></div></div>
   </details>
 </div>
@@ -961,7 +961,7 @@ memory = <span class="fn">ChatMemory</span>(
     <li>read_only is a hard constraint (core_memory_* raise), while limit is a soft hint (only rendered into metadata; the write path doesn't block overflow)</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: D</strong>. They point opposite ways: core_memory_append / replace check block.read_only before editing and raise READ_ONLY_BLOCK_EDIT_ERROR on True (core_tool_executor.py) — a hard constraint. But limit doesn't block the write path: update_block_value only checks "value is a string," and limit is merely rendered as chars_limit in &lt;metadata&gt; to nudge the model — a soft hint. To hard-bound length, do it at the application layer.</div></div></div>
   </details>
 </div>

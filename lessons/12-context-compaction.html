@@ -810,7 +810,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
 
 <div class="card detail">
   <div class="tag">🔬 Down to the code</div>
-  <strong>Source coordinates for the whole compaction chain.</strong> <strong>Threshold</strong>: <span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span> = <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>, the latter <span class="mono">0.9</span> in <span class="mono">letta/constants.py</span>. <strong>Trigger & action</strong>: in <span class="mono">letta/agents/letta_agent_v3.py</span>, <span class="mono">_step</span> compares <span class="mono">context_token_estimate</span> (from the LLM-reported <span class="mono">usage.total_tokens</span>) to the threshold; over it calls <span class="mono">compact</span> and emits <span class="mono">_create_compaction_event_message</span>. <strong>Compaction impl</strong>: <span class="mono">letta/services/summarizer/compact.py::compact_messages</span>; slice selection and recursive summary in <span class="mono">summarizer.py::Summarizer</span> (<span class="mono">_partial_evict_buffer_summarization</span>, default <span class="mono">partial_evict_summarizer_percentage=0.30</span>). <strong>Summary message</strong>: the v3 path packs via <span class="mono">letta/system.py::package_summarize_message_no_counts</span> (as <span class="mono">system_alert</span>; the with-counts variant is reserved for the legacy <span class="mono">agent.py</span>), role value <span class="mono">letta/schemas/enums.py::MessageRole.summary</span> (<span class="mono">user</span> when the switch is off). <strong>Overflow special case</strong>: <span class="mono">letta/agents/letta_agent_v3.py::_check_for_system_prompt_overflow</span> plus the same check at the end of <span class="mono">compact.py</span>, raising <span class="mono">SystemPromptTokenExceededError</span> (<span class="mono">letta/errors.py</span>). Follow this chain of symbols and you can walk "from over-threshold to summary persisted" end to end.
+  <strong>Source coordinates for the whole compaction chain.</strong> <strong>Threshold</strong>: <span class="mono">letta/services/summarizer/thresholds.py::get_compaction_trigger_threshold</span> = <span class="mono">context_window × SUMMARIZATION_TRIGGER_MULTIPLIER</span>, the latter <span class="mono">0.9</span> in <span class="mono">letta/constants.py</span>. <strong>Trigger &amp; action</strong>: in <span class="mono">letta/agents/letta_agent_v3.py</span>, <span class="mono">_step</span> compares <span class="mono">context_token_estimate</span> (from the LLM-reported <span class="mono">usage.total_tokens</span>) to the threshold; over it calls <span class="mono">compact</span> and emits <span class="mono">_create_compaction_event_message</span>. <strong>Compaction impl</strong>: <span class="mono">letta/services/summarizer/compact.py::compact_messages</span>; slice selection and recursive summary in <span class="mono">summarizer.py::Summarizer</span> (<span class="mono">_partial_evict_buffer_summarization</span>, default <span class="mono">partial_evict_summarizer_percentage=0.30</span>). <strong>Summary message</strong>: the v3 path packs via <span class="mono">letta/system.py::package_summarize_message_no_counts</span> (as <span class="mono">system_alert</span>; the with-counts variant is reserved for the legacy <span class="mono">agent.py</span>), role value <span class="mono">letta/schemas/enums.py::MessageRole.summary</span> (<span class="mono">user</span> when the switch is off). <strong>Overflow special case</strong>: <span class="mono">letta/agents/letta_agent_v3.py::_check_for_system_prompt_overflow</span> plus the same check at the end of <span class="mono">compact.py</span>, raising <span class="mono">SystemPromptTokenExceededError</span> (<span class="mono">letta/errors.py</span>). Follow this chain of symbols and you can walk "from over-threshold to summary persisted" end to end.
 </div>
 
 <h2>Going deeper</h2>
@@ -869,7 +869,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
 
 <div class="note info"><span class="ni">👉</span><span class="nx"><strong>Bridging back and forward:</strong> Lesson 5 posed the root constraint "the window is finite" and gave you "measure"; Part 3 (07–12) tells the whole "memory system" answer — and compaction is the last piece that <strong>fights the pressure</strong>.</span></div>
 
-<p>Memorize one chain on your way out: <strong>record usage each turn → past the 90% threshold → emit a compaction event → compact via sliding-window recursive summary → insert role=summary, originals retreat to recall → only core can't be compacted; if it overflows, take the system-prompt overflow special case</strong>. Hold this chain and you've truly grasped "context compaction & memory pressure."</p>
+<p>Memorize one chain on your way out: <strong>record usage each turn → past the 90% threshold → emit a compaction event → compact via sliding-window recursive summary → insert role=summary, originals retreat to recall → only core can't be compacted; if it overflows, take the system-prompt overflow special case</strong>. Hold this chain and you've truly grasped "context compaction &amp; memory pressure."</p>
 
 <div class="card key">
   <div class="tag">✅ Key points</div>
@@ -893,7 +893,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
     <li>0.9 varies per model; each model has its own threshold multiplier</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. get_compaction_trigger_threshold = int(context_window × SUMMARIZATION_TRIGGER_MULTIPLIER), the latter fixed at 0.9 in constants.py (model-agnostic; force_proactive doesn't change the result today). Triggering at 90% frees space before truly hitting the wall and raising “prompt too long.” That's the “act” step of Lesson 5's “measure → decide → compact” loop. Core memory is never compacted, so the last option is wrong.</div></div></div>
   </details>
 </div>
@@ -906,7 +906,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
     <li>The agent auto-moves the overflowing core memory into archival, so it won't error</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: A</strong>. The summarizer only summarizes conversation messages and never touches core memory or the system prompt (core is the agent's identity — it must stay in-window and byte-stable). After compacting, compact_messages rechecks: if compacted_messages[0] (the system message) alone is ≥ the window, the culprit isn't a too-long conversation but a too-big core/system prompt — so _check_for_system_prompt_overflow raises SystemPromptTokenExceededError with stop reason context_window_overflow_in_system_prompt. The fix is to trim core memory (Lesson 8's limit) or use a bigger window, not to compact more conversation.</div></div></div>
   </details>
 </div>
@@ -919,7 +919,7 @@ SUMMARIZATION_TRIGGER_MULTIPLIER = <span class="nb">0.9</span>   <span class="cm
     <li>The originals are moved into core memory for long-term keeping</li>
   </ol>
   <details class="accordion">
-    <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
+    <summary>Show answer &amp; explanation <span class="hint">click to expand</span></summary>
     <div class="acc-body"><div class="qa"><div class="a"><strong>Answer: C</strong>. Compaction is a lossy summary trading “detail precision” for “window space,” not a lossless archive: exact wording, tone, and edge details vanish from the in-window view. But they aren't deleted — the original Message rows still sit in recall (Lesson 11), and conversation_search can fetch them back by hybrid. So don't treat “not in the summary” as “the model still remembers it”: not in the summary means the model can't see it now and must actively search. The originals leave the window, not the database.</div></div></div>
   </details>
 </div>
