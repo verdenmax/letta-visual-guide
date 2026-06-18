@@ -2386,6 +2386,121 @@ QUIZZES = {
             },
         ],
     },
+    "26-crud-and-multitenancy.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "在 letta v0.16.8 里，多租户隔离（“只看你这个 org 的行”）到底是在哪一层、怎么强制的？",
+                    "en": "In letta v0.16.8, at which layer — and how — is multi-tenant isolation (“see only your own org's rows”) actually enforced?",
+                },
+                "opts": [
+                    {"zh": "焊在最底层的查询构造器里：SqlalchemyBase.apply_access_predicate 给每次读自动追加 WHERE organization_id == actor.organization_id",
+                     "en": "Welded into the lowest-level query builder: SqlalchemyBase.apply_access_predicate auto-appends WHERE organization_id == actor.organization_id to every read"},
+                    {"zh": "每个路由 / handler 自己记得在查询里手写一句 WHERE org==... 来过滤别的租户",
+                     "en": "Each router / handler remembers to hand-write a WHERE org==... in its own query to filter other tenants"},
+                    {"zh": "由 CheckPasswordMiddleware 在请求入口按 org 校验，挡掉别的租户",
+                     "en": "CheckPasswordMiddleware checks by org at the request entrance and blocks other tenants"},
+                    {"zh": "先把整张表查回来，再在 manager 里用 Python 按 actor.id 筛掉别的租户",
+                     "en": "Pull the whole table back, then filter out other tenants by actor.id in Python inside the manager"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "隔离焊在最低层：orm/sqlalchemy_base.py::SqlalchemyBase.apply_access_predicate 是行级过滤的唯一注入点——ORGANIZATION 范围（默认）追加 where(organization_id == actor.organization_id)，USER 范围（仅 jobs / runs）追加 where(user_id == actor.id)。约 40 个模型共用这一个 SqlalchemyBase，read_async / list_async / size_async / bulk_hard_delete_async 都自动套上它，没有任何 per-endpoint 的 WHERE 需要各 handler 记得写——这正是“secure by default”的反转。它在 SQL 执行前注到 query 对象上、在 DB 侧完成，不是拉回全表再用 Python 筛。CheckPasswordMiddleware 管的是“能不能进这台服务器”（单一共享密钥），与租户正交，不做按 org 的行级过滤。",
+                    "en": "Isolation is welded into the lowest layer: orm/sqlalchemy_base.py::SqlalchemyBase.apply_access_predicate is the single injection point for row-level filtering — the ORGANIZATION scope (default) appends where(organization_id == actor.organization_id), the USER scope (jobs / runs only) appends where(user_id == actor.id). Around 40 models share this one SqlalchemyBase, and read_async / list_async / size_async / bulk_hard_delete_async all auto-apply it, so there's no per-endpoint WHERE for any handler to remember — that's the “secure by default” inversion. It's injected onto the query object before the SQL runs and completed DB-side, not by pulling the whole table back and filtering in Python. CheckPasswordMiddleware governs “can you enter this server” (a single shared secret), is orthogonal to tenancy, and does no per-org row filtering.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "用你自己 org 的 actor 调 read_async 去读一行属于“别的 org”的数据，会发生什么？",
+                    "en": "With an actor carrying your own org, you call read_async for a row that belongs to “another org.” What happens?",
+                },
+                "opts": [
+                    {"zh": "那行被 predicate 的 WHERE 排除在结果集外，scalar_one_or_none() 得 None → read_async 抛 NoResultFound（list_async 则返回 []）",
+                     "en": "The row is excluded from the result set by the predicate's WHERE; scalar_one_or_none() yields None → read_async raises NoResultFound (and list_async returns [])"},
+                    {"zh": "门禁识别出越权，直接抛一个 403 / 权限错误（PermissionError）",
+                     "en": "The gate detects the violation and raises a 403 / permission error (PermissionError) outright"},
+                    {"zh": "照常返回那一行——隔离只在写路生效，读路不拦",
+                     "en": "It returns the row as usual — isolation only applies on the write path, reads aren't blocked"},
+                    {"zh": "抛 ValueError，因为 actor 的 org 和那行的 org 不匹配",
+                     "en": "It raises ValueError because the actor's org doesn't match the row's org"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "越权＝查不到，而非报错。apply_access_predicate 在 SQL 执行前就把 where(organization_id == actor.organization_id) 注进 query，别的 org 的行根本不进结果集：read_async 的 scalar_one_or_none() 拿到 None → 抛 NoResultFound；list_async 得 []。这是有意为之——连“那行存在”这件事都不向调用方泄露，所以不是 403、不是 PermissionError。唯一的 ValueError 来自 actor 连 org / id accessor 都没有（配置错），而非跨租户。隔离也不是“只在写路”——读路四个方法（有 actor 时）都套 predicate，写 / 删则骑在读建立的边界上。调试时别被 NoResultFound 骗了：先确认 actor 的 org 对不对。",
+                    "en": "A violation = not found, not an error. apply_access_predicate injects where(organization_id == actor.organization_id) onto the query before the SQL runs, so another org's row never enters the result set: read_async's scalar_one_or_none() gets None → raises NoResultFound; list_async gets []. This is by design — it leaks nothing about “that row exists,” so it's not a 403 and not a PermissionError. The only ValueError comes from an actor lacking even the org / id accessor (a misconfig), not from cross-tenant access. Isolation isn't “write-path only” either — the four read methods (when an actor is present) all apply the predicate, while write / delete ride the boundary the read established. When debugging, don't be fooled by NoResultFound: first check that the actor's org is right.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "约 40 个模型共用的 SqlalchemyBase.delete_async，默认到底“删”了什么？",
+                    "en": "What does the shared SqlalchemyBase.delete_async actually “delete” by default?",
+                },
+                "opts": [
+                    {"zh": "软删：只把 is_deleted 翻成 True，行仍留在库里；读路默认（check_is_deleted=False）仍能查到它",
+                     "en": "A soft delete: it only flips is_deleted to True; the row stays in the table, and the read path still finds it by default (check_is_deleted=False)"},
+                    {"zh": "物理删：session.delete(self) 把整行从库里抹掉，之后再也查不到",
+                     "en": "A physical delete: session.delete(self) wipes the whole row from the table, never findable again"},
+                    {"zh": "软删，但读路默认会自动过滤掉软删行，所以删完立刻就查不到了",
+                     "en": "A soft delete, but the read path auto-filters soft-deleted rows by default, so it's immediately unfindable"},
+                    {"zh": "先级联删掉所有外键关联行，再物理删本行",
+                     "en": "It cascades through all foreign-key rows first, then physically deletes this row"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "delete_async 是软删：内部走 update_async 把 is_deleted 翻成 True（有 actor 则顺手盖审计），行的字节一个没动、外键关联照旧。关键反直觉点：读路过滤是 opt-in——read_async / list_async 的 check_is_deleted 默认 False，不追加 where(is_deleted == False)，所以软删行默认仍被返回；想挡掉得显式传 check_is_deleted=True（如 provider_manager 的读路）。物理删是另外两个方法：hard_delete_async（session.delete(self) + 死锁重试）和 bulk_hard_delete_async（delete(cls).where(id.in_(...)) + apply_access_predicate，唯一在 SQL 层强制租户的删）。delete_async 自己不级联物理删。",
+                    "en": "delete_async is a soft delete: internally it goes through update_async to flip is_deleted to True (stamping audit too if there's an actor); not a byte of the row moves and foreign-key relations stay intact. The key counterintuitive point: read-side filtering is opt-in — read_async / list_async default check_is_deleted to False and don't append where(is_deleted == False), so soft-deleted rows are still returned by default; to keep them out you must pass check_is_deleted=True explicitly (as in provider_manager's read path). Physical deletion is the other two methods: hard_delete_async (session.delete(self) + deadlock retry) and bulk_hard_delete_async (delete(cls).where(id.in_(...)) + apply_access_predicate, the only delete that enforces tenancy at the SQL level). delete_async itself does not cascade-physically-delete.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "每行的审计字段（created_at / updated_at、_created_by_id / _last_updated_by_id）是怎么被填上的？",
+                    "en": "How do a row's audit fields (created_at / updated_at, _created_by_id / _last_updated_by_id) get filled in?",
+                },
+                "opts": [
+                    {"zh": "CRUD 方法里显式调 _set_created_and_updated_by_fields(actor_id) 盖“谁”，且只有传了 actor 才盖；时间列由 DB 侧 server_default / server_onupdate 生成",
+                     "en": "The CRUD methods explicitly call _set_created_and_updated_by_fields(actor_id) to stamp the “who,” and only when an actor is passed; the time columns come from DB-side server_default / server_onupdate"},
+                    {"zh": "靠 SQLAlchemy 的事件监听（event listener）在 flush 时自动给每行填上",
+                     "en": "SQLAlchemy event listeners fill them in automatically on flush"},
+                    {"zh": "全部由数据库触发器（trigger）在 INSERT / UPDATE 时生成，应用层不参与",
+                     "en": "Database triggers generate them all on INSERT / UPDATE; the app layer isn't involved"},
+                    {"zh": "由基类构造函数统一填，不管有没有 actor 都会盖上“谁建 / 谁改”",
+                     "en": "The base class constructor fills them uniformly, stamping “who created / changed” whether or not there's an actor"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "审计字段不是事件监听、也不是 DB 触发器盖的，而是 CRUD 路径里显式调 orm/base.py::CommonSqlalchemyMetaMixins 的 _set_created_and_updated_by_fields(actor_id)——create_async / update_async 手动点一下。关键前提：只有传了 actor 才盖“谁”；没 actor 的写（系统内部路径）不落 *_by_id，只有时间列照常。时间列确实交给 DB：created_at 用 server_default=func.now()，updated_at 再加 server_onupdate（不依赖应用时钟）。物理列名带下划线 _created_by_id / _last_updated_by_id，对外属性去掉下划线，setter 还断言 id 前缀＝“user”。created_by_id 只在首次写设定、此后不变；last_updated_by_id 每次写刷新。",
+                    "en": "Audit fields aren't stamped by event listeners or DB triggers but by an explicit call in the CRUD path to orm/base.py::CommonSqlalchemyMetaMixins's _set_created_and_updated_by_fields(actor_id) — create_async / update_async touch it manually. The key precondition: it stamps the “who” only when an actor is passed; a write without an actor (a system-internal path) records no *_by_id, only the time columns as usual. The time columns are indeed left to the DB: created_at uses server_default=func.now(), and updated_at adds server_onupdate (not relying on the app clock). The physical columns carry an underscore, _created_by_id / _last_updated_by_id; the outward attributes drop it, and the setter asserts the id prefix = “user.” created_by_id is set only on the first write and never changes; last_updated_by_id refreshes on every write.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "对一个 org 级模型做读取，但没传 actor（actor=None）时，SqlalchemyBase 会怎么做？",
+                    "en": "When you read an org-scoped model but pass no actor (actor=None), what does SqlalchemyBase do?",
+                },
+                "opts": [
+                    {"zh": "不硬失败：打一条 SECURITY: ...bypasses organization filtering 警告，然后无范围（不套 predicate）照常跑查询",
+                     "en": "It doesn't hard-fail: it logs a SECURITY: ...bypasses organization filtering warning, then runs the query unscoped (no predicate applied)"},
+                    {"zh": "直接拒绝：抛异常 / 报错，强制每次读都必须带 actor",
+                     "en": "It rejects outright: raises an exception / error, forcing every read to carry an actor"},
+                    {"zh": "自动套上 DEFAULT_USER_ID 当 actor，于是查询被限定到默认 org",
+                     "en": "It auto-substitutes DEFAULT_USER_ID as the actor, so the query gets scoped to the default org"},
+                    {"zh": "静默返回空结果（[] / None），当作“没有任何行可见”",
+                     "en": "It silently returns an empty result ([] / None), treating it as “no rows visible”"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "actor=None 时 base 不硬失败：read_async 里 predicate 是 gated on if actor:——没 actor 就跳过 apply_access_predicate，并对 org 级模型记一条响亮的 logger.warning(“SECURITY: ... bypasses organization filtering”)，然后无范围照跑（返回的是该 org 之外也不设限的全表行，不是空）。这是有意取舍：Letta 有合法的、系统内部无 user 的查询，于是选了“中央强制 + 响亮日志”而非脆弱的硬失败。别和入口混淆：真正能“强制带身份”的是 user_manager.py::get_actor_or_default_async——当 settings.no_default_actor 且无 id 时抛 NoResultFound，否则才回退 DEFAULT_USER_ID；那是解析 actor 的入口逻辑，不是 SqlalchemyBase 在 actor=None 时自己做的事。",
+                    "en": "When actor=None the base does not hard-fail: in read_async the predicate is gated on if actor: — with no actor it skips apply_access_predicate and, for an org-scoped model, logs a loud logger.warning(“SECURITY: ... bypasses organization filtering”), then runs unscoped (returning unrestricted rows across the table, not empty). This is a deliberate trade-off: Letta has legitimate system-internal queries with no user, so it chose “central enforcement + a loud log” over brittle hard failure. Don't conflate this with the entrance: the thing that can actually “force identity” is user_manager.py::get_actor_or_default_async — it raises NoResultFound when settings.no_default_actor and no id, otherwise it falls back to DEFAULT_USER_ID; that's the actor-resolution entry logic, not what SqlalchemyBase itself does when actor=None.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“带门禁的共享档案库”的比喻，把一次“按 id 读一行”的查询从进门到落库完整讲一遍，并想透四件事：(1) 为什么说多租户隔离是“焊在最低层的查询构造器里”、而不是每个 handler 各写一句 WHERE？apply_access_predicate 的 ORGANIZATION 与 USER 两个分支分别按什么字段限定、各覆盖哪些对象？(2) 跨租户读为什么是“查不到”（NoResultFound / []）而不是 403？这种“连存在性都隔离”的设计买到了什么、又给调试埋了什么坑？(3) delete_async 的“软删”默认可逆意味着什么——is_deleted 翻 True 之后，为什么读路默认仍能看见它、要怎样才“看起来真的删了”？软删 vs hard_delete_async vs bulk_hard_delete_async 三者在“是否套 predicate”上有何不同？(4) actor 这条身份链（user_id header → get_headers 只校格式不碰 DB → get_actor_or_default_async 解析成带 org 的 PydanticUser → predicate 的 WHERE）里，为什么 base 在 actor=None 时选择“警告 + 无范围照跑”而非硬失败？这跟服务器口令（CheckPasswordMiddleware）那道正交的闸又是什么关系？",
+                "en": "Using this lesson's “shared archive with a gate” metaphor, narrate a single “read one row by id” query from the front door to the DB, and think through four things: (1) Why is multi-tenant isolation “welded into the lowest-level query builder” rather than each handler hand-writing a WHERE? In apply_access_predicate, what field does each of the ORGANIZATION and USER branches scope by, and which objects does each cover? (2) Why is a cross-tenant read “not found” (NoResultFound / []) rather than a 403? What does this “isolate even existence” design buy, and what debugging trap does it set? (3) What does delete_async's reversible-by-default “soft delete” mean — after is_deleted flips to True, why does the read path still see it by default, and what makes it “look truly deleted”? How do soft delete vs hard_delete_async vs bulk_hard_delete_async differ on “whether the predicate is applied”? (4) In the actor identity chain (user_id header → get_headers validates format without touching the DB → get_actor_or_default_async resolves it into a PydanticUser with org → the predicate's WHERE), why does the base choose “warn + run unscoped” rather than hard-fail when actor=None? And how does that relate to the orthogonal server-password gate (CheckPasswordMiddleware)?",
+            },
+        ],
+    },
 }
 
 
