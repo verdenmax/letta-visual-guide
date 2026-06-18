@@ -454,6 +454,9 @@ LESSON_25 = {
 <p><strong>绝不把 ORM 行漏出门外</strong>——出柜台的，永远只是复印件。</p>
 </div>
 <p>这条流水线不是某位经理的个性，而是<strong>所有 manager 的公共形状</strong>。下面先把它画成一张解剖图，再逐段拆开。</p>
+<p>也提前点破一个反直觉：名字带 <span class="mono">Sync</span> 的 <span class="mono">SyncServer</span>，名下 manager 的方法却几乎全是 <span class="mono">async def</span>——这层真正的底色是 async，第 24 课已埋过这个伏笔。</p>
+<p>还要把镜头摆正：上一课站在"整栋楼"的高度看三层分工，这一课只盯<strong>二楼那一间柜台</strong>，看清一个方法从进到出的每一帧。粒度变细，规律反而更清楚。</p>
+<p>一个提醒：本课所有代码都标了"简化 / 节选"。真实方法常带分页、过滤、批量等额外参数，但<strong>骨架那五步雷打不动</strong>——我们要的正是骨架，而非逐字复刻。</p>
 <p>读这一课时，不妨继续用上一课的"三层楼"做底图：我们这回把镜头怼到二楼柜台前，一帧帧看经理怎么动手。</p>
 <h2>一个 manager 方法，长成同一副样子</h2>
 <p>先看最小的一个真实例子——查一个 organization。它把"统一形状"压到了最短：开 session、读一行、转 pydantic、返回，四步收工。</p>
@@ -470,6 +473,11 @@ LESSON_25 = {
 <p>七步里，真正"有业务"的其实只有第 3、4 步；其余五步——装饰器、开关 session、转换——<strong>每个 manager 方法都一样</strong>。这正是"统一形状"的含义。</p>
 <p>请把第 2 步和第 6 步配成一对：<span class="mono">async with</span> 的进入与退出，就是事务的 BEGIN 与 commit。一个方法体，恰好是一道事务。</p>
 <p>也盯住第 5 步那句"仍在 session 内"——它是本课最容易踩错、也最值钱的一条规矩，后面会专门用一个抽屉讲透。</p>
+<p>还有一处值得点名：第 3 步的 <span class="mono">apply_access_predicate(actor)</span> 不是你手写的 <span class="mono">where</span>，而是 ORM 拼 SQL 时<strong>自动追加</strong>的一段过滤。你只管说"查 agent"，"只查我组织内的"由它补齐。</p>
+<p>正因为这段过滤焊在 ORM、而 session 又只在 manager 里开，<strong>越权查询根本拼不出来</strong>：想绕过它，得先拿到 session，而 session 这层压根不对外。</p>
+<p>第 4 步的 <span class="mono">read_async</span> / <span class="mono">create_async</span> 也不是各 manager 自造，而是 ORM 基类 <span class="mono">SqlalchemyBase</span> 提供的统一 CRUD 动词——这是第 26 课的主角，这里先记个名字。</p>
+<p>把这七步在脑里跑一遍，你会发现它其实是个<strong>固定模板</strong>：变量只有"哪个 Model、哪个 CRUD 动词、转哪个 pydantic"，模板本身从不变。读 manager，就是在这套模板里找那几个变量。</p>
+<p>顺道认一个区别：<span class="mono">get</span> 系列读完即转 pydantic，<span class="mono">create / update</span> 系列则先 <span class="mono">model_dump(to_orm=True)</span> 进门、落库、再 <span class="mono">to_pydantic</span> 出门——读路径短一截，写路径多一次反向换装。</p>
 <div class="card analogy"><div class="tag">🏦 生活类比</div>
 <p>把每位 manager 想成<strong>银行柜员</strong>，而你（路由）只能站在柜台外，进不了金库。</p>
 <p>你报上身份，柜员替你开一笔<strong>"事务"</strong>——拉开柜台那道小门，办完即关。</p>
@@ -498,6 +506,9 @@ LESSON_25 = {
 </pre></div>
 <p>读和写，两副身子骨一模一样：开 session → 动 ORM → <span class="mono">to_pydantic()</span> → 返回。差别只在中间——一个 <span class="mono">read_async</span>，一个 <span class="mono">create_async</span>。</p>
 <p>留意写那一支的入口：<span class="mono">model_dump(to_orm=True)</span> 把 pydantic 拆成构造 ORM 用的字段字典，再喂给 <span class="mono">OrganizationModel(...)</span>。这趟是<strong>反方向</strong>换装，后面单开一节细说。</p>
+<p>还有一点呼应上一课：这些 manager 全挂在那个全局 <span class="mono">SyncServer</span> 名下（第 24 课），可真正开 session、动数据的，从来是 manager 自己，而非 server。server 只负责<strong>持有</strong>与<strong>编排</strong>。</p>
+<p>也顺带回答一个常见疑问：为什么不直接把 ORM 行返回路由、省掉一次转换？因为那样 DB 会话的生命周期会<strong>泄到路由层</strong>，序列化时一不留神就触发惰性加载——既危险又难测。</p>
+<p>反过来也成立：正因为返回的是 pydantic，给 manager 写单测时<strong>根本不用起 HTTP</strong>——直接调方法、断言返回的 schema 即可，这正是上一课"薄路由几乎不用测"的另一面。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">organization 是租户树的<strong>根</strong>，所以它的读没有 <span class="mono">actor</span> 参数。换成 agent、message 这些<strong>租户内</strong>的对象，方法签名就会多一个 <span class="mono">actor</span>，ORM 据此把 <span class="mono">apply_access_predicate</span> 焊进查询——形状不变，只多了一道身份。</span></div>
 <h2>db_registry：唯一能开 session 的接缝</h2>
 <p>统一形状里最关键的一行，是 <span class="mono">async with db_registry.async_session()</span>。它凭什么"一行定两件事"——既划事务边界，又注入租户范围？答案藏在 <span class="mono">db.py</span> 里。</p>
@@ -532,6 +543,9 @@ async_session_factory = <span class="fn">async_sessionmaker</span>(engine, expir
 db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="cm"># 进程级单例</span>
 </pre></div>
 <p>三个收尾动作各有分工：<span class="mono">commit/rollback</span> 管数据正确，<span class="mono">expunge_all</span> 管对象安全，<span class="mono">close</span> 管连接归还。每开一次 session，这套收尾都<strong>原子地</strong>跑一遍。</p>
+<p>把它和上一课的时序对上：那条 GET 请求里数到的"两次开关门"，每次的 BEGIN/commit 其实都发生在这个 <span class="mono">async_session</span> 里——manager 方法只是借它开一道门。</p>
+<p>顺带说一句这些 manager 怎么来的：它们不是 DI 容器注入的，而是上一课 <span class="mono">SyncServer.__init__</span> 里一行行 <span class="mono">self.x_manager = XManager()</span> 普通地 new 出来——朴素到几乎没有框架感。</p>
+<p>这也呼应上一课的结论：一次请求＝<strong>多个独立事务</strong>，而非一个请求级大事务。原因正在这里——事务边界被 <span class="mono">async with</span> 划在了每个 manager 方法内部。</p>
 <p>注意是 <span class="mono">except BaseException</span> 而非 <span class="mono">except Exception</span>：连 <span class="mono">CancelledError</span>（请求被取消）也要回滚——async 世界里被取消是常态，绝不能把半截事务留在库里。</p>
 <p>还有 <span class="mono">expire_on_commit=False</span> 这个不起眼的参数：它让对象在 commit 后<strong>不</strong>被标记过期，于是 <span class="mono">to_pydantic()</span> 读字段时不必再跑一次 DB 往返。这是后面"为什么在 session 内转"的另一半钥匙。</p>
 <p>那么，谁会来调这些 manager？答案是<strong>四类调用方，殊途同归</strong>，最后都收束到 <span class="mono">db_registry.async_session()</span> 这一道接缝上。</p>
@@ -569,6 +583,9 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 <tr><td class="mono">model_dump(to_orm=True)</td><td>LettaBase（pydantic 侧）</td><td>拆字段 + metadata→metadata_</td><td>构造 ORM 行（写路径）</td></tr>
 </table>
 <p>为什么 agent 要用 async 版？因为拼关系可能<strong>再发查询</strong>，而查询要 await。简单模型字段都在手上，同步 <span class="mono">to_pydantic()</span> 足矣。一句话：<strong>关系越多，转换越可能 async</strong>。</p>
+<p>多说一句方向感：出门（读）几乎每个方法都要走，所以 <span class="mono">to_pydantic</span> 是高频路径；进门（写）只在 create / update 时出现，<span class="mono">model_dump(to_orm=True)</span> 因此稀疏得多。</p>
+<p>把"换装"想成海关：进出柜台都要换证件，ORM 行是"内部工牌"、pydantic 是"对外护照"。两边各管一段，谁也别拿错证件出门。</p>
+<p>还要留意 <span class="mono">actor</span> 是<strong>显式传参</strong>、而非从某个全局上下文里摸出来的：每个需要隔离的方法签名里都明明白白写着 <span class="mono">actor</span>，谁的身份、取谁的数据，一眼可查、也好测。</p>
 <details class="accordion"><summary>为什么转换必须在 session 内完成？</summary><div class="acc-body">
 <p>因为一旦出了 <span class="mono">async with</span> 块，session 已 <span class="mono">close</span>、ORM 行也被 <span class="mono">expunge_all</span> 解了绑——这时再读它的字段，多半直接 <span class="mono">DetachedInstanceError</span>。</p>
 <p>有人会问：不是有 <span class="mono">expire_on_commit=False</span> 吗，对象不该过期啊？没错，已加载的字段确实还在；可一旦碰到<strong>尚未加载</strong>的关系或惰性属性，脱离 session 的对象就没法补查，照样炸。</p>
@@ -607,6 +624,9 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
     ...
 </pre></div>
 <p>叠放顺序很有讲究：<span class="mono">@enforce_types</span> 在最外、<span class="mono">@trace_method</span> 在最内。于是入参先被校验类型与 id，<strong>通过之后</strong>才进 span、才真正执行——脏数据根本到不了 tracing。</p>
+<p>还有个隐性收益：校验、追踪、id 检查都收进装饰器后，方法体里<strong>看不到一行样板</strong>，读起来就是纯业务——开 session、查、转、返回。共性下沉，主线才清爽。</p>
+<p>顺序也别记反：<span class="mono">@enforce_types</span> 最外、<span class="mono">@trace_method</span> 最内，意味着 span 只包住"已通过校验"的执行——trace 里看到的，都是干净入参跑出来的真实耗时。</p>
+<p>这套装饰器也解释了为何 manager 方法读起来都"短得可疑"：真正的横切早被抽走，留在方法体里的，几乎只剩那一句 <span class="mono">async with</span> 和一两行查询。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">把这三行想成"<strong>免费横切</strong>"：每个 manager 方法都自动获得<strong>类型校验 + 链路追踪 + id 校验</strong>，作者一行都不用为它们写。这正是"统一形状"能统一的底气——共性收进装饰器，方法体只剩业务。</span></div>
 <details class="accordion"><summary><span class="mono">enforce_types</span> 是同步的，怎么对 async 方法也成立？</summary><div class="acc-body">
 <p>关键在于：<span class="mono">enforce_types</span> 的 <span class="mono">wrapper</span> 是个普通 <span class="mono">def</span>，<strong>不是</strong> <span class="mono">async def</span>。</p>
@@ -624,7 +644,41 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 <p>再看 <span class="mono">db_registry</span> 自嘲的 docstring "Dummy registry to maintain the existing interface"——上百处 <span class="mono">async_session()</span> 调用点<strong>一字未改</strong>，底下实现却被收成一个模块级 asyncpg 引擎：<strong>接口是契约、引擎可替换</strong>。</p>
 <p>第三层妙处是"转换在 session 内"竟是个<strong>性能模式</strong>：<span class="mono">get_agent_by_id_async</span> 故意"先不解密就转 pydantic、放掉 DB 连接后再跑昂贵的 PBKDF2"——schema 边界顺手成了连接池优化。</p>
 </div>
-<!--ZHMORE-->
+<h2>为什么独立成一层（记忆层也同形）</h2>
+<p>把前面几节合起来，"为什么 manager 要单独成层"就有了完整答案：<strong>事务、租户、复用、横切</strong>四件事，全靠这一层一次性焊死。</p>
+<p>更有说服力的是：你早在第 08、10、11 课见过的记忆 managers，走的正是同一副骨架——<span class="mono">block / message / passage</span> 三位，方法形状和 organization 别无二致。</p>
+<div class="cellgroup"><div class="cg-cap"><b>同一副骨架的 managers（节选，回扣 08 / 10 / 11 课）</b></div><div class="cells"><span class="cell hl">BlockManager</span><span class="sep">·</span><span class="cell">MessageManager</span><span class="sep">·</span><span class="cell">PassageManager</span><span class="sep">·</span><span class="cell">AgentManager</span><span class="sep">·</span><span class="cell">OrganizationManager</span></div></div>
+<p>认得了一个 <span class="mono">OrganizationManager.get_..._async</span>，你其实就认得了它们全部：开 session、按 actor 取数、session 内转 pydantic、返回。换的只是模型名与那一两行业务。</p>
+<p>这也是读这套代码的省力法：<strong>先吃透一个 manager，再横扫一片</strong>。block 怎么读写、message 怎么追加、passage 怎么检索，骨架都一样，差异只在各自的查询与关系。</p>
+<p>这种"同形"不是巧合，而是把 <span class="mono">SqlalchemyBase</span> 当公共基类、把 <span class="mono">async_session</span> 当唯一接缝换来的<strong>必然结果</strong>：底座一样，长出来的 manager 自然一个样。</p>
+<p>再往上看一眼分工：路由（第一层）只接、manager（第二层）才办、ORM（第三层）守门。这一课把第二层那间柜台拆到了零件级，下一课该轮到第三层的门禁了。</p>
+<p>临走再钉一遍那条铁律：<strong>ORM 行不出柜台</strong>。无论方法多复杂、关系多缠绕，递出门的永远是 pydantic——这一条，就是整层 manager 最该带走的肌肉记忆。</p>
+<p>把这条肌肉记忆和"唯一接缝、免费横切、门内换装"拼在一起，二楼这间柜台就算彻底看透了。下一课，我们推开档案室的门。</p>
+<p>最后澄清一个容易想多的点：<span class="mono">db_registry</span> 既然这么"傀儡"，那 SQLite / Postgres 的差异是不是也在它这层抹平的？不是。</p>
+<details class="accordion"><summary><span class="mono">db_registry</span> 的"Dummy registry"，以及 Postgres-only 的现状</summary><div class="acc-body">
+<p>"Dummy registry" 的意思是：它<strong>不</strong>再做花哨的注册或选择，只为<strong>维持旧接口</strong>而留——上百处 <span class="mono">db_registry.async_session()</span> 调用点因此一字未改，底下实现却能被收成一个模块级 asyncpg 引擎。</p>
+<p>v0.16.8 的 <span class="mono">db.py</span> 是 <strong>Postgres-only</strong> 的：模块级就一个 <span class="mono">create_async_engine(async_pg_uri)</span>，<strong>不</strong>在这层分 SQLite / Postgres。</p>
+<p>那"方言透明"在哪？在 <strong>ORM 层</strong>：column 类型、查询 helper、<span class="mono">orm/__init__.py</span> 里注册的 <span class="mono">sqlite_functions</span> 等，才是吃方言差异的地方——这是第 27 课的主题，别记到 <span class="mono">db_registry</span> 头上。</p>
+</div></details>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>名字带 <span class="mono">*_async</span> 不代表没有同步校验：<span class="mono">enforce_types</span> 的 wrapper 本就是<strong>同步</strong>的，先校验、再返回协程。</p>
+<p><strong>别把 ORM 行漏出 session</strong>：尽管 <span class="mono">expire_on_commit=False</span>，可一旦出了 <span class="mono">async with</span>、被 <span class="mono">expunge_all</span>，读未加载字段就 <span class="mono">DetachedInstanceError</span>。务必在门内 <span class="mono">to_pydantic()</span>。</p>
+<p>一个逻辑操作配<strong>一道</strong> session：跨多步别硬塞进一个事务，事务边界就是方法边界。</p>
+<p>v0.16.8 <strong>没有</strong>同步 <span class="mono">session()</span>，只有 <span class="mono">async_session()</span>；<span class="mono">db.py</span> 是 Postgres-only，方言透明不在这层。</p>
+<p>没有 <span class="mono">to_record()</span> / <span class="mono">to_orm()</span>：出门 <span class="mono">to_pydantic</span>、进门 <span class="mono">model_dump(to_orm=True)</span>，认准这两把。</p>
+</div>
+<div class="card key"><div class="tag">✅ 本课要点</div>
+<ul>
+<li>每个 manager 方法都是<strong>同一条流水线</strong>：装饰器 → <span class="mono">async with db_registry.async_session()</span> → actor 范围 CRUD → <strong>session 内</strong> <span class="mono">to_pydantic()</span> → 返回 pydantic。</li>
+<li><strong>绝不返回 ORM 行</strong>：门内转好复印件，门外只见 schema；<span class="mono">expire_on_commit=False</span> + <span class="mono">expunge_all</span>，漏出去就 <span class="mono">DetachedInstanceError</span>。</li>
+<li><span class="mono">db_registry.async_session()</span> 是<strong>唯一接缝</strong>：一行定事务边界 + actor/org 范围；docstring 自称 "Dummy registry"，v0.16.8 只有 async 版。</li>
+<li>三装饰器<strong>免费横切</strong>：<span class="mono">enforce_types</span>(typing) / <span class="mono">raise_on_invalid_id</span>(id) / <span class="mono">trace_method</span>(tracing，未初始化即 no-op)。</li>
+<li>换装两把：出门 <span class="mono">SqlalchemyBase.to_pydantic</span>，进门 <span class="mono">model_dump(to_orm=True)</span>（<span class="mono">metadata→metadata_</span>）；没有 <span class="mono">to_record / to_orm</span>。</li>
+</ul>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">一句话收束：<strong>manager 这层＝"唯一能开事务的柜台"</strong>——它开 session、按身份取数、在门内把行复印成 pydantic 递出去，事务、租户、横切全焊在这一处。</span></div>
+<p>这副"统一形状"你其实早就见过：第 08、10、11 课的记忆 managers，走的就是同一套开门取数、门内转换。</p>
+<p>接下来两课会钻进这条流水线的后半段：第 26 课拆 ORM 的 CRUD 与 <span class="mono">apply_access_predicate</span> 多租户隔离，第 27 课讲 DB 引擎、session 来历与方言透明。柜台之下，还有两层楼要看。</p>
 """,
     "en": r"""<p>stub</p>""",
 }
