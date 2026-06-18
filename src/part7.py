@@ -680,5 +680,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 <p>这副"统一形状"你其实早就见过：第 08、10、11 课的记忆 managers，走的就是同一套开门取数、门内转换。</p>
 <p>接下来两课会钻进这条流水线的后半段：第 26 课拆 ORM 的 CRUD 与 <span class="mono">apply_access_predicate</span> 多租户隔离，第 27 课讲 DB 引擎、session 来历与方言透明。柜台之下，还有两层楼要看。</p>
 """,
-    "en": r"""<p>stub</p>""",
+    "en": r"""
+<!--ENMORE-->
+""",
 }
