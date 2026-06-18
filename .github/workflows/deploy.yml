@@ -1,0 +1,58 @@
+name: deploy
+
+# Publishes the static guide (index + lessons + print editions) to GitHub Pages.
+#
+# One-time setup by the repo owner: Settings -> Pages -> Build and deployment ->
+# Source: "GitHub Actions". The workflow cannot create the Pages site itself
+# (the GITHUB_TOKEN lacks admin rights); once Pages is enabled it deploys on
+# every push to master.
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; let an in-progress run finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build site (index + lessons + print-zh/-en)
+        working-directory: src
+        run: python build.py
+
+      - name: Assemble the publishable site
+        run: |
+          mkdir -p _site
+          cp -r index.html lessons print-zh.html print-en.html _site/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
