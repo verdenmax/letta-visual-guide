@@ -2731,6 +2731,121 @@ QUIZZES = {
             },
         ],
     },
+    "29-data-sources-rag.html": {
+        "mcq": [
+            {
+                "q": {
+                    "zh": "SourcePassage 和 ArchivalPassage 在底层到底“共享”了什么？",
+                    "en": "What exactly do SourcePassage and ArchivalPassage \"share\" at the bottom layer?",
+                },
+                "opts": [
+                    {"zh": "同一个 BasePassage：同一根向量列、同一套 4096 padding、同一个 cosine_distance 排序",
+                     "en": "The same BasePassage: one vector column, the same 4096 padding, one cosine_distance ordering"},
+                    {"zh": "同一张物理表，靠一个 type 字段区分源与归档两类行",
+                     "en": "The same physical table, telling source and archival rows apart by a type column"},
+                    {"zh": "同一行 passage——挂载时在两个 agent 间共享同一条记录",
+                     "en": "The same passage row — one record shared between two agents on attach"},
+                    {"zh": "什么都不共享：RAG 有自己独立的向量引擎与索引服务",
+                     "en": "Nothing — RAG has its own separate vector engine and index service"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "orm/passage.py::BasePassage 是 __abstract__ 抽象基类（自己不建表），定义了那根嵌入列：Postgres 上 embedding = Vector(MAX_EMBEDDING_DIM)（pgvector）、SQLite 上 CommonVector，外加同一套 4096 padding 与 cosine_distance。SourcePassage(BasePassage, FileMixin, SourceMixin) 与 ArchivalPassage(BasePassage, ArchiveMixin) 原样继承这根列、一行没改——这正是第 27 课的底座。所以它们共享的是“物理列＋算法”，不是同一张表（两表分别是 source_passages / archival_passages）、不是同一行（挂载从不复制或共享 passage 行），更不是“各自独立的引擎”（恰恰是同一套）。",
+                    "en": "orm/passage.py::BasePassage is an __abstract__ base (it builds no table of its own) that defines the embedding column: on Postgres embedding = Vector(MAX_EMBEDDING_DIM) (pgvector), on SQLite CommonVector, plus the same 4096 padding and cosine_distance. SourcePassage(BasePassage, FileMixin, SourceMixin) and ArchivalPassage(BasePassage, ArchiveMixin) inherit that column verbatim, not a line changed — exactly Lesson 27's substrate. So what they share is the \"physical column + algorithm,\" not one table (they are source_passages / archival_passages), not one row (attaching never copies or shares a passage row), and not \"separate engines\" (it is one and the same).",
+                },
+            },
+            {
+                "q": {
+                    "zh": "既然底座相同，SourcePassage 与 ArchivalPassage 真正的差别在哪？",
+                    "en": "Given the shared foundation, where do SourcePassage and ArchivalPassage actually differ?",
+                },
+                "opts": [
+                    {"zh": "只在来源：表/外键/工具不同（source_passages vs archival_passages），向量搜索完全相同",
+                     "en": "Only in provenance: different table/FK/tool (source_passages vs archival_passages); the vector search is identical"},
+                    {"zh": "用不同的距离度量：源用 cosine、归档用 L2 欧氏距离",
+                     "en": "Different distance metrics: source uses cosine, archival uses L2 Euclidean"},
+                    {"zh": "向量维度不同：源是 1536 维、归档 pad 到 4096 维",
+                     "en": "Different vector dimensions: source is 1536-dim, archival padded to 4096"},
+                    {"zh": "只是命名不同，表、外键、工具其实完全一样",
+                     "en": "Only the names differ; table, FK, and tool are actually identical"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "向量机器完全相同（同 BasePassage、同 cosine_distance、同 4096 padding），差别只在“归属与来源”：SourcePassage 进 source_passages、带 source_id(必)+file_id(选)、检索走 build_source_passage_query join SourcesAgents、工具 semantic_search_files；ArchivalPassage 进 archival_passages、带 archive_id（外加 passage_tags 标签）、检索走 build_agent_passage_query join ArchivesAgents、工具 archival_memory_search。所以“不同距离度量”“不同维度”都错（恰恰相同）；“完全一样”也错——表/外键/工具确实分家。两个不同工具，同一套 pgvector cosine。",
+                    "en": "The vector machinery is identical (same BasePassage, same cosine_distance, same 4096 padding); the only difference is ownership and provenance. SourcePassage goes to source_passages with source_id(req)+file_id(opt), retrieved via build_source_passage_query joining SourcesAgents, tool semantic_search_files; ArchivalPassage goes to archival_passages with archive_id (plus passage_tags), retrieved via build_agent_passage_query joining ArchivesAgents, tool archival_memory_search. So \"different distance metrics\" and \"different dimensions\" are wrong (they are the same), and \"actually identical\" is wrong too — table/FK/tool really do diverge. Two different tools, one pgvector cosine.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "把一个源“挂载”到 agent 上（attach_source_async），底层到底做了什么？",
+                    "en": "When you attach a source to an agent (attach_source_async), what actually happens underneath?",
+                },
+                "opts": [
+                    {"zh": "只写一行 sources_agents junction——不复制、不重嵌；源是 org 级、可被多个 agent 共享",
+                     "en": "It writes one sources_agents junction row — no copy or re-embed; sources are org-scoped and shareable"},
+                    {"zh": "把该源的全部 passage 复制一份到该 agent 名下，并重新嵌入",
+                     "en": "It copies all of the source's passages under that agent and re-embeds them"},
+                    {"zh": "把源的文件逐字塞进该 agent 的上下文窗口（FileBlock）",
+                     "en": "It stuffs the source's files verbatim into the agent's context window (FileBlock)"},
+                    {"zh": "在该 agent 的 archive 里新建一批 ArchivalPassage 行",
+                     "en": "It creates a fresh batch of ArchivalPassage rows in the agent's archive"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "agent_manager.py::AgentManager.attach_source_async 只写一行 orm/sources_agents.py::SourcesAgents junction（复合主键 (agent_id, source_id)，保证只连一次），passage 一条都不复制、不重嵌。Source 由 services/source_manager.py::SourceManager.create_source 建在 org 这层、可被同组织多个 agent 经 junction 共享（一份 50 页手册挂给 10 个 agent 仍只嵌入一次）。检索时 build_source_passage_query 正是 join 这张 SourcesAgents 才知道“该 agent 能搜哪些源”。所以“复制+重嵌”“塞进上下文”“新建 ArchivalPassage”全错——挂载只是“连一条线”。",
+                    "en": "agent_manager.py::AgentManager.attach_source_async writes a single orm/sources_agents.py::SourcesAgents junction row (composite PK (agent_id, source_id), so it links only once); not one passage is copied or re-embedded. The Source is built at the org level by services/source_manager.py::SourceManager.create_source and shared across agents via the junction (a 50-page manual attached to 10 agents is still embedded once). At retrieval, build_source_passage_query joins exactly this SourcesAgents to know which sources the agent may search. So \"copy + re-embed,\" \"stuff into context,\" and \"create new ArchivalPassage\" are all wrong — attaching just draws a line.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "现代摄取管线 FileProcessor.process 把一份文件变成可搜索 passage 的正确步骤顺序是？",
+                    "en": "In the modern ingestion pipeline FileProcessor.process, what is the correct step order that turns a file into searchable passages?",
+                },
+                "opts": [
+                    {"zh": "extract_text(OCR) → 切块(LlamaIndexChunker，尺寸来自 EmbeddingConfig) → 批量嵌入 → create_many_source_passages_async(pgvector 上 pad 4096)",
+                     "en": "extract_text (OCR) → chunk (LlamaIndexChunker, size from EmbeddingConfig) → batch-embed → create_many_source_passages_async (pad 4096 on pgvector)"},
+                    {"zh": "先嵌入整份文件 → 再切块 → 最后 OCR 抽文本写库",
+                     "en": "Embed the whole file first → then chunk → finally OCR the text into the DB"},
+                    {"zh": "切块 → 写入 source_passages → 检索时才按需嵌入（懒嵌入）",
+                     "en": "Chunk → write to source_passages → embed lazily at retrieval time"},
+                    {"zh": "走 legacy connectors.load_data ＋ TokenTextSplitter ＋ create_many_passages_async",
+                     "en": "Go through legacy connectors.load_data + TokenTextSplitter + create_many_passages_async"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "services/file_processor/file_processor.py::FileProcessor.process：create_file(状态 PARSING) → extract_text(PDF/图片走 OCR、转 markdown) → upsert_file_content(全文存 file_contents) → insert_file_into_context_windows(建 FileAgent) → LlamaIndexChunker.chunk_text(chunk_size 来自 EmbeddingConfig，第 21 课) → generate_embedded_passages(每 200 条一批) → create_many_source_passages_async(写 source_passages，pgvector 上 pad 到 MAX_EMBEDDING_DIM、TPUF 跳过)。所以必须“先抽文本、再切块、再嵌入、最后落库”。“先嵌整文再切块”“懒嵌入”都违反顺序；legacy connectors.load_data 调的是已弃用的 create_many_passages_async，不是 v0.16.8 主线。",
+                    "en": "services/file_processor/file_processor.py::FileProcessor.process: create_file (status PARSING) → extract_text (PDF/image via OCR, to markdown) → upsert_file_content (full text into file_contents) → insert_file_into_context_windows (builds FileAgent) → LlamaIndexChunker.chunk_text (chunk_size from EmbeddingConfig, Lesson 21) → generate_embedded_passages (batches of 200) → create_many_source_passages_async (writes source_passages, padded to MAX_EMBEDDING_DIM on pgvector, skipped for TPUF). So it must be extract, then chunk, then embed, then land. \"Embed whole file first\" and \"lazy embedding\" break the order; legacy connectors.load_data calls the deprecated create_many_passages_async, not the v0.16.8 mainline.",
+                },
+            },
+            {
+                "q": {
+                    "zh": "一份挂载的文件在 Letta 里会同时以哪两种形态存在？",
+                    "en": "What two forms does an attached file take in Letta at the same time?",
+                },
+                "opts": [
+                    {"zh": "可语义搜的 SourcePassage（嵌入 chunk）＋ 上下文里只读的 FileBlock（FileAgent.visible_content）",
+                     "en": "A searchable SourcePassage (embedded chunk) + a read-only FileBlock in context (FileAgent.visible_content)"},
+                    {"zh": "一份 SourcePassage ＋ 一份内容相同的 ArchivalPassage 备份",
+                     "en": "A SourcePassage plus an identical ArchivalPassage backup"},
+                    {"zh": "只有可搜索的 SourcePassage 一种；“打开文件”也是搜 chunk",
+                     "en": "Only the searchable SourcePassage; opening a file is also just searching chunks"},
+                    {"zh": "一个可写的 core memory block ＋ 一份归档副本",
+                     "en": "A writable core-memory block plus an archival copy"},
+                ],
+                "answer": 0,
+                "why": {
+                    "zh": "同一趟摄取管线双重产出：①形态 A——切块嵌入成 SourcePassage、按 cosine 语义召回（工具 semantic_search_files）；②形态 B——insert_file_into_context_windows 建 orm/files_agents.py::FileAgent（files_agents junction，带 is_open/visible_content），经 to_pydantic_block 渲染成上下文里的 FileBlock(read_only=True)，由 open_files/grep_files 操作、默认最多开 5 个。两者互补：semantic 模糊定位、open_files 逐字细读。所以不是“再存一份 ArchivalPassage”（归档是 agent 自写、另一来源），不是“只有 SourcePassage 一种”，FileBlock 更是只读、不是可写 core memory。",
+                    "en": "One ingestion pass yields two forms: (A) chunked and embedded into a SourcePassage, recalled by cosine (tool semantic_search_files); (B) insert_file_into_context_windows builds orm/files_agents.py::FileAgent (the files_agents junction, with is_open/visible_content), rendered via to_pydantic_block into an in-context FileBlock(read_only=True), operated by open_files/grep_files and capped at 5 open by default. The two are complementary: semantic for fuzzy locating, open_files for verbatim reading. So it is not \"an extra ArchivalPassage backup\" (archival is agent-written, a different source), not \"only a SourcePassage,\" and FileBlock is read-only, not a writable core-memory block.",
+                },
+            },
+        ],
+        "open": [
+            {
+                "zh": "用本课“同底座、不同来源”的框架，把“上传一份 PDF 手册、让 agent 用它回答问题”从头到尾讲一遍，并想透五件事：(1) 为什么说 Letta 没有独立的“RAG 引擎”？请从 orm/passage.py::BasePassage 那根 Vector(MAX_EMBEDDING_DIM) 列、cosine_distance、4096 padding 说清 SourcePassage 与 ArchivalPassage 到底共享什么、又在表/外键/工具/查询四层怎么分家。(2) 把 FileProcessor.process 的步骤顺序复述出来（create_file → extract_text → upsert_file_content → insert_file_into_context_windows → chunk_text → generate_embedded_passages → create_many_source_passages_async），并解释为什么 chunk_size 必须来自 EmbeddingConfig、为什么嵌入要按 200 条一批。(3) 同一份文件为什么会“同时”活成可搜的 SourcePassage 和上下文里只读的 FileBlock？semantic_search_files 与 grep_files/open_files 分别解决什么问题、为何 FileBlock 要 read_only=True、为何默认最多开 5 个？(4) “挂载源”为什么只写一行 sources_agents junction、而不复制 passage？这跟第 26 课多租户、第 28 课 blocks_agents 共享块是同一种套路吗？build_source_passage_query 里那个 join SourcesAgents 起什么护栏作用？(5) np.pad 到 4096 为什么只在 pgvector 路径做、TPUF 为什么跳过？如果摄取与召回用了不同的 EmbeddingConfig，pad 会怎样“静默掩盖”维度不匹配、埋下“搜不准”的坑？最后回到那句话：既然 RAG 就是“换了来源的归档记忆”，你会怎样只用 BasePassage ＋ 一张新 junction 表，给 agent 再加一类全新的“可语义搜索的知识”？",
+                "en": "Using this lesson's \"same foundation, different source\" framework, narrate \"upload a PDF manual and let the agent answer questions from it\" end to end, and think through five things: (1) Why does Letta have no separate \"RAG engine\"? From orm/passage.py::BasePassage's Vector(MAX_EMBEDDING_DIM) column, cosine_distance, and 4096 padding, spell out exactly what SourcePassage and ArchivalPassage share, and how they diverge across the four layers of table/FK/tool/query. (2) Recite the step order of FileProcessor.process (create_file → extract_text → upsert_file_content → insert_file_into_context_windows → chunk_text → generate_embedded_passages → create_many_source_passages_async), and explain why chunk_size must come from EmbeddingConfig and why embedding is batched 200 at a time. (3) Why does one file live \"at once\" as a searchable SourcePassage and a read-only FileBlock in context? What does semantic_search_files solve versus grep_files/open_files, why is FileBlock read_only=True, and why cap at 5 open by default? (4) Why does \"attaching a source\" write only one sources_agents junction row rather than copy passages? Is this the same pattern as Lesson 26's multi-tenancy and Lesson 28's blocks_agents shared blocks? What guardrail does that join SourcesAgents play in build_source_passage_query? (5) Why does np.pad to 4096 happen only on the pgvector path, and why does TPUF skip it? If ingestion and recall used different EmbeddingConfigs, how would padding \"silently mask\" the dimension mismatch and bury a \"bad results\" trap? Finally, return to the line: since RAG is just \"archival memory with a different source,\" how would you add a brand-new kind of \"semantically searchable knowledge\" to an agent using only BasePassage plus one new junction table?",
+            },
+        ],
+    },
 }
 
 
