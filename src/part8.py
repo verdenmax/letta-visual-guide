@@ -184,6 +184,25 @@ LESSON_28 = {
 <p><span class="mono">Block</span> 带乐观锁 <span class="mono">version</span>：并发写按版本号检测冲突，避免后台与前台互相覆盖。</p>
 <p>所以"共享"共享的是<strong>那一行的当前值</strong>，可见性边界是"下次重建 prompt"，不是"立刻推送"。</p>
 </div></details>
+<h2>一处最反直觉的接线：谁才是"管理者"？</h2>
+<p>sleeptime 的 group 里有两个字段最容易认反。<span class="mono">manager_agent_id</span> 听着像"协调者"，其实是<strong>前台主 agent</strong>；<span class="mono">group.agent_ids</span> 听着像"普通成员"，其实是<strong>后台编辑者</strong>（那些 sleeptime agents）。</p>
+<p>换句话说：跑用户对话的"主角"被记成 <span class="mono">manager</span>，真正干"整理记忆"脏活的后台 agent 反而躺在 <span class="mono">agent_ids</span> 里。命名与直觉正好相反，读 <span class="mono">orm/group.py::Group</span> 时务必盯紧。</p>
+<p><span class="mono">Group</span> 这行还带着 <span class="mono">manager_type / manager_agent_id / sleeptime_agent_frequency / turns_counter / agent_ids</span>，并经 M2M 表 <span class="mono">groups_agents</span> 连到 <span class="mono">agents</span>——一张表把"谁是主角、谁是夜班、多久叫一次"全记下了。</p>
+<div class="cute"><div class="row"><span class="emoji">😴</span><span class="lab">主 agent 在睡</span><span class="arrow">→</span><span class="emoji">🧠</span><span class="lab">记忆块被悄悄擦改</span><span class="arrow">→</span><span class="emoji">✨</span><span class="bubble">睡醒记忆更好</span></div><div class="cap">😴 前台主 agent "睡着"的间隙，sleeptime agent 把 🧠 共享记忆块擦掉、重写成更整洁的版本，✨ 主 agent 下回合醒来，记忆已被整理好——它甚至不知道夜里有人来过</div></div>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>sleeptime ＝ 把"记忆整理"<strong>实现成 agent 抽象的递归套用</strong>。后台那个"记忆整理器"不是特殊子系统——它就是<strong>另一个 <span class="mono">LettaAgentV3</span></strong>（<span class="mono">SleeptimeMultiAgentV4</span> 干脆继承普通 loop）。</p>
+<p>它被丢进一段 transcript、戴上 <span class="mono">sleeptime_memory_persona</span>、给一套记忆工具，然后被告知"你的活儿是整理记忆"——仅此而已。</p>
+<p>两个 agent 之间的协调基元，朴素到只是一个<strong>共享可变的 <span class="mono">Block</span> 行</strong>：A 写、B 下次重建 system prompt 时读到。</p>
+<p>于是整个特性 ＝（同一个 loop）＋（一行共享记忆）＋（一个回合计数器）。三块积木，没有第四块。</p>
+<p>最反直觉的推论：v0.16.8 <strong>根本没有专门的"多智能体运行时"</strong>——<span class="mono">round_robin / supervisor</span> 那套是睡着的脚手架，真多智能体行为全从"一个 agent 调另一个的 API"和"两个 agent 指向同一个 block"里<strong>涌现</strong>。</p>
+</div>
+<div class="card warn"><div class="tag">⚠️ 常见误区</div>
+<p>标准 sleeptime 的记忆工具是 <span class="mono">memory_rethink</span>，<strong>不是</strong> <span class="mono">rethink_memory</span>（legacy）或 <span class="mono">finish_rethinking_memory</span>（voice 专用）。</p>
+<p>阻塞语义相反：<span class="mono">..._and_wait_for_reply</span> <strong>同步阻塞</strong>，sleeptime 后台任务<strong>非阻塞</strong>。别拿一个的直觉套另一个。</p>
+<p>字段易认反：sleeptime 的 <span class="mono">manager_agent_id</span> ＝<strong>前台主 agent</strong>，<span class="mono">group.agent_ids</span> ＝<strong>后台编辑者</strong>。</p>
+<p>"共享块"共享的是<strong>同一行 Block</strong>，不是各持一份副本——改一处，另一个 agent 下次重建 prompt 就见到。</p>
+<p><span class="mono">round_robin / supervisor / dynamic</span> 在 v0.16.8 <strong>不能经 live API 跑</strong>，别照着 schema 以为它们能用。</p>
+</div>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
