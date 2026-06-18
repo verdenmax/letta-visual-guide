@@ -499,6 +499,59 @@ LESSON_25 = {
 <p>读和写，两副身子骨一模一样：开 session → 动 ORM → <span class="mono">to_pydantic()</span> → 返回。差别只在中间——一个 <span class="mono">read_async</span>，一个 <span class="mono">create_async</span>。</p>
 <p>留意写那一支的入口：<span class="mono">model_dump(to_orm=True)</span> 把 pydantic 拆成构造 ORM 用的字段字典，再喂给 <span class="mono">OrganizationModel(...)</span>。这趟是<strong>反方向</strong>换装，后面单开一节细说。</p>
 <div class="note info"><span class="ni">💡</span><span class="nx">organization 是租户树的<strong>根</strong>，所以它的读没有 <span class="mono">actor</span> 参数。换成 agent、message 这些<strong>租户内</strong>的对象，方法签名就会多一个 <span class="mono">actor</span>，ORM 据此把 <span class="mono">apply_access_predicate</span> 焊进查询——形状不变，只多了一道身份。</span></div>
+<h2>db_registry：唯一能开 session 的接缝</h2>
+<p>统一形状里最关键的一行，是 <span class="mono">async with db_registry.async_session()</span>。它凭什么"一行定两件事"——既划事务边界，又注入租户范围？答案藏在 <span class="mono">db.py</span> 里。</p>
+<p>先记住一个反差极大的事实：<span class="mono">db_registry</span> 听着像个复杂的"注册表"，可它的类 docstring 只有一句自嘲——<strong>"Dummy registry to maintain the existing interface."</strong>（为维持旧接口而留的傀儡注册表）。</p>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">db.py::DatabaseRegistry</span>——进程级单例 <span class="mono">db_registry</span>；v0.16.8 只暴露 <span class="mono">async_session()</span>，没有同步 <span class="mono">session()</span>。</p>
+<p><span class="mono">db.py</span> 模块级：<span class="mono">engine = create_async_engine(...)</span> + <span class="mono">async_session_factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)</span>。</p>
+<p><span class="mono">utils.py::enforce_types</span>、<span class="mono">otel/tracing.py::trace_method</span>、<span class="mono">sqlalchemy_base.py::SqlalchemyBase.to_pydantic</span>——这层的三件横切工具。</p>
+</div>
+<p>把 <span class="mono">async_session</span> 摊开看，它就是一个 <span class="mono">@asynccontextmanager</span>：干净退出提交、出错回滚、最后一定清场。</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/db.py</span><span class="ln">DatabaseRegistry.async_session：事务边界都在这（节选）</span></div>
+<pre><span class="cm"># 模块级：一个进程一个引擎 + 一个 session 工厂</span>
+engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)
+async_session_factory = <span class="fn">async_sessionmaker</span>(engine, expire_on_commit=<span class="kw">False</span>, autoflush=<span class="kw">False</span>)
+
+<span class="kw">class</span> <span class="fn">DatabaseRegistry</span>:
+    <span class="st">&quot;&quot;&quot;Dummy registry to maintain the existing interface.&quot;&quot;&quot;</span>
+
+    <span class="nb">@asynccontextmanager</span>
+    <span class="kw">async def</span> <span class="fn">async_session</span>(self):
+        session = <span class="fn">async_session_factory</span>()
+        <span class="kw">try</span>:
+            <span class="kw">yield</span> session
+            <span class="kw">await</span> session.<span class="fn">commit</span>()        <span class="cm"># 干净退出 -&gt; 提交</span>
+        <span class="kw">except</span> BaseException:               <span class="cm"># 含 CancelledError</span>
+            <span class="kw">await</span> session.<span class="fn">rollback</span>()      <span class="cm"># 出错 -&gt; 回滚</span>
+            <span class="kw">raise</span>
+        <span class="kw">finally</span>:
+            session.<span class="fn">expunge_all</span>()         <span class="cm"># 解绑所有对象，防止行泄漏出 session</span>
+            <span class="kw">await</span> session.<span class="fn">close</span>()
+
+db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="cm"># 进程级单例</span>
+</pre></div>
+<p>三个收尾动作各有分工：<span class="mono">commit/rollback</span> 管数据正确，<span class="mono">expunge_all</span> 管对象安全，<span class="mono">close</span> 管连接归还。每开一次 session，这套收尾都<strong>原子地</strong>跑一遍。</p>
+<p>注意是 <span class="mono">except BaseException</span> 而非 <span class="mono">except Exception</span>：连 <span class="mono">CancelledError</span>（请求被取消）也要回滚——async 世界里被取消是常态，绝不能把半截事务留在库里。</p>
+<p>还有 <span class="mono">expire_on_commit=False</span> 这个不起眼的参数：它让对象在 commit 后<strong>不</strong>被标记过期，于是 <span class="mono">to_pydantic()</span> 读字段时不必再跑一次 DB 往返。这是后面"为什么在 session 内转"的另一半钥匙。</p>
+<p>那么，谁会来调这些 manager？答案是<strong>四类调用方，殊途同归</strong>，最后都收束到 <span class="mono">db_registry.async_session()</span> 这一道接缝上。</p>
+<div class="cellgroup"><div class="cg-cap"><b>谁在调 managers（四类调用方）</b></div><div class="cells"><span class="cell hl">REST 路由</span><span class="sep">·</span><span class="cell">agent 循环</span><span class="sep">·</span><span class="cell">别的 manager</span><span class="sep">·</span><span class="cell">序列化 / 批任务</span></div></div>
+<p>四路调用看似各走各的，进了二楼却都被拢成同一条窄路：</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">任意调用方</div><div class="nd">路由 / 循环 / 别的 manager</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">manager 方法</div><div class="nd">server.&lt;manager&gt;.&lt;method&gt;</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">async_session()</div><div class="nd">唯一接缝 · 一道事务</div></div>
+</div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">"唯一接缝"是这层最大的杠杆：路由和 agent 循环<strong>永远看不到</strong> session，也写不出 <span class="mono">WHERE organization_id</span>。隔离与事务被<strong>结构性地</strong>焊死在"唯一能开 session 的地方"，想忘都忘不掉。</span></div>
+<details class="accordion"><summary>manager 这层，到底为什么要单独存在？</summary><div class="acc-body">
+<p>把"开 session + 范围 CRUD + 转 pydantic"收进一层，至少买到四样东西。</p>
+<p><strong>事务归属</strong>：全进程<strong>只有</strong> manager 能开 session，事务边界因此有唯一、明确的归属，不散落在路由或循环里。</p>
+<p><strong>租户范围</strong>：<span class="mono">apply_access_predicate</span> 只在这层注入一次，组织级隔离绕不过去，也不必每个端点各写一遍。</p>
+<p><strong>跨调用方复用</strong>：同一个方法，REST 路由能调、agent 循环能调、别的 manager 也能调；<span class="mono">AgentManager.__init__</span> 甚至直接组合 <span class="mono">BlockManager / ToolManager / MessageManager / PassageManager</span>。</p>
+<p><strong>横切免费</strong>：装饰器一叠，typing、tracing、id 校验对每个方法一视同仁，不必手写。</p>
+</div></details>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
