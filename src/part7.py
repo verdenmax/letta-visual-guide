@@ -575,6 +575,55 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 <p>所以规矩很硬：<strong>趁门还开着，把要用的都读出来、定形成 pydantic</strong>。复印件一旦成形，就和柜台、和那道门彻底无关了。</p>
 <p>这也解释了 <span class="mono">get_agent_by_id_async</span> 一个"反直觉"的细节：它故意<strong>先不解密就转 pydantic、放掉 DB 连接之后</strong>，再去跑昂贵的 PBKDF2 解密——schema 边界顺手成了连接池优化。</p>
 </div></details>
+<h2>三个装饰器：typing、tracing、id 校验"免费"</h2>
+<p>回到方法顶上那三行 <span class="mono">@</span>。它们不写在方法体里，却让每个 manager 方法都"免费"得到类型校验、链路追踪、id 校验。先看它们怎么定义、怎么叠：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/utils.py · letta/otel/tracing.py</span><span class="ln">两个装饰器 + 一个真实方法栈（简化）</span></div>
+<pre><span class="cm"># letta/utils.py</span>
+<span class="kw">def</span> <span class="fn">enforce_types</span>(func):
+    <span class="nb">@wraps</span>(func)
+    <span class="kw">def</span> <span class="fn">wrapper</span>(*args, **kwargs):            <span class="cm"># 注意：同步 def，不是 async</span>
+        hints = <span class="fn">get_type_hints</span>(func)
+        <span class="kw">if</span> <span class="fn">_mismatch</span>(args, kwargs, hints):     <span class="cm"># 逐个比对入参与注解</span>
+            <span class="kw">raise</span> <span class="fn">ValueError</span>(...)            <span class="cm"># 校验在调用前、同步发生</span>
+        <span class="kw">return</span> <span class="fn">func</span>(*args, **kwargs)          <span class="cm"># async 方法：这里得到协程，原样返回</span>
+    <span class="kw">return</span> wrapper
+
+<span class="cm"># letta/otel/tracing.py</span>
+<span class="kw">def</span> <span class="fn">trace_method</span>(func):
+    <span class="nb">@wraps</span>(func)
+    <span class="kw">async def</span> <span class="fn">async_wrapper</span>(*args, **kwargs):
+        <span class="kw">if</span> <span class="kw">not</span> _is_tracing_initialized:        <span class="cm"># 未初始化 -&gt; 纯透传（no-op）</span>
+            <span class="kw">return</span> <span class="kw">await</span> <span class="fn">func</span>(*args, **kwargs)
+        name = f<span class="st">&quot;{type(args[0]).__name__}.{func.__name__}&quot;</span>  <span class="cm"># "AgentManager.get_..."</span>
+        <span class="kw">with</span> tracer.<span class="fn">start_as_current_span</span>(name):
+            <span class="kw">return</span> <span class="kw">await</span> <span class="fn">func</span>(*args, **kwargs)   <span class="cm"># 记参时跳过 messages/embeddings 等大参</span>
+    <span class="kw">return</span> async_wrapper
+
+<span class="cm"># letta/services/agent_manager.py —— 典型装饰器栈</span>
+<span class="nb">@enforce_types</span>           <span class="cm"># 最外：typing</span>
+<span class="nb">@raise_on_invalid_id</span>     <span class="cm"># 中：校验前缀 id（validators.py）</span>
+<span class="nb">@trace_method</span>            <span class="cm"># 最内：tracing</span>
+<span class="kw">async def</span> <span class="fn">get_agent_by_id_async</span>(self, agent_id: str, actor: User) -&gt; PydanticAgentState:
+    ...
+</pre></div>
+<p>叠放顺序很有讲究：<span class="mono">@enforce_types</span> 在最外、<span class="mono">@trace_method</span> 在最内。于是入参先被校验类型与 id，<strong>通过之后</strong>才进 span、才真正执行——脏数据根本到不了 tracing。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">把这三行想成"<strong>免费横切</strong>"：每个 manager 方法都自动获得<strong>类型校验 + 链路追踪 + id 校验</strong>，作者一行都不用为它们写。这正是"统一形状"能统一的底气——共性收进装饰器，方法体只剩业务。</span></div>
+<details class="accordion"><summary><span class="mono">enforce_types</span> 是同步的，怎么对 async 方法也成立？</summary><div class="acc-body">
+<p>关键在于：<span class="mono">enforce_types</span> 的 <span class="mono">wrapper</span> 是个普通 <span class="mono">def</span>，<strong>不是</strong> <span class="mono">async def</span>。</p>
+<p>它先<strong>同步</strong>跑完类型校验；通过后调 <span class="mono">func(*args, **kwargs)</span>。若 <span class="mono">func</span> 是 async，这一步并不执行方法体，而是返回一个<strong>协程对象</strong>。</p>
+<p>wrapper 把这个协程<strong>原样 return</strong> 出去，由调用方 <span class="mono">await</span>。于是校验同步、执行异步，两不耽误。</p>
+<p>反过来想：要是 wrapper 自己 <span class="mono">await</span> 了，它就得是 async，那同步方法就没法共用同一个装饰器了。同步 wrapper 是<strong>故意</strong>的最大公约数。</p>
+</div></details>
+<details class="accordion"><summary><span class="mono">trace_method</span> 何时是 no-op？span 又怎么命名？</summary><div class="acc-body">
+<p><strong>何时 no-op</strong>：当 <span class="mono">_is_tracing_initialized</span> 为 <span class="mono">False</span>（没配 OTel 后端），<span class="mono">trace_method</span> 直接 <span class="mono">await func(...)</span>，一个 span 都不开——纯透传、零开销。</p>
+<p><strong>怎么命名</strong>：开 span 时名字是 <span class="mono">"{ClassName}.{method}"</span>，如 <span class="mono">"AgentManager.get_agent_by_id_async"</span>，于是一条 trace 上能一眼认出是哪个 manager 的哪个方法。</p>
+<p><strong>省什么</strong>：记录入参时会<strong>跳过</strong> <span class="mono">messages</span>、<span class="mono">embeddings</span> 这类大对象，免得把整车消息或向量塞进 span、拖垮追踪。</p>
+</div></details>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p>一行 <span class="mono">async with db_registry.async_session()</span> 同时定了两件事——<strong>事务从哪开始/提交</strong>，以及 <strong>actor/org 范围从哪注入</strong>（<span class="mono">apply_access_predicate</span>）。路由和 agent 循环永远看不到 session、也看不到 <span class="mono">WHERE organization_id</span>，于是隔离结构上<strong>没法被忘</strong>：它和"唯一能开 session 的地方"焊在一起。</p>
+<p>再看 <span class="mono">db_registry</span> 自嘲的 docstring "Dummy registry to maintain the existing interface"——上百处 <span class="mono">async_session()</span> 调用点<strong>一字未改</strong>，底下实现却被收成一个模块级 asyncpg 引擎：<strong>接口是契约、引擎可替换</strong>。</p>
+<p>第三层妙处是"转换在 session 内"竟是个<strong>性能模式</strong>：<span class="mono">get_agent_by_id_async</span> 故意"先不解密就转 pydantic、放掉 DB 连接后再跑昂贵的 PBKDF2"——schema 边界顺手成了连接池优化。</p>
+</div>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
