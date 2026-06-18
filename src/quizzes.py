@@ -2666,8 +2666,8 @@ QUIZZES = {
                     "en": "What exactly do the foreground and background agents in sleeptime “share”?",
                 },
                 "opts": [
-                    {"zh": "同一行 Block——经 blocks_agents 多对多挂到两个 agent，是共享可变的一行，不是副本",
-                     "en": "The same Block row — attached to both agents via the blocks_agents M2M; a shared mutable row, not a copy"},
+                    {"zh": "同一行 Block——一行共享可变的记录，不是副本",
+                     "en": "The same Block row — one shared mutable record, not a copy"},
                     {"zh": "各自一份 Block 副本，后台改完再同步/合并回前台",
                      "en": "A separate copy of the Block each, which the background syncs/merges back after editing"},
                     {"zh": "一个内存里的消息队列，后台把更新 push 给前台",
@@ -2687,8 +2687,8 @@ QUIZZES = {
                     "en": "In a sleeptime group, which agent does manager_agent_id point to?",
                 },
                 "opts": [
-                    {"zh": "前台主 agent（跑用户对话的那个）；后台记忆编辑者反而躺在 group.agent_ids 里",
-                     "en": "The foreground primary agent (the one running the user conversation); the background memory editors lie in group.agent_ids instead"},
+                    {"zh": "前台主 agent（跑用户对话的那个）",
+                     "en": "The foreground primary agent (the one running the user conversation)"},
                     {"zh": "后台 sleeptime agent（专职整理记忆的那个）",
                      "en": "The background sleeptime agent (the one dedicated to tidying memory)"},
                     {"zh": "一个独立的协调器 agent，专门排队调度成员发言",
