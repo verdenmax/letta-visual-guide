@@ -70,7 +70,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <span class="kw">yield</span>
 
 <span class="cm"># ---- letta/server/rest_api/dependencies.py ----</span>
-<span class="kw">def</span> <span class="fn">get_letta_server</span>() -&gt; SyncServer:
+<span class="kw">async def</span> <span class="fn">get_letta_server</span>() -&gt; SyncServer:
     <span class="kw">from</span> letta.server.rest_api.app <span class="kw">import</span> server   <span class="cm"># 惰性 import 那个模块全局</span>
     <span class="kw">return</span> server                                  <span class="cm"># 不放 app.state；每个路由拿到同一个</span>
 </pre></div>
@@ -92,8 +92,8 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <div class="cellgroup"><div class="cg-cap"><b>SyncServer 名下持有的 Manager（节选）</b></div><div class="cells"><span class="cell hl">agent_manager</span><span class="sep">·</span><span class="cell">message_manager</span><span class="sep">·</span><span class="cell">block_manager</span><span class="sep">·</span><span class="cell">passage_manager</span><span class="sep">·</span><span class="cell">user_manager</span><span class="sep">·</span><span class="cell">tool_manager</span><span class="sep">·</span><span class="cell">provider_manager</span><span class="sep">·</span><span class="cell">source_manager</span><span class="sep">·</span><span class="cell">step_manager</span><span class="sep">·</span><span class="cell">job_manager</span></div></div>
 <p>除了这些 manager，它还顺手持有 <span class="mono">self.config</span>（一个 <span class="mono">LettaConfig</span>）和 <span class="mono">self._enabled_providers</span>。把接线节选出来看：</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/server.py</span><span class="ln">SyncServer.__init__ 的 manager 接线（节选）</span></div>
-<pre><span class="kw">class</span> <span class="fn">SyncServer</span>(Server):
-    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process.&quot;&quot;&quot;</span>   <span class="cm"># 名不副实：见下文“亮点”</span>
+<pre><span class="kw">class</span> <span class="fn">SyncServer</span>(<span class="nb">object</span>):
+    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process&quot;&quot;&quot;</span>   <span class="cm"># 名不副实：见下文“亮点”</span>
     <span class="kw">def</span> <span class="fn">__init__</span>(self, ...):
         self.config = LettaConfig.<span class="fn">load</span>()
         self.organization_manager = <span class="fn">OrganizationManager</span>()
@@ -286,7 +286,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <span class="kw">yield</span>
 
 <span class="cm"># ---- letta/server/rest_api/dependencies.py ----</span>
-<span class="kw">def</span> <span class="fn">get_letta_server</span>() -&gt; SyncServer:
+<span class="kw">async def</span> <span class="fn">get_letta_server</span>() -&gt; SyncServer:
     <span class="kw">from</span> letta.server.rest_api.app <span class="kw">import</span> server   <span class="cm"># lazy-import that module global</span>
     <span class="kw">return</span> server                                  <span class="cm"># not in app.state; every router gets the same one</span>
 </pre></div>
@@ -308,8 +308,8 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <div class="cellgroup"><div class="cg-cap"><b>Managers held under SyncServer (excerpt)</b></div><div class="cells"><span class="cell hl">agent_manager</span><span class="sep">·</span><span class="cell">message_manager</span><span class="sep">·</span><span class="cell">block_manager</span><span class="sep">·</span><span class="cell">passage_manager</span><span class="sep">·</span><span class="cell">user_manager</span><span class="sep">·</span><span class="cell">tool_manager</span><span class="sep">·</span><span class="cell">provider_manager</span><span class="sep">·</span><span class="cell">source_manager</span><span class="sep">·</span><span class="cell">step_manager</span><span class="sep">·</span><span class="cell">job_manager</span></div></div>
 <p>Besides these managers, it also holds <span class="mono">self.config</span> (a <span class="mono">LettaConfig</span>) and <span class="mono">self._enabled_providers</span>. Here's an excerpt of the wiring:</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/server.py</span><span class="ln">SyncServer.__init__ manager wiring (excerpt)</span></div>
-<pre><span class="kw">class</span> <span class="fn">SyncServer</span>(Server):
-    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process.&quot;&quot;&quot;</span>   <span class="cm"># a misnomer: see the "highlight" below</span>
+<pre><span class="kw">class</span> <span class="fn">SyncServer</span>(<span class="nb">object</span>):
+    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process&quot;&quot;&quot;</span>   <span class="cm"># a misnomer: see the "highlight" below</span>
     <span class="kw">def</span> <span class="fn">__init__</span>(self, ...):
         self.config = LettaConfig.<span class="fn">load</span>()
         self.organization_manager = <span class="fn">OrganizationManager</span>()
