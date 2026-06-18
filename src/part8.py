@@ -1556,6 +1556,35 @@ LESSON_31 = {
 <tr><td><span class="mono">MCP</span></td><td>Model Context Protocol: pull in tools exposed by external servers and dispatch them uniformly.</td><td><a href="19-tool-dispatch-and-mcp.html">Lesson 19</a></td></tr>
 <tr><td><span class="mono">sandbox</span></td><td>Tool code runs in an isolated environment (e2b / a local subprocess) so it can't mess with the host.</td><td><a href="20-tool-sandbox-security.html">Lesson 20</a></td></tr>
 </table>
+<h2>⑤ LLM providers: smoothing over each one's temperament</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">LLMClient</span></td><td>The unified client base class for every model provider, hiding each one's API differences behind it.</td><td><a href="21-provider-contract.html">Lesson 21</a></td></tr>
+<tr><td><span class="mono">provider contract</span></td><td>The uniform interface contract that runs in three steps: build_request_data → request → convert.</td><td><a href="21-provider-contract.html">Lesson 21</a></td></tr>
+<tr><td><span class="mono">ChatCompletionResponse</span></td><td>Every provider's response is normalized into this internal shape; downstream code only knows it, never the raw format.</td><td><a href="21-provider-contract.html">Lesson 21</a></td></tr>
+<tr><td>provider <span class="mono">quirks</span></td><td>Each API's temperament differences: parameter names, streaming formats, and tool-call shapes all differ.</td><td><a href="22-provider-quirks.html">Lesson 22</a></td></tr>
+<tr><td><span class="mono">inner_thoughts</span> inner monologue</td><td>Stuff the agent's reasoning into a parameter or field, working around models with no native thinking.</td><td><a href="22-provider-quirks.html">Lesson 22</a></td></tr>
+<tr><td><span class="mono">GBNF</span></td><td>A grammar-constraint format that forces a local model to emit only valid tool-call JSON.</td><td><a href="23-local-models-gbnf.html">Lesson 23</a></td></tr>
+<tr><td><span class="mono">local models</span></td><td>Local models run via llama.cpp and friends, with GBNF filling in the tool-calling they lack.</td><td><a href="23-local-models-gbnf.html">Lesson 23</a></td></tr>
+</table>
+
+<h2>⑥ Server & persistence: punching down through three layers</h2>
+<table class="t">
+<tr><th>Term</th><th>In one line</th><th>Lesson</th></tr>
+<tr><td><span class="mono">three-layer</span> architecture</td><td>API routing → service-manager layer → ORM data layer; a request falls top-down through all three.</td><td><a href="24-three-layer-architecture.html">Lesson 24</a></td></tr>
+<tr><td><span class="mono">SyncServer</span></td><td>The top-level service object that gathers all the Managers — the single entry point for the routing layer.</td><td><a href="24-three-layer-architecture.html">Lesson 24</a></td></tr>
+<tr><td><span class="mono">actor</span></td><td>The identity of the user making the request, carried all the way down to the DB layer for permission and ownership checks.</td><td><a href="24-three-layer-architecture.html">Lesson 24</a></td></tr>
+<tr><td>service-layer <span class="mono">Manager</span></td><td>One Manager per resource type (AgentManager, ...), holding the business logic and transaction boundaries.</td><td><a href="25-service-managers.html">Lesson 25</a></td></tr>
+<tr><td><span class="mono">db_registry</span></td><td>The registry that centrally manages DB engines and sessions — everything that needs the database goes through it.</td><td><a href="25-service-managers.html">Lesson 25</a></td></tr>
+<tr><td><span class="mono">SqlalchemyBase</span></td><td>The base class for every ORM model, baking in CRUD, access control, soft delete, and other shared powers.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">apply_access_predicate</span></td><td>Auto-filters queries by the actor's org — the master gate of multi-tenant isolation.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">multi-tenancy</span></td><td>One database partitioned into tenants by organization, with data invisible across tenants.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">soft delete</span></td><td>Deleting just flips is_deleted to true: the row stays, auditable and recoverable.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">audit fields</span></td><td>Shared columns like created_at / updated_at / created_by_id that leave a trace of who changed what, when.</td><td><a href="26-crud-and-multitenancy.html">Lesson 26</a></td></tr>
+<tr><td><span class="mono">database_engine</span></td><td>Picks a different engine for SQLite vs Postgres, which decides whether features like vector columns are available.</td><td><a href="27-dual-db-and-vectors.html">Lesson 27</a></td></tr>
+<tr><td><span class="mono">pgvector</span> / vector store</td><td>Postgres's vector extension that lets embeddings live in a column and supports nearest-neighbor search.</td><td><a href="27-dual-db-and-vectors.html">Lesson 27</a></td></tr>
+<tr><td>pydantic <span class="mono">custom columns</span></td><td>A custom SQLAlchemy column type that transparently stores a pydantic object into a single column.</td><td><a href="27-dual-db-and-vectors.html">Lesson 27</a></td></tr>
+</table>
 <!--ENMORE-->
 """,
 }
