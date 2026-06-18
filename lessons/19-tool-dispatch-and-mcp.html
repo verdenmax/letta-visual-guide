@@ -557,7 +557,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">2. 你注册了一个自己写的 Python 工具 calculate_invoice，没有把它归到任何内置类别。它默认会被哪个执行器执行？为什么？</div>
   <ol class="opts">
-    <li>SandboxToolExecutor。它的类型默认是 custom，而 custom 不在工厂 _executor_map 里——get_executor 的 .get(tool_type, SandboxToolExecutor) 会兜底返回沙箱执行器</li>
+    <li>SandboxToolExecutor。它的类型默认是 custom，不在工厂 _executor_map 里，于是兜底进沙箱</li>
     <li>LettaBuiltinToolExecutor，自定义函数被当作内置工具处理</li>
     <li>创建会失败，因为工厂里没有 custom 对应的执行器，无法分发</li>
     <li>LettaCoreToolExecutor，因为所有没有特别归类的工具都按“核心工具”在进程内直跑</li>
@@ -570,7 +570,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">3. 一个 external_mcp 类型的工具被调用时，它的代码是在 Letta 的本地沙箱里跑的吗？执行路径大致是怎样的？</div>
   <ol class="opts">
-    <li>不在沙箱。ExternalMCPToolExecutor 从 mcp:&lt;server&gt; 标签解析出服务器名，交给 MCPManager().execute_mcp_server_tool 连接外部 MCP server（connect → execute → cleanup），Letta 本地不跑任何工具代码</li>
+    <li>不在沙箱。它连接外部 MCP server 执行，Letta 本地不跑任何工具代码</li>
     <li>在 Letta 进程内直跑，和 core_memory_append 一样，以求最低延迟</li>
     <li>Letta 把工具源码下载到本地，import 后在受限解释器里执行</li>
     <li>在沙箱里跑。所有“外部代码”都被当作不可信代码，统一丢进 SandboxToolExecutor 隔离执行</li>
@@ -584,7 +584,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="qn">4. agent 调用 core_memory_append 改写核心记忆时，是哪个执行器在执行它？在哪种运行时里跑？</div>
   <ol class="opts">
     <li>SandboxToolExecutor，因为任何“写状态”的工具都必须先隔离，避免污染服务端内存</li>
-    <li>LettaCoreToolExecutor，在 Letta 进程内直跑。core_memory_append 的类型是 letta_memory_core，工厂把 LETTA_MEMORY_CORE 也映射到 LettaCoreToolExecutor——记忆工具不进沙箱</li>
+    <li>LettaCoreToolExecutor，在 Letta 进程内直跑，记忆工具不进沙箱</li>
     <li>有一个专门的 LettaMemoryToolExecutor 处理所有记忆工具</li>
     <li>LettaBuiltinToolExecutor，记忆改写被当作内置实用工具处理</li>
   </ol>
@@ -599,7 +599,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>它们回退到 LettaCoreToolExecutor，在进程内直跑</li>
     <li>工厂会抛 KeyError，这些类型的工具无法被执行</li>
     <li>每种类型都有一个同名执行器，只是没写进 _executor_map，运行时按命名约定动态加载</li>
-    <li>全部兜底走 SandboxToolExecutor——get_executor 用 _executor_map.get(tool_type, SandboxToolExecutor)，凡是没在表里的类型一律落到沙箱。这是“默认安全”：除非明确认定安全，否则隔离</li>
+    <li>全部兜底走 SandboxToolExecutor：没在表里的类型一律落到沙箱，即“默认安全”</li>
   </ol>
   <details class="accordion">
     <summary>看答案与解析 <span class="hint">点击展开</span></summary>
@@ -828,7 +828,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">2. You register a Python tool you wrote yourself, calculate_invoice, without sorting it into any built-in category. Which executor runs it by default, and why?</div>
   <ol class="opts">
-    <li>SandboxToolExecutor. Its type defaults to custom, and custom is not in the factory's _executor_map — get_executor's .get(tool_type, SandboxToolExecutor) falls back to the sandbox executor</li>
+    <li>SandboxToolExecutor. Its type defaults to custom, which isn't in the factory's _executor_map, so it falls back to the sandbox</li>
     <li>LettaBuiltinToolExecutor, treating a custom function as a built-in tool</li>
     <li>Creation fails, because the factory has no executor mapped for custom, so it can't be dispatched</li>
     <li>LettaCoreToolExecutor, since any tool not specially categorized runs in-process as a “core tool”</li>
@@ -841,7 +841,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <div class="quiz">
   <div class="qn">3. When a tool of type external_mcp is called, does its code run inside Letta's local sandbox? Roughly what is the execution path?</div>
   <ol class="opts">
-    <li>Not in the sandbox. ExternalMCPToolExecutor parses the server name from the mcp:&lt;server&gt; tag and hands it to MCPManager().execute_mcp_server_tool, which connects to the external MCP server (connect → execute → cleanup); Letta runs no tool code locally</li>
+    <li>Not in the sandbox. It connects to an external MCP server to run it; Letta runs no tool code locally</li>
     <li>It runs in-process inside Letta, just like core_memory_append, for the lowest latency</li>
     <li>Letta downloads the tool's source locally and executes it in a restricted interpreter after importing it</li>
     <li>It runs in the sandbox. All “external code” is treated as untrusted and uniformly thrown into SandboxToolExecutor for isolated execution</li>
@@ -855,7 +855,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
   <div class="qn">4. When an agent calls core_memory_append to rewrite core memory, which executor runs it, and in what runtime?</div>
   <ol class="opts">
     <li>SandboxToolExecutor, because any “state-writing” tool must be isolated first to avoid polluting server memory</li>
-    <li>LettaCoreToolExecutor, in-process inside Letta. core_memory_append has type letta_memory_core, and the factory maps LETTA_MEMORY_CORE to LettaCoreToolExecutor too — memory tools do not go to the sandbox</li>
+    <li>LettaCoreToolExecutor, in-process inside Letta; memory tools do not go to the sandbox</li>
     <li>A dedicated LettaMemoryToolExecutor handles all memory tools</li>
     <li>LettaBuiltinToolExecutor, treating memory edits as a built-in utility</li>
   </ol>
@@ -870,7 +870,7 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <li>They fall back to LettaCoreToolExecutor and run in-process</li>
     <li>The factory raises KeyError, and tools of those types cannot be executed</li>
     <li>Each type has a same-named executor that's simply omitted from _executor_map and loaded dynamically by naming convention at runtime</li>
-    <li>They all fall back to SandboxToolExecutor — get_executor uses _executor_map.get(tool_type, SandboxToolExecutor), so any type not in the table lands in the sandbox. This is “secure by default”: isolate unless explicitly judged safe</li>
+    <li>They all fall back to SandboxToolExecutor: any type not in the table lands in the sandbox — “secure by default”</li>
   </ol>
   <details class="accordion">
     <summary>Show answer & explanation <span class="hint">click to expand</span></summary>
