@@ -950,6 +950,39 @@ LESSON_26 = {
 <p>七步里，真正"决定你看到谁"的是第 6 步那句自动追加的 <span class="mono">WHERE</span>；前五步都在做同一件事——把"你是谁"安全地送到门禁面前。</p>
 <p>注意第 1 步打了括号：服务器口令是整服务器级的闸，<strong>与租户隔离正交</strong>——口令管"能不能进这台服务器"，<span class="mono">actor</span> 管"进来后看得到哪一格"。这层正交后面单讲。</p>
 <p>也盯住第 6 步括号里那半句：<span class="mono">is_deleted==False</span> 只有在 <span class="mono">check_is_deleted</span> 为真时才追加——换句话说，<strong>软删行默认仍会被读回来</strong>。这条最反直觉，软删那节细说。</p>
+<div class="card analogy"><div class="tag">🏦 生活类比</div>
+<p>把整个数据库想成一座<strong>带门禁的共享档案库</strong>，你（调用方）报上工牌（<span class="mono">actor</span>）才能进。</p>
+<p>每次开柜，门禁自动只让你看你们<strong>部门（org）</strong>那一格；别的部门的柜子，你连看都看不到。</p>
+<p>"删"不是真烧掉，而是给文件贴一张<strong>"作废"贴纸</strong>（软删）——原件还在架上，需要时还能撕掉贴纸恢复。</p>
+<p>每次取放，库管都自动替你盖一个<strong>"谁、何时"</strong>的章（审计），不必你开口。</p>
+<p>妙在：这些规矩不写在每张借阅单上，而是焊死在<strong>门禁本身</strong>——换一百个借阅人，规矩一字不改。</p>
+</div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">门禁·每查必套</span><span class="arrow">→</span><span class="emoji">🏷️</span><span class="lab">作废贴纸·软删</span><span class="arrow">→</span><span class="emoji">🧾</span><span class="bubble">谁/何时·审计</span></div><div class="cap">🔐 门禁自动盖在每条查询上（只放行你这格），🏷️ "作废"贴纸＝软删（原件留架、可恢复），🧾 每次取放自动盖"谁/何时"的章（审计）</div></div>
+<p>这张萌图里的三件事——隔离、软删、审计——其实<strong>全长在同一个抽象类上</strong>。接下来三节，就按这个顺序逐一拆开。</p>
+<h2>SqlalchemyBase：一套动词，约 40 个模型共用</h2>
+<p>先认清这套 CRUD 的"面"有多大：它不是某个 manager 的私有方法，而是 ORM 抽象基类 <span class="mono">SqlalchemyBase</span>（<span class="mono">__abstract__</span>）上的一组 async 类方法，约 40 个模型继承即得。</p>
+<p>这套动词分三类：<strong>读、写、删</strong>。读路才有访问控制，写路负责盖审计，删又分软删与硬删。先用一张表把全貌摆出来：</p>
+<table class="t">
+<tr><th>方法</th><th>类型</th><th>访问控制？</th><th>软删感知？</th></tr>
+<tr><td class="mono">read_async</td><td>读</td><td>有 <span class="mono">actor</span> 才套（org 级）</td><td>仅当 <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">list_async</td><td>读</td><td>有 <span class="mono">actor</span> 才套</td><td>仅当 <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">read_multiple_async</td><td>读</td><td>有 <span class="mono">actor</span> 才套</td><td>仅当 <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">size_async</td><td>读</td><td>有 <span class="mono">actor</span> 才套</td><td>仅当 <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">create_async</td><td>写</td><td>骑在读建立的边界上</td><td>盖审计字段</td></tr>
+<tr><td class="mono">update_async</td><td>写</td><td>骑在读建立的边界上</td><td>盖审计字段</td></tr>
+<tr><td class="mono">delete_async</td><td>软删</td><td>有 <span class="mono">actor</span> 则盖审计</td><td>翻 <span class="mono">is_deleted=True</span></td></tr>
+<tr><td class="mono">hard_delete_async</td><td>物理删</td><td><span class="mono">actor</span> 仅日志</td><td>整行消失</td></tr>
+<tr><td class="mono">bulk_hard_delete_async</td><td>批量物理删</td><td><strong>SQL 层套 predicate</strong></td><td>整行消失</td></tr>
+</table>
+<p>看这张表，记住两条主线。其一：访问控制只在<strong>读路</strong>生效（且"有 <span class="mono">actor</span> 才走"）；写、删并不各自再套一遍 <span class="mono">WHERE</span>，而是骑在读时已建立的边界上。</p>
+<p>其二：唯一在"删"这侧也强制租户的，是 <span class="mono">bulk_hard_delete_async</span>——它在 SQL 层把 predicate 套进 <span class="mono">DELETE</span>。这是个重要例外，软删那节再说。</p>
+<p>还有个细节值得记：读路四个方法都收同一组参数——<span class="mono">actor</span>、<span class="mono">access=["read"]</span>、<span class="mono">access_type=ORGANIZATION</span>、<span class="mono">check_is_deleted=False</span>。参数一致，行为就一致。</p>
+<div class="card detail"><div class="tag">🔬 落到代码</div>
+<p><span class="mono">orm/sqlalchemy_base.py::SqlalchemyBase</span>——抽象基类，<span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">create_async</span> / <span class="mono">delete_async</span> / <span class="mono">apply_access_predicate</span> 都在这。</p>
+<p><span class="mono">SqlalchemyBase.apply_access_predicate</span> + <span class="mono">AccessType(str, Enum){ORGANIZATION, USER}</span>——行级过滤的注入点与两种范围。</p>
+<p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span>——审计五件套；<span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> 提供 <span class="mono">organization_id / user_id</span> 列。</p>
+<p><span class="mono">services/user_manager.py::UserManager.get_actor_or_default_async</span>——把 header 里的 id 解析成 <span class="mono">PydanticUser</span>（带 org）。</p>
+</div>
 <!--ZHMORE-->
 """,
     "en": r"""<p>stub</p>""",
