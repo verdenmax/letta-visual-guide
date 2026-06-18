@@ -94,6 +94,8 @@ PAGES = [
      "第六部分 · LLM Provider 抽象", "Part 6 · The LLM provider abstraction"),
     ("24-three-layer-architecture.html", "三层架构", "The three-layer architecture",
      "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
+    ("25-service-managers.html", "服务层 Managers", "The service-layer Managers",
+     "第七部分 · 服务端与持久化", "Part 7 · Server & persistence"),
 ]
 
 
@@ -580,6 +582,8 @@ SUBTITLES = {
                                   "chat_completion_proxy; GBNF-constrained JSON; wrappers; the classic legacy path"),
     "24-three-layer-architecture.html": ("薄路由 → SyncServer/Manager → ORM → DB · 一个全局 server",
                                          "thin routers → SyncServer/Managers → ORM → DB; one global server"),
+    "25-service-managers.html": ("db_registry.async_session 统一事务 · schema↔ORM · enforce_types/trace_method",
+                                 "db_registry.async_session transactions; schema↔ORM; enforce_types/trace_method"),
 }
 
 

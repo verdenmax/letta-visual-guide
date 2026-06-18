@@ -440,3 +440,10 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>After these three lessons, you'll be able to explain every step of a request, from HTTP all the way to disk, crystal clear.</p>
 """,
 }
+
+LESSON_25 = {
+    "zh": r"""
+<!--ZHMORE-->
+""",
+    "en": r"""<p>stub</p>""",
+}
