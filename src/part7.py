@@ -1172,6 +1172,87 @@ LESSON_26 = {
 </div>
 <div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">Gate · every query</span><span class="arrow">→</span><span class="emoji">🏷️</span><span class="lab">Void sticker · soft delete</span><span class="arrow">→</span><span class="emoji">🧾</span><span class="bubble">Who/when · audit</span></div><div class="cap">🔐 The gate auto-stamps every query (only your cell passes), 🏷️ a "void" sticker = soft delete (original stays on the shelf, recoverable), 🧾 every fetch/return auto-stamps a "who/when" mark (audit)</div></div>
 <p>The three things in this little picture — isolation, soft delete, audit — actually all live on <strong>the same abstract class</strong>. The next three sections take them apart, in exactly this order.</p>
+<h2>SqlalchemyBase: one set of verbs, shared by ~40 models</h2>
+<p>First grasp how wide this CRUD's <strong>surface</strong> is: it isn't some manager's private method but a set of async classmethods on the ORM abstract base class <span class="mono">SqlalchemyBase</span> (<span class="mono">__abstract__</span>), which around 40 models inherit for free.</p>
+<p>These verbs come in three kinds: <strong>read, write, delete</strong>. Only the read path has access control, the write path stamps audit, and delete splits into soft and hard. Let's lay the whole picture out in a table first:</p>
+<table class="t">
+<tr><th>Method</th><th>Kind</th><th>Access control?</th><th>Soft-delete aware?</th></tr>
+<tr><td class="mono">read_async</td><td>Read</td><td>Only with <span class="mono">actor</span> (org-level)</td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">list_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">read_multiple_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">size_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">create_async</td><td>Write</td><td>Rides the boundary the read set</td><td>Stamps audit fields</td></tr>
+<tr><td class="mono">update_async</td><td>Write</td><td>Rides the boundary the read set</td><td>Stamps audit fields</td></tr>
+<tr><td class="mono">delete_async</td><td>Soft delete</td><td>Stamps audit if <span class="mono">actor</span></td><td>Flips <span class="mono">is_deleted=True</span></td></tr>
+<tr><td class="mono">hard_delete_async</td><td>Physical delete</td><td><span class="mono">actor</span> for logging only</td><td>Whole row vanishes</td></tr>
+<tr><td class="mono">bulk_hard_delete_async</td><td>Bulk physical delete</td><td><strong>predicate applied in SQL</strong></td><td>Whole row vanishes</td></tr>
+</table>
+<p>Reading the table, hold two through-lines. First: access control takes effect only on the <strong>read path</strong> (and only "if there's an <span class="mono">actor</span>"); write and delete don't each re-apply a <span class="mono">WHERE</span> — they ride the boundary the read already established.</p>
+<p>Second: the only one that enforces tenancy on the <strong>delete</strong> side too is <span class="mono">bulk_hard_delete_async</span> — it weaves the predicate into the <span class="mono">DELETE</span> at the SQL level. That's an important exception; more in the soft-delete section.</p>
+<p>One detail worth remembering: the four read-path methods all take the same parameter set — <span class="mono">actor</span>, <span class="mono">access=["read"]</span>, <span class="mono">access_type=ORGANIZATION</span>, <span class="mono">check_is_deleted=False</span>. Same parameters, same behavior.</p>
+<p>Why make it <strong>generic</strong>? Because these verbs are nearly identical for every model. Had each of ~40 models written its own read / create, isolation and audit would have ~40 places to get wrong; folding them into the base means the <strong>correct way</strong> is maintained in just one place.</p>
+<p>This is also the easy way to read this layer: learn the verbs on <span class="mono">SqlalchemyBase</span>, then for a concrete model you only care <strong>which one it overrides</strong> — a relation-heavy one like agent rewrites the read path, while most models inherit it as-is.</p>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">orm/sqlalchemy_base.py::SqlalchemyBase</span> — the abstract base class; <span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">create_async</span> / <span class="mono">delete_async</span> / <span class="mono">apply_access_predicate</span> all live here.</p>
+<p><span class="mono">SqlalchemyBase.apply_access_predicate</span> + <span class="mono">AccessType(str, Enum){ORGANIZATION, USER}</span> — the injection point for row-level filtering and its two scopes.</p>
+<p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span> — the five audit fields; <span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> provide the <span class="mono">organization_id / user_id</span> columns.</p>
+<p><span class="mono">services/user_manager.py::UserManager.get_actor_or_default_async</span> — resolves the id in the header into a <span class="mono">PydanticUser</span> (with org).</p>
+</div>
+<h2>apply_access_predicate: welding isolation into every read</h2>
+<p>Table done; now drill into that "auto-appended <span class="mono">WHERE</span>." It's one classmethod, astonishingly short, yet the <strong>entire secret</strong> of the whole multi-tenant isolation.</p>
+<p>Look at the body first. Note the first line, <span class="mono">del access</span>: the three accesses <span class="mono">read / write / admin</span> are <strong>currently a no-op</strong>, pure placeholders reserving a seat for future row-level permissions.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">apply_access_predicate: the entire secret of isolation (simplified)</span></div>
+<pre><span class="nb">@classmethod</span>
+<span class="kw">def</span> <span class="fn">apply_access_predicate</span>(cls, query, actor, access, access_type=AccessType.ORGANIZATION):
+    <span class="kw">del</span> access                      <span class="cm"># read/write/admin are a no-op for now: placeholder for future row-level perms</span>
+    <span class="kw">if</span> access_type == AccessType.ORGANIZATION:
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.organization_id == actor.organization_id)  <span class="cm"># same org shares</span>
+    <span class="kw">elif</span> access_type == AccessType.USER:
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.user_id == actor.id)                  <span class="cm"># only jobs / runs</span>
+    <span class="kw">raise</span> <span class="fn">ValueError</span>(...)             <span class="cm"># actor lacks org/id accessor = misconfig</span>
+</pre></div>
+<p>Two branches, two scopes. <span class="mono">ORGANIZATION</span> is the default: scoped by <span class="mono">actor.organization_id</span>, so all users in the same org <strong>share</strong> the same rows (Block, Passage, Agent, Tool… all take this branch).</p>
+<p>The <span class="mono">USER</span> scope is used by only two kinds, <strong>jobs / runs</strong>: scoped by <span class="mono">actor.id</span>, making them per-user private. The two columns <span class="mono">organization_id</span> and <span class="mono">user_id</span> are mixed into models by <span class="mono">OrganizationMixin</span> and <span class="mono">UserMixin</span> respectively.</p>
+<p>The only thing that raises <span class="mono">ValueError</span> is an <span class="mono">actor</span> that lacks even the org/id accessor — that's a <strong>misconfiguration</strong>, not a violation. What does a cross-tenant access look like? <span class="mono">read_async</span> below has the answer.</p>
+<p>Don't underestimate the reach of these two short lines: Block, Passage, Agent, Tool and more all carry <span class="mono">OrganizationMixin</span>, and every read of theirs passes through this <strong>same branch</strong>. The memory isolation you read about in Lessons 08, 10 and 11 is, underneath, this one <span class="mono">where</span> right here.</p>
+<p>One more easy mix-up: the predicate filters by <span class="mono">actor.organization_id</span>, <strong>not</strong> by <span class="mono">actor.id</span> — so switching users within the same org sees exactly the same rows. The only things truly per-user private are jobs / runs.</p>
+<p>The predicate alone isn't enough; we need to see who calls it, and when, inside <span class="mono">read_async</span>. Unfold the read-path skeleton and it's four steps total:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">read_async: build query → weld isolation → optionally filter soft-deleted → fetch one row (simplified)</span></div>
+<pre><span class="nb">@classmethod</span>
+<span class="kw">async def</span> <span class="fn">read_async</span>(cls, db_session, identifier=<span class="kw">None</span>, actor=<span class="kw">None</span>,
+                     access=[<span class="st">&quot;read&quot;</span>], access_type=AccessType.ORGANIZATION,
+                     check_is_deleted=<span class="kw">False</span>, **kwargs):
+    query = <span class="fn">select</span>(cls).<span class="fn">where</span>(cls.id == identifier)
+    <span class="kw">if</span> actor:                                <span class="cm"># have identity -&gt; weld org/user isolation</span>
+        query = cls.<span class="fn">apply_access_predicate</span>(query, actor, access, access_type)
+    <span class="kw">elif</span> <span class="fn">is_org_scoped</span>(cls):                 <span class="cm"># no actor but org-scoped: don't block, just warn loudly</span>
+        logger.<span class="fn">warning</span>(<span class="st">&quot;SECURITY: ... without actor ... bypasses organization filtering&quot;</span>)
+    <span class="kw">if</span> check_is_deleted:                      <span class="cm"># opt-in: soft-delete not filtered by default</span>
+        query = query.<span class="fn">where</span>(cls.is_deleted == <span class="kw">False</span>)
+    row = (<span class="kw">await</span> db_session.<span class="fn">execute</span>(query)).<span class="fn">scalar_one_or_none</span>()
+    <span class="kw">if</span> row <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)            <span class="cm"># cross-tenant row = not found, not an error</span>
+    <span class="kw">return</span> row
+</pre></div>
+<p>Four steps, clear through: first <span class="mono">select(cls).where(id)</span>, then weld isolation per <span class="mono">actor</span> (or log a <span class="mono">SECURITY</span> warning when actor is missing), optionally filter soft-deletes, and finally <span class="mono">scalar_one_or_none</span> fetches one row.</p>
+<p><span class="mono">read_multiple_async</span> shares the same preprocessing (<span class="mono">_read_multiple_preprocess</span>): same query build, same predicate, same optional soft-delete filter — it just swaps <span class="mono">where(id==)</span> for <span class="mono">where(id.in_(...))</span>. Different broth, same medicine.</p>
+<p>Now to answer "what a cross-tenant access looks like": that cross-tenant row is excluded from the result set outright by step 2's <span class="mono">WHERE</span>. So <span class="mono">read_async</span> gets <span class="mono">None</span> → raises <span class="mono">NoResultFound</span>; <span class="mono">list_async</span> returns <span class="mono">[]</span>.</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">Cross-tenant row</div><div class="nd">another org's data</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Excluded by WHERE</div><div class="nd">predicate auto-appended</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">scalar_one_or_none()</div><div class="nd">= None</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">NoResultFound / []</div><div class="nd">not found, not 403</div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">A violation returns "not found" rather than 403, <strong>by design</strong>: it leaks nothing to the caller about "that row exists, but you lack permission" — even <strong>existence</strong> itself is isolated. It also means: when debugging, don't be fooled by <span class="mono">NoResultFound</span>; first check that the <span class="mono">actor</span>'s org is right.</span></div>
+<details class="accordion"><summary>What exactly does <span class="mono">apply_access_predicate</span> inject? And where did those three accesses go?</summary><div class="acc-body">
+<p>It injects exactly one row-level <span class="mono">WHERE</span>, nothing more: <span class="mono">ORGANIZATION</span> → <span class="mono">where(organization_id == actor.organization_id)</span>, <span class="mono">USER</span> → <span class="mono">where(user_id == actor.id)</span>.</p>
+<p>It "injects" onto the query object, <strong>before</strong> the SQL actually executes, so isolation happens on the DB side — not by pulling the whole table back and filtering in Python.</p>
+<p>A violation = not found, not an error: the excluded row never enters the result set, <span class="mono">read</span> gets <span class="mono">None</span>→<span class="mono">NoResultFound</span>, <span class="mono">list</span> gets <span class="mono">[]</span>. The only <span class="mono">ValueError</span> comes from a misconfigured actor (no org/id accessor).</p>
+<p>And those three accesses (read/write/admin)? The opening <span class="mono">del access</span> throws them away — <strong>a pure no-op for now</strong>, a parameter reserved for future row-level permissions; passing anything changes nothing today.</p>
+</div></details>
 <!--ENMORE-->
 """,
 }

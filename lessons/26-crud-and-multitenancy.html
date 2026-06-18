@@ -543,7 +543,127 @@ html[data-lang="zh"] .lang-en { display: none !important; }
 <p>把这条肌肉记忆带走：看到一个新模型，先问它<strong>继承了谁</strong>——只要根上是 <span class="mono">SqlalchemyBase</span>，隔离、软删、审计就都默认到位，你要找的只是它"多了哪一列"。</p>
 <p>三楼这道门禁看透了。下一课，我们走到楼底的引擎房，看这些行究竟落在哪个库、靠什么把 SQLite 与 Postgres 的差异抹平。</p>
 </div>
-  <div class="lang-en"><p>stub</p></div>
+  <div class="lang-en">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">Last lesson we stood at the second-floor counter and saw the uniform shape of every manager method — open the door, fetch data, change clothes inside. Step 3's one line, <span class="mono">apply_access_predicate</span>, welds tenant isolation "into every SQL," and back then it got only a passing mention.</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">This lesson pushes open the third-floor archive room and watches how that gate actually works: around 40 models share one <span class="mono">SqlalchemyBase</span>, one set of generic async CRUD, welding "you only ever see your own cell" into the lowest layer. <strong>Secure by default</strong> — not "remember to add it," but hard to leak even if you tried.</p>
+<div class="card macro"><div class="tag">🌍 The big picture</div>
+<p>The whole lesson in one sentence: <strong>every query, by default, sees only the rows that are "your tenant, not yet deleted."</strong></p>
+<p>On the read path (<span class="mono">read / list / size</span>), as long as you pass an <span class="mono">actor</span>, the gate auto-appends a <span class="mono">WHERE organization_id == actor.org</span>.</p>
+<p>On the write path (<span class="mono">create / update</span>), it stamps the audit fields along the way: who created it, who last changed it, and when.</p>
+<p>"Delete" defaults to a <strong>soft delete</strong>: <span class="mono">delete_async</span> only flips <span class="mono">is_deleted</span> to <span class="mono">True</span>; the row still lies in the table.</p>
+<p>All of this lives on one abstract base class, <span class="mono">SqlalchemyBase</span>; around 40 models inherit it for free, with no need to rewrite each one.</p>
+</div>
+<p>This isn't one model's quirk — it's the <strong>shared foundation of all models</strong>. Below, we first draw "secure by default" as one overall flow, then take it apart section by section.</p>
+<p>Let's flag one counterintuitive point up front: when <span class="mono">actor</span> is absent, this gate <strong>does not hard-fail</strong> — it logs a loud <span class="mono">SECURITY</span> warning and runs on, unscoped. Why it's designed that way is the subject of this lesson's second half.</p>
+<p>Re-aim the camera: Lesson 24 looked at "the whole three-floor building," Lesson 25 at "the second-floor counter," and this lesson watches only <strong>the third-floor gate</strong> — what filter each step adds to a query, from assembly to landing in the DB.</p>
+<p>A word on granularity: every code block here is marked "simplified / excerpt." Real methods often carry pagination, filtering, batching and other extra parameters, but the three skeletal moves — <strong>weld isolation, stamp audit, soft delete</strong> — never budge, and the skeleton is exactly what we're after.</p>
+<p>One more term to pin down: "tenant" in this lesson = organization (org). One org can hold multiple users, who by default <strong>share the same rows</strong>; objects that are truly per-user private are very few, and we'll name them one by one below.</p>
+<h2>A query's security pipeline (secure by default)</h2>
+<p>Lay "secure by default" out as a pipeline and you'll see: identity is recognized at the <strong>outermost</strong> layer, isolation is welded into the SQL at the <strong>innermost</strong> layer, and the relay legs in between only honestly thread the <span class="mono">actor</span> through.</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>Password middleware (optional)</h4><p><span class="mono">CheckPasswordMiddleware</span>: a whole-server-level gate, mounted only in <span class="mono">--secure</span> mode; orthogonal to tenancy.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>get_headers · identify</h4><p>Reads the <span class="mono">user_id</span> header, validates it looks like <span class="mono">user-&lt;uuid4&gt;</span>; format only, <strong>never touches the DB</strong>.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>Resolve actor</h4><p><span class="mono">get_actor_or_default_async</span>: found → <span class="mono">User</span> (with org); <span class="mono">no_default_actor</span> and no id → rejected.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>manager threads actor</h4><p>The router threads <span class="mono">actor</span> all the way into the manager method — "threading actor" is the path of least resistance.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>Into generic CRUD</h4><p><span class="mono">&lt;crud&gt;_async(actor=...)</span>: lands on <span class="mono">SqlalchemyBase</span>'s uniform verbs.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="sc"><h4>Weld isolation</h4><p><span class="mono">apply_access_predicate</span> auto-appends <span class="mono">WHERE org==actor.org</span> (<span class="mono">+ is_deleted==False</span> only when <span class="mono">check_is_deleted</span>).</p></div></div>
+  <div class="step"><div class="num">7</div><div class="sc"><h4>Only your own cell remains</h4><p>SQL lands; what comes back is only <strong>this tenant's, undeleted</strong> rows; cross-tenant rows never enter the result set.</p></div></div>
+</div>
+<p>Of the seven steps, the one that truly <strong>decides who you see</strong> is step 6's auto-appended <span class="mono">WHERE</span>; the first five all do the same thing — safely deliver "who you are" to the gate.</p>
+<p>Notice step 1 is parenthesized: the server password is a whole-server-level gate, <strong>orthogonal to tenant isolation</strong> — the password governs "can you enter this server," the <span class="mono">actor</span> governs "once in, which cell you see." That orthogonality gets its own treatment later.</p>
+<p>Watch the half-clause in step 6's parentheses too: <span class="mono">is_deleted==False</span> is appended only when <span class="mono">check_is_deleted</span> is true — in other words, <strong>soft-deleted rows are still read back by default</strong>. This is the most counterintuitive bit; the soft-delete section spells it out.</p>
+<div class="card analogy"><div class="tag">🏦 An everyday analogy</div>
+<p>Picture the whole database as a <strong>shared archive with a gate</strong>; you (the caller) get in only by presenting your badge (<span class="mono">actor</span>).</p>
+<p>Every time you open a cabinet, the gate automatically lets you see only your <strong>department's (org)</strong> cell; other departments' cabinets you can't even see.</p>
+<p>"Delete" doesn't really incinerate; it slaps a <strong>"void" sticker</strong> on the file (soft delete) — the original stays on the shelf, and you can peel the sticker off to restore it when needed.</p>
+<p>On every fetch or return, the archivist automatically stamps a <strong>"who, when"</strong> mark for you (audit), without you asking.</p>
+<p>The beauty: these rules aren't written on each borrowing slip but welded into <strong>the gate itself</strong> — swap in a hundred borrowers and the rules don't change a word.</p>
+</div>
+<div class="cute"><div class="row"><span class="emoji">🔐</span><span class="lab">Gate · every query</span><span class="arrow">→</span><span class="emoji">🏷️</span><span class="lab">Void sticker · soft delete</span><span class="arrow">→</span><span class="emoji">🧾</span><span class="bubble">Who/when · audit</span></div><div class="cap">🔐 The gate auto-stamps every query (only your cell passes), 🏷️ a "void" sticker = soft delete (original stays on the shelf, recoverable), 🧾 every fetch/return auto-stamps a "who/when" mark (audit)</div></div>
+<p>The three things in this little picture — isolation, soft delete, audit — actually all live on <strong>the same abstract class</strong>. The next three sections take them apart, in exactly this order.</p>
+<h2>SqlalchemyBase: one set of verbs, shared by ~40 models</h2>
+<p>First grasp how wide this CRUD's <strong>surface</strong> is: it isn't some manager's private method but a set of async classmethods on the ORM abstract base class <span class="mono">SqlalchemyBase</span> (<span class="mono">__abstract__</span>), which around 40 models inherit for free.</p>
+<p>These verbs come in three kinds: <strong>read, write, delete</strong>. Only the read path has access control, the write path stamps audit, and delete splits into soft and hard. Let's lay the whole picture out in a table first:</p>
+<table class="t">
+<tr><th>Method</th><th>Kind</th><th>Access control?</th><th>Soft-delete aware?</th></tr>
+<tr><td class="mono">read_async</td><td>Read</td><td>Only with <span class="mono">actor</span> (org-level)</td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">list_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">read_multiple_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">size_async</td><td>Read</td><td>Only with <span class="mono">actor</span></td><td>Only when <span class="mono">check_is_deleted</span></td></tr>
+<tr><td class="mono">create_async</td><td>Write</td><td>Rides the boundary the read set</td><td>Stamps audit fields</td></tr>
+<tr><td class="mono">update_async</td><td>Write</td><td>Rides the boundary the read set</td><td>Stamps audit fields</td></tr>
+<tr><td class="mono">delete_async</td><td>Soft delete</td><td>Stamps audit if <span class="mono">actor</span></td><td>Flips <span class="mono">is_deleted=True</span></td></tr>
+<tr><td class="mono">hard_delete_async</td><td>Physical delete</td><td><span class="mono">actor</span> for logging only</td><td>Whole row vanishes</td></tr>
+<tr><td class="mono">bulk_hard_delete_async</td><td>Bulk physical delete</td><td><strong>predicate applied in SQL</strong></td><td>Whole row vanishes</td></tr>
+</table>
+<p>Reading the table, hold two through-lines. First: access control takes effect only on the <strong>read path</strong> (and only "if there's an <span class="mono">actor</span>"); write and delete don't each re-apply a <span class="mono">WHERE</span> — they ride the boundary the read already established.</p>
+<p>Second: the only one that enforces tenancy on the <strong>delete</strong> side too is <span class="mono">bulk_hard_delete_async</span> — it weaves the predicate into the <span class="mono">DELETE</span> at the SQL level. That's an important exception; more in the soft-delete section.</p>
+<p>One detail worth remembering: the four read-path methods all take the same parameter set — <span class="mono">actor</span>, <span class="mono">access=["read"]</span>, <span class="mono">access_type=ORGANIZATION</span>, <span class="mono">check_is_deleted=False</span>. Same parameters, same behavior.</p>
+<p>Why make it <strong>generic</strong>? Because these verbs are nearly identical for every model. Had each of ~40 models written its own read / create, isolation and audit would have ~40 places to get wrong; folding them into the base means the <strong>correct way</strong> is maintained in just one place.</p>
+<p>This is also the easy way to read this layer: learn the verbs on <span class="mono">SqlalchemyBase</span>, then for a concrete model you only care <strong>which one it overrides</strong> — a relation-heavy one like agent rewrites the read path, while most models inherit it as-is.</p>
+<div class="card detail"><div class="tag">🔬 Down to the code</div>
+<p><span class="mono">orm/sqlalchemy_base.py::SqlalchemyBase</span> — the abstract base class; <span class="mono">read_async</span> / <span class="mono">list_async</span> / <span class="mono">create_async</span> / <span class="mono">delete_async</span> / <span class="mono">apply_access_predicate</span> all live here.</p>
+<p><span class="mono">SqlalchemyBase.apply_access_predicate</span> + <span class="mono">AccessType(str, Enum){ORGANIZATION, USER}</span> — the injection point for row-level filtering and its two scopes.</p>
+<p><span class="mono">orm/base.py::CommonSqlalchemyMetaMixins</span> — the five audit fields; <span class="mono">orm/mixins.py::OrganizationMixin / UserMixin</span> provide the <span class="mono">organization_id / user_id</span> columns.</p>
+<p><span class="mono">services/user_manager.py::UserManager.get_actor_or_default_async</span> — resolves the id in the header into a <span class="mono">PydanticUser</span> (with org).</p>
+</div>
+<h2>apply_access_predicate: welding isolation into every read</h2>
+<p>Table done; now drill into that "auto-appended <span class="mono">WHERE</span>." It's one classmethod, astonishingly short, yet the <strong>entire secret</strong> of the whole multi-tenant isolation.</p>
+<p>Look at the body first. Note the first line, <span class="mono">del access</span>: the three accesses <span class="mono">read / write / admin</span> are <strong>currently a no-op</strong>, pure placeholders reserving a seat for future row-level permissions.</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">apply_access_predicate: the entire secret of isolation (simplified)</span></div>
+<pre><span class="nb">@classmethod</span>
+<span class="kw">def</span> <span class="fn">apply_access_predicate</span>(cls, query, actor, access, access_type=AccessType.ORGANIZATION):
+    <span class="kw">del</span> access                      <span class="cm"># read/write/admin are a no-op for now: placeholder for future row-level perms</span>
+    <span class="kw">if</span> access_type == AccessType.ORGANIZATION:
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.organization_id == actor.organization_id)  <span class="cm"># same org shares</span>
+    <span class="kw">elif</span> access_type == AccessType.USER:
+        <span class="kw">return</span> query.<span class="fn">where</span>(cls.user_id == actor.id)                  <span class="cm"># only jobs / runs</span>
+    <span class="kw">raise</span> <span class="fn">ValueError</span>(...)             <span class="cm"># actor lacks org/id accessor = misconfig</span>
+</pre></div>
+<p>Two branches, two scopes. <span class="mono">ORGANIZATION</span> is the default: scoped by <span class="mono">actor.organization_id</span>, so all users in the same org <strong>share</strong> the same rows (Block, Passage, Agent, Tool… all take this branch).</p>
+<p>The <span class="mono">USER</span> scope is used by only two kinds, <strong>jobs / runs</strong>: scoped by <span class="mono">actor.id</span>, making them per-user private. The two columns <span class="mono">organization_id</span> and <span class="mono">user_id</span> are mixed into models by <span class="mono">OrganizationMixin</span> and <span class="mono">UserMixin</span> respectively.</p>
+<p>The only thing that raises <span class="mono">ValueError</span> is an <span class="mono">actor</span> that lacks even the org/id accessor — that's a <strong>misconfiguration</strong>, not a violation. What does a cross-tenant access look like? <span class="mono">read_async</span> below has the answer.</p>
+<p>Don't underestimate the reach of these two short lines: Block, Passage, Agent, Tool and more all carry <span class="mono">OrganizationMixin</span>, and every read of theirs passes through this <strong>same branch</strong>. The memory isolation you read about in Lessons 08, 10 and 11 is, underneath, this one <span class="mono">where</span> right here.</p>
+<p>One more easy mix-up: the predicate filters by <span class="mono">actor.organization_id</span>, <strong>not</strong> by <span class="mono">actor.id</span> — so switching users within the same org sees exactly the same rows. The only things truly per-user private are jobs / runs.</p>
+<p>The predicate alone isn't enough; we need to see who calls it, and when, inside <span class="mono">read_async</span>. Unfold the read-path skeleton and it's four steps total:</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/orm/sqlalchemy_base.py</span><span class="ln">read_async: build query → weld isolation → optionally filter soft-deleted → fetch one row (simplified)</span></div>
+<pre><span class="nb">@classmethod</span>
+<span class="kw">async def</span> <span class="fn">read_async</span>(cls, db_session, identifier=<span class="kw">None</span>, actor=<span class="kw">None</span>,
+                     access=[<span class="st">&quot;read&quot;</span>], access_type=AccessType.ORGANIZATION,
+                     check_is_deleted=<span class="kw">False</span>, **kwargs):
+    query = <span class="fn">select</span>(cls).<span class="fn">where</span>(cls.id == identifier)
+    <span class="kw">if</span> actor:                                <span class="cm"># have identity -&gt; weld org/user isolation</span>
+        query = cls.<span class="fn">apply_access_predicate</span>(query, actor, access, access_type)
+    <span class="kw">elif</span> <span class="fn">is_org_scoped</span>(cls):                 <span class="cm"># no actor but org-scoped: don't block, just warn loudly</span>
+        logger.<span class="fn">warning</span>(<span class="st">&quot;SECURITY: ... without actor ... bypasses organization filtering&quot;</span>)
+    <span class="kw">if</span> check_is_deleted:                      <span class="cm"># opt-in: soft-delete not filtered by default</span>
+        query = query.<span class="fn">where</span>(cls.is_deleted == <span class="kw">False</span>)
+    row = (<span class="kw">await</span> db_session.<span class="fn">execute</span>(query)).<span class="fn">scalar_one_or_none</span>()
+    <span class="kw">if</span> row <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">raise</span> <span class="fn">NoResultFound</span>(...)            <span class="cm"># cross-tenant row = not found, not an error</span>
+    <span class="kw">return</span> row
+</pre></div>
+<p>Four steps, clear through: first <span class="mono">select(cls).where(id)</span>, then weld isolation per <span class="mono">actor</span> (or log a <span class="mono">SECURITY</span> warning when actor is missing), optionally filter soft-deletes, and finally <span class="mono">scalar_one_or_none</span> fetches one row.</p>
+<p><span class="mono">read_multiple_async</span> shares the same preprocessing (<span class="mono">_read_multiple_preprocess</span>): same query build, same predicate, same optional soft-delete filter — it just swaps <span class="mono">where(id==)</span> for <span class="mono">where(id.in_(...))</span>. Different broth, same medicine.</p>
+<p>Now to answer "what a cross-tenant access looks like": that cross-tenant row is excluded from the result set outright by step 2's <span class="mono">WHERE</span>. So <span class="mono">read_async</span> gets <span class="mono">None</span> → raises <span class="mono">NoResultFound</span>; <span class="mono">list_async</span> returns <span class="mono">[]</span>.</p>
+<div class="flow">
+  <div class="node hl"><div class="nt">Cross-tenant row</div><div class="nd">another org's data</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">Excluded by WHERE</div><div class="nd">predicate auto-appended</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">scalar_one_or_none()</div><div class="nd">= None</div></div>
+  <div class="arrow">-&gt;</div>
+  <div class="node"><div class="nt">NoResultFound / []</div><div class="nd">not found, not 403</div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">A violation returns "not found" rather than 403, <strong>by design</strong>: it leaks nothing to the caller about "that row exists, but you lack permission" — even <strong>existence</strong> itself is isolated. It also means: when debugging, don't be fooled by <span class="mono">NoResultFound</span>; first check that the <span class="mono">actor</span>'s org is right.</span></div>
+<details class="accordion"><summary>What exactly does <span class="mono">apply_access_predicate</span> inject? And where did those three accesses go?</summary><div class="acc-body">
+<p>It injects exactly one row-level <span class="mono">WHERE</span>, nothing more: <span class="mono">ORGANIZATION</span> → <span class="mono">where(organization_id == actor.organization_id)</span>, <span class="mono">USER</span> → <span class="mono">where(user_id == actor.id)</span>.</p>
+<p>It "injects" onto the query object, <strong>before</strong> the SQL actually executes, so isolation happens on the DB side — not by pulling the whole table back and filtering in Python.</p>
+<p>A violation = not found, not an error: the excluded row never enters the result set, <span class="mono">read</span> gets <span class="mono">None</span>→<span class="mono">NoResultFound</span>, <span class="mono">list</span> gets <span class="mono">[]</span>. The only <span class="mono">ValueError</span> comes from a misconfigured actor (no org/id accessor).</p>
+<p>And those three accesses (read/write/admin)? The opening <span class="mono">del access</span> throws them away — <strong>a pure no-op for now</strong>, a parameter reserved for future row-level permissions; passing anything changes nothing today.</p>
+</div></details>
+<!--ENMORE-->
+</div>
   <div class="footnav"><a class="prev" href="25-service-managers.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">服务层 Managers</span><span class="lang-en">The service-layer Managers</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
 </div>
 <script>
