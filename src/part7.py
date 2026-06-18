@@ -498,7 +498,7 @@ LESSON_25 = {
 
     <span class="nb">@enforce_types</span>
     <span class="nb">@trace_method</span>
-    <span class="kw">async def</span> <span class="fn">create_organization_async</span>(self, pydantic_org: PydanticOrganization) -&gt; PydanticOrganization:
+    <span class="kw">async def</span> <span class="fn">_create_organization_async</span>(self, pydantic_org: PydanticOrganization) -&gt; PydanticOrganization:
         <span class="kw">async with</span> db_registry.<span class="fn">async_session</span>() <span class="kw">as</span> session:
             org = <span class="fn">OrganizationModel</span>(**pydantic_org.<span class="fn">model_dump</span>(to_orm=<span class="kw">True</span>))  <span class="cm"># pydantic -&gt; ORM</span>
             <span class="kw">await</span> org.<span class="fn">create_async</span>(session)                  <span class="cm"># 落库</span>
@@ -618,7 +618,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 
 <span class="cm"># letta/services/agent_manager.py —— 典型装饰器栈</span>
 <span class="nb">@enforce_types</span>           <span class="cm"># 最外：typing</span>
-<span class="nb">@raise_on_invalid_id</span>     <span class="cm"># 中：校验前缀 id（validators.py）</span>
+<span class="nb">@raise_on_invalid_id</span>(param_name=<span class="st">&quot;agent_id&quot;</span>, expected_prefix=...)  <span class="cm"># 中：校验前缀 id（validators.py）</span>
 <span class="nb">@trace_method</span>            <span class="cm"># 最内：tracing</span>
 <span class="kw">async def</span> <span class="fn">get_agent_by_id_async</span>(self, agent_id: str, actor: User) -&gt; PydanticAgentState:
     ...
@@ -736,7 +736,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 
     <span class="nb">@enforce_types</span>
     <span class="nb">@trace_method</span>
-    <span class="kw">async def</span> <span class="fn">create_organization_async</span>(self, pydantic_org: PydanticOrganization) -&gt; PydanticOrganization:
+    <span class="kw">async def</span> <span class="fn">_create_organization_async</span>(self, pydantic_org: PydanticOrganization) -&gt; PydanticOrganization:
         <span class="kw">async with</span> db_registry.<span class="fn">async_session</span>() <span class="kw">as</span> session:
             org = <span class="fn">OrganizationModel</span>(**pydantic_org.<span class="fn">model_dump</span>(to_orm=<span class="kw">True</span>))  <span class="cm"># pydantic -&gt; ORM</span>
             <span class="kw">await</span> org.<span class="fn">create_async</span>(session)                  <span class="cm"># persist</span>
@@ -856,7 +856,7 @@ db_registry = <span class="fn">DatabaseRegistry</span>()           <span class="
 
 <span class="cm"># letta/services/agent_manager.py — a typical decorator stack</span>
 <span class="nb">@enforce_types</span>           <span class="cm"># outermost: typing</span>
-<span class="nb">@raise_on_invalid_id</span>     <span class="cm"># middle: validate prefixed id (validators.py)</span>
+<span class="nb">@raise_on_invalid_id</span>(param_name=<span class="st">&quot;agent_id&quot;</span>, expected_prefix=...)  <span class="cm"># middle: validate prefixed id (validators.py)</span>
 <span class="nb">@trace_method</span>            <span class="cm"># innermost: tracing</span>
 <span class="kw">async def</span> <span class="fn">get_agent_by_id_async</span>(self, agent_id: str, actor: User) -&gt; PydanticAgentState:
     ...
