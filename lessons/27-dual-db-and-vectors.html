@@ -333,7 +333,46 @@ html[data-lang="zh"] .lang-en { display: none !important; }
     <h1><span class="lang-zh">双数据库与向量存储</span><span class="lang-en">Dual database &amp; vector storage</span></h1>
   </div>
   <div class="lang-zh">
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">上一课在三楼档案室，我们看清了 <span class="mono">SqlalchemyBase</span> 怎么把隔离、软删、审计焊进每条 SQL。可那句 SQL 最终落进哪个库、靠哪个引擎执行，当时只用一句"走到楼底的引擎房"带过。</p>
+<p class="lead" style="font-size:1.06rem;color:var(--muted)">这一课就推开引擎房那扇门：同一套 ORM 模型，怎么在 SQLite 与 Postgres 两套库上都能跑？向量又怎么在两套库里存、怎么搜？答案不在某个聪明的 <span class="mono">db.py</span> 里，而是<strong>散在六处、且大多声明式</strong>的接缝。</p>
+<div class="card macro"><div class="tag">🌍 宏观理解</div>
+<p>一句话抓住本课：<strong>一套 ORM 模型，按一个开关在两套库上跑；向量两存两搜；配置当 JSON blob 整块塞进列</strong>。</p>
+<p>开关＝ <span class="mono">settings.database_engine</span>：配了 Postgres URI 就走 Postgres，否则走 SQLite。</p>
+<p>向量两套：Postgres 用 pgvector 的 <span class="mono">Vector(4096)</span> + 原生算子 <span class="mono">&lt;=&gt;</span>；SQLite 用 BINARY blob + numpy 写的 <span class="mono">cosine_distance</span> 全表暴力。</p>
+<p>pydantic-in-DB：<span class="mono">EmbeddingConfig</span> / <span class="mono">LLMConfig</span> 这类配置不拆成列，整个 <span class="mono">model_dump</span> 成 JSON 存一格。</p>
+<p>一处诚实的现状：v0.16.8 的 <span class="mono">server/db.py</span> 其实只建 Postgres——双库故事完整活在 ORM 与 alembic 层。</p>
+</div>
+<p>这不是一句"if 后端 == sqlite"的大开关。真正的接缝<strong>分布在六处</strong>，大多在 import 期就声明好，而不是运行时临场判断。</p>
+<p>先把镜头拉远：第 24 课看三层架构，第 25 课看 manager 开事务，第 26 课看每行怎么被隔离。这一课走到最底，看这些行<strong>落在哪个库、向量怎么被搜出来</strong>。</p>
+<p>也先打个预防针：本课有几处专治"想当然"。比如 <span class="mono">db.py</span> 并不分库、<span class="mono">database_engine</span> 不是个能手设的字段、SQLite 的相似度也不是 sqlite-vec 原生——下文逐一点破。</p>
+<h2>一套 ORM，两套引擎：换的是零件，不是蓝图</h2>
+<p>先看全景。<span class="mono">letta/orm/</span> 下那约 40 个模型只写<strong>一份</strong>；到底落进哪套库，由一个开关 <span class="mono">settings.database_engine</span> 决定。两条线并排看最清楚：</p>
+<div class="cols">
+  <div class="col"><h4>🪶 SQLite · 开发默认</h4>
+  <p>驱动：<span class="mono">aiosqlite</span>（async）。</p>
+  <p>向量列：<span class="mono">CommonVector</span>，一个 BINARY blob。</p>
+  <p>距离：<span class="mono">func.cosine_distance</span>，走 numpy UDF。</p>
+  <p>搜索：<span class="mono">ORDER BY</span> 全表暴力，没有 ANN。</p>
+  <p>迁移：单个 baseline 快照 <span class="mono">2c059cad97cc</span>。</p>
+  </div>
+  <div class="col"><h4>🐘 Postgres · 生产</h4>
+  <p>驱动：<span class="mono">asyncpg</span>（async）。</p>
+  <p>向量列：pgvector 的 <span class="mono">Vector(4096)</span>。</p>
+  <p>距离：<span class="mono">cosine_distance()</span> → SQL <span class="mono">&lt;=&gt;</span>。</p>
+  <p>搜索：可挂 <span class="mono">ivfflat</span> / <span class="mono">hnsw</span> 索引。</p>
+  <p>迁移：从 <span class="mono">9a505cc7eca9</span> 起的增量链。</p>
+  </div>
+</div>
+<p>看出门道了吗？两列的<strong>形状一模一样</strong>，被换掉的只是零件：驱动、向量列类型、距离算子、序列化方式、迁移路径，以及"要不要把向量填充到定长"。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">一个诚实的星号：上表把"双库"画得很对称，但 v0.16.8 的 <span class="mono">server/db.py</span> 模块级<strong>只建 Postgres async 引擎</strong>。双库的完整故事活在 ORM 列类型与 alembic 迁移里，运行期引擎层已悄悄收敛到 Postgres——为什么这样，本课末尾的"诚实星号"专门讲。</span></div>
+<div class="card analogy"><div class="tag">🏭 生活类比</div>
+<p>把这套设计想成<strong>一张蓝图、两座工厂</strong>。蓝图＝ORM 模型，画的是"有哪些表、哪些列、怎么关联"，<strong>一份不变</strong>。</p>
+<p>两座工厂＝SQLite 厂与 Postgres 厂。同一张蓝图发下去，按墙上那个开关（<span class="mono">database_engine</span>）在装配线上换不同零件。</p>
+<p>换的零件很具体：向量列用哪种料（pgvector 定长格 vs BINARY 袋子）、距离用哪台机器（原生 <span class="mono">&lt;=&gt;</span> vs numpy 手算）、迁移走哪条流水线。</p>
+<p>妙在工人（写新功能的人）只认蓝图——他不必知道今天在哪座厂开工，照着模型写就行，两套库都装得出来。</p>
+</div>
 <!--ZHMORE-->
+
 </div>
   <div class="lang-en"><p>stub</p></div>
   <div class="footnav"><a class="prev" href="26-crud-and-multitenancy.html"><div class="dir"><span class="lang-zh">← 上一课</span><span class="lang-en">← Prev</span></div><div class="ttl"><span class="lang-zh">通用 CRUD 与多租户隔离</span><span class="lang-en">Generic CRUD &amp; multi-tenant isolation</span></div></a><a class="next" href="../index.html"><div class="dir"><span class="lang-zh">完成 →</span><span class="lang-en">Done →</span></div><div class="ttl"><span class="lang-zh">返回目录</span><span class="lang-en">Back to index</span></div></a></div>
