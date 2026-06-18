@@ -429,6 +429,53 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 </table>
 <p>那 16 次"编排"具体在干嘛？以 <span class="mono">server.py::SyncServer.create_agent_async</span> 为例：它要解析 LLM / embedding 配置、变换 block，再把真正的写委托给 <span class="mono">agent_manager</span>——一个动作牵动好几个 manager。</p>
 <p>所以 <span class="mono">SyncServer</span> 与其说是"通往 DB 的唯一一道门"，不如说是个<strong>服务定位器</strong>加<strong>跨-manager 协调者</strong>：定位时大家绕过它直取 manager，只有协调时它才亲自下场。</p>
+<h2>薄路由：四步就交班</h2>
+<p>回到第一层。薄路由到底"薄"到什么程度？薄到一个 GET 端点通常就四步，办完即交班。</p>
+<div class="cellgroup"><div class="cg-cap"><b>薄路由的四步</b></div><div class="cells"><span class="cell hl">① 解析 actor</span><span class="sep">·</span><span class="cell">② 轻量参数处理</span><span class="sep">·</span><span class="cell">③ 调 manager / server</span><span class="sep">·</span><span class="cell">④ 返回 pydantic schema</span></div></div>
+<p>第 ① 步解析 actor：<span class="mono">await server.user_manager.get_actor_or_default_async(...)</span>，把请求头里的身份换成一个 actor 对象。</p>
+<p>第 ② 步是轻量参数处理——分页、过滤之类；很多端点这一步几乎为空。</p>
+<p>第 ③ 步调 manager 或 server 方法，把真正的活儿交出去；第 ④ 步返回一个 pydantic schema，由 FastAPI 按 <span class="mono">response_model</span> 序列化。</p>
+<p>把 <span class="mono">routers/v1/agents.py::retrieve_agent</span> 摊开看，这四步一目了然：</p>
+<div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">retrieve_agent：薄路由四步（简化）</span></div>
+<pre><span class="nb">@router.get</span>(<span class="st">"/{agent_id}"</span>, response_model=AgentState)   <span class="cm"># ④ FastAPI 按 response_model 序列化</span>
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">retrieve_agent</span>(
+    agent_id: str,
+    server: SyncServer = <span class="fn">Depends</span>(get_letta_server),   <span class="cm"># DI：拿到那个全局 server</span>
+    headers: HeaderParams = <span class="fn">Depends</span>(get_headers),     <span class="cm"># 解析 user_id 头 -&gt; actor_id</span>
+):
+    <span class="cm"># ① 解析 actor（session #1：查 user）</span>
+    actor = <span class="kw">await</span> server.user_manager.<span class="fn">get_actor_or_default_async</span>(actor_id=headers.actor_id)
+    <span class="cm"># ②（这个端点几乎没有参数要处理）③ 直接调 manager（session #2：带访问控制）</span>
+    <span class="kw">return</span> <span class="kw">await</span> server.agent_manager.<span class="fn">get_agent_by_id_async</span>(agent_id=agent_id, actor=actor)
+    <span class="cm"># ④ 返回的 pydantic 对象由 FastAPI 按 response_model=AgentState 序列化</span>
+</pre></div>
+<div class="note tip"><span class="ni">🧠</span><span class="nx">actor 的解析在<strong>处理函数体内</strong>（第 ① 步），不是某个全局鉴权中间件。<span class="mono">dependencies.py::get_headers</span> 只把 <span class="mono">user_id</span> 头解析/校验成 <span class="mono">HeaderParams.actor_id</span>（校验 <span class="mono">user-&lt;uuid4&gt;</span> 格式、<strong>不碰 DB</strong>）；真正查 user，是函数体里 <span class="mono">await get_actor_or_default_async</span> 时才发生。</span></div>
+<p>为什么要把路由做得这么薄？因为"薄"和"厚"各司其职，把它俩并排看最清楚。</p>
+<div class="cols">
+  <div class="col"><h4>🪶 薄路由（第一层）</h4><p>只做四步：解析 actor、处理参数、调 manager、返回 schema。<strong>不写业务、不开 DB session</strong>。换个端点，骨架几乎照抄。</p></div>
+  <div class="col"><h4>🧱 厚 manager（第二层）</h4><p>业务逻辑、事务边界、多租户隔离全在这里。<strong>DB session 在 manager 里开关</strong>，访问控制焊进每条查询。</p></div>
+</div>
+<p>这条分界请先记牢：<strong>路由从不开 DB session</strong>，session 全在 manager 里开关。它正是下一节"为什么是多个事务"的关键。</p>
+<div class="cute"><div class="row"><span class="emoji">🚪</span><span class="lab">门房·路由</span><span class="arrow">→</span><span class="emoji">🧑‍💼</span><span class="lab">经理·manager</span><span class="arrow">→</span><span class="emoji">🗄️</span><span class="bubble">档案室·ORM/DB</span></div><div class="cap">🏛️ 三层楼：门房（路由）只递条子，经理（manager）开“事务”门动数据，档案室（ORM/DB）给谁看由门禁（访问控制）说了算</div></div>
+<h2>跟着一条 GET 请求走到底</h2>
+<p>光看四步还不够过瘾。让我们真的牵着一条 <span class="mono">GET /v1/agents/{id}</span> 请求，从进门一路走到 DB，再原路走回来。</p>
+<div class="vflow">
+  <div class="step"><div class="num">1</div><div class="sc"><h4>DI 装配</h4><p><span class="mono">get_letta_server</span> 递上那个全局 server，<span class="mono">get_headers</span> 把 <span class="mono">user_id</span> 头解析成 <span class="mono">actor_id</span>（此刻还不碰 DB）。</p></div></div>
+  <div class="step"><div class="num">2</div><div class="sc"><h4>解析 actor · 事务①</h4><p><span class="mono">get_actor_or_default_async</span> 开 session #1 查 user；缺 <span class="mono">user_id</span> 时在 OSS 模式落到 default user。</p></div></div>
+  <div class="step"><div class="num">3</div><div class="sc"><h4>查 agent · 事务②</h4><p><span class="mono">get_agent_by_id_async(actor=actor)</span> 开 session #2：<span class="mono">select(AgentModel)</span> + <span class="mono">apply_access_predicate(...ORGANIZATION)</span> + <span class="mono">where(id==...)</span>。</p></div></div>
+  <div class="step"><div class="num">4</div><div class="sc"><h4>取一条或 404</h4><p><span class="mono">scalar_one_or_none()</span> 拿到行；为 None 就抛 404。否则 <span class="mono">to_pydantic_async()</span> 转成 schema。</p></div></div>
+  <div class="step"><div class="num">5</div><div class="sc"><h4>序列化回包</h4><p>commit / close 之后，FastAPI 按 <span class="mono">response_model=AgentState</span> 把对象序列化成 JSON 返回。</p></div></div>
+</div>
+<div class="note info"><span class="ni">💡</span><span class="nx">留意第 2、3 步：它们是<strong>两个独立事务</strong>，各开各的 session、各自 commit/close。一次请求＝<strong>多个独立事务</strong>，<strong>没有</strong>请求级的统一工作单元（UoW）。原因是事务边界被划在 manager 方法里——下面抽屉细讲。</span></div>
+<p>把这条轨迹和前面的四步对上号，你会发现：路由那薄薄四步，背后其实牵动了<strong>两次入库、两道访问控制、一次序列化</strong>。</p>
+<p>这里也藏着访问控制的关键：第 3 步那个 <span class="mono">apply_access_predicate</span> 不是路由加的，而是 ORM 在拼 SQL 时<strong>自动焊进</strong>的，组织级隔离因此绕不过去。</p>
+<div class="card spark"><div class="tag">💡 设计亮点</div>
+<p><span class="mono">SyncServer</span> 是个美丽的误名。类的 docstring 至今还写着 "Simple single-threaded / blocking server process"，可 v0.16.8 里路由调到的几乎全是 <span class="mono">async def</span>——真正的并发模型，是单事件循环上的<strong>协作式 async</strong>。</p>
+<p>更妙的是：它不是一座"上帝门面"，而是一个<strong>服务定位器</strong>。薄 CRUD 端点直接绕过它，<span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> 一穿到底。</p>
+<p>SyncServer 自己的方法，只在"一个动作要协调好几个 manager"时才出场——比如 <span class="mono">create_agent_async</span> 解析 LLM/embedding 配置、变换 block、再把写委托给 <span class="mono">agent_manager</span>。</p>
+<p>于是"业务枢纽"＝<strong>跨-manager 协调者</strong>，而不是"通往 DB 的唯一一道门"。这个重新理解，正是读懂这层代码的钥匙。</p>
+<p>再点一下分层的接缝：FastAPI 的 <span class="mono">Depends</span> 就是那道缝——两个依赖把一个普通函数变成分层 handler，actor 在 header 依赖跑完后于<strong>函数体内</strong>解析，而非靠全局鉴权中间件。</p>
+</div>
 <!--ZHMORE-->
 </div>
   <div class="lang-en"><p>stub</p></div>
