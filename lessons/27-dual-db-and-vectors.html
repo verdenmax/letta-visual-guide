@@ -492,6 +492,23 @@ engine = <span class="fn">create_async_engine</span>(async_pg_uri, ...)   <span 
 <p>代价也实在：JSON 里的子字段<strong>不能 <span class="mono">WHERE</span>、不能建索引</strong>——你没法高效地"按 embedding 模型名筛选"。而且每次读写都要跑一遍 (de)序列化，有 CPU 开销。</p>
 <p>一句话取舍：<strong>用"不可查询子字段 + 序列化开销"，换"扁平 schema + 加字段免迁移 + 配置保真"</strong>。对 Letta 这种配置多变、又很少按子字段查询的场景，划算。</p>
 </div></details>
+<h2>alembic：两套迁移，怎么不打架</h2>
+<p>列类型、向量、配置都说清了，最后一处接缝是<strong>建表与迁移</strong>。两套库的 schema 怎么各自立起来、又不互相踩？答案在 <span class="mono">alembic/env.py</span>。</p>
+<p><span class="mono">env.py</span> 先按 <span class="mono">database_engine</span> 选 URI：Postgres 用 pg8000 同步 URI，SQLite 用 <span class="mono">sqlite:///…sqlite.db</span>。建表策略则一边一个套路。</p>
+<p><strong>Postgres</strong> 走一条<strong>增量链</strong>：从 <span class="mono">9a505cc7eca9</span> 起一版版往上叠。早期迁移还带门禁——<span class="mono">if not settings.letta_pg_uri_no_default: return</span>，没配 PG 就跳过。</p>
+<p><strong>SQLite</strong> 则是<strong>单个 baseline 快照</strong> <span class="mono">2c059cad97cc</span>：一个反向门禁 <span class="mono">if settings.letta_pg_uri_no_default: return</span>，用纯 <span class="mono">sa.JSON()</span> 一次性把整套 schema 建出来。</p>
+<p>baseline 之后的迁移<strong>两边都跑</strong>，方言差异在脚本里<strong>内联处理</strong>——比如时间默认值，Postgres 用 <span class="mono">now()</span>，SQLite 用 <span class="mono">CURRENT_TIMESTAMP</span>。</p>
+<details class="accordion"><summary>一套 alembic 怎么同时伺候两套库？baseline 和增量链什么关系？</summary><div class="acc-body">
+<p>靠两道<strong>方向相反的门禁</strong>。Postgres 早期迁移：<span class="mono">if not letta_pg_uri_no_default: return</span>——没配 PG 就整段跳过；SQLite baseline：<span class="mono">if letta_pg_uri_no_default: return</span>——配了 PG 反而跳过。</p>
+<p>于是同一次 <span class="mono">upgrade</span>，Postgres 那侧顺着 <span class="mono">9a505cc7eca9</span> 的增量链一版版建；SQLite 那侧只认 baseline <span class="mono">2c059cad97cc</span>，用纯 <span class="mono">sa.JSON()</span> 一把建全。</p>
+<p>baseline <strong>之后</strong>新增的迁移没有门禁，<strong>两库都执行</strong>；遇到方言差异（<span class="mono">now()</span> vs <span class="mono">CURRENT_TIMESTAMP</span>、类型名等）就在脚本里按 dialect 内联分叉。</p>
+<p>所以 SQLite 不必重放 Postgres 那条长长的历史——它直接从一张"今日全貌"的快照起步，再跟上后续增量。两条起跑线，同一条终点。</p>
+</div></details>
+<h2>诚实的星号：为什么 v0.16.8 的 db.py 只建 Postgres</h2>
+<p>本课开头就埋了伏笔：双库画得这么对称，可 <span class="mono">server/db.py</span> 模块级<strong>只</strong> <span class="mono">create_async_engine(async_pg_uri)</span>，根本不按 <span class="mono">database_engine</span> 建 SQLite 引擎。这不矛盾吗？</p>
+<p>不矛盾，而是<strong>分层收敛</strong>。双库的故事完整活在<strong>两层</strong>：ORM 的列类型（<span class="mono">Vector</span> vs <span class="mono">CommonVector</span>）、alembic 的两后端建表。这两层至今仍是货真价实的双轨。</p>
+<p>真正悄悄收敛到 Postgres 的，只是<strong>运行期那条 async 引擎</strong>。换句话说，"声明层"还双着，"连接层"先一步统一了。唯一还构造 SQLite URI 的地方，是 <span class="mono">alembic/env.py</span>。</p>
+<div class="note info"><span class="ni">💡</span><span class="nx">这其实是个很好的教学点：<strong>读架构别只盯一个文件</strong>。只看 <span class="mono">db.py</span>，你会以为 Letta 只支持 Postgres；只看 ORM 与 alembic，你又会以为运行期能随意切 SQLite。真相是分层的——不同层处在收敛的不同阶段。</span></div>
 <!--ZHMORE-->
 
 </div>
