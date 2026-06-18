@@ -1402,3 +1402,10 @@ LESSON_30 = {
 <p>Part 8's advanced topics close here: from multi-agent and data sources to this lesson's execution observability, you've now mapped the side of Letta that, once it's running, is "visible, traceable, and under control".</p>
 """,
 }
+
+LESSON_31 = {
+    "zh": r"""
+<!--ZHMORE-->
+""",
+    "en": r"""<p>stub</p>""",
+}

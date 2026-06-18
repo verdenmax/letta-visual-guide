@@ -106,6 +106,8 @@ PAGES = [
      "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
     ("30-jobs-runs-steps.html", "jobs / runs / steps 与可观测性", "Jobs, runs, steps & observability",
      "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
+    ("31-glossary.html", "术语表·概念索引", "Glossary & concept index",
+     "第八部分 · 进阶专题", "Part 8 · Advanced topics"),
 ]
 
 
@@ -604,6 +606,8 @@ SUBTITLES = {
                                  "files → source passages; ingestion + embeddings; vs archival memory"),
     "30-jobs-runs-steps.html": ("异步执行追踪 · otel/telemetry · 流式 SSE",
                                 "async execution tracking; otel/telemetry; streaming SSE"),
+    "31-glossary.html": ("全书术语一句话查 + 跳链到对应课",
+                         "every term in one line + jump links to its lesson"),
 }
 
 
