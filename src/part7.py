@@ -6,8 +6,8 @@ request as it falls through three layers down to the database:
     thin REST routers -> SyncServer + Managers -> ORM (CRUD + access control) -> DB
 
 with one process-global SyncServer. Each lesson dict mirrors the house style of
-Parts 1-6 (cards / notes / cute / codefile / vflow / layers / cellgroup / table.t).
-The en value is intentionally left as a stub for the next agent to author.
+Parts 1-6 (cards / notes / cute / codefile / vflow / layers / cellgroup / table.t),
+with bilingual zh/en content.
 """
 
 LESSON_24 = {
@@ -64,7 +64,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <span class="kw">return</span> app
 
 <span class="nb">@asynccontextmanager</span>
-<span class="kw">async</span> <span class="kw">def</span> <span class="fn">lifespan</span>(app: FastAPI):
+<span class="kw">async def</span> <span class="fn">lifespan</span>(app: FastAPI):
     <span class="cm"># 启动时只做异步引导：建默认 org/user、upsert 基础工具</span>
     <span class="kw">await</span> server.<span class="fn">init_async</span>(init_with_default_org_and_user=<span class="kw">True</span>)
     <span class="kw">yield</span>
@@ -93,7 +93,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>除了这些 manager，它还顺手持有 <span class="mono">self.config</span>（一个 <span class="mono">LettaConfig</span>）和 <span class="mono">self._enabled_providers</span>。把接线节选出来看：</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/server.py</span><span class="ln">SyncServer.__init__ 的 manager 接线（节选）</span></div>
 <pre><span class="kw">class</span> <span class="fn">SyncServer</span>(<span class="nb">object</span>):
-    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process&quot;&quot;&quot;</span>   <span class="cm"># 名不副实：见下文“亮点”</span>
+    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process&quot;&quot;&quot;</span>
     <span class="kw">def</span> <span class="fn">__init__</span>(self, ...):
         self.config = LettaConfig.<span class="fn">load</span>()
         self.organization_manager = <span class="fn">OrganizationManager</span>()
@@ -133,7 +133,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>把 <span class="mono">routers/v1/agents.py::retrieve_agent</span> 摊开看，这四步一目了然：</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">retrieve_agent：薄路由四步（简化）</span></div>
 <pre><span class="nb">@router.get</span>(<span class="st">"/{agent_id}"</span>, response_model=AgentState)   <span class="cm"># ④ FastAPI 按 response_model 序列化</span>
-<span class="kw">async</span> <span class="kw">def</span> <span class="fn">retrieve_agent</span>(
+<span class="kw">async def</span> <span class="fn">retrieve_agent</span>(
     agent_id: str,
     server: SyncServer = <span class="fn">Depends</span>(get_letta_server),   <span class="cm"># DI：拿到那个全局 server</span>
     headers: HeaderParams = <span class="fn">Depends</span>(get_headers),     <span class="cm"># 解析 user_id 头 -&gt; actor_id</span>
@@ -172,10 +172,8 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>也正因如此，路由层永远拿不到一个"还连着数据库"的对象——它能看到的，只有已经定形、可以安全序列化的 schema。</p>
 <div class="card spark"><div class="tag">💡 设计亮点</div>
 <p><span class="mono">SyncServer</span> 是个美丽的误名。类的 docstring 至今还写着 "Simple single-threaded / blocking server process"，可 v0.16.8 里路由调到的几乎全是 <span class="mono">async def</span>——真正的并发模型，是单事件循环上的<strong>协作式 async</strong>。</p>
-<p>更妙的是：它不是一座"上帝门面"，而是一个<strong>服务定位器</strong>。薄 CRUD 端点直接绕过它，<span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> 一穿到底。</p>
-<p>SyncServer 自己的方法，只在"一个动作要协调好几个 manager"时才出场——比如 <span class="mono">create_agent_async</span> 解析 LLM/embedding 配置、变换 block、再把写委托给 <span class="mono">agent_manager</span>。</p>
-<p>于是"业务枢纽"＝<strong>跨-manager 协调者</strong>，而不是"通往 DB 的唯一一道门"。这个重新理解，正是读懂这层代码的钥匙。</p>
-<p>再点一下分层的接缝：FastAPI 的 <span class="mono">Depends</span> 就是那道缝——两个依赖把一个普通函数变成分层 handler，actor 在 header 依赖跑完后于<strong>函数体内</strong>解析，而非靠全局鉴权中间件。</p>
+<p>更妙的是：它不是一座"上帝门面"，而是一个<strong>服务定位器</strong>——薄 CRUD 端点 <span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> 一穿到底，<span class="mono">SyncServer</span> 自己的方法只在跨-manager 编排时才出场。</p>
+<p>于是"业务枢纽"＝<strong>跨-manager 协调者</strong>，而不是"通往 DB 的唯一一道门"。把"名同步、实异步"配上"枢纽而非门面"，正是读懂这层代码的两把钥匙。</p>
 </div>
 <p>把这个"误名"记在心里，你以后读 server 层就不会被名字带偏：看见 <span class="mono">Sync</span> 别当真，看见 server 别以为它什么都自己干。名字是历史，代码才是现实。</p>
 <h2>再挖深一点</h2>
@@ -280,7 +278,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
     <span class="kw">return</span> app
 
 <span class="nb">@asynccontextmanager</span>
-<span class="kw">async</span> <span class="kw">def</span> <span class="fn">lifespan</span>(app: FastAPI):
+<span class="kw">async def</span> <span class="fn">lifespan</span>(app: FastAPI):
     <span class="cm"># startup only does async bootstrap: create default org/user, upsert base tools</span>
     <span class="kw">await</span> server.<span class="fn">init_async</span>(init_with_default_org_and_user=<span class="kw">True</span>)
     <span class="kw">yield</span>
@@ -309,7 +307,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>Besides these managers, it also holds <span class="mono">self.config</span> (a <span class="mono">LettaConfig</span>) and <span class="mono">self._enabled_providers</span>. Here's an excerpt of the wiring:</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/server.py</span><span class="ln">SyncServer.__init__ manager wiring (excerpt)</span></div>
 <pre><span class="kw">class</span> <span class="fn">SyncServer</span>(<span class="nb">object</span>):
-    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process&quot;&quot;&quot;</span>   <span class="cm"># a misnomer: see the "highlight" below</span>
+    <span class="st">&quot;&quot;&quot;Simple single-threaded / blocking server process&quot;&quot;&quot;</span>
     <span class="kw">def</span> <span class="fn">__init__</span>(self, ...):
         self.config = LettaConfig.<span class="fn">load</span>()
         self.organization_manager = <span class="fn">OrganizationManager</span>()
@@ -349,7 +347,7 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>Lay out <span class="mono">routers/v1/agents.py::retrieve_agent</span> and the four steps are obvious at a glance:</p>
 <div class="codefile"><div class="cf-head"><span class="dot"></span><span class="path">letta/server/rest_api/routers/v1/agents.py</span><span class="ln">retrieve_agent: a thin router's four steps (simplified)</span></div>
 <pre><span class="nb">@router.get</span>(<span class="st">"/{agent_id}"</span>, response_model=AgentState)   <span class="cm"># ④ FastAPI serializes per response_model</span>
-<span class="kw">async</span> <span class="kw">def</span> <span class="fn">retrieve_agent</span>(
+<span class="kw">async def</span> <span class="fn">retrieve_agent</span>(
     agent_id: str,
     server: SyncServer = <span class="fn">Depends</span>(get_letta_server),   <span class="cm"># DI: get that global server</span>
     headers: HeaderParams = <span class="fn">Depends</span>(get_headers),     <span class="cm"># parse user_id header -&gt; actor_id</span>
@@ -388,10 +386,8 @@ server = <span class="fn">SyncServer</span>(default_interface_factory=<span clas
 <p>For exactly this reason, the router layer never gets an object that's "still attached to the database" — all it ever sees is a settled schema that's safe to serialize.</p>
 <div class="card spark"><div class="tag">💡 Design highlight</div>
 <p><span class="mono">SyncServer</span> is a beautiful misnomer. The class docstring still reads "Simple single-threaded / blocking server process", yet in v0.16.8 the methods routers call are almost all <span class="mono">async def</span> — the real concurrency model is <strong>cooperative async</strong> on a single event loop.</p>
-<p>Better still: it isn't a "god facade" but a <strong>service locator</strong>. Thin CRUD endpoints bypass it outright, going <span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> straight through.</p>
-<p>SyncServer's own methods appear only when "one action must coordinate several managers" — for example <span class="mono">create_agent_async</span> resolves the LLM/embedding config, transforms blocks, then delegates the write to <span class="mono">agent_manager</span>.</p>
-<p>So "business hub" = <strong>cross-manager coordinator</strong>, not "the one door to the DB". This reframing is exactly the key to reading this layer of code.</p>
-<p>One more note on the layering's seam: FastAPI's <span class="mono">Depends</span> is that seam — two dependencies turn an ordinary function into a layered handler, and the actor is resolved <strong>inside the body</strong> after the header dependency runs, rather than by a global auth middleware.</p>
+<p>Better still: it isn't a "god facade" but a <strong>service locator</strong> — thin CRUD endpoints go <span class="mono">server.&lt;manager&gt;.&lt;method&gt;()</span> straight through, and <span class="mono">SyncServer</span>'s own methods appear only for cross-manager orchestration.</p>
+<p>So "business hub" = <strong>cross-manager coordinator</strong>, not "the one door to the DB". Pair that reframing with "named Sync, actually async" and you have the two keys to reading this layer.</p>
 </div>
 <p>Keep this "misnomer" in mind and the names won't lead you astray when you read the server layer later: don't take <span class="mono">Sync</span> at face value, and don't assume server does everything itself. The name is history; the code is reality.</p>
 <h2>Digging a little deeper</h2>

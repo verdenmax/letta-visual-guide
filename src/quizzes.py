@@ -2248,8 +2248,8 @@ QUIZZES = {
                     "en": "The class is named SyncServer and its docstring still says “single-threaded / blocking”. What's the reality in v0.16.8?",
                 },
                 "opts": [
-                    {"zh": "名不副实的历史遗留——路由调到的方法几乎全是 async def，并发是单事件循环上的协作式 async",
-                     "en": "A legacy misnomer — the methods routers call are almost all async def; concurrency is cooperative async on one event loop"},
+                    {"zh": "名不副实的历史遗留——路由调到的方法几乎全是 async def",
+                     "en": "A legacy misnomer — the methods routers call are almost all async def"},
                     {"zh": "名副其实——它确实单线程、阻塞，请求严格一个接一个处理",
                      "en": "Accurate — it really is single-threaded and blocking, serving requests strictly one at a time"},
                     {"zh": "它为每个请求开一个操作系统线程，这正是“Sync”的本意",
